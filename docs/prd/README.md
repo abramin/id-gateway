@@ -295,7 +295,6 @@ Implementation is complete when:
 ### Resources:
 - **Tutorial:** `docs/TUTORIAL.md` - Step-by-step learning guide
 - **Architecture:** `docs/architecture.md` - System design and patterns
-- **Productionization:** `docs/productionization.md` - Path to production
 
 ### Common Questions:
 
