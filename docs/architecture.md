@@ -75,8 +75,6 @@ Everything runs in one binary, but each internal package has a clear responsibil
 
 ## Service Boundaries inside the Monolith
 
-If this system were split into microservices, reasonable boundaries would be:
-
 1. **Auth Service**
    Users and sessions, OIDC lite login, tokens, userinfo.
 
@@ -92,13 +90,9 @@ If this system were split into microservices, reasonable boundaries would be:
 5. **Audit Service**
    Append only audit log, queue consumer, durable audit storage.
 
-In the monolith, each of these is a package with a narrow API. The process is single, the boundaries are logical.
-
 ---
 
 ## Package Layout
-
-Suggested layout aligned with those boundaries:
 
 ```text
 internal/
@@ -157,8 +151,6 @@ Rules of thumb:
 ---
 
 ## User Scenarios
-
-The main user scenarios are unchanged, but thinking in terms of the new boundaries helps.
 
 ### Scenario 1 - Fintech age verification for onboarding
 
@@ -450,8 +442,6 @@ Typical contents:
 ---
 
 ## Core Flows
-
-The flows are similar to the earlier version, but now you can see clearly which internal services are involved.
 
 ### Login and Consent
 
@@ -764,5 +754,3 @@ The codebase currently has:
 - ✅ **Strong foundation:** All domain models, service interfaces, and storage abstractions are complete and follow best practices.
 - ✅ **Testable architecture:** In-memory stores and service layer are fully functional, allowing unit testing without external dependencies.
 - ⚠️ **HTTP layer incomplete:** Handlers are scaffolded (routes defined) but return 501 - implementation required (see PRDs in `docs/prd/`).
-
-This design makes it straightforward to complete the implementation by following the PRDs, which provide step-by-step instructions for wiring the HTTP handlers to the existing service layer.
