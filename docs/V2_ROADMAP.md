@@ -9,13 +9,7 @@
 
 ## Philosophy
 
-V2 focuses on making the gateway **more realistic** and **more operationally credible** without trying to become a full OIDC provider or identity platform. The goal is to deepen realism in the areas that matter for interviews:
-
-- ✅ **Do:** Real JWT signing, queue-backed audit, database persistence, observability
-- ❌ **Don't:** Full OIDC certification, social login, password management, complex UX
-
-**Key Insight:** Interviewers want to see you understand **production concerns** (tokens, persistence, monitoring, policy), not that you can recreate Auth0.
-
+V2 focuses on making the gateway **more realistic** and **more operationally credible** without trying to become a full OIDC provider or identity platform.
 ---
 
 ## Prerequisites
@@ -33,8 +27,6 @@ Before starting V2, complete:
 ## V2 Feature Roadmap
 
 ### Priority Ordering
-
-Implement in this order to maximize interview value with minimal effort:
 
 1. **Signed JWT Tokens + JWKS** (P0 - foundational for everything else)
 2. **Real Database for Core Stores** (P0 - shows persistence patterns)
@@ -690,22 +682,6 @@ auth:
 - [ ] Architecture diagrams show both modes
 - [ ] Feature flag implemented (even if not fully functional)
 - [ ] Clear guidance on when to build vs integrate
-
-### Why It Matters for Interviews
-
-**Shows you understand:**
-- Build vs buy decisions
-- When to integrate vs reinvent
-- Architectural flexibility
-- Real-world tradeoffs
-
-**Interview talking points:**
-- "We built auth for the demo, but production would use Keycloak to avoid reinventing OAuth2"
-- "The gateway's value is in consent + evidence + decisions, not in being an identity provider"
-- "We designed for integration from day one - feature flag switches auth mode"
-
----
-
 ## Summary: Why This V2 is Enough
 
 ### What You'll Have Built
@@ -732,25 +708,6 @@ After V1 + V2, your gateway will demonstrate:
 ❌ Rate limiting and DDoS protection (mention as "would add Cloudflare")
 ❌ Multi-tenancy
 
-### Interview Value
-
-**For Backend Engineer roles:**
-- Shows end-to-end thinking (auth → storage → observability)
-- Demonstrates production concerns (JWT, Postgres, metrics)
-- Proves async processing understanding (queue-backed audit)
-
-**For Identity/Auth Engineer roles:**
-- Shows token lifecycle mastery (issue, refresh, revoke)
-- Demonstrates regulated domain awareness (consent, audit, minimization)
-- Proves integration vs build-your-own judgment
-
-**For Senior Engineer roles:**
-- Shows architectural tradeoffs (V1 simplicity → V2 realism)
-- Demonstrates incremental improvement strategy
-- Proves scope management (enough but not too much)
-
----
-
 ## Implementation Timeline
 
 **Total V2 Time:** 28-43 hours (3.5-5 days)
@@ -766,27 +723,6 @@ After V1 + V2, your gateway will demonstrate:
 
 ### Week 3: Polish
 - Testing, documentation, cleanup
-
----
-
-## Getting Started with V2
-
-1. **Read this roadmap** completely
-2. **Complete V1 first** (all PRDs implemented)
-3. **Start with #1** (Signed JWT) - foundational for everything else
-4. **Add #2** (Database) next - enables persistence for all features
-5. **Continue in priority order**
-
----
-
-## References
-
-- **V1 PRDs:** `docs/prd/README.md` - Implement these first
-- **Architecture:** `docs/architecture.md` - System design
-- **Productionization:** `docs/productionization.md` - Full production checklist
-- **Tutorial:** `docs/TUTORIAL.md` - Step-by-step learning guide
-
----
 
 ## Revision History
 
