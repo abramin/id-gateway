@@ -295,7 +295,6 @@ Implementation is complete when:
 ### Resources:
 - **Tutorial:** `docs/TUTORIAL.md` - Step-by-step learning guide
 - **Architecture:** `docs/architecture.md` - System design and patterns
-- **Code Structure:** `docs/structure.md` - Package organization
 - **Productionization:** `docs/productionization.md` - Path to production
 
 ### Common Questions:
@@ -322,15 +321,3 @@ A: Use appropriate error code from `pkg/errors` and return clear message.
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2025-12-03 | Product Team | Initial PRD suite |
-
----
-
-## Next Steps
-
-1. **Read PRD-001** (Authentication & Session Management)
-2. **Review existing code** in `internal/auth/`
-3. **Implement handlers** in `internal/transport/http/handlers_auth.go`
-4. **Test with curl** commands from PRD
-5. **Move to PRD-002** once PRD-001 is complete
-
-Good luck! 🚀
