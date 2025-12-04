@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
@@ -21,28 +23,11 @@ import (
 //go:generate mockgen -source=handlers_auth.go -destination=mocks/auth-mocks.go -package=mocks AuthService
 type AuthHandlerSuite struct {
 	suite.Suite
-	handler     *AuthHandler
-	ctx         context.Context
-	router      *http.ServeMux
-	mockService *mocks.MockAuthService
-	ctrl        *gomock.Controller
+	ctx context.Context
 }
 
 func (s *AuthHandlerSuite) SetupSuite() {
 	s.ctx = context.Background()
-}
-
-func (s *AuthHandlerSuite) SetupTest() {
-	s.ctrl = gomock.NewController(s.T())
-	s.mockService = mocks.NewMockAuthService(s.ctrl)
-	s.handler = NewAuthHandler(s.mockService)
-	mux := http.NewServeMux()
-	s.handler.Register(mux)
-	s.router = mux
-}
-
-func (s *AuthHandlerSuite) TearDownTest() {
-	s.ctrl.Finish()
 }
 
 func (s *AuthHandlerSuite) TestService_Authorize() {
@@ -54,35 +39,70 @@ func (s *AuthHandlerSuite) TestService_Authorize() {
 		State:       "test-state",
 	}
 	s.T().Run("user is found and authorized - 200", func(t *testing.T) {
+		mockService, router := s.newHandler(t)
 		expectedResp := &authModel.AuthorizationResult{
-			SessionID:   "sess_12345",
-			RedirectURI: "some-redirect-uri/",
+			SessionID: uuid.New(),
+			UserID:    uuid.New(),
 		}
-		s.mockService.EXPECT().Authorize(gomock.Any(), validRequest).Return(expectedResp, nil)
+		mockService.EXPECT().Authorize(gomock.Any(), validRequest).Return(expectedResp, nil)
 
-		status, got := s.doAuthRequest(s.mustMarshal(validRequest, t))
+		status, got, errBody := s.doAuthRequest(t, router, s.mustMarshal(validRequest, t))
 
-		s.Equal(http.StatusOK, status)
-		s.Equal(expectedResp.SessionID, got["session_id"])
-		s.Equal(expectedResp.RedirectURI, got["redirect_uri"])
+		require.Equal(t, http.StatusOK, status)
+		require.NotNil(t, got)
+		require.Nil(t, errBody)
+		require.Equal(t, expectedResp.SessionID, got.SessionID)
+		require.Equal(t, expectedResp.UserID, got.UserID)
 	})
 
-	s.T().Run("returns 400 when request is invalid", func(t *testing.T) {
-		s.mockService.EXPECT().Authorize(gomock.Any(), gomock.Any()).Times(0)
+	s.T().Run("returns 400 when request body is invalid json", func(t *testing.T) {
+		mockService, router := s.newHandler(t)
+		mockService.EXPECT().Authorize(gomock.Any(), gomock.Any()).Times(0)
 
-		status, got := s.doAuthRequest("{bad-json")
+		status, got, errBody := s.doAuthRequest(t, router, "{bad-json")
 
-		s.Equal(http.StatusBadRequest, status)
-		s.Equal(string(httpErrors.CodeInvalidInput), got["error"])
+		require.Equal(t, http.StatusBadRequest, status)
+		require.Nil(t, got)
+		require.Equal(t, string(httpErrors.CodeInvalidInput), errBody["error"])
+	})
+
+	s.T().Run("returns 400 when email is invalid", func(t *testing.T) {
+		mockService, router := s.newHandler(t)
+		mockService.EXPECT().Authorize(gomock.Any(), gomock.Any()).Times(0)
+		invalid := *validRequest
+		invalid.Email = "invalid-email"
+		invalidEmailRequest := &invalid
+
+		status, got, errBody := s.doAuthRequest(t, router, s.mustMarshal(invalidEmailRequest, t))
+
+		require.Equal(t, http.StatusBadRequest, status)
+		require.Nil(t, got)
+		require.Equal(t, string(httpErrors.CodeInvalidInput), errBody["error"])
+	})
+
+	s.T().Run("returns 400 when params missing", func(t *testing.T) {
+		mockService, router := s.newHandler(t)
+		mockService.EXPECT().Authorize(gomock.Any(), gomock.Any()).Times(0)
+		missing := *validRequest
+		missing.ClientID = ""
+		missingParamRequest := &missing
+
+		status, got, errBody := s.doAuthRequest(t, router, s.mustMarshal(missingParamRequest, t))
+
+		require.Equal(t, http.StatusBadRequest, status)
+		require.Nil(t, got)
+		require.Equal(t, string(httpErrors.CodeInvalidInput), errBody["error"])
 	})
 
 	s.T().Run("returns 500 when service fails", func(t *testing.T) {
-		s.mockService.EXPECT().Authorize(gomock.Any(), validRequest).Return(nil, errors.New("boom"))
+		mockService, router := s.newHandler(t)
+		mockService.EXPECT().Authorize(gomock.Any(), validRequest).Return(nil, errors.New("boom"))
 
-		status, got := s.doAuthRequest(s.mustMarshal(validRequest, t))
+		status, got, errBody := s.doAuthRequest(t, router, s.mustMarshal(validRequest, t))
 
-		s.Equal(http.StatusInternalServerError, status)
-		s.Equal(string(httpErrors.CodeInternal), got["error"])
+		require.Equal(t, http.StatusInternalServerError, status)
+		require.Nil(t, got)
+		require.Equal(t, string(httpErrors.CodeInternal), errBody["error"])
 	})
 }
 
@@ -90,19 +110,42 @@ func TestAuthHandlerSuite(t *testing.T) {
 	suite.Run(t, new(AuthHandlerSuite))
 }
 
-func (s *AuthHandlerSuite) doAuthRequest(body string) (int, map[string]string) {
+func (s *AuthHandlerSuite) newHandler(t *testing.T) (*mocks.MockAuthService, *http.ServeMux) {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockService := mocks.NewMockAuthService(ctrl)
+	handler := NewAuthHandler(mockService)
+	mux := http.NewServeMux()
+	handler.Register(mux)
+	return mockService, mux
+}
+
+func (s *AuthHandlerSuite) doAuthRequest(t *testing.T, router *http.ServeMux, body string) (int, *authModel.AuthorizationResult, map[string]string) {
+	t.Helper()
 	httpReq := httptest.NewRequest(http.MethodPost, "/auth/authorize", strings.NewReader(body))
 	httpReq.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 
-	s.router.ServeHTTP(rr, httpReq)
+	router.ServeHTTP(rr, httpReq)
 
-	var got map[string]string
-	s.Require().NoError(json.NewDecoder(rr.Body).Decode(&got))
-	return rr.Code, got
+	raw, err := io.ReadAll(rr.Body)
+	require.NoError(t, err)
+
+	if rr.Code == http.StatusOK {
+		var res authModel.AuthorizationResult
+		require.NoError(t, json.Unmarshal(raw, &res))
+		return rr.Code, &res, nil
+	} else {
+		var errBody map[string]string
+		require.NoError(t, json.Unmarshal(raw, &errBody))
+		return rr.Code, nil, errBody
+	}
 }
 
 func (s *AuthHandlerSuite) mustMarshal(v any, t *testing.T) string {
+	t.Helper()
 	body, err := json.Marshal(v)
 	require.NoError(t, err)
 	return string(body)

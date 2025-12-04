@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/mail"
 
 	authModel "id-gateway/internal/auth/models"
 	httpErrors "id-gateway/pkg/http-errors"
@@ -58,7 +59,16 @@ func (h *AuthHandler) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		writeError(w, httpErrors.New(httpErrors.CodeInvalidInput, "invalid request body"))
 		return
 	}
-
+	// validate all required fields are present
+	if req.Email == "" || req.ClientID == "" || req.RedirectURI == "" {
+		writeError(w, httpErrors.New(httpErrors.CodeInvalidInput, "missing required fields"))
+		return
+	}
+	// validate email format (simple regex or use a library)
+	if _, err := mail.ParseAddress(req.Email); err != nil {
+		writeError(w, httpErrors.New(httpErrors.CodeInvalidInput, "invalid email format"))
+		return
+	}
 	res, err := h.auth.Authorize(r.Context(), &req)
 	if err != nil {
 		writeError(w, err)
@@ -67,9 +77,9 @@ func (h *AuthHandler) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(w).Encode(map[string]string{
-		"session_id":   res.SessionID,
-		"redirect_uri": res.RedirectURI,
+	err = json.NewEncoder(w).Encode(authModel.AuthorizationResult{
+		SessionID: res.SessionID,
+		UserID:    res.UserID,
 	})
 	if err != nil {
 		writeError(w, err)

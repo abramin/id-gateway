@@ -25,10 +25,11 @@ func TestService_Authorize(t *testing.T) {
 		Scopes:      []string{"openid", "profile"},
 		RedirectURI: "https://client.app/callback",
 		State:       "xyz",
+		Email:       "email@test.com",
 	}
 
 	result, err := service.Authorize(context.Background(), &req)
 	assert.NoError(t, err)
 	assert.Equal(t, "todo-session-id", result.SessionID)
-	assert.Equal(t, req.RedirectURI, result.RedirectURI)
+	assert.Equal(t, "user_xyz", result.UserID)
 }
