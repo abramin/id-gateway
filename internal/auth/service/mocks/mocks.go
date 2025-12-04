@@ -42,10 +42,10 @@ func (m *MockUserStore) EXPECT() *MockUserStoreMockRecorder {
 }
 
 // FindByEmail mocks base method.
-func (m *MockUserStore) FindByEmail(ctx context.Context, email string) (models.User, error) {
+func (m *MockUserStore) FindByEmail(ctx context.Context, email string) (*models.User, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FindByEmail", ctx, email)
-	ret0, _ := ret[0].(models.User)
+	ret0, _ := ret[0].(*models.User)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -57,10 +57,10 @@ func (mr *MockUserStoreMockRecorder) FindByEmail(ctx, email any) *gomock.Call {
 }
 
 // FindByID mocks base method.
-func (m *MockUserStore) FindByID(ctx context.Context, id string) (models.User, error) {
+func (m *MockUserStore) FindByID(ctx context.Context, id string) (*models.User, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FindByID", ctx, id)
-	ret0, _ := ret[0].(models.User)
+	ret0, _ := ret[0].(*models.User)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -72,7 +72,7 @@ func (mr *MockUserStoreMockRecorder) FindByID(ctx, id any) *gomock.Call {
 }
 
 // Save mocks base method.
-func (m *MockUserStore) Save(ctx context.Context, user models.User) error {
+func (m *MockUserStore) Save(ctx context.Context, user *models.User) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Save", ctx, user)
 	ret0, _ := ret[0].(error)

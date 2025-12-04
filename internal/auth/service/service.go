@@ -12,9 +12,9 @@ import (
 )
 
 type UserStore interface {
-	Save(ctx context.Context, user models.User) error
-	FindByID(ctx context.Context, id string) (models.User, error)
-	FindByEmail(ctx context.Context, email string) (models.User, error)
+	Save(ctx context.Context, user *models.User) error
+	FindByID(ctx context.Context, id string) (*models.User, error)
+	FindByEmail(ctx context.Context, email string) (*models.User, error)
 }
 
 type SessionStore interface {
@@ -22,8 +22,6 @@ type SessionStore interface {
 	FindByID(ctx context.Context, id string) (models.Session, error)
 }
 
-// Service adapts OIDC flow interactions into a callable façade. It keeps
-// transport concerns out of business logic.
 type Service struct {
 	users      UserStore
 	sessions   SessionStore
@@ -48,7 +46,7 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 	if err != nil {
 		if errors.Is(err, models.ErrUserNotFound) {
 			firstName, lastName := email.DeriveNameFromEmail(req.Email)
-			newUser := models.User{
+			newUser := &models.User{
 				ID:        uuid.New(),
 				Email:     req.Email,
 				FirstName: firstName,
@@ -75,8 +73,8 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 		UserID:         user.ID,
 		RequestedScope: scopes,
 		Status:         StatusPendingConsent,
-		CreatedAt:      now.Unix(),
-		ExpiresAt:      now.Add(s.sessionTTL).Unix(),
+		CreatedAt:      now,
+		ExpiresAt:      now.Add(s.sessionTTL),
 	}
 
 	err = s.sessions.Save(ctx, newSession)

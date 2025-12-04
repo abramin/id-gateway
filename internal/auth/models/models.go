@@ -1,6 +1,10 @@
 package models
 
-import "github.com/google/uuid"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // User captures the primary identity tracked by the gateway. Storage of the
 // actual user record lives behind the UserStore interface.
@@ -18,8 +22,8 @@ type Session struct {
 	UserID         uuid.UUID `json:"user_id" validate:"required,uuid"`
 	RequestedScope []string  `json:"requested_scope" validate:"dive,required"`
 	Status         string    `json:"status" validate:"required"`
-	CreatedAt      int64     `json:"created_at" validate:"required"`
-	ExpiresAt      int64     `json:"expires_at"`
+	CreatedAt      time.Time `json:"created_at" validate:"required"`
+	ExpiresAt      time.Time `json:"expires_at"`
 }
 
 type AuthorizationRequest struct {

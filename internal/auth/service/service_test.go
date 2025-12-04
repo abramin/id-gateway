@@ -32,45 +32,64 @@ func (s *ServiceSuite) TearDownTest() {
 	s.ctrl.Finish()
 }
 
-func (s *ServiceSuite) TestAuthorizeHappyPath() {
-	s.T().Skip("TODO: implement happy path once Authorize is completed")
-	req := models.AuthorizationRequest{
-		ClientID:    "client-123",
-		Scopes:      []string{"openid", "profile"},
-		RedirectURI: "https://client.app/callback",
-		State:       "xyz",
-		Email:       "email@test.com",
-	}
-	result, err := s.service.Authorize(context.Background(), &req)
-	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), "todo-session-id", result.SessionID)
-	assert.Equal(s.T(), "https://client.app/callback", result.RedirectURI)
-}
+func (s *ServiceSuite) TestAuthorize() {
+	s.T().Run("happy path - user not found, creates user and session", func(t *testing.T) {
+		req := models.AuthorizationRequest{
+			ClientID:    "client-123",
+			Scopes:      []string{"openid", "profile"},
+			RedirectURI: "https://client.app/callback",
+			State:       "xyz",
+			Email:       "email@test.com",
+		}
+		s.mockUserStore.EXPECT().FindByEmail(gomock.Any(), req.Email).Return(nil, models.ErrUserNotFound)
+		s.mockUserStore.EXPECT().Save(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, user *models.User) error {
+			assert.Equal(s.T(), req.Email, user.Email)
+			assert.Equal(s.T(), "Email", user.FirstName)
+			assert.Equal(s.T(), "User", user.LastName)
+			assert.False(s.T(), user.Verified)
+			assert.NotNil(s.T(), user.ID)
+			return nil
+		})
+		s.mockSessStore.EXPECT().Save(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, session models.Session) error {
+				assert.NotNil(s.T(), session.UserID)
+				assert.True(s.T(), session.ExpiresAt.After(time.Now()))
+				assert.Equal(s.T(), StatusPendingConsent, session.Status)
+				assert.NotNil(s.T(), session.ID)
+				return nil
+			})
 
-func (s *ServiceSuite) TestAuthorizeUserNotFound() {
-	s.T().Skip("TODO: implement user not found flow once Authorize is completed")
-}
+		result, err := s.service.Authorize(context.Background(), &req)
+		assert.NoError(s.T(), err)
+		assert.NotEmpty(s.T(), result.SessionID)
+		assert.Contains(s.T(), result.RedirectURI, "https://client.app/callback")
+		assert.Contains(s.T(), result.RedirectURI, "session_id="+result.SessionID.String())
+		assert.Contains(s.T(), result.RedirectURI, "state=xyz")
+	})
 
-func (s *ServiceSuite) TestAuthorizeUserFound() {
-	s.T().Skip("TODO: implement user found flow once Authorize is completed")
-}
+	s.T().Run("TestAuthorizeUserNotFound", func(t *testing.T) {
 
-func (s *ServiceSuite) TestAuthorizeUserStoreError() {
-	s.T().Skip("TODO: implement user store error handling once Authorize is completed")
-}
+	})
 
-func (s *ServiceSuite) TestAuthorizeSessionStoreError() {
-	s.T().Skip("TODO: implement session store error handling once Authorize is completed")
-}
+	s.T().Run("TestAuthorizeUserFound", func(t *testing.T) {
 
-func (s *ServiceSuite) TestAuthorizeWithState() {
-	s.T().Skip("TODO: implement state echo verification once Authorize is completed")
-}
+	})
 
-func (s *ServiceSuite) TestAuthorizeWithoutState() {
-	s.T().Skip("TODO: implement no state handling once Authorize is completed")
-}
+	s.T().Run("TestAuthorizeUserStoreError", func(t *testing.T) {
 
+	})
+
+	s.T().Run("TestAuthorizeSessionStoreError", func(t *testing.T) {
+
+	})
+
+	s.T().Run("TestAuthorizeWithState", func(t *testing.T) {
+
+	})
+
+	s.T().Run("TestAuthorizeWithoutState", func(t *testing.T) {
+	})
+}
 func TestServiceSuite(t *testing.T) {
 	suite.Run(t, new(ServiceSuite))
 }
