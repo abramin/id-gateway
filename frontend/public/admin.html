@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ID Gateway - Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="bg-gray-50 min-h-screen" x-data="adminApp">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center space-x-4">
+                    <h1 class="text-xl font-bold text-gray-900">ID Gateway - Admin Dashboard</h1>
+                    <span class="px-2 py-1 text-xs font-semibold rounded bg-purple-100 text-purple-800">
+                        ADMIN VIEW
+                    </span>
+                    <span class="px-2 py-1 text-xs font-semibold rounded regulated-indicator"
+                          :class="regulatedMode ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'">
+                        <span x-text="regulatedMode ? '🔒 REGULATED MODE' : 'STANDARD MODE'"></span>
+                    </span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button @click="toggleRegulatedMode"
+                            class="text-sm px-3 py-1 rounded border"
+                            :class="regulatedMode ? 'border-green-600 text-green-600' : 'border-gray-400 text-gray-600'">
+                        Toggle Mode
+                    </button>
+                    <button @click="refreshData"
+                            :disabled="loading"
+                            class="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+                        <span x-show="!loading">🔄 Refresh</span>
+                        <span x-show="loading">Loading...</span>
+                    </button>
+                    <a href="index.html" class="text-sm text-gray-600 hover:text-gray-900">User View</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Stats Overview -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-600">Total Users</p>
+                        <p class="text-3xl font-bold text-gray-900" x-text="stats.totalUsers"></p>
+                    </div>
+                    <div class="text-blue-600 text-3xl">👥</div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-600">Active Sessions</p>
+                        <p class="text-3xl font-bold text-gray-900" x-text="stats.activeSessions"></p>
+                    </div>
+                    <div class="text-green-600 text-3xl">🔑</div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-600">VCs Issued</p>
+                        <p class="text-3xl font-bold text-gray-900" x-text="stats.vcsIssued"></p>
+                    </div>
+                    <div class="text-indigo-600 text-3xl">📜</div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-600">Decisions Made</p>
+                        <p class="text-3xl font-bold text-gray-900" x-text="stats.decisionsMade"></p>
+                    </div>
+                    <div class="text-orange-600 text-3xl">⚖️</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <!-- Recent Decisions -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h3 class="text-lg font-bold text-gray-900 mb-4">Recent Decisions</h3>
+                <div class="space-y-3 max-h-96 overflow-y-auto audit-scroll">
+                    <template x-for="decision in recentDecisions" :key="decision.id">
+                        <div class="border rounded-lg p-4"
+                             :class="{
+                                 'border-green-200 bg-green-50': decision.status === 'pass',
+                                 'border-red-200 bg-red-50': decision.status === 'fail',
+                                 'border-yellow-200 bg-yellow-50': decision.status === 'pass_with_conditions'
+                             }">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="font-medium text-sm" x-text="decision.purpose"></span>
+                                <span class="status-badge text-xs"
+                                      :class="{
+                                          'pass': decision.status === 'pass',
+                                          'fail': decision.status === 'fail',
+                                          'pending': decision.status === 'pass_with_conditions'
+                                      }"
+                                      x-text="decision.status.toUpperCase()"></span>
+                            </div>
+                            <p class="text-sm text-gray-600 mb-2" x-text="decision.reason"></p>
+                            <div class="flex items-center justify-between text-xs text-gray-500">
+                                <span class="mono" x-text="decision.userId"></span>
+                                <span x-text="decision.timestamp"></span>
+                            </div>
+                        </div>
+                    </template>
+                    <template x-if="recentDecisions.length === 0">
+                        <p class="text-sm text-gray-500 text-center py-8">No decisions yet</p>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Active Users -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h3 class="text-lg font-bold text-gray-900 mb-4">Active Users & Sessions</h3>
+                <div class="space-y-3 max-h-96 overflow-y-auto audit-scroll">
+                    <template x-for="user in activeUsers" :key="user.id">
+                        <div class="border border-gray-200 rounded-lg p-4">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="font-medium text-sm" x-text="user.email"></span>
+                                <span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Active</span>
+                            </div>
+                            <div class="text-xs text-gray-600 space-y-1">
+                                <div><span class="text-gray-500">ID:</span> <span class="mono" x-text="user.id"></span></div>
+                                <div><span class="text-gray-500">Sessions:</span> <span x-text="user.sessionCount"></span></div>
+                                <div><span class="text-gray-500">Last active:</span> <span x-text="user.lastActive"></span></div>
+                            </div>
+                        </div>
+                    </template>
+                    <template x-if="activeUsers.length === 0">
+                        <p class="text-sm text-gray-500 text-center py-8">No active users</p>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- Consent Overview -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">Consent Overview</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <template x-for="consent in consentStats" :key="consent.purpose">
+                    <div class="border border-gray-200 rounded-lg p-4">
+                        <h4 class="font-medium text-gray-900 mb-2" x-text="consent.name"></h4>
+                        <div class="flex items-center justify-between">
+                            <div class="text-sm text-gray-600">
+                                <span x-text="consent.granted"></span> granted /
+                                <span x-text="consent.total"></span> users
+                            </div>
+                            <div class="text-2xl font-bold"
+                                 :class="consent.granted > 0 ? 'text-green-600' : 'text-gray-400'"
+                                 x-text="consent.total > 0 ? Math.round((consent.granted / consent.total) * 100) + '%' : '0%'"></div>
+                        </div>
+                        <div class="mt-2 bg-gray-200 rounded-full h-2">
+                            <div class="bg-green-600 h-2 rounded-full"
+                                 :style="`width: ${consent.total > 0 ? (consent.granted / consent.total) * 100 : 0}%`"></div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Regulated Mode Comparison -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">Data Minimization Comparison</h3>
+            <p class="text-sm text-gray-600 mb-6">
+                See how regulated mode strips PII while preserving decision-making capability
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Standard Mode -->
+                <div class="border-2 border-gray-300 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <h4 class="font-medium text-gray-900">Standard Mode</h4>
+                        <span class="px-2 py-1 bg-gray-100 text-gray-800 text-xs rounded">Full Data</span>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Full Name:</span>
+                            <span class="font-medium">Alice Smith</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Date of Birth:</span>
+                            <span class="font-medium">1990-05-15</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Address:</span>
+                            <span class="font-medium">123 Main St, City</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">National ID:</span>
+                            <span class="font-medium mono">123456789</span>
+                        </div>
+                        <div class="flex justify-between border-t pt-2">
+                            <span class="text-gray-600">Valid:</span>
+                            <span class="font-medium text-green-600">✓ Yes</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Regulated Mode -->
+                <div class="border-2 border-green-500 rounded-lg p-4 bg-green-50">
+                    <div class="flex items-center justify-between mb-4">
+                        <h4 class="font-medium text-gray-900">Regulated Mode (GDPR)</h4>
+                        <span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded">🔒 Minimized</span>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Full Name:</span>
+                            <span class="font-medium text-gray-400 line-through">Stripped</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Date of Birth:</span>
+                            <span class="font-medium text-gray-400 line-through">Stripped</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Address:</span>
+                            <span class="font-medium text-gray-400 line-through">Stripped</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">National ID:</span>
+                            <span class="font-medium text-gray-400 line-through">Stripped</span>
+                        </div>
+                        <div class="flex justify-between border-t pt-2">
+                            <span class="text-gray-600">Valid:</span>
+                            <span class="font-medium text-green-600">✓ Yes</span>
+                        </div>
+                        <div class="flex justify-between pt-2 border-t border-green-300">
+                            <span class="text-green-700 font-medium">Derived: IsOver18:</span>
+                            <span class="font-bold text-green-700">✓ True</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
+                <p class="text-sm text-blue-900">
+                    <strong>Privacy by Design:</strong> Decisions are made using derived attributes (IsOver18)
+                    without storing raw PII (Date of Birth). This satisfies GDPR data minimization requirements.
+                </p>
+            </div>
+        </div>
+
+        <!-- Audit Log Stream -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-gray-900">Live Audit Stream</h3>
+                <div class="flex items-center space-x-2">
+                    <span class="h-2 w-2 bg-green-500 rounded-full animate-pulse"></span>
+                    <span class="text-sm text-gray-600">Live</span>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="flex gap-2 mb-4">
+                <select x-model="auditFilter"
+                        @change="filterAuditEvents"
+                        class="text-sm px-3 py-1 border border-gray-300 rounded-md">
+                    <option value="all">All Events</option>
+                    <option value="decision_made">Decisions</option>
+                    <option value="consent_granted">Consents</option>
+                    <option value="vc_issued">VCs Issued</option>
+                    <option value="registry_checked">Registry Checks</option>
+                </select>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="audit-table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Action</th>
+                            <th>Purpose</th>
+                            <th>Decision</th>
+                            <th>User ID</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="event in filteredAuditEvents" :key="event.id">
+                            <tr>
+                                <td class="text-xs text-gray-600" x-text="event.timestamp"></td>
+                                <td>
+                                    <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded"
+                                          x-text="event.action"></span>
+                                </td>
+                                <td class="text-sm" x-text="event.purpose"></td>
+                                <td>
+                                    <span class="status-badge text-xs"
+                                          :class="{
+                                              'pass': event.decision === 'granted' || event.decision === 'pass',
+                                              'fail': event.decision === 'fail' || event.decision === 'revoked',
+                                              'pending': event.decision === 'pending'
+                                          }"
+                                          x-text="event.decision"></span>
+                                </td>
+                                <td class="mono text-xs" x-text="event.userId"></td>
+                                <td class="text-sm text-gray-600" x-text="event.reason"></td>
+                            </tr>
+                        </template>
+                        <template x-if="filteredAuditEvents.length === 0">
+                            <tr>
+                                <td colspan="6" class="text-center text-gray-500 py-8">No audit events yet</td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/api.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+</html>
