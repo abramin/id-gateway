@@ -103,26 +103,10 @@ func (h *AuthHandler) notImplemented(w http.ResponseWriter, endpoint string) {
 }
 
 func validateAuthorizationRequest(req authModel.AuthorizationRequest) error {
-	payload := authorizationRequestValidation{
-		Email:       req.Email,
-		ClientID:    req.ClientID,
-		Scopes:      req.Scopes,
-		RedirectURI: req.RedirectURI,
-		State:       req.State,
-	}
-
-	if err := authValidator.Struct(payload); err != nil {
+	if err := authValidator.Struct(req); err != nil {
 		return httpErrors.New(httpErrors.CodeInvalidInput, "invalid request body")
 	}
 	return nil
-}
-
-type authorizationRequestValidation struct {
-	Email       string   `validate:"required,email,max=255"`
-	ClientID    string   `validate:"required,min=3,max=100"`
-	Scopes      []string `validate:"required,min=1,dive,notblank"`
-	RedirectURI string   `validate:"required,url,max=2048"`
-	State       string   `validate:"max=500"`
 }
 
 var authValidator = newAuthValidator()

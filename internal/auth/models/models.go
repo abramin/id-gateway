@@ -25,7 +25,7 @@ type Session struct {
 type AuthorizationRequest struct {
 	Email       string   `json:"email" validate:"required,email,max=255"`
 	ClientID    string   `json:"client_id" validate:"required,min=3,max=100"`
-	Scopes      []string `json:"scopes" validate:"dive,required"`
+	Scopes      []string `json:"scopes" validate:"required,min=1,dive,notblank"`
 	RedirectURI string   `json:"redirect_uri" validate:"required,url,max=2048"`
 	State       string   `json:"state" validate:"max=500"`
 }
