@@ -3,7 +3,9 @@ package httptransport
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"id-gateway/internal/transport/http/mocks"
+	httpErrors "id-gateway/pkg/http-errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -28,6 +30,9 @@ type AuthHandlerSuite struct {
 
 func (s *AuthHandlerSuite) SetupSuite() {
 	s.ctx = context.Background()
+}
+
+func (s *AuthHandlerSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
 	s.mockService = mocks.NewMockAuthService(s.ctrl)
 	s.handler = NewAuthHandler(s.mockService)
@@ -35,47 +40,70 @@ func (s *AuthHandlerSuite) SetupSuite() {
 	s.handler.Register(mux)
 	s.router = mux
 }
+
 func (s *AuthHandlerSuite) TearDownTest() {
 	s.ctrl.Finish()
 }
 
 func (s *AuthHandlerSuite) TestService_Authorize() {
-	s.T().Run("user is found and authorized", func(t *testing.T) {
-		req := &authModel.AuthorizationRequest{
-			ClientID:    "test-client-id",
-			Scopes:      []string{"scope1", "scope2"},
-			RedirectURI: "some-redirect-uri/",
-			State:       "test-state",
-		}
+	var validRequest = &authModel.AuthorizationRequest{
+		Email:       "user@example.com",
+		ClientID:    "test-client-id",
+		Scopes:      []string{"scope1", "scope2"},
+		RedirectURI: "some-redirect-uri/",
+		State:       "test-state",
+	}
+	s.T().Run("user is found and authorized - 200", func(t *testing.T) {
 		expectedResp := &authModel.AuthorizationResult{
 			SessionID:   "sess_12345",
 			RedirectURI: "some-redirect-uri/",
 		}
-		s.mockService.EXPECT().Authorize(s.ctx, req).Return(expectedResp, nil)
+		s.mockService.EXPECT().Authorize(gomock.Any(), validRequest).Return(expectedResp, nil)
 
-		body, err := json.Marshal(req)
-		require.NoError(t, err)
-		httpReq := httptest.NewRequest(http.MethodPost, "/auth/authorize", strings.NewReader(string(body)))
-		httpReq.Header.Set("Content-Type", "application/json")
-		rr := httptest.NewRecorder()
+		status, got := s.doAuthRequest(s.mustMarshal(validRequest, t))
 
-		s.router.ServeHTTP(rr, httpReq)
-
-		var got map[string]string
-		s.Require().NoError(json.NewDecoder(rr.Body).Decode(&got))
+		s.Equal(http.StatusOK, status)
 		s.Equal(expectedResp.SessionID, got["session_id"])
 		s.Equal(expectedResp.RedirectURI, got["redirect_uri"])
 	})
 
 	s.T().Run("returns 400 when request is invalid", func(t *testing.T) {
-		// TODO: implement invalid email / bad payload scenario
+		s.mockService.EXPECT().Authorize(gomock.Any(), gomock.Any()).Times(0)
+
+		status, got := s.doAuthRequest("{bad-json")
+
+		s.Equal(http.StatusBadRequest, status)
+		s.Equal(string(httpErrors.CodeInvalidInput), got["error"])
 	})
 
 	s.T().Run("returns 500 when service fails", func(t *testing.T) {
-		// TODO: implement auth service/store failure scenario
+		s.mockService.EXPECT().Authorize(gomock.Any(), validRequest).Return(nil, errors.New("boom"))
+
+		status, got := s.doAuthRequest(s.mustMarshal(validRequest, t))
+
+		s.Equal(http.StatusInternalServerError, status)
+		s.Equal(string(httpErrors.CodeInternal), got["error"])
 	})
 }
 
 func TestAuthHandlerSuite(t *testing.T) {
 	suite.Run(t, new(AuthHandlerSuite))
+}
+
+func (s *AuthHandlerSuite) doAuthRequest(body string) (int, map[string]string) {
+	httpReq := httptest.NewRequest(http.MethodPost, "/auth/authorize", strings.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	s.router.ServeHTTP(rr, httpReq)
+
+	var got map[string]string
+	s.Require().NoError(json.NewDecoder(rr.Body).Decode(&got))
+	return rr.Code, got
+}
+
+func (s *AuthHandlerSuite) mustMarshal(v any, t *testing.T) string {
+	body, err := json.Marshal(v)
+	require.NoError(t, err)
+	return string(body)
 }

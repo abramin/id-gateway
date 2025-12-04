@@ -3,7 +3,6 @@ module id-gateway
 go 1.25.5
 
 require (
-	github.com/golang/mock v1.6.0
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/mock v0.6.0
 )

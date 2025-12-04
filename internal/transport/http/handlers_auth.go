@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	authModel "id-gateway/internal/auth/models"
+	httpErrors "id-gateway/pkg/http-errors"
 )
 
 /*
@@ -54,7 +55,7 @@ func (h *AuthHandler) Register(mux *http.ServeMux) {
 func (h *AuthHandler) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	var req authModel.AuthorizationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, err)
+		writeError(w, httpErrors.New(httpErrors.CodeInvalidInput, "invalid request body"))
 		return
 	}
 
