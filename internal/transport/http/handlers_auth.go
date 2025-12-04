@@ -3,88 +3,100 @@ package httptransport
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 
 	authModel "id-gateway/internal/auth/models"
+	"id-gateway/internal/platform/middleware"
 	httpErrors "id-gateway/pkg/http-errors"
 )
 
-/*
-	This handler starts an auth session.
-
-**Expected Flow:**
-1. Parse JSON request body: `{ "email": "user@example.com", "client_id": "demo-client" }`
-2. Find or create user by email
-3. Create a session
-4. Return session ID
-
-**Hints:**
-- You'll need access to `AuthService` - add it to the `Handler` struct in `router.go`
-- Use `json.NewDecoder(r.Body).Decode()` to parse input
-- Create a user if `FindUserByEmail` returns not found
-- Save both user and session
-- Return `{ "session_id": "..." }` as JSON
-
-**Example response:**
-```json
-
-	{
-	  "session_id": "sess_abc123",
-	  "user_id": "user_xyz"
-	}
-
-```
-*/
-
+// AuthHandler handles authentication endpoints including authorize, token, and userinfo.
+// Implements the OIDC-lite flow described in PRD-001.
 type AuthHandler struct {
-	auth AuthService
+	auth   AuthService
+	logger *slog.Logger
 }
+
+// AuthService defines the interface for authentication operations.
 type AuthService interface {
 	Authorize(ctx context.Context, req *authModel.AuthorizationRequest) (*authModel.AuthorizationResult, error)
 }
 
-func NewAuthHandler(auth AuthService) *AuthHandler {
-	return &AuthHandler{auth: auth}
+// NewAuthHandler creates a new AuthHandler with the given service and logger.
+func NewAuthHandler(auth AuthService, logger *slog.Logger) *AuthHandler {
+	return &AuthHandler{
+		auth:   auth,
+		logger: logger,
+	}
 }
 
-func (h *AuthHandler) Register(mux *http.ServeMux) {
-	mux.HandleFunc("/auth/authorize", method(http.MethodPost, h.handleAuthorize))
-	mux.HandleFunc("/auth/token", method(http.MethodPost, h.handleToken))
+// Register registers the auth routes with the chi router.
+func (h *AuthHandler) Register(r chi.Router) {
+	r.Post("/auth/authorize", h.handleAuthorize)
+	r.Post("/auth/token", h.handleToken)
+	r.Get("/auth/userinfo", h.handleUserInfo)
 }
 
+// handleAuthorize implements POST /auth/authorize per PRD-001 FR-1.
+// Initiates an authentication session for a user by email.
+// If the user doesn't exist, creates them automatically.
+//
+// Input: { "email": "user@example.com", "client_id": "demo-client", "scopes": [...], "redirect_uri": "...", "state": "..." }
+// Output: { "session_id": "sess_...", "redirect_uri": "https://..." }
 func (h *AuthHandler) handleAuthorize(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	requestID := middleware.GetRequestID(ctx)
+
 	var req authModel.AuthorizationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, httpErrors.New(httpErrors.CodeInvalidInput, "invalid request body"))
+		h.logger.Warn("failed to decode authorization request",
+			"error", err,
+			"request_id", requestID,
+		)
+		writeJSONError(w, httpErrors.CodeInvalidRequest, "Invalid JSON in request body", http.StatusBadRequest)
 		return
 	}
-
+	err := validateAuthorizationRequest(&req)
+	if err != nil {
+		h.logger.Warn("invalid authorization request",
+			"error", err,
+			"request_id", requestID,
+			"email", req.Email,
+		)
+		writeError(w, err)
+		return
+	}
 	sanitizeAuthorizationRequest(&req)
 
-	if err := validateAuthorizationRequest(req); err != nil {
+	res, err := h.auth.Authorize(ctx, &req)
+	if err != nil {
+		h.logger.Error("authorization failed",
+			"error", err,
+			"request_id", requestID,
+			"email", req.Email,
+		)
 		writeError(w, err)
 		return
 	}
 
-	res, err := h.auth.Authorize(r.Context(), &req)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
+	h.logger.Info("authorization successful",
+		"request_id", requestID,
+		"session_id", res.SessionID,
+	)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(w).Encode(authModel.AuthorizationResult{
-		SessionID:   res.SessionID,
-		RedirectURI: res.RedirectURI,
+	// Note: We ignore encoding errors here since the response has already started.
+	// Proper error handling would require buffering the response.
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"session_id":   res.SessionID.String(),
+		"redirect_uri": res.RedirectURI,
 	})
-	if err != nil {
-		writeError(w, err)
-		return
-	}
 }
 
 func (h *AuthHandler) handleToken(w http.ResponseWriter, r *http.Request) {
@@ -114,7 +126,7 @@ func sanitizeAuthorizationRequest(req *authModel.AuthorizationRequest) {
 	}
 }
 
-func validateAuthorizationRequest(req authModel.AuthorizationRequest) error {
+func validateAuthorizationRequest(req *authModel.AuthorizationRequest) error {
 	if err := authValidator.Struct(req); err != nil {
 		return httpErrors.New(httpErrors.CodeInvalidInput, "invalid request body")
 	}

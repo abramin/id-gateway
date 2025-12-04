@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,11 +27,18 @@ import (
 //go:generate mockgen -source=handlers_auth.go -destination=mocks/auth-mocks.go -package=mocks AuthService
 type AuthHandlerSuite struct {
 	suite.Suite
-	ctx context.Context
+	handler     *AuthHandler
+	ctx         context.Context
+	router      chi.Router
+	mockService *mocks.MockAuthService
+	ctrl        *gomock.Controller
 }
 
 func (s *AuthHandlerSuite) SetupSuite() {
 	s.ctx = context.Background()
+}
+func (s *AuthHandlerSuite) TearDownTest() {
+	s.ctrl.Finish()
 }
 
 func (s *AuthHandlerSuite) TestService_Authorize() {
@@ -151,19 +161,21 @@ func TestAuthHandlerSuite(t *testing.T) {
 	suite.Run(t, new(AuthHandlerSuite))
 }
 
-func (s *AuthHandlerSuite) newHandler(t *testing.T) (*mocks.MockAuthService, *http.ServeMux) {
+func (s *AuthHandlerSuite) newHandler(t *testing.T) (*mocks.MockAuthService, *chi.Mux) {
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
 
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	mockService := mocks.NewMockAuthService(ctrl)
-	handler := NewAuthHandler(mockService)
-	mux := http.NewServeMux()
-	handler.Register(mux)
-	return mockService, mux
+	handler := NewAuthHandler(mockService, logger)
+	r := chi.NewRouter()
+	handler.Register(r)
+	router := r
+	return mockService, router
 }
 
-func (s *AuthHandlerSuite) doAuthRequest(t *testing.T, router *http.ServeMux, body string) (int, *authModel.AuthorizationResult, map[string]string) {
+func (s *AuthHandlerSuite) doAuthRequest(t *testing.T, router *chi.Mux, body string) (int, *authModel.AuthorizationResult, map[string]string) {
 	t.Helper()
 	httpReq := httptest.NewRequest(http.MethodPost, "/auth/authorize", strings.NewReader(body))
 	httpReq.Header.Set("Content-Type", "application/json")

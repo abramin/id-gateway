@@ -1,11 +1,15 @@
 package logger
 
 import (
-	"log"
+	"log/slog"
 	"os"
 )
 
-// New returns a basic stdout logger; swap in structured logging when needed.
-func New() *log.Logger {
-	return log.New(os.Stdout, "", log.LstdFlags)
+// New returns a structured JSON logger using slog.
+func New() *slog.Logger {
+	opts := &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}
+	handler := slog.NewJSONHandler(os.Stdout, opts)
+	return slog.New(handler)
 }

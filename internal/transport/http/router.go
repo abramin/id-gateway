@@ -2,46 +2,58 @@ package httptransport
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
+	"time"
+
+	"github.com/go-chi/chi/v5"
 
 	httpErrors "id-gateway/pkg/http-errors"
+	"id-gateway/internal/platform/middleware"
 )
 
 // Handler is the thin HTTP layer. It should delegate to domain services without
 // embedding business logic so transport concerns remain isolated.
 type Handler struct {
 	regulatedMode bool
+	logger        *slog.Logger
 }
 
-func NewHandler(regulatedMode bool) *Handler {
-	return &Handler{regulatedMode: regulatedMode}
-}
-
-// NewRouter wires all public endpoints. Each route enforces HTTP verb checks and
-// returns a JSON stub until real handlers are implemented.
-func NewRouter(h *Handler) http.Handler {
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/vc/issue", method(http.MethodPost, h.handleVCIssue))
-	mux.HandleFunc("/vc/verify", method(http.MethodPost, h.handleVCVerify))
-
-	mux.HandleFunc("/registry/citizen", method(http.MethodPost, h.handleRegistryCitizen))
-	mux.HandleFunc("/registry/sanctions", method(http.MethodPost, h.handleRegistrySanctions))
-
-	mux.HandleFunc("/decision/evaluate", method(http.MethodPost, h.handleDecisionEvaluate))
-	mux.HandleFunc("/me/data-export", method(http.MethodGet, h.handleDataExport))
-	mux.HandleFunc("/me", method(http.MethodDelete, h.handleDataDeletion))
-	return mux
-}
-
-func method(method string, next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != method {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		next(w, r)
+func NewHandler(regulatedMode bool, logger *slog.Logger) *Handler {
+	return &Handler{
+		regulatedMode: regulatedMode,
+		logger:        logger,
 	}
+}
+
+// NewRouter wires all public endpoints with middleware.
+// Uses chi router for better middleware support and routing.
+func NewRouter(h *Handler, logger *slog.Logger) http.Handler {
+	r := chi.NewRouter()
+
+	// Phase 1 Middleware Stack
+	r.Use(middleware.Recovery(logger))
+	r.Use(middleware.RequestID)
+	r.Use(middleware.Logger(logger))
+	r.Use(middleware.Timeout(30 * time.Second))
+	r.Use(middleware.ContentTypeJSON)
+
+	// Evidence endpoints
+	r.Post("/vc/issue", h.handleVCIssue)
+	r.Post("/vc/verify", h.handleVCVerify)
+
+	// Registry endpoints
+	r.Post("/registry/citizen", h.handleRegistryCitizen)
+	r.Post("/registry/sanctions", h.handleRegistrySanctions)
+
+	// Decision endpoint
+	r.Post("/decision/evaluate", h.handleDecisionEvaluate)
+
+	// User data rights endpoints
+	r.Get("/me/data-export", h.handleDataExport)
+	r.Delete("/me", h.handleDataDeletion)
+
+	return r
 }
 
 func (h *Handler) notImplemented(w http.ResponseWriter, endpoint string) {
@@ -67,5 +79,15 @@ func writeError(w http.ResponseWriter, err error) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"error": code,
+	})
+}
+
+// writeJSONError writes a JSON error response with a custom error code and description.
+func writeJSONError(w http.ResponseWriter, code httpErrors.Code, description string, status int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error":             string(code),
+		"error_description": description,
 	})
 }

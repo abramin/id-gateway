@@ -7,6 +7,7 @@ type Code string
 
 const (
 	CodeInvalidInput    Code = "invalid_input"
+	CodeInvalidRequest  Code = "invalid_request"
 	CodeUnauthorized    Code = "unauthorized"
 	CodeNotFound        Code = "not_found"
 	CodeConflict        Code = "conflict"
@@ -41,7 +42,7 @@ func New(code Code, msg string) GatewayError {
 
 func ToHTTPStatus(code Code) int {
 	switch code {
-	case CodeInvalidInput:
+	case CodeInvalidInput, CodeInvalidRequest:
 		return http.StatusBadRequest
 	case CodeUnauthorized:
 		return http.StatusUnauthorized
