@@ -1,19 +1,34 @@
 # Backend Dockerfile for ID Gateway
+#
+# Optimized for BuildKit caching and smaller layers.
 
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /build
 
-# Copy go mod files
-COPY go.mod go.sum ./
-RUN go mod download
+# Install git for module fetching
+RUN apk add --no-cache git
 
-# Copy source code
-COPY . .
+# Enable build caching for modules and compiled objects
+ENV GOMODCACHE=/go/pkg/mod \
+    GOCACHE=/root/.cache/go-build
+
+# Pre-fetch dependencies
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
+
+# Copy only source needed for backend build to keep layer cacheable
+COPY cmd cmd
+COPY internal internal
+COPY pkg pkg
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -o id-gateway ./cmd/server
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -o /build/id-gateway ./cmd/server
 
 # Runtime stage
 FROM alpine:latest
