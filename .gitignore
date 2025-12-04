@@ -21,6 +21,8 @@ profile.cov
 # vendor/
 
 .gocache
+.cache
+
 # Go workspace file
 go.work
 go.work.sum
