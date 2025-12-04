@@ -8,8 +8,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	httpErrors "id-gateway/pkg/http-errors"
 	"id-gateway/internal/platform/middleware"
+	"id-gateway/pkg/errors"
+	httpErrors "id-gateway/pkg/http-errors"
 )
 
 // Handler is the thin HTTP layer. It should delegate to domain services without
@@ -65,9 +66,23 @@ func (h *Handler) notImplemented(w http.ResponseWriter, endpoint string) {
 	})
 }
 
-// writeError centralizes domain error translation to HTTP responses for future
-// handlers. Keeping it here ensures consistent JSON error envelopes.
+// writeError centralizes domain error translation to HTTP responses.
+// It translates transport-agnostic domain errors into HTTP status codes and error responses.
 func writeError(w http.ResponseWriter, err error) {
+	// Try domain error first (new approach)
+	var domainErr errors.DomainError
+	if errors.As(err, &domainErr) {
+		status := domainCodeToHTTPStatus(domainErr.Code)
+		code := domainCodeToHTTPCode(domainErr.Code)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error": code,
+		})
+		return
+	}
+
+	// Fallback to legacy http errors (for backward compatibility)
 	gw, ok := err.(httpErrors.GatewayError)
 	status := http.StatusInternalServerError
 	code := string(httpErrors.CodeInternal)
@@ -80,6 +95,58 @@ func writeError(w http.ResponseWriter, err error) {
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"error": code,
 	})
+}
+
+// domainCodeToHTTPStatus translates domain error codes to HTTP status codes.
+func domainCodeToHTTPStatus(code errors.Code) int {
+	switch code {
+	case errors.CodeNotFound:
+		return http.StatusNotFound
+	case errors.CodeInvalidRequest, errors.CodeValidation:
+		return http.StatusBadRequest
+	case errors.CodeConflict:
+		return http.StatusConflict
+	case errors.CodeUnauthorized:
+		return http.StatusUnauthorized
+	case errors.CodeInvalidConsent, errors.CodeMissingConsent:
+		return http.StatusForbidden
+	case errors.CodePolicyViolation:
+		return http.StatusPreconditionFailed
+	case errors.CodeTimeout:
+		return http.StatusGatewayTimeout
+	case errors.CodeInternal:
+		return http.StatusInternalServerError
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+// domainCodeToHTTPCode translates domain error codes to HTTP error codes (for JSON response).
+func domainCodeToHTTPCode(code errors.Code) string {
+	switch code {
+	case errors.CodeNotFound:
+		return "not_found"
+	case errors.CodeInvalidRequest:
+		return "invalid_request"
+	case errors.CodeValidation:
+		return "invalid_input"
+	case errors.CodeConflict:
+		return "conflict"
+	case errors.CodeUnauthorized:
+		return "unauthorized"
+	case errors.CodeInvalidConsent:
+		return "invalid_consent"
+	case errors.CodeMissingConsent:
+		return "missing_consent"
+	case errors.CodePolicyViolation:
+		return "policy_violation"
+	case errors.CodeTimeout:
+		return "registry_timeout"
+	case errors.CodeInternal:
+		return "internal_error"
+	default:
+		return "internal_error"
+	}
 }
 
 // writeJSONError writes a JSON error response with a custom error code and description.
