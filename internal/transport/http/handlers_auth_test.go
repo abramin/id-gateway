@@ -37,9 +37,6 @@ type AuthHandlerSuite struct {
 func (s *AuthHandlerSuite) SetupSuite() {
 	s.ctx = context.Background()
 }
-func (s *AuthHandlerSuite) TearDownTest() {
-	s.ctrl.Finish()
-}
 
 func (s *AuthHandlerSuite) TestService_Authorize() {
 	var validRequest = &authModel.AuthorizationRequest{
@@ -74,7 +71,7 @@ func (s *AuthHandlerSuite) TestService_Authorize() {
 
 		assert.Equal(t, http.StatusBadRequest, status)
 		assert.Nil(t, got)
-		assert.Equal(t, string(httpErrors.CodeInvalidInput), errBody["error"])
+		assert.Equal(t, string(httpErrors.CodeInvalidRequest), errBody["error"])
 	})
 
 	s.T().Run("returns 400 when email is invalid", func(t *testing.T) {
