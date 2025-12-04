@@ -44,6 +44,32 @@ The ID Gateway requires a lightweight authentication system that manages user id
 
 ---
 
+## 2.1. OAuth2 Flow Support
+
+This implementation supports a simplified OAuth2 authorization code flow with the following optional parameters:
+
+**redirect_uri**
+- Used for browser-based flows where the user is redirected back to the client application after authentication
+- The gateway appends the `session_id` and `state` as query parameters to this URI
+- Client applications can then extract the session_id and exchange it for tokens
+- Optional: If not provided, the response contains only the session_id
+
+**state**
+- CSRF protection token provided by the client
+- The gateway echoes this value back in the redirect_uri
+- Client should validate the state matches before using the session_id
+- Prevents authorization code injection attacks
+- Optional but recommended for production flows
+
+**Example browser-based flow:**
+1. Client redirects user to: `POST /auth/authorize` with redirect_uri and state
+2. Gateway responds with: `{"redirect_uri": "https://client.com/callback?session_id=sess_xyz&state=abc"}`
+3. Client redirects user to the returned redirect_uri
+4. Client validates state matches, extracts session_id
+5. Client calls `POST /auth/token` with session_id to get tokens
+
+---
+
 ## 3. Functional Requirements
 
 ### FR-1: User Authorization
@@ -56,7 +82,9 @@ The ID Gateway requires a lightweight authentication system that manages user id
 {
   "email": "user@example.com",
   "client_id": "demo-client",
-  "scope": ["openid", "profile"]  // Optional
+  "scopes": ["openid", "profile"],      // Optional
+  "redirect_uri": "https://app.example.com/callback",  // Optional
+  "state": "xyz123"                     // Optional, CSRF protection
 }
 ```
 
@@ -64,31 +92,35 @@ The ID Gateway requires a lightweight authentication system that manages user id
 ```json
 {
   "session_id": "sess_abc123xyz",
-  "user_id": "user_def456",
-  "status": "pending_consent"
+  "redirect_uri": "https://app.example.com/callback?session_id=sess_abc123xyz&state=xyz123"
 }
 ```
 
 **Business Logic:**
 1. Validate email format
-2. Check if user exists by email
-3. If not exists, create new user with:
+2. Validate redirect_uri format if provided (must be valid URL)
+3. Check if user exists by email
+4. If not exists, create new user with:
    - Generated unique ID
    - Email as provided
    - FirstName/LastName extracted from email (before @)
    - Verified = false
-4. If exists, retrieve user
-5. Create new session with:
+5. If exists, retrieve user
+6. Create new session with:
    - Generated unique ID
-   - UserID from step 2/3
-   - RequestedScope from input
+   - UserID from step 3/4
+   - RequestedScope from input (default to ["openid"] if empty)
    - Status = "pending_consent"
    - CreatedAt = current timestamp
-6. Save session to SessionStore
-7. Return session_id and user_id
+7. Save session to SessionStore
+8. Build redirect_uri response:
+   - If redirect_uri provided: append session_id and state as query params
+   - If state provided: echo it back in response for CSRF validation
+9. Return session_id and redirect_uri
 
 **Error Cases:**
 - 400 Bad Request: Invalid email format
+- 400 Bad Request: Invalid redirect_uri format
 - 500 Internal Server Error: Store failure
 
 ---
@@ -303,6 +335,7 @@ All endpoints return errors in this format:
 
 ### SR-1: Input Validation
 - Validate all email addresses match regex: `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
+- Validate redirect_uri is a valid URL with https:// scheme (http:// allowed for localhost)
 - Sanitize all string inputs (trim whitespace, validate length)
 - Reject requests with missing required fields
 
@@ -311,7 +344,12 @@ All endpoints return errors in this format:
 - Tokens should expire after 1 hour
 - Bearer tokens must be validated on every request
 
-### SR-3: Data Privacy
+### SR-3: CSRF Protection
+- When state parameter is provided in authorize request, echo it back in redirect_uri
+- Clients should validate state matches their original value before using session_id
+- State should be cryptographically random and unpredictable
+
+### SR-4: Data Privacy
 - Never log passwords (not applicable for email-only auth)
 - Log only user IDs, not email addresses, in non-audit logs
 - Use audit system for sensitive operations
@@ -354,7 +392,10 @@ logger.Info("session created",
 - [ ] Test session creation and retrieval
 - [ ] Test token generation format
 - [ ] Test token validation and parsing
-- [ ] Test error cases (invalid email, not found, etc.)
+- [ ] Test redirect_uri building with session_id and state
+- [ ] Test redirect_uri validation (https required, localhost exception)
+- [ ] Test state parameter echo in response
+- [ ] Test error cases (invalid email, invalid redirect_uri, not found, etc.)
 
 ### Integration Tests
 - [ ] Test complete flow: authorize → token → userinfo
@@ -364,12 +405,25 @@ logger.Info("session created",
 
 ### Manual Testing
 ```bash
-# 1. Authorize
+# 1. Authorize (Simple)
 curl -X POST http://localhost:8080/auth/authorize \
   -H "Content-Type: application/json" \
   -d '{"email": "alice@example.com", "client_id": "demo"}'
 
-# Expected: {"session_id": "sess_...", "user_id": "user_..."}
+# Expected: {"session_id": "sess_...", "redirect_uri": ""}
+
+# 1b. Authorize (With redirect and state - OAuth2 flow)
+curl -X POST http://localhost:8080/auth/authorize \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "alice@example.com",
+    "client_id": "demo",
+    "redirect_uri": "https://myapp.com/callback",
+    "state": "abc123",
+    "scopes": ["openid", "profile"]
+  }'
+
+# Expected: {"session_id": "sess_...", "redirect_uri": "https://myapp.com/callback?session_id=sess_...&state=abc123"}
 
 # 2. Get Token
 curl -X POST http://localhost:8080/auth/token \
