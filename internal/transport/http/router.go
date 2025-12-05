@@ -159,13 +159,3 @@ func domainCodeToHTTPCode(code dErrors.Code) string {
 		return "internal_error"
 	}
 }
-
-// writeJSONError writes a JSON error response with a custom error code and description.
-func writeJSONError(w http.ResponseWriter, code httpErrors.Code, description string, status int) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{
-		"error":             string(code),
-		"error_description": description,
-	})
-}
