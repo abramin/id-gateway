@@ -31,8 +31,7 @@ func ToSnakeCase(s string) string {
 	return b.String()
 }
 
-// Sanitize trims whitespace from all string and []string fields in a struct using reflection.
-// This is a more standard approach than manual field-by-field sanitization.
+// Sanitize trims whitespace from all string and []string fields in a struct
 func Sanitize(v any) {
 	val := reflect.ValueOf(v)
 	if val.Kind() != reflect.Ptr || val.IsNil() {
