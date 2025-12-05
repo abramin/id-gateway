@@ -23,15 +23,15 @@ The ID Gateway is a **regulated identity and authorization system** that:
 
 | PRD | Feature | Priority | Status | Est. Time |
 |-----|---------|----------|--------|-----------|
-| [PRD-001](./PRD-001-Authentication-Session-Management.md) | Authentication & Session Management | P0 | 🟢 Done | 4-6 hours |
-| [PRD-002](./PRD-002-Consent-Management.md) | Consent Management System | P0 | 🟡 To Implement | 4-6 hours |
-| [PRD-003](./PRD-003-Registry-Integration.md) | Registry Integration (Citizen & Sanctions) | P0 | 🟡 To Implement | 4-6 hours |
-| [PRD-004](./PRD-004-Verifiable-Credentials.md) | Verifiable Credentials | P0 | 🟡 To Implement | 3-5 hours |
+| [PRD-001](./PRD-001-Authentication-Session-Management.md) | Authentication & Session Management | P0 | 🟢 Done | 13-14 hours |
+| [PRD-002](./PRD-002-Consent-Management.md) | Consent Management System | P0 | 🟡 To Implement | 5-7 hours |
+| [PRD-003](./PRD-003-Registry-Integration.md) | Registry Integration (Citizen & Sanctions) | P0 | 🟡 To Implement | 7-9 hours |
+| [PRD-004](./PRD-004-Verifiable-Credentials.md) | Verifiable Credentials | P0 | 🟡 To Implement | 6-8 hours |
 | [PRD-005](./PRD-005-Decision-Engine.md) | Decision Engine | P0 | 🟡 To Implement | 5-7 hours |
-| [PRD-006](./PRD-006-Audit-Compliance.md) | Audit & Compliance Logging | P0 | 🟡 To Implement | 3-4 hours |
-| [PRD-007](./PRD-007-User-Data-Rights.md) | User Data Rights (GDPR) | P1 | 🟡 To Implement | 4-5 hours |
+| [PRD-006](./PRD-006-Audit-Compliance.md) | Audit & Compliance Logging | P0 | 🟡 To Implement | 8-10 hours |
+| [PRD-007](./PRD-007-User-Data-Rights.md) | User Data Rights (GDPR) | P1 | 🟡 To Implement | 4-6 hours |
 
-**Total Estimated Time:** ~27-39 hours (3-5 days for single developer)
+**Total Estimated Time:** ~48-61 hours (6-8 days for single developer)
 
 ---
 
