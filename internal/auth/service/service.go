@@ -2,16 +2,14 @@ package service
 
 import (
 	"context"
-	"errors"
 	"net/url"
 	"time"
 
 	"github.com/google/uuid"
 
 	"id-gateway/internal/auth/models"
-	"id-gateway/internal/auth/store"
+	dErrors "id-gateway/pkg/domain-errors"
 	"id-gateway/pkg/email"
-	httpErrors "id-gateway/pkg/http-errors"
 )
 
 type UserStore interface {
@@ -47,7 +45,7 @@ func NewService(users UserStore, sessions SessionStore, sessionTTL time.Duration
 func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationRequest) (*models.AuthorizationResult, error) {
 	user, err := s.users.FindByEmail(ctx, req.Email)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if dErrors.Is(err, dErrors.CodeNotFound) {
 			firstName, lastName := email.DeriveNameFromEmail(req.Email)
 			newUser := &models.User{
 				ID:        uuid.New(),
@@ -58,11 +56,11 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 			}
 			err = s.users.Save(ctx, newUser)
 			if err != nil {
-				return nil, httpErrors.New(httpErrors.CodeInternal, "failed to save user")
+				return nil, dErrors.New(dErrors.CodeInternal, "failed to save user")
 			}
 			user = newUser
 		} else {
-			return nil, httpErrors.New(httpErrors.CodeInternal, "failed to find user")
+			return nil, dErrors.New(dErrors.CodeInternal, "failed to find user")
 		}
 	}
 
@@ -82,14 +80,14 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 
 	err = s.sessions.Save(ctx, newSession)
 	if err != nil {
-		return nil, httpErrors.New(httpErrors.CodeInternal, "failed to save session")
+		return nil, dErrors.New(dErrors.CodeInternal, "failed to save session")
 	}
 
 	redirectURI := req.RedirectURI
 	if redirectURI != "" {
 		u, parseErr := url.Parse(redirectURI)
 		if parseErr != nil {
-			return nil, httpErrors.New(httpErrors.CodeInvalidInput, "invalid redirect_uri")
+			return nil, dErrors.New(dErrors.CodeValidation, "invalid redirect_uri")
 		}
 		query := u.Query()
 		query.Set("session_id", newSession.ID.String())

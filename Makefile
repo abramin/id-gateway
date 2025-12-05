@@ -6,6 +6,8 @@ MAIN := ./cmd/server/main.go
 # === DEFAULT ===
 default: dev
 
+.PHONY: default build run test test-cover test-one lint fmt imports clean help
+
 # === BUILD ===
 build:
 	go build -o bin/$(APP_NAME) $(MAIN)
