@@ -47,16 +47,19 @@ func NewAuthHandler(auth AuthService, logger *slog.Logger, regulatedMode bool, m
 
 // Register registers the auth routes with the chi router.
 func (h *AuthHandler) Register(r chi.Router) {
-	r.Use(middleware.Recovery(h.logger))
-	r.Use(middleware.RequestID)
-	r.Use(middleware.Logger(h.logger))
-	r.Use(middleware.Timeout(30 * time.Second))
-	r.Use(middleware.ContentTypeJSON)
-	r.Use(middleware.LatencyMiddleware(h.metrics))
+	authRouter := chi.NewRouter()
+	authRouter.Use(middleware.Recovery(h.logger))
+	authRouter.Use(middleware.RequestID)
+	authRouter.Use(middleware.Logger(h.logger))
+	authRouter.Use(middleware.Timeout(30 * time.Second))
+	authRouter.Use(middleware.ContentTypeJSON)
+	authRouter.Use(middleware.LatencyMiddleware(h.metrics))
 
-	r.Post("/auth/authorize", h.handleAuthorize)
-	r.Post("/auth/token", h.handleToken)
-	r.Get("/auth/userinfo", h.handleUserInfo)
+	authRouter.Post("/auth/authorize", h.handleAuthorize)
+	authRouter.Post("/auth/token", h.handleToken)
+	authRouter.Get("/auth/userinfo", h.handleUserInfo)
+
+	r.Mount("/", authRouter)
 }
 
 // handleAuthorize implements POST /auth/authorize per PRD-001 FR-1.
