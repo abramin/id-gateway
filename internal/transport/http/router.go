@@ -75,11 +75,15 @@ func writeError(w http.ResponseWriter, err error) {
 	if errors.As(err, &domainErr) {
 		status := domainCodeToHTTPStatus(domainErr.Code)
 		code := domainCodeToHTTPCode(domainErr.Code)
+		response := map[string]string{
+			"error": code,
+		}
+		if domainErr.Message != "" {
+			response["error_description"] = domainErr.Message
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"error": code,
-		})
+		_ = json.NewEncoder(w).Encode(response)
 		return
 	}
 
@@ -91,11 +95,15 @@ func writeError(w http.ResponseWriter, err error) {
 		status = httpErrors.ToHTTPStatus(gw.Code)
 		code = string(gw.Code)
 	}
+	response := map[string]string{
+		"error": code,
+	}
+	if ok && gw.Message != "" {
+		response["error_description"] = gw.Message
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{
-		"error": code,
-	})
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 // domainCodeToHTTPStatus translates domain error codes to HTTP status codes.

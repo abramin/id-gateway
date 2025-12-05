@@ -55,3 +55,18 @@ func (mr *MockAuthServiceMockRecorder) Authorize(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Authorize", reflect.TypeOf((*MockAuthService)(nil).Authorize), ctx, req)
 }
+
+// Token mocks base method.
+func (m *MockAuthService) Token(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Token", ctx, req)
+	ret0, _ := ret[0].(*models.TokenResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Token indicates an expected call of Token.
+func (mr *MockAuthServiceMockRecorder) Token(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Token", reflect.TypeOf((*MockAuthService)(nil).Token), ctx, req)
+}

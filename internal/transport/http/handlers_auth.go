@@ -3,9 +3,12 @@ package httptransport
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
+	"unicode"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
@@ -25,6 +28,7 @@ type AuthHandler struct {
 // AuthService defines the interface for authentication operations.
 type AuthService interface {
 	Authorize(ctx context.Context, req *authModel.AuthorizationRequest) (*authModel.AuthorizationResult, error)
+	Token(ctx context.Context, req *authModel.TokenRequest) (*authModel.TokenResult, error)
 }
 
 // NewAuthHandler creates a new AuthHandler with the given service and logger.
@@ -54,7 +58,7 @@ func (h *AuthHandler) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 
 	var req authModel.AuthorizationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.logger.Warn("failed to decode authorization request",
+		h.logger.Warn("failed to decode token request",
 			"error", err,
 			"request_id", requestID,
 		)
@@ -63,7 +67,7 @@ func (h *AuthHandler) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 	err := validateAuthorizationRequest(&req)
 	if err != nil {
-		h.logger.Warn("invalid authorization request",
+		h.logger.Warn("invalid token request",
 			"error", err,
 			"request_id", requestID,
 			"email", req.Email,
@@ -75,7 +79,7 @@ func (h *AuthHandler) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 
 	res, err := h.auth.Authorize(ctx, &req)
 	if err != nil {
-		h.logger.Error("authorization failed",
+		h.logger.Error("token failed",
 			"error", err,
 			"request_id", requestID,
 			"email", req.Email,
@@ -84,7 +88,7 @@ func (h *AuthHandler) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.logger.Info("authorization successful",
+	h.logger.Info("token successful",
 		"request_id", requestID,
 		"code", res.Code,
 	)
@@ -100,7 +104,54 @@ func (h *AuthHandler) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) handleToken(w http.ResponseWriter, r *http.Request) {
-	h.notImplemented(w, "/auth/token")
+	ctx := r.Context()
+	requestID := middleware.GetRequestID(ctx)
+
+	var req authModel.TokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Warn("failed to decode token request",
+			"error", err,
+			"request_id", requestID,
+		)
+		writeError(w, dErrors.New(dErrors.CodeInvalidRequest, "Invalid JSON in request body"))
+		return
+	}
+	err := validateTokenRequest(&req)
+	if err != nil {
+		h.logger.Warn("invalid token request",
+			"error", err,
+			"request_id", requestID,
+			"code", req.Code,
+		)
+		writeError(w, err)
+		return
+	}
+	sanitizeTokenRequest(&req)
+
+	res, err := h.auth.Token(ctx, &req)
+	if err != nil {
+		h.logger.Error("token exchange failed",
+			"error", err,
+			"request_id", requestID,
+			"code", req.Code,
+		)
+		writeError(w, err)
+		return
+	}
+
+	h.logger.Info("token exchange successful",
+		"request_id", requestID,
+	)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	// Note: We ignore encoding errors here since the response has already started.
+	// Proper error handling would require buffering the response.
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"access_token": res.AccessToken,
+		"id_token":     res.IDToken,
+		"expires_in":   res.ExpiresIn,
+	})
 }
 
 func (h *AuthHandler) handleUserInfo(w http.ResponseWriter, r *http.Request) {
@@ -126,11 +177,19 @@ func sanitizeAuthorizationRequest(req *authModel.AuthorizationRequest) {
 	}
 }
 
+func sanitizeTokenRequest(req *authModel.TokenRequest) {
+	req.GrantType = strings.TrimSpace(req.GrantType)
+	req.Code = strings.TrimSpace(req.Code)
+	req.RedirectURI = strings.TrimSpace(req.RedirectURI)
+	req.ClientID = strings.TrimSpace(req.ClientID)
+}
+
 func validateAuthorizationRequest(req *authModel.AuthorizationRequest) error {
-	if err := authValidator.Struct(req); err != nil {
-		return dErrors.New(dErrors.CodeValidation, "invalid request body")
-	}
-	return nil
+	return validateAuthRequestStruct(req)
+}
+
+func validateTokenRequest(req *authModel.TokenRequest) error {
+	return validateAuthRequestStruct(req)
 }
 
 var authValidator = newAuthValidator()
@@ -141,4 +200,53 @@ func newAuthValidator() *validator.Validate {
 		return strings.TrimSpace(fl.Field().String()) != ""
 	})
 	return v
+}
+
+func validateAuthRequestStruct(req any) error {
+	if err := authValidator.Struct(req); err != nil {
+		return dErrors.New(dErrors.CodeValidation, validationErrorMessage(err))
+	}
+	return nil
+}
+
+func validationErrorMessage(err error) string {
+	var validationErrs validator.ValidationErrors
+	if !errors.As(err, &validationErrs) || len(validationErrs) == 0 {
+		return "invalid request body"
+	}
+
+	fe := validationErrs[0]
+	field := toSnakeCase(fe.Field())
+
+	switch fe.ActualTag() {
+	case "required":
+		return fmt.Sprintf("%s is required", field)
+	case "email":
+		return fmt.Sprintf("%s must be a valid email", field)
+	case "url":
+		return fmt.Sprintf("%s must be a valid url", field)
+	case "min":
+		return fmt.Sprintf("%s must be at least %s", field, fe.Param())
+	case "max":
+		return fmt.Sprintf("%s must be at most %s", field, fe.Param())
+	case "oneof":
+		return fmt.Sprintf("%s must be one of [%s]", field, fe.Param())
+	case "notblank":
+		return fmt.Sprintf("%s must not be blank", field)
+	default:
+		return fmt.Sprintf("%s is invalid", field)
+	}
+}
+
+func toSnakeCase(s string) string {
+	var b strings.Builder
+	runes := []rune(s)
+	for i, r := range runes {
+		if unicode.IsUpper(r) && i > 0 &&
+			(unicode.IsLower(runes[i-1]) || (i+1 < len(runes) && unicode.IsLower(runes[i+1]))) {
+			b.WriteByte('_')
+		}
+		b.WriteRune(unicode.ToLower(r))
+	}
+	return b.String()
 }
