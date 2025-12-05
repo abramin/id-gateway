@@ -4,13 +4,13 @@ import (
 	"context"
 
 	"id-gateway/internal/auth/models"
-	pkgerrors "id-gateway/pkg/http-errors"
+	dErrors "id-gateway/pkg/domain-errors"
 )
 
 var (
-	// ErrNotFound keeps storage-specific 404s consistent across user/session
+	// ErrNotFound keeps storage-specific not found errors consistent across user/session
 	// implementations.
-	ErrNotFound = pkgerrors.New(pkgerrors.CodeNotFound, "record not found")
+	ErrNotFound = dErrors.New(dErrors.CodeNotFound, "record not found")
 )
 
 type UserStore interface {

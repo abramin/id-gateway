@@ -1,0 +1,58 @@
+package errors
+
+import "errors"
+
+// Code represents a domain error category independent of transport layer.
+// These codes describe what went wrong in business logic terms, not HTTP terms.
+type Code string
+
+const (
+	CodeNotFound        Code = "not_found"
+	CodeInvalidRequest  Code = "invalid_request"
+	CodeValidation      Code = "validation_failed"
+	CodeInternal        Code = "internal"
+	CodeConflict        Code = "conflict"
+	CodeUnauthorized    Code = "unauthorized"
+	CodeInvalidConsent  Code = "invalid_consent"
+	CodeMissingConsent  Code = "missing_consent"
+	CodePolicyViolation Code = "policy_violation"
+	CodeTimeout         Code = "timeout"
+)
+
+// DomainError wraps domain or infrastructure failures with a stable code.
+// It is transport-agnostic and can be used across service, store, and other layers.
+type DomainError struct {
+	Code    Code
+	Message string
+	Err     error
+}
+
+func (e DomainError) Error() string {
+	if e.Message != "" {
+		return e.Message
+	}
+	return string(e.Code)
+}
+
+func (e DomainError) Unwrap() error {
+	return e.Err
+}
+
+// New creates a new DomainError with the given code and message.
+func New(code Code, msg string) DomainError {
+	return DomainError{Code: code, Message: msg}
+}
+
+// Wrap creates a new DomainError wrapping an existing error.
+func Wrap(code Code, msg string, err error) DomainError {
+	return DomainError{Code: code, Message: msg, Err: err}
+}
+
+// Is checks if an error is a DomainError with the given code.
+func Is(err error, code Code) bool {
+	var de DomainError
+	if errors.As(err, &de) {
+		return de.Code == code
+	}
+	return false
+}
