@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"id-gateway/internal/auth/models"
@@ -61,7 +62,7 @@ func TestAuthorizeIntegration(t *testing.T) {
 	require.Contains(t, redirectURI, "session_id="+sessionID)
 	require.Contains(t, redirectURI, "state=state-xyz")
 
-	session, err := sessionStore.FindByID(context.Background(), sessionID)
+	session, err := sessionStore.FindByID(context.Background(), uuid.MustParse(sessionID))
 	require.NoError(t, err)
 	require.Equal(t, service.StatusPendingConsent, session.Status)
 	require.Equal(t, reqBody.Scopes, session.RequestedScope)

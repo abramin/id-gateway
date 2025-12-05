@@ -44,14 +44,13 @@ type AuthorizationResult struct {
 	RedirectURI string `json:"redirect_uri" validate:"required,url,max=2048"`
 }
 
-type ConsentRequest struct {
-	SessionID uuid.UUID `json:"session_id" validate:"required,uuid"`
-	Approved  bool      `json:"approved" validate:"required"`
-}
-
-type ConsentResult struct {
-	SessionID uuid.UUID `json:"session_id" validate:"required,uuid"`
-	Approved  bool      `json:"approved" validate:"required"`
+type UserInfoResult struct {
+	Sub           string `json:"sub" validate:"required"`                 // Subject - Identifier for the End-User at the Issuer.
+	Email         string `json:"email" validate:"required,email,max=255"` // End-User's preferred e-mail address.
+	EmailVerified bool   `json:"email_verified" validate:"required"`      // True if the End-User's e-mail address has been verified.
+	GivenName     string `json:"given_name" validate:"max=100"`           // End-User's given name(s) or first name(s).
+	FamilyName    string `json:"family_name" validate:"max=100"`          // End-User's family name(s) or last name(s).
+	Name          string `json:"name" validate:"max=100"`                 // End-User's full name.
 }
 
 type TokenRequest struct {

@@ -3,12 +3,14 @@ package service
 //go:generate mockgen -source=service.go -destination=mocks/mocks.go -package=mocks UserStore,SessionStoreimport
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"id-gateway/internal/auth/models"
 	"id-gateway/internal/auth/service/mocks"
 	"id-gateway/internal/auth/store"
+	dErrors "id-gateway/pkg/domain-errors"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -217,6 +219,82 @@ func (s *ServiceSuite) TestToken() {
 		s.mockSessStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&sess, nil)
 		result, err := s.service.Token(context.Background(), &req)
 		assert.Error(s.T(), err)
+		assert.Nil(s.T(), result)
+	})
+}
+
+func (s *ServiceSuite) TestUserInfo() {
+	existingUser := &models.User{
+		ID:        uuid.New(),
+		Email:     "user@example.com",
+		FirstName: "John",
+		LastName:  "Doe",
+		Verified:  true,
+	}
+	s.T().Run("happy path - returns user info", func(t *testing.T) {
+		s.mockSessStore.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(&models.Session{
+			UserID: existingUser.ID,
+			Status: StatusActive,
+		}, nil)
+		s.mockUserStore.EXPECT().FindByID(gomock.Any(), existingUser.ID).Return(existingUser, nil)
+
+		result, err := s.service.UserInfo(context.Background(), uuid.New())
+		require.NoError(s.T(), err)
+		assert.Equal(s.T(), existingUser.ID.String(), result.Sub)
+		assert.Equal(s.T(), existingUser.Email, result.Email)
+		assert.Equal(s.T(), existingUser.Verified, result.EmailVerified)
+		assert.Equal(s.T(), existingUser.FirstName, result.GivenName)
+		assert.Equal(s.T(), existingUser.LastName, result.FamilyName)
+		assert.Equal(s.T(), "John Doe", result.Name)
+	})
+
+	s.T().Run("session not found", func(t *testing.T) {
+		s.mockSessStore.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(nil, store.ErrNotFound)
+
+		result, err := s.service.UserInfo(context.Background(), uuid.New())
+		assert.ErrorIs(s.T(), err, dErrors.New(dErrors.CodeUnauthorized, "session not found"))
+		assert.Nil(s.T(), result)
+	})
+
+	s.T().Run("user not found", func(t *testing.T) {
+		s.mockSessStore.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(&models.Session{
+			UserID: existingUser.ID,
+			Status: StatusActive,
+		}, nil)
+		s.mockUserStore.EXPECT().FindByID(gomock.Any(), existingUser.ID).Return(nil, store.ErrNotFound)
+
+		result, err := s.service.UserInfo(context.Background(), uuid.New())
+		assert.ErrorIs(s.T(), err, dErrors.New(dErrors.CodeUnauthorized, "user not found"))
+		assert.Nil(s.T(), result)
+	})
+
+	s.T().Run("session not active", func(t *testing.T) {
+		s.mockSessStore.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(&models.Session{
+			Status: StatusPendingConsent,
+		}, nil)
+
+		result, err := s.service.UserInfo(context.Background(), uuid.New())
+		assert.ErrorIs(s.T(), err, dErrors.New(dErrors.CodeUnauthorized, "session not active"))
+		assert.Nil(s.T(), result)
+	})
+
+	s.T().Run("session store error", func(t *testing.T) {
+		s.mockSessStore.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(nil, assert.AnError)
+
+		result, err := s.service.UserInfo(context.Background(), uuid.New())
+		assert.ErrorIs(s.T(), err, dErrors.New(dErrors.CodeInternal, "failed to find session"))
+		assert.Nil(s.T(), result)
+	})
+
+	s.T().Run("user store error", func(t *testing.T) {
+		s.mockSessStore.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(&models.Session{
+			UserID: existingUser.ID,
+			Status: StatusActive,
+		}, nil)
+		s.mockUserStore.EXPECT().FindByID(gomock.Any(), existingUser.ID).Return(nil, errors.New("db error"))
+
+		result, err := s.service.UserInfo(context.Background(), uuid.New())
+		assert.ErrorIs(s.T(), err, dErrors.New(dErrors.CodeInternal, "failed to find user"))
 		assert.Nil(s.T(), result)
 	})
 }

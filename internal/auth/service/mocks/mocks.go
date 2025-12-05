@@ -14,6 +14,7 @@ import (
 	models "id-gateway/internal/auth/models"
 	reflect "reflect"
 
+	uuid "github.com/google/uuid"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -57,7 +58,7 @@ func (mr *MockUserStoreMockRecorder) FindByEmail(ctx, email any) *gomock.Call {
 }
 
 // FindByID mocks base method.
-func (m *MockUserStore) FindByID(ctx context.Context, id string) (*models.User, error) {
+func (m *MockUserStore) FindByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FindByID", ctx, id)
 	ret0, _ := ret[0].(*models.User)
@@ -125,7 +126,7 @@ func (mr *MockSessionStoreMockRecorder) FindByCode(ctx, code any) *gomock.Call {
 }
 
 // FindByID mocks base method.
-func (m *MockSessionStore) FindByID(ctx context.Context, id string) (*models.Session, error) {
+func (m *MockSessionStore) FindByID(ctx context.Context, id uuid.UUID) (*models.Session, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FindByID", ctx, id)
 	ret0, _ := ret[0].(*models.Session)

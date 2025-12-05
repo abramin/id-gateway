@@ -14,6 +14,7 @@ import (
 	models "id-gateway/internal/auth/models"
 	reflect "reflect"
 
+	uuid "github.com/google/uuid"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -69,4 +70,19 @@ func (m *MockAuthService) Token(ctx context.Context, req *models.TokenRequest) (
 func (mr *MockAuthServiceMockRecorder) Token(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Token", reflect.TypeOf((*MockAuthService)(nil).Token), ctx, req)
+}
+
+// UserInfo mocks base method.
+func (m *MockAuthService) UserInfo(ctx context.Context, sessionID uuid.UUID) (*models.UserInfoResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UserInfo", ctx, sessionID)
+	ret0, _ := ret[0].(*models.UserInfoResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UserInfo indicates an expected call of UserInfo.
+func (mr *MockAuthServiceMockRecorder) UserInfo(ctx, sessionID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UserInfo", reflect.TypeOf((*MockAuthService)(nil).UserInfo), ctx, sessionID)
 }

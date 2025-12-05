@@ -16,13 +16,13 @@ import (
 
 type UserStore interface {
 	Save(ctx context.Context, user *models.User) error
-	FindByID(ctx context.Context, id string) (*models.User, error)
+	FindByID(ctx context.Context, id uuid.UUID) (*models.User, error)
 	FindByEmail(ctx context.Context, email string) (*models.User, error)
 }
 
 type SessionStore interface {
 	Save(ctx context.Context, session *models.Session) error
-	FindByID(ctx context.Context, id string) (*models.Session, error)
+	FindByID(ctx context.Context, id uuid.UUID) (*models.Session, error)
 	FindByCode(ctx context.Context, code string) (*models.Session, error)
 }
 
@@ -118,9 +118,37 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 	return res, nil
 }
 
-func (s *Service) Consent(ctx context.Context, req *models.ConsentRequest) (*models.ConsentResult, error) {
-	_ = ctx
-	return nil, nil
+func (s *Service) UserInfo(ctx context.Context, sessionID uuid.UUID) (*models.UserInfoResult, error) {
+	session, err := s.sessions.FindByID(ctx, sessionID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, dErrors.New(dErrors.CodeUnauthorized, "session not found")
+		}
+		return nil, dErrors.New(dErrors.CodeInternal, "failed to find session")
+	}
+
+	if session.Status != StatusActive {
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "session not active")
+	}
+
+	user, err := s.users.FindByID(ctx, session.UserID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, dErrors.New(dErrors.CodeUnauthorized, "user not found")
+		}
+		return nil, dErrors.New(dErrors.CodeInternal, "failed to find user")
+	}
+
+	userInfo := &models.UserInfoResult{
+		Sub:           user.ID.String(),
+		Email:         user.Email,
+		EmailVerified: user.Verified,
+		GivenName:     user.FirstName,
+		FamilyName:    user.LastName,
+		Name:          user.FirstName + " " + user.LastName,
+	}
+
+	return userInfo, nil
 }
 
 func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {

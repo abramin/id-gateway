@@ -28,11 +28,7 @@ import (
 //go:generate mockgen -source=handlers_auth.go -destination=mocks/auth-mocks.go -package=mocks AuthService
 type AuthHandlerSuite struct {
 	suite.Suite
-	handler     *AuthHandler
-	ctx         context.Context
-	router      chi.Router
-	mockService *mocks.MockAuthService
-	ctrl        *gomock.Controller
+	ctx context.Context
 }
 
 func (s *AuthHandlerSuite) SetupSuite() {
@@ -64,83 +60,95 @@ func (s *AuthHandlerSuite) TestHandler_Authorize() {
 		assert.Equal(t, expectedResp.RedirectURI, got.RedirectURI)
 	})
 
-	s.T().Run("returns 400 when request body is invalid json", func(t *testing.T) {
+	s.T().Run("400 - invalid json body", func(t *testing.T) {
 		mockService, router := s.newHandler(t)
 		mockService.EXPECT().Authorize(gomock.Any(), gomock.Any()).Times(0)
 
-		status, got, errBody := s.doAuthRequest(t, router, "{bad-json")
+		invalidJSON := `{"email": "`
+		status, got, errBody := s.doAuthRequest(t, router, invalidJSON)
 
 		assert.Equal(t, http.StatusBadRequest, status)
 		assert.Nil(t, got)
 		assert.Equal(t, string(httpErrors.CodeInvalidRequest), errBody["error"])
 	})
 
-	s.T().Run("returns 400 when email is invalid", func(t *testing.T) {
-		mockService, router := s.newHandler(t)
-		mockService.EXPECT().Authorize(gomock.Any(), gomock.Any()).Times(0)
-		invalid := *validRequest
-		invalid.Email = "invalid-email"
-		invalidEmailRequest := &invalid
+	s.T().Run("400 error scenarios - invallid input", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			request *authModel.AuthorizationRequest
+			body    string
+		}{
+			{
+				name: "invalid email",
+				request: &authModel.AuthorizationRequest{
+					Email:       "invalid-email",
+					ClientID:    "test-client-id",
+					Scopes:      []string{"scope1", "scope2"},
+					RedirectURI: "https://example.com/redirect",
+					State:       "test-state",
+				},
+			},
+			{
+				name: "invalid redirect URI",
+				request: &authModel.AuthorizationRequest{
+					Email:       "user@example.com",
+					ClientID:    "test-client-id",
+					Scopes:      []string{"scope1", "scope2"},
+					RedirectURI: "invalid-uri",
+					State:       "test-state",
+				},
+			},
+			{
+				name: "missing client ID",
+				request: &authModel.AuthorizationRequest{
+					Email:       "user@example.com",
+					ClientID:    "",
+					Scopes:      []string{"scope1", "scope2"},
+					RedirectURI: "https://example.com/redirect",
+					State:       "test-state",
+				},
+			},
+			{
+				name: "scopes contain empty value",
+				request: &authModel.AuthorizationRequest{
+					Email:       "user@example.com",
+					ClientID:    "test-client-id",
+					Scopes:      []string{"scope1", " "},
+					RedirectURI: "https://example.com/redirect",
+					State:       "test-state",
+				},
+			},
+			{
+				name: "scopes list is empty",
+				request: &authModel.AuthorizationRequest{
+					Email:       "user@example.com",
+					ClientID:    "test-client-id",
+					Scopes:      []string{},
+					RedirectURI: "https://example.com/redirect",
+					State:       "test-state",
+				},
+			},
+		}
 
-		status, got, errBody := s.doAuthRequest(t, router, s.mustMarshal(invalidEmailRequest, t))
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				mockService, router := s.newHandler(t)
+				mockService.EXPECT().Authorize(gomock.Any(), gomock.Any()).Times(0)
 
-		assert.Equal(t, http.StatusBadRequest, status)
-		assert.Nil(t, got)
-		assert.Equal(t, string(httpErrors.CodeInvalidInput), errBody["error"])
-	})
+				var body string
+				if tt.body != "" {
+					body = tt.body
+				} else {
+					body = s.mustMarshal(tt.request, t)
+				}
 
-	s.T().Run("returns 400 when redirect URI is invalid", func(t *testing.T) {
-		mockService, router := s.newHandler(t)
-		mockService.EXPECT().Authorize(gomock.Any(), gomock.Any()).Times(0)
-		invalid := *validRequest
-		invalid.RedirectURI = "invalid-uri"
-		invalidRedirectURIRequest := &invalid
+				status, got, errBody := s.doAuthRequest(t, router, body)
 
-		status, got, errBody := s.doAuthRequest(t, router, s.mustMarshal(invalidRedirectURIRequest, t))
-
-		assert.Equal(t, http.StatusBadRequest, status)
-		assert.Nil(t, got)
-		assert.Equal(t, string(httpErrors.CodeInvalidInput), errBody["error"])
-	})
-
-	s.T().Run("returns 400 when params missing", func(t *testing.T) {
-		mockService, router := s.newHandler(t)
-		mockService.EXPECT().Authorize(gomock.Any(), gomock.Any()).Times(0)
-		missing := *validRequest
-		missing.ClientID = ""
-		missingParamRequest := &missing
-
-		status, got, errBody := s.doAuthRequest(t, router, s.mustMarshal(missingParamRequest, t))
-
-		assert.Equal(t, http.StatusBadRequest, status)
-		assert.Nil(t, got)
-		assert.Equal(t, string(httpErrors.CodeInvalidInput), errBody["error"])
-	})
-
-	s.T().Run("returns 400 when scopes contain empty value", func(t *testing.T) {
-		mockService, router := s.newHandler(t)
-		mockService.EXPECT().Authorize(gomock.Any(), gomock.Any()).Times(0)
-		invalid := *validRequest
-		invalid.Scopes = []string{"scope1", " "}
-
-		status, got, errBody := s.doAuthRequest(t, router, s.mustMarshal(&invalid, t))
-
-		assert.Equal(t, http.StatusBadRequest, status)
-		assert.Nil(t, got)
-		assert.Equal(t, string(httpErrors.CodeInvalidInput), errBody["error"])
-	})
-
-	s.T().Run("returns 400 when scopes list is empty", func(t *testing.T) {
-		mockService, router := s.newHandler(t)
-		mockService.EXPECT().Authorize(gomock.Any(), gomock.Any()).Times(0)
-		invalid := *validRequest
-		invalid.Scopes = []string{}
-
-		status, got, errBody := s.doAuthRequest(t, router, s.mustMarshal(&invalid, t))
-
-		assert.Equal(t, http.StatusBadRequest, status)
-		assert.Nil(t, got)
-		assert.Equal(t, string(httpErrors.CodeInvalidInput), errBody["error"])
+				assert.Equal(t, http.StatusBadRequest, status)
+				assert.Nil(t, got)
+				assert.Equal(t, string(httpErrors.CodeInvalidInput), errBody["error"])
+			})
+		}
 	})
 
 	s.T().Run("returns 500 when service fails", func(t *testing.T) {
@@ -287,6 +295,82 @@ func (s *AuthHandlerSuite) TestHandler_Token() {
 	})
 }
 
+func (s *AuthHandlerSuite) TestHandler_UserInfo() {
+	validSessionID := uuid.New()
+	s.T().Run("happy path - user info returned", func(t *testing.T) {
+		mockService, router := s.newHandler(t)
+		expectedResp := &authModel.UserInfoResult{
+			Sub:           "user-123",
+			Email:         "user@example.com",
+			EmailVerified: true,
+			GivenName:     "Ahmed",
+			FamilyName:    "Mustafa",
+			Name:          "Ahmed Mustafa",
+		}
+		mockService.EXPECT().UserInfo(gomock.Any(), validSessionID).Return(expectedResp, nil)
+
+		status, got, errBody := s.doUserInfoRequest(t, router, validSessionID)
+
+		assert.Equal(t, http.StatusOK, status)
+		assert.NotNil(t, got)
+		assert.Nil(t, errBody)
+		assert.Equal(t, expectedResp.Sub, got.Sub)
+		assert.Equal(t, expectedResp.Email, got.Email)
+		assert.Equal(t, expectedResp.EmailVerified, got.EmailVerified)
+		assert.Equal(t, expectedResp.GivenName, got.GivenName)
+		assert.Equal(t, expectedResp.FamilyName, got.FamilyName)
+		assert.Equal(t, expectedResp.Name, got.Name)
+	})
+
+	// 	- 401 Unauthorized: Missing or invalid Authorization header
+	s.T().Run("missing or invalid authorization header - 401", func(t *testing.T) {
+		mockService, router := s.newHandler(t)
+		mockService.EXPECT().UserInfo(gomock.Any(), gomock.Any()).Times(0)
+
+		status, got, errBody := s.doUserInfoRequest(t, router, validSessionID)
+		assert.Equal(t, http.StatusUnauthorized, status)
+		assert.Nil(t, got)
+		assert.Equal(t, string(httpErrors.CodeUnauthorized), errBody["error"])
+	})
+
+	// - 401 Unauthorized: Token not found or expired
+	s.T().Run("token not found or expired - 401", func(t *testing.T) {
+		mockService, router := s.newHandler(t)
+		serviceErr := dErrors.New(dErrors.CodeUnauthorized, "token not found or expired")
+		mockService.EXPECT().UserInfo(gomock.Any(), validSessionID).Return(nil, serviceErr)
+
+		status, got, errBody := s.doUserInfoRequest(t, router, validSessionID)
+
+		assert.Equal(t, http.StatusUnauthorized, status)
+		assert.Nil(t, got)
+		assert.Equal(t, string(httpErrors.CodeUnauthorized), errBody["error"])
+	})
+
+	// - 401 Unauthorized: User not found
+	s.T().Run("user not found - 401", func(t *testing.T) {
+		mockService, router := s.newHandler(t)
+		serviceErr := dErrors.New(dErrors.CodeUnauthorized, "user not found")
+		mockService.EXPECT().UserInfo(gomock.Any(), validSessionID).Return(nil, serviceErr)
+
+		status, got, errBody := s.doUserInfoRequest(t, router, validSessionID)
+
+		assert.Equal(t, http.StatusUnauthorized, status)
+		assert.Nil(t, got)
+		assert.Equal(t, string(httpErrors.CodeUnauthorized), errBody["error"])
+	})
+
+	s.T().Run("internal server failure - 500", func(t *testing.T) {
+		mockService, router := s.newHandler(t)
+		mockService.EXPECT().UserInfo(gomock.Any(), validSessionID).Return(nil, errors.New("database error"))
+
+		status, got, errBody := s.doUserInfoRequest(t, router, validSessionID)
+
+		assert.Equal(t, http.StatusInternalServerError, status)
+		assert.Nil(t, got)
+		assert.Equal(t, string(httpErrors.CodeInternal), errBody["error"])
+	})
+}
+
 func TestAuthHandlerSuite(t *testing.T) {
 	suite.Run(t, new(AuthHandlerSuite))
 }
@@ -303,6 +387,28 @@ func (s *AuthHandlerSuite) newHandler(t *testing.T) (*mocks.MockAuthService, *ch
 	handler.Register(r)
 	router := r
 	return mockService, router
+}
+
+func (s *AuthHandlerSuite) doUserInfoRequest(t *testing.T, router *chi.Mux, sessionID uuid.UUID) (int, *authModel.UserInfoResult, map[string]string) {
+	t.Helper()
+	httpReq := httptest.NewRequest(http.MethodGet, "/auth/userinfo", nil)
+	httpReq.Header.Set("Authorization", "Bearer at_sess_"+sessionID.String())
+	rr := httptest.NewRecorder()
+
+	router.ServeHTTP(rr, httpReq)
+
+	raw, err := io.ReadAll(rr.Body)
+	require.NoError(t, err)
+
+	if rr.Code == http.StatusOK {
+		var res authModel.UserInfoResult
+		require.NoError(t, json.Unmarshal(raw, &res))
+		return rr.Code, &res, nil
+	} else {
+		var errBody map[string]string
+		require.NoError(t, json.Unmarshal(raw, &errBody))
+		return rr.Code, nil, errBody
+	}
 }
 
 func (s *AuthHandlerSuite) doAuthRequest(t *testing.T, router *chi.Mux, body string) (int, *authModel.AuthorizationResult, map[string]string) {

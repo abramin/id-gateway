@@ -34,7 +34,7 @@ func (s *InMemoryUserStoreSuite) TestSaveAndFind() {
 	err := s.store.Save(context.Background(), user)
 	require.NoError(s.T(), err)
 
-	foundByID, err := s.store.FindByID(context.Background(), user.ID.String())
+	foundByID, err := s.store.FindByID(context.Background(), user.ID)
 	require.NoError(s.T(), err)
 	assert.Equal(s.T(), user, foundByID)
 
@@ -44,7 +44,7 @@ func (s *InMemoryUserStoreSuite) TestSaveAndFind() {
 }
 
 func (s *InMemoryUserStoreSuite) TestFindNotFound() {
-	_, err := s.store.FindByID(context.Background(), uuid.New().String())
+	_, err := s.store.FindByID(context.Background(), uuid.New())
 	assert.ErrorIs(s.T(), err, ErrNotFound)
 
 	_, err = s.store.FindByEmail(context.Background(), "missing@example.com")
@@ -73,7 +73,7 @@ func (s *InMemorySessionStoreSuite) TestSaveAndFind() {
 	err := s.store.Save(context.Background(), session)
 	require.NoError(s.T(), err)
 
-	foundByID, err := s.store.FindByID(context.Background(), session.ID.String())
+	foundByID, err := s.store.FindByID(context.Background(), session.ID)
 	require.NoError(s.T(), err)
 	assert.Equal(s.T(), session, foundByID)
 
@@ -83,7 +83,7 @@ func (s *InMemorySessionStoreSuite) TestSaveAndFind() {
 }
 
 func (s *InMemorySessionStoreSuite) TestFindNotFound() {
-	_, err := s.store.FindByID(context.Background(), uuid.New().String())
+	_, err := s.store.FindByID(context.Background(), uuid.New())
 	assert.ErrorIs(s.T(), err, ErrNotFound)
 }
 

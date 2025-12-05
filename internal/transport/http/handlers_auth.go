@@ -11,8 +11,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
 
 	authModel "id-gateway/internal/auth/models"
+	jwttoken "id-gateway/internal/jwt_token"
 	"id-gateway/internal/platform/middleware"
 	dErrors "id-gateway/pkg/domain-errors"
 	s "id-gateway/pkg/string"
@@ -29,6 +31,7 @@ type AuthHandler struct {
 type AuthService interface {
 	Authorize(ctx context.Context, req *authModel.AuthorizationRequest) (*authModel.AuthorizationResult, error)
 	Token(ctx context.Context, req *authModel.TokenRequest) (*authModel.TokenResult, error)
+	UserInfo(ctx context.Context, sessionID uuid.UUID) (*authModel.UserInfoResult, error)
 }
 
 // NewAuthHandler creates a new AuthHandler with the given service and logger.
@@ -158,34 +161,46 @@ func (h *AuthHandler) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
 
-	var req authModel.UserInfoRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.logger.Warn("failed to decode userinfo request",
+	session_id, err := jwttoken.ExtractSessionIDFromAuthHeader(r.Header.Get("Authorization"))
+	if err != nil {
+		h.logger.Warn("missing or invalid access token",
+			"request_id", requestID,
+		)
+		writeError(w, dErrors.New(dErrors.CodeUnauthorized, "missing or invalid access token"))
+		return
+	}
+	session_uuid, err := uuid.Parse(session_id)
+	if err != nil {
+		h.logger.Warn("invalid session id format",
 			"error", err,
 			"request_id", requestID,
 		)
-		writeError(w, dErrors.New(dErrors.CodeInvalidRequest, "Invalid JSON in request body"))
+		writeError(w, dErrors.New(dErrors.CodeInvalidInput, "invalid session id format"))
 		return
 	}
 
-	err := validateAuthRequest(&req)
+	userInfo, err := h.auth.UserInfo(ctx, session_uuid)
 	if err != nil {
-		h.logger.Warn("invalid userinfo request",
+		h.logger.Error("failed to get user info",
 			"error", err,
 			"request_id", requestID,
+			"session_id", session_id,
 		)
 		writeError(w, err)
 		return
 	}
-	sanitizeUserInfoRequest(&req)
-	h.logger.Info("userinfo request successful",
+
+	h.logger.Info("user info retrieved successfully",
 		"request_id", requestID,
+		"session_id", session_id,
 	)
 
-}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	// Note: We ignore encoding errors here since the response has already started.
+	// Proper error handling would require buffering the response.
+	_ = json.NewEncoder(w).Encode(userInfo)
 
-func sanitizeUserInfoRequest(req *authModel.UserInfoRequest) {
-	s.TrimStrings(&req.AccessToken)
 }
 
 func sanitizeAuthorizationRequest(req *authModel.AuthorizationRequest) {

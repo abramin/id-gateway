@@ -4,6 +4,8 @@ import (
 	"context"
 	"id-gateway/internal/auth/models"
 	"sync"
+
+	"github.com/google/uuid"
 )
 
 // In-memory stores keep the initial implementation lightweight and testable.
@@ -24,10 +26,10 @@ func (s *InMemoryUserStore) Save(_ context.Context, user *models.User) error {
 	return nil
 }
 
-func (s *InMemoryUserStore) FindByID(_ context.Context, id string) (*models.User, error) {
+func (s *InMemoryUserStore) FindByID(_ context.Context, id uuid.UUID) (*models.User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if user, ok := s.users[id]; ok {
+	if user, ok := s.users[id.String()]; ok {
 		return user, nil
 	}
 	return nil, ErrNotFound
@@ -64,10 +66,10 @@ func (s *InMemorySessionStore) Save(_ context.Context, session *models.Session) 
 	return nil
 }
 
-func (s *InMemorySessionStore) FindByID(_ context.Context, id string) (*models.Session, error) {
+func (s *InMemorySessionStore) FindByID(_ context.Context, id uuid.UUID) (*models.Session, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if session, ok := s.sessions[id]; ok {
+	if session, ok := s.sessions[id.String()]; ok {
 		return session, nil
 	}
 	return nil, ErrNotFound
