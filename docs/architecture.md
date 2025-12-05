@@ -98,8 +98,10 @@ Everything runs in one binary, but each internal package has a clear responsibil
 internal/
   platform/
     config/         # configuration loading
-    logger/         # logging abstraction
+    logger/         # structured logging with slog
     httpserver/     # shared HTTP server setup
+    middleware/     # HTTP middleware (recovery, logging, request ID, latency)
+    metrics/        # Prometheus metrics collection
   auth/
     service.go      # Users, sessions, tokens
     store.go        # UserStore, SessionStore
@@ -146,7 +148,7 @@ Rules of thumb:
 * `transport/http` depends on services only, not on storage details.
 * Services depend on their own stores and on other services through interfaces, not on handlers.
 * `audit` is a shared dependency all services can call to emit events.
-* `platform` provides cross cutting plumbing such as config and logging.
+* `platform` provides cross cutting concerns: config, logging, middleware, metrics, and HTTP server setup.
 
 ---
 
@@ -440,11 +442,44 @@ Key handlers grouped by file, for example:
 
 * Cross cutting concerns, not domain logic.
 
-Typical contents:
+**Components:**
 
-* Config loading (environment variables, flags).
-* Logger initialisation.
-* HTTP server startup and graceful shutdown.
+* **Config** - Environment variable loading and configuration management
+* **Logger** - Structured logging with slog
+  - Context-aware logging (InfoContext, WarnContext, ErrorContext)
+  - Automatic request_id extraction from context for distributed tracing
+  - JSON output format for production observability
+* **Middleware** - HTTP middleware stack (see Middleware section below)
+* **Metrics** - Prometheus metrics collection and exposition at `/metrics`
+* **HTTP Server** - Server startup and graceful shutdown handling
+
+---
+
+### Middleware
+
+**Responsibilities**
+
+* Provide reusable HTTP middleware for cross-cutting concerns
+* Request tracing, logging, recovery, timeouts, and metrics collection
+
+**Available Middleware:**
+
+* `Recovery(logger)` - Recovers from panics and logs with context and request_id
+* `RequestID` - Injects unique request ID into context and response headers
+* `Logger(logger)` - Logs all HTTP requests with context-aware structured logging
+* `Timeout(duration)` - Enforces request timeout (default: 30 seconds)
+* `ContentTypeJSON` - Validates Content-Type header for POST/PUT/PATCH requests
+* `LatencyMiddleware(metrics)` - Tracks endpoint latency in Prometheus histogram
+
+All middleware supports context propagation and includes request_id for distributed tracing.
+
+**Metrics Collected:**
+
+* `id_gateway_users_created_total` - Counter for total users created
+* `id_gateway_active_sessions` - Gauge for current active sessions
+* `id_gateway_token_requests_total` - Counter for token exchange requests
+* `id_gateway_auth_failures_total` - Counter for authentication failures
+* `id_gateway_endpoint_latency_seconds` - Histogram for endpoint latency by path
 
 ---
 
@@ -670,11 +705,16 @@ Having the code structured by services makes these toggles easier to reason abou
 - ✅ Derived identity pattern (PII-free decision making)
 - ✅ HTTP routing and error mapping
 - ✅ Config loading from environment
+- ✅ OAuth 2.0 Authorization Code Flow (RFC 6749 compliant)
+- ✅ Context-aware structured logging with slog
+- ✅ HTTP middleware stack (recovery, request ID, logging, timeout, content-type)
+- ✅ Prometheus metrics collection and `/metrics` endpoint
+- ✅ Comprehensive test coverage (unit, handler, integration tests)
 - ✅ Basic audit event models
 
-**What's Stubbed (501 Handlers):**
-- ⚠️ All HTTP handler implementations (11 endpoints)
-- ⚠️ Real token generation (currently returns "todo-access", "todo-id")
+**What's Partially Implemented:**
+- ✅ Auth handlers fully implemented (authorize, token, userinfo)
+- ⚠️ Consent, Evidence, Decision, and User Data Rights handlers (501 Not Implemented)
 - ⚠️ Real VC credential ID generation
 - ⚠️ Async audit worker (worker.go exists but not wired)
 
@@ -698,11 +738,14 @@ Key improvements to harden this design:
    - Add refresh token support
    - Implement token revocation list
 
-4. **Observability**
-   - Add structured logging (zerolog, zap)
-   - Add metrics (Prometheus) around service boundaries
-   - Add distributed tracing (OpenTelemetry)
-   - Add health check endpoints
+4. **Observability** (Partially Complete)
+   - ✅ Structured logging with slog and context-aware logging
+   - ✅ Request ID middleware for distributed tracing
+   - ✅ Prometheus metrics collection at service boundaries
+   - ✅ `/metrics` endpoint for Prometheus scraping
+   - ⚠️ Add distributed tracing with OpenTelemetry (spans, trace propagation)
+   - ⚠️ Add health check endpoints (`/health`, `/ready`)
+   - ⚠️ Add metrics dashboard (Grafana) and alerting rules
 
 5. **Policy Engine**
    - Externalize decision rules to JSON/YAML configuration
@@ -760,4 +803,7 @@ Key improvements to harden this design:
 The codebase currently has:
 - ✅ **Strong foundation:** All domain models, service interfaces, and storage abstractions are complete and follow best practices.
 - ✅ **Testable architecture:** In-memory stores and service layer are fully functional, allowing unit testing without external dependencies.
-- ⚠️ **HTTP layer incomplete:** Handlers are scaffolded (routes defined) but return 501 - implementation required (see PRDs in `docs/prd/`).
+- ✅ **Production-ready auth:** OAuth 2.0 Authorization Code Flow fully implemented with comprehensive test coverage.
+- ✅ **Observability stack:** Context-aware structured logging, Prometheus metrics, request ID tracing, and HTTP middleware.
+- ✅ **HTTP middleware:** Recovery, logging, request ID, timeout, content-type validation, and latency tracking.
+- ⚠️ **HTTP layer partial:** Auth handlers complete (authorize, token, userinfo). Consent, Evidence, Decision, and User Data Rights handlers return 501 (see PRDs in `docs/prd/`).
