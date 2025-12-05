@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"unicode"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
@@ -16,6 +15,7 @@ import (
 	authModel "id-gateway/internal/auth/models"
 	"id-gateway/internal/platform/middleware"
 	dErrors "id-gateway/pkg/domain-errors"
+	s "id-gateway/pkg/string"
 )
 
 // AuthHandler handles authentication endpoints including authorize, token, and userinfo.
@@ -65,7 +65,7 @@ func (h *AuthHandler) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		writeError(w, dErrors.New(dErrors.CodeInvalidRequest, "Invalid JSON in request body"))
 		return
 	}
-	err := validateAuthorizationRequest(&req)
+	err := validateAuthRequest(&req)
 	if err != nil {
 		h.logger.Warn("invalid token request",
 			"error", err,
@@ -116,7 +116,7 @@ func (h *AuthHandler) handleToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, dErrors.New(dErrors.CodeInvalidRequest, "Invalid JSON in request body"))
 		return
 	}
-	err := validateTokenRequest(&req)
+	err := validateAuthRequest(&req)
 	if err != nil {
 		h.logger.Warn("invalid token request",
 			"error", err,
@@ -155,41 +155,46 @@ func (h *AuthHandler) handleToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) handleUserInfo(w http.ResponseWriter, r *http.Request) {
-	h.notImplemented(w, "/auth/userinfo")
+	ctx := r.Context()
+	requestID := middleware.GetRequestID(ctx)
+
+	var req authModel.UserInfoRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Warn("failed to decode userinfo request",
+			"error", err,
+			"request_id", requestID,
+		)
+		writeError(w, dErrors.New(dErrors.CodeInvalidRequest, "Invalid JSON in request body"))
+		return
+	}
+
+	err := validateAuthRequest(&req)
+	if err != nil {
+		h.logger.Warn("invalid userinfo request",
+			"error", err,
+			"request_id", requestID,
+		)
+		writeError(w, err)
+		return
+	}
+	sanitizeUserInfoRequest(&req)
+	h.logger.Info("userinfo request successful",
+		"request_id", requestID,
+	)
+
 }
 
-func (h *AuthHandler) notImplemented(w http.ResponseWriter, endpoint string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
-	_ = json.NewEncoder(w).Encode(map[string]string{
-		"message":  "TODO: implement handler",
-		"endpoint": endpoint,
-	})
+func sanitizeUserInfoRequest(req *authModel.UserInfoRequest) {
+	s.TrimStrings(&req.AccessToken)
 }
 
 func sanitizeAuthorizationRequest(req *authModel.AuthorizationRequest) {
-	req.Email = strings.TrimSpace(req.Email)
-	req.ClientID = strings.TrimSpace(req.ClientID)
-	req.RedirectURI = strings.TrimSpace(req.RedirectURI)
-	req.State = strings.TrimSpace(req.State)
-	for i, scope := range req.Scopes {
-		req.Scopes[i] = strings.TrimSpace(scope)
-	}
+	s.TrimStrings(&req.Email, &req.ClientID, &req.RedirectURI, &req.State)
+	s.TrimSlice(req.Scopes)
 }
 
 func sanitizeTokenRequest(req *authModel.TokenRequest) {
-	req.GrantType = strings.TrimSpace(req.GrantType)
-	req.Code = strings.TrimSpace(req.Code)
-	req.RedirectURI = strings.TrimSpace(req.RedirectURI)
-	req.ClientID = strings.TrimSpace(req.ClientID)
-}
-
-func validateAuthorizationRequest(req *authModel.AuthorizationRequest) error {
-	return validateAuthRequestStruct(req)
-}
-
-func validateTokenRequest(req *authModel.TokenRequest) error {
-	return validateAuthRequestStruct(req)
+	s.TrimStrings(&req.GrantType, &req.Code, &req.RedirectURI, &req.ClientID)
 }
 
 var authValidator = newAuthValidator()
@@ -202,7 +207,7 @@ func newAuthValidator() *validator.Validate {
 	return v
 }
 
-func validateAuthRequestStruct(req any) error {
+func validateAuthRequest(req any) error {
 	if err := authValidator.Struct(req); err != nil {
 		return dErrors.New(dErrors.CodeValidation, validationErrorMessage(err))
 	}
@@ -216,7 +221,7 @@ func validationErrorMessage(err error) string {
 	}
 
 	fe := validationErrs[0]
-	field := toSnakeCase(fe.Field())
+	field := s.ToSnakeCase(fe.Field())
 
 	switch fe.ActualTag() {
 	case "required":
@@ -236,17 +241,4 @@ func validationErrorMessage(err error) string {
 	default:
 		return fmt.Sprintf("%s is invalid", field)
 	}
-}
-
-func toSnakeCase(s string) string {
-	var b strings.Builder
-	runes := []rune(s)
-	for i, r := range runes {
-		if unicode.IsUpper(r) && i > 0 &&
-			(unicode.IsLower(runes[i-1]) || (i+1 < len(runes) && unicode.IsLower(runes[i+1]))) {
-			b.WriteByte('_')
-		}
-		b.WriteRune(unicode.ToLower(r))
-	}
-	return b.String()
 }
