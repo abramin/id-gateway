@@ -191,7 +191,7 @@ Rules of thumb:
 
 ```go
 type User struct {
-    ID        string
+    ID        uuid.UUID
     Email     string
     FirstName string
     LastName  string
@@ -199,10 +199,17 @@ type User struct {
 }
 
 type Session struct {
-    ID             string
-    UserID         string
+    ID             uuid.UUID
+    UserID         uuid.UUID
+    Code           string    // OAuth 2.0 authorization code
+    CodeExpiresAt  time.Time // Authorization code expiry (10 minutes)
+    CodeUsed       bool      // Prevent authorization code replay attacks
+    ClientID       string    // OAuth client identifier
+    RedirectURI    string    // Stored for validation during token exchange
     RequestedScope []string
-    Status         string // "pending_consent", "active", "expired"
+    Status         string    // "pending_consent", "active", "expired"
+    CreatedAt      time.Time
+    ExpiresAt      time.Time
 }
 ```
 
@@ -580,7 +587,7 @@ High level entities across services:
 
 * `auth`
   * `User` - ID, Email, FirstName, LastName, Verified
-  * `Session` - ID, UserID, RequestedScope, Status
+  * `Session` - ID, UserID, Code, CodeExpiresAt, CodeUsed, ClientID, RedirectURI, RequestedScope, Status, CreatedAt, ExpiresAt
 
 * `consent`
   * `ConsentPurpose` - Enum: login, registry_check, vc_issuance, decision_evaluation

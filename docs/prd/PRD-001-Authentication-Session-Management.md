@@ -49,30 +49,37 @@ The ID Gateway requires a lightweight authentication system that manages user id
 
 ## 2.1. OAuth2 Flow Support
 
-This implementation supports a simplified OAuth2 authorization code flow with the following optional parameters:
+This implementation follows the standard **OAuth 2.0 Authorization Code Flow** (RFC 6749) with the following parameters:
 
 **redirect_uri**
 
-- Used for browser-based flows where the user is redirected back to the client application after authentication
-- The gateway appends the `session_id` and `state` as query parameters to this URI
-- Client applications can then extract the session_id and exchange it for tokens
-- Optional: If not provided, the response contains only the session_id
+- Required for browser-based flows where the user is redirected back to the client application after authentication
+- The gateway appends the `code` (authorization code) and `state` as query parameters to this URI
+- Client applications extract the code and exchange it for tokens via the token endpoint
+- Optional: If not provided, the response contains only the authorization code
 
 **state**
 
 - CSRF protection token provided by the client
 - The gateway echoes this value back in the redirect_uri
-- Client should validate the state matches before using the session_id
+- Client must validate the state matches before using the authorization code
 - Prevents authorization code injection attacks
-- Optional but recommended for production flows
+- Optional but strongly recommended for security
+
+**code (Authorization Code)**
+
+- Short-lived, single-use credential issued by the authorization endpoint
+- Client exchanges this code for access and ID tokens at the token endpoint
+- Expires after 10 minutes if not used
+- Cannot be reused (marked as consumed after exchange)
 
 **Example browser-based flow:**
 
-1. Client redirects user to: `POST /auth/authorize` with redirect_uri and state
-2. Gateway responds with: `{"redirect_uri": "https://client.com/callback?session_id=sess_xyz&state=abc"}`
+1. Client redirects user to: `POST /auth/authorize` with redirect_uri, state, and scopes
+2. Gateway creates session internally, responds with: `{"redirect_uri": "https://client.com/callback?code=abc123&state=xyz"}`
 3. Client redirects user to the returned redirect_uri
-4. Client validates state matches, extracts session_id
-5. Client calls `POST /auth/token` with session_id to get tokens
+4. Client validates state matches, extracts authorization code
+5. Client calls `POST /auth/token` with grant_type=authorization_code and code to get tokens
 
 ---
 
@@ -82,7 +89,7 @@ This implementation supports a simplified OAuth2 authorization code flow with th
 
 **Endpoint:** `POST /auth/authorize`
 
-**Description:** Initiate an authentication session for a user by email. If the user doesn't exist, create them automatically.
+**Description:** Initiate an authentication session for a user by email. If the user doesn't exist, create them automatically. Returns an authorization code following OAuth 2.0 specification.
 
 **Input:**
 
@@ -90,9 +97,9 @@ This implementation supports a simplified OAuth2 authorization code flow with th
 {
   "email": "user@example.com",
   "client_id": "demo-client",
-  "scopes": ["openid", "profile"], // Optional
-  "redirect_uri": "https://app.example.com/callback", // Optional
-  "state": "xyz123" // Optional, CSRF protection
+  "scopes": ["openid", "profile"], // Optional, defaults to ["openid"]
+  "redirect_uri": "https://app.example.com/callback", // Required for code flow
+  "state": "xyz123" // Optional, CSRF protection (strongly recommended)
 }
 ```
 
@@ -100,33 +107,41 @@ This implementation supports a simplified OAuth2 authorization code flow with th
 
 ```json
 {
-  "session_id": "sess_abc123xyz",
-  "redirect_uri": "https://app.example.com/callback?session_id=sess_abc123xyz&state=xyz123"
+  "code": "authz_abc123xyz",
+  "redirect_uri": "https://app.example.com/callback?code=authz_abc123xyz&state=xyz123"
 }
 ```
 
 **Business Logic:**
 
 1. Validate email format
-2. Validate redirect_uri format if provided (must be valid URL)
-3. Check if user exists by email
-4. If not exists, create new user with:
-   - Generated unique ID
+2. Validate redirect_uri format (must be valid HTTPS URL, or HTTP for localhost only)
+3. Validate client_id is provided and non-empty
+4. Check if user exists by email
+5. If not exists, create new user with:
+   - Generated unique ID (UUID)
    - Email as provided
    - FirstName/LastName extracted from email (before @)
    - Verified = false
-5. If exists, retrieve user
-6. Create new session with:
-   - Generated unique ID
-   - UserID from step 3/4
+6. If exists, retrieve user
+7. Generate authorization code:
+   - Format: `authz_<uuid>` (e.g., `authz_550e8400-e29b-41d4-a716-446655440000`)
+   - Store code expiry: current time + 10 minutes
+8. Create new session with:
+   - Generated unique ID (UUID)
+   - UserID from step 4/5
+   - Authorization code from step 7
    - RequestedScope from input (default to ["openid"] if empty)
    - Status = "pending_consent"
+   - ClientID from input
+   - RedirectURI from input (stored for validation at token exchange)
    - CreatedAt = current timestamp
-7. Save session to SessionStore
-8. Build redirect_uri response:
-   - If redirect_uri provided: append session_id and state as query params
-   - If state provided: echo it back in response for CSRF validation
-9. Return session_id and redirect_uri
+   - CodeExpiresAt = current timestamp + 10 minutes
+9. Save session to SessionStore
+10. Build redirect_uri response:
+    - Append code and state as query parameters
+    - If state provided: echo it back in response for CSRF validation
+11. Return authorization code and complete redirect_uri
 
 **Error Cases:**
 
@@ -140,14 +155,16 @@ This implementation supports a simplified OAuth2 authorization code flow with th
 
 **Endpoint:** `POST /auth/token`
 
-**Description:** Exchange a valid session ID for access and ID tokens.
+**Description:** Exchange a valid authorization code for access and ID tokens following OAuth 2.0 specification.
 
 **Input:**
 
 ```json
 {
-  "session_id": "sess_abc123xyz",
-  "grant_type": "session" // Custom grant type
+  "grant_type": "authorization_code",
+  "code": "authz_abc123xyz",
+  "redirect_uri": "https://app.example.com/callback",
+  "client_id": "demo-client"
 }
 ```
 
@@ -155,8 +172,8 @@ This implementation supports a simplified OAuth2 authorization code flow with th
 
 ```json
 {
-  "access_token": "at_sess_abc123xyz",
-  "id_token": "idt_sess_abc123xyz",
+  "access_token": "at_550e8400-e29b-41d4-a716-446655440000",
+  "id_token": "idt_550e8400-e29b-41d4-a716-446655440000",
   "token_type": "Bearer",
   "expires_in": 3600
 }
@@ -164,20 +181,31 @@ This implementation supports a simplified OAuth2 authorization code flow with th
 
 **Business Logic:**
 
-1. Validate session_id is provided
-2. Retrieve session from SessionStore
-3. If session not found, return 404
-4. Check if session is expired (if TTL implemented)
-5. Generate access*token as: `"at*" + session_id`
-6. Generate id*token as: `"idt*" + session_id`
-7. Set expires_in = 3600 (1 hour)
-8. Return tokens
+1. Validate grant_type is "authorization_code"
+2. Validate code, redirect_uri, and client_id are provided
+3. Find session by authorization code in SessionStore
+4. If session not found, return 401 (invalid code)
+5. Validate authorization code has not expired (< 10 minutes old)
+6. Validate authorization code has not been used before (prevent replay attacks)
+7. Validate redirect_uri matches the one stored in session (OAuth 2.0 requirement)
+8. Validate client_id matches the one stored in session
+9. Mark authorization code as used in session (set CodeUsed = true)
+10. Generate access_token as: `"at_" + session.ID`
+11. Generate id_token as: `"idt_" + session.ID`
+12. Set token expiry: expires_in = 3600 (1 hour)
+13. Update session status to "active"
+14. Save updated session
+15. Return tokens
 
 **Error Cases:**
 
-- 400 Bad Request: Missing session_id
-- 404 Not Found: Session not found
-- 401 Unauthorized: Session expired
+- 400 Bad Request: Missing required fields (grant_type, code, redirect_uri, client_id)
+- 400 Bad Request: Unsupported grant_type (must be "authorization_code")
+- 401 Unauthorized: Invalid authorization code (not found)
+- 401 Unauthorized: Authorization code expired (> 10 minutes old)
+- 401 Unauthorized: Authorization code already used (replay attack prevention)
+- 400 Bad Request: redirect_uri mismatch (doesn't match authorize request)
+- 400 Bad Request: client_id mismatch (doesn't match authorize request)
 - 500 Internal Server Error: Store failure
 
 ---
@@ -246,12 +274,17 @@ type User struct {
 
 ```go
 type Session struct {
-    ID             string   // Format: "sess_<uuid>"
-    UserID         string   // Foreign key to User.ID
-    RequestedScope []string // Scopes like ["openid", "profile"]
-    Status         string   // "pending_consent", "active", "expired"
-    CreatedAt      time.Time
-    ExpiresAt      *time.Time // Optional expiry
+    ID             uuid.UUID // Unique session identifier
+    UserID         uuid.UUID // Foreign key to User.ID
+    Code           string    // Authorization code (OAuth 2.0)
+    CodeExpiresAt  time.Time // Authorization code expiry (10 minutes)
+    CodeUsed       bool      // Whether code has been exchanged (prevent replay)
+    ClientID       string    // OAuth client identifier
+    RedirectURI    string    // Redirect URI from authorize request (for validation)
+    RequestedScope []string  // Scopes like ["openid", "profile"]
+    Status         string    // "pending_consent", "active", "expired"
+    CreatedAt      time.Time // Session creation timestamp
+    ExpiresAt      time.Time // Session expiry timestamp
 }
 ```
 
@@ -272,10 +305,11 @@ type UserStore interface {
 
 ```go
 type SessionStore interface {
-    SaveSession(ctx context.Context, session *Session) error
-    FindSessionByID(ctx context.Context, id string) (*Session, error)
-    DeleteSession(ctx context.Context, id string) error
-    DeleteSessionsByUser(ctx context.Context, userID string) error // For GDPR
+    Save(ctx context.Context, session *Session) error
+    FindByID(ctx context.Context, id uuid.UUID) (*Session, error)
+    FindByCode(ctx context.Context, code string) (*Session, error) // For token exchange
+    DeleteSession(ctx context.Context, id uuid.UUID) error
+    DeleteSessionsByUser(ctx context.Context, userID uuid.UUID) error // For GDPR
 }
 ```
 
@@ -447,38 +481,91 @@ logger.Info("session created",
 ### Manual Testing
 
 ```bash
-# 1. Authorize (Simple)
-curl -X POST http://localhost:8080/auth/authorize \
-  -H "Content-Type: application/json" \
-  -d '{"email": "alice@example.com", "client_id": "demo"}'
-
-# Expected: {"session_id": "sess_...", "redirect_uri": ""}
-
-# 1b. Authorize (With redirect and state - OAuth2 flow)
+# 1. Authorize - OAuth 2.0 Authorization Code Flow
 curl -X POST http://localhost:8080/auth/authorize \
   -H "Content-Type: application/json" \
   -d '{
     "email": "alice@example.com",
-    "client_id": "demo",
+    "client_id": "demo-client",
     "redirect_uri": "https://myapp.com/callback",
-    "state": "abc123",
+    "state": "random-csrf-token-123",
     "scopes": ["openid", "profile"]
   }'
 
-# Expected: {"session_id": "sess_...", "redirect_uri": "https://myapp.com/callback?session_id=sess_...&state=abc123"}
+# Expected Response:
+# {
+#   "code": "authz_550e8400-e29b-41d4-a716-446655440000",
+#   "redirect_uri": "https://myapp.com/callback?code=authz_550e8400-e29b-41d4-a716-446655440000&state=random-csrf-token-123"
+# }
 
-# 2. Get Token
+# 2. Exchange Authorization Code for Tokens
 curl -X POST http://localhost:8080/auth/token \
   -H "Content-Type: application/json" \
-  -d '{"session_id": "sess_..."}'
+  -d '{
+    "grant_type": "authorization_code",
+    "code": "authz_550e8400-e29b-41d4-a716-446655440000",
+    "redirect_uri": "https://myapp.com/callback",
+    "client_id": "demo-client"
+  }'
 
-# Expected: {"access_token": "at_...", "id_token": "idt_...", ...}
+# Expected Response:
+# {
+#   "access_token": "at_550e8400-e29b-41d4-a716-446655440000",
+#   "id_token": "idt_550e8400-e29b-41d4-a716-446655440000",
+#   "token_type": "Bearer",
+#   "expires_in": 3600
+# }
 
-# 3. Get UserInfo
+# 3. Get UserInfo with Access Token
 curl http://localhost:8080/auth/userinfo \
-  -H "Authorization: Bearer at_sess_..."
+  -H "Authorization: Bearer at_550e8400-e29b-41d4-a716-446655440000"
 
-# Expected: {"sub": "user_...", "email": "alice@example.com", ...}
+# Expected Response:
+# {
+#   "sub": "550e8400-e29b-41d4-a716-446655440000",
+#   "email": "alice@example.com",
+#   "email_verified": false,
+#   "name": "Alice Example",
+#   "given_name": "Alice",
+#   "family_name": "Example"
+# }
+
+# 4. Test Error Cases
+
+# 4a. Try to reuse authorization code (should fail)
+curl -X POST http://localhost:8080/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "grant_type": "authorization_code",
+    "code": "authz_550e8400-e29b-41d4-a716-446655440000",
+    "redirect_uri": "https://myapp.com/callback",
+    "client_id": "demo-client"
+  }'
+
+# Expected: 401 Unauthorized (code already used)
+
+# 4b. Try with wrong redirect_uri (should fail)
+curl -X POST http://localhost:8080/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "grant_type": "authorization_code",
+    "code": "authz_NEW_CODE",
+    "redirect_uri": "https://evil.com/callback",
+    "client_id": "demo-client"
+  }'
+
+# Expected: 400 Bad Request (redirect_uri mismatch)
+
+# 4c. Try with unsupported grant_type (should fail)
+curl -X POST http://localhost:8080/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "grant_type": "password",
+    "username": "alice@example.com",
+    "password": "secret"
+  }'
+
+# Expected: 400 Bad Request (unsupported grant_type)
 ```
 
 ---
@@ -606,6 +693,12 @@ curl http://localhost:8080/auth/userinfo \
 
 ## Revision History
 
-| Version | Date       | Author       | Changes     |
-| ------- | ---------- | ------------ | ----------- |
-| 1.0     | 2025-12-03 | Product Team | Initial PRD |
+| Version | Date       | Author       | Changes                                                                 |
+| ------- | ---------- | ------------ | ----------------------------------------------------------------------- |
+| 1.0     | 2025-12-03 | Product Team | Initial PRD                                                             |
+| 1.1     | 2025-12-05 | Engineering  | Updated to OAuth 2.0 Authorization Code Flow (RFC 6749 compliant)      |
+|         |            |              | - Changed authorize endpoint to return `code` instead of `session_id`  |
+|         |            |              | - Updated token endpoint to use `grant_type` and `code`                |
+|         |            |              | - Added code expiry, replay prevention, and redirect_uri validation    |
+|         |            |              | - Updated Session model with Code, CodeExpiresAt, CodeUsed fields      |
+|         |            |              | - Added FindByCode() to SessionStore interface                         |

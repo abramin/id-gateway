@@ -49,7 +49,7 @@ func (s *AuthHandlerSuite) TestService_Authorize() {
 	s.T().Run("user is found and authorized - 200", func(t *testing.T) {
 		mockService, router := s.newHandler(t)
 		expectedResp := &authModel.AuthorizationResult{
-			SessionID:   uuid.New(),
+			Code:        "authz_" + uuid.New().String(),
 			RedirectURI: validRequest.RedirectURI,
 		}
 		mockService.EXPECT().Authorize(gomock.Any(), validRequest).Return(expectedResp, nil)
@@ -59,7 +59,7 @@ func (s *AuthHandlerSuite) TestService_Authorize() {
 		assert.Equal(t, http.StatusOK, status)
 		assert.NotNil(t, got)
 		assert.Nil(t, errBody)
-		assert.Equal(t, expectedResp.SessionID, got.SessionID)
+		assert.Equal(t, expectedResp.Code, got.Code)
 		assert.Equal(t, expectedResp.RedirectURI, got.RedirectURI)
 	})
 

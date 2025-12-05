@@ -74,9 +74,10 @@ func (s *ServiceSuite) TestAuthorize() {
 
 		result, err := s.service.Authorize(context.Background(), &req)
 		assert.NoError(s.T(), err)
-		assert.NotEmpty(s.T(), result.SessionID)
+		assert.NotEmpty(s.T(), result.Code)
+		assert.Contains(s.T(), result.Code, "authz_")
 		assert.Contains(s.T(), result.RedirectURI, "https://client.app/callback")
-		assert.Contains(s.T(), result.RedirectURI, "session_id="+result.SessionID.String())
+		assert.Contains(s.T(), result.RedirectURI, "code="+result.Code)
 		assert.Contains(s.T(), result.RedirectURI, "state=xyz")
 	})
 
@@ -95,9 +96,10 @@ func (s *ServiceSuite) TestAuthorize() {
 
 		result, err := s.service.Authorize(context.Background(), &req)
 		assert.NoError(s.T(), err)
-		assert.NotEmpty(s.T(), result.SessionID)
+		assert.NotEmpty(s.T(), result.Code)
+		assert.Contains(s.T(), result.Code, "authz_")
 		assert.Contains(s.T(), result.RedirectURI, "https://client.app/callback")
-		assert.Contains(s.T(), result.RedirectURI, "session_id="+result.SessionID.String())
+		assert.Contains(s.T(), result.RedirectURI, "code="+result.Code)
 	})
 
 	s.T().Run("user store error", func(t *testing.T) {

@@ -22,4 +22,5 @@ type UserStore interface {
 type SessionStore interface {
 	Save(ctx context.Context, session *models.Session) error
 	FindByID(ctx context.Context, id string) (*models.Session, error)
+	FindByCode(ctx context.Context, code string) (*models.Session, error)
 }
