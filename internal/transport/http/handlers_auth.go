@@ -78,6 +78,7 @@ func (h *AuthHandler) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		writeError(w, dErrors.New(dErrors.CodeInvalidRequest, "Invalid JSON in request body"))
 		return
 	}
+	s.Sanitize(&req)
 	if err := validation.Validate(&req); err != nil {
 		h.logger.WarnContext(ctx, "invalid authorize request",
 			"error", err,
@@ -86,7 +87,6 @@ func (h *AuthHandler) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	sanitizeAuthorizationRequest(&req)
 
 	res, err := h.auth.Authorize(ctx, &req)
 	if err != nil {
@@ -127,6 +127,7 @@ func (h *AuthHandler) handleToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, dErrors.New(dErrors.CodeInvalidRequest, "Invalid JSON in request body"))
 		return
 	}
+	s.Sanitize(&req)
 	if err := validation.Validate(&req); err != nil {
 		h.logger.WarnContext(ctx, "invalid token request",
 			"error", err,
@@ -135,7 +136,6 @@ func (h *AuthHandler) handleToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	sanitizeTokenRequest(&req)
 
 	res, err := h.auth.Token(ctx, &req)
 	if err != nil {
@@ -213,13 +213,4 @@ func (h *AuthHandler) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 	// Proper error handling would require buffering the response.
 	_ = json.NewEncoder(w).Encode(userInfo)
 
-}
-
-func sanitizeAuthorizationRequest(req *authModel.AuthorizationRequest) {
-	s.TrimStrings(&req.Email, &req.ClientID, &req.RedirectURI, &req.State)
-	s.TrimSlice(req.Scopes)
-}
-
-func sanitizeTokenRequest(req *authModel.TokenRequest) {
-	s.TrimStrings(&req.GrantType, &req.Code, &req.RedirectURI, &req.ClientID)
 }
