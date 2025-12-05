@@ -1,0 +1,36 @@
+# Git
+.git
+.gitignore
+.github
+
+# Documentation
+*.md
+docs/
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Frontend (not needed in backend image)
+frontend/
+
+# Test files
+test/
+*_test.go
+*.test
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+tmp/
+
+# Dependencies (will be downloaded in build)
+vendor/
+
+# OS
+.DS_Store
+Thumbs.db

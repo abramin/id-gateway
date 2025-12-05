@@ -1,0 +1,147 @@
+/* Custom styles for ID Gateway UI */
+
+/* Smooth transitions */
+* {
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+/* Auto-dismiss notifications */
+[x-show] {
+    transition: all 0.3s ease;
+}
+
+/* Loading spinner */
+.spinner {
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #3498db;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    animation: spin 1s linear infinite;
+    display: inline-block;
+    margin-right: 8px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Card hover effects */
+.hover-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hover-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+/* Status badges */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.status-badge.pass {
+    background-color: #d1fae5;
+    color: #065f46;
+}
+
+.status-badge.fail {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+.status-badge.pending {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+/* Audit log table */
+.audit-table {
+    width: 100%;
+    font-size: 0.875rem;
+}
+
+.audit-table th {
+    background-color: #f9fafb;
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-weight: 600;
+    color: #374151;
+    border-bottom: 2px solid #e5e7eb;
+}
+
+.audit-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.audit-table tbody tr:hover {
+    background-color: #f9fafb;
+}
+
+/* Code/mono font for IDs */
+.mono {
+    font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+    font-size: 0.85em;
+}
+
+/* Regulated mode indicator pulse */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+.regulated-indicator {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Auto-hide messages after 5 seconds */
+.auto-dismiss {
+    animation: fadeOut 0.5s ease 5s forwards;
+}
+
+@keyframes fadeOut {
+    to {
+        opacity: 0;
+        transform: translateY(-1rem);
+    }
+}
+
+/* Responsive grid for cards */
+@media (max-width: 768px) {
+    .grid-cols-2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Custom scrollbar for audit logs */
+.audit-scroll::-webkit-scrollbar {
+    width: 8px;
+}
+
+.audit-scroll::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.audit-scroll::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+.audit-scroll::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
