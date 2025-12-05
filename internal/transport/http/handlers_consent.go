@@ -2,15 +2,18 @@ package httptransport
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	consentModel "id-gateway/internal/consent/models"
+	jwttoken "id-gateway/internal/jwt_token"
 	"id-gateway/internal/platform/metrics"
 	"id-gateway/internal/platform/middleware"
-
-	"github.com/go-chi/chi/v5"
+	dErrors "id-gateway/pkg/domain-errors"
 )
 
 type ConsentService interface {
@@ -22,9 +25,10 @@ type ConsentService interface {
 
 // ConsentHandler handles consent-related endpoints.
 type ConsentHandler struct {
-	logger  *slog.Logger
-	consent ConsentService
-	metrics *metrics.Metrics
+	logger     *slog.Logger
+	consent    ConsentService
+	metrics    *metrics.Metrics
+	consentTTL time.Duration
 }
 
 func (h *ConsentHandler) Register(r chi.Router) {
@@ -43,10 +47,88 @@ func (h *ConsentHandler) Register(r chi.Router) {
 	r.Mount("/", consentRouter)
 }
 
+func NewConsentHandler(consent ConsentService, logger *slog.Logger, metrics *metrics.Metrics) *ConsentHandler {
+	return &ConsentHandler{
+		logger:  logger,
+		consent: consent,
+		metrics: metrics,
+	}
+}
+
 // NewConsentHandler creates a new ConsentHandler with the given logger.
 func (h *ConsentHandler) handleGrantConsent(w http.ResponseWriter, r *http.Request) {
-	h.notImplemented(w, "/auth/consent")
+	ctx := r.Context()
+	requestID := middleware.GetRequestID(ctx)
+	ok, err := jwttoken.ValidateAuthToken(r.Header.Get("Authorization"))
+	if !ok || err != nil {
+		h.logger.WarnContext(ctx, "missing or invalid access token",
+			"request_id", requestID,
+		)
+		writeError(w, dErrors.New(dErrors.CodeUnauthorized, "missing or invalid access token"))
+		if h.metrics != nil {
+			h.metrics.IncrementAuthFailures()
+		}
+		return
+	}
+
+	var grantReq *consentModel.GrantConsentRequest
+	// Purposes array must not be empty
+	err = json.NewDecoder(r.Body).Decode(grantReq)
+	if err != nil {
+		h.logger.WarnContext(ctx, "invalid grant consent request",
+			"request_id", requestID,
+			"error", err.Error(),
+		)
+		writeError(w, dErrors.New(dErrors.CodeBadRequest, "invalid request body"))
+		return
+	}
+
+	if len(grantReq.Purposes) == 0 {
+		h.logger.WarnContext(ctx, "empty purposes in grant consent request",
+			"request_id", requestID,
+		)
+		writeError(w, dErrors.New(dErrors.CodeBadRequest, "purposes array must not be empty"))
+		return
+	}
+	// Each purpose must match ConsentPurpose enum
+	for _, purpose := range grantReq.Purposes {
+		switch purpose {
+		case consentModel.ConsentPurposeLogin,
+			consentModel.ConsentPurposeRegistryCheck,
+			consentModel.ConsentPurposeVCIssuance,
+			consentModel.ConsentPurposeDecision,
+			consentModel.ConsentMarketing:
+			// valid purpose
+		default:
+			h.logger.WarnContext(ctx, "invalid purpose in grant consent request",
+				"request_id", requestID,
+				"purpose", purpose,
+			)
+			writeError(w, dErrors.New(dErrors.CodeBadRequest, "invalid purpose: "+string(purpose)))
+			return
+		}
+	}
+
+	userID := "" // TODO: extract user ID from access token
+
+	// Grant consent for each purpose
+	for _, purpose := range grantReq.Purposes {
+		err = h.consent.Grant(ctx, userID, purpose, h.consentTTL)
+		if err != nil {
+			h.logger.ErrorContext(ctx, "failed to grant consent",
+				"request_id", requestID,
+				"purpose", purpose,
+				"error", err.Error(),
+			)
+			writeError(w, dErrors.New(dErrors.CodeInternal, "failed to grant consent"))
+			return
+		}
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+
 }
+
 func (h *ConsentHandler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 	h.notImplemented(w, "/auth/consent/revoke")
 }

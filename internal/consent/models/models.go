@@ -10,11 +10,16 @@ import (
 // revocation without affecting other flows.
 type ConsentPurpose string
 
+type GrantConsentRequest struct {
+	Purposes []ConsentPurpose `json:"purposes" validate:"required,min=1,dive,oneof=login registry_check vc_issuance decision_evaluation marketing"`
+}
+
 const (
 	ConsentPurposeLogin         ConsentPurpose = "login"
 	ConsentPurposeRegistryCheck ConsentPurpose = "registry_check"
 	ConsentPurposeVCIssuance    ConsentPurpose = "vc_issuance"
 	ConsentPurposeDecision      ConsentPurpose = "decision_evaluation"
+	ConsentMarketing            ConsentPurpose = "marketing"
 )
 
 // ConsentRecord captures a user's decision for a specific purpose.

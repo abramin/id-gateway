@@ -72,7 +72,7 @@ func (h *AuthHandler) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
 
-	var req authModel.AuthorizationRequest
+	var req *authModel.AuthorizationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.logger.WarnContext(ctx, "failed to decode authorize request",
 			"error", err,
@@ -81,8 +81,8 @@ func (h *AuthHandler) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		writeError(w, dErrors.New(dErrors.CodeInvalidRequest, "Invalid JSON in request body"))
 		return
 	}
-	s.Sanitize(&req)
-	if err := validation.Validate(&req); err != nil {
+	s.Sanitize(req)
+	if err := validation.Validate(req); err != nil {
 		h.logger.WarnContext(ctx, "invalid authorize request",
 			"error", err,
 			"request_id", requestID,
@@ -91,7 +91,7 @@ func (h *AuthHandler) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := h.auth.Authorize(ctx, &req)
+	res, err := h.auth.Authorize(ctx, req)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "authorize failed",
 			"error", err,

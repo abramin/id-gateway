@@ -4,6 +4,8 @@ import (
 	dErrors "id-gateway/pkg/domain-errors"
 )
 
+// TODO: replace with actual JWT parsing, this is just a placeholder
+
 func ExtractSessionIDFromAuthHeader(authHeader string) (string, error) {
 	//TODO: replace with with actual jwt parsing
 
@@ -20,4 +22,12 @@ func ExtractSessionIDFromAuthHeader(authHeader string) (string, error) {
 
 	sessionID := token[len(accessTokenPrefix):]
 	return sessionID, nil
+}
+
+func ValidateAuthToken(authHeader string) (bool, error) {
+	_, err := ExtractSessionIDFromAuthHeader(authHeader)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }

@@ -27,7 +27,6 @@ The ID Gateway requires a lightweight authentication system that manages user id
 - Social login integration (Google, Facebook, etc.)
 - Password management (passwords not required for demo)
 - Multi-factor authentication
-- JWT signing with real cryptography (use simple tokens for MVP)
 
 ---
 
@@ -172,7 +171,7 @@ This implementation follows the standard **OAuth 2.0 Authorization Code Flow** (
 
 ```json
 {
-  "access_token": "at_550e8400-e29b-41d4-a716-446655440000",
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "id_token": "idt_550e8400-e29b-41d4-a716-446655440000",
   "token_type": "Bearer",
   "expires_in": 3600
@@ -190,12 +189,13 @@ This implementation follows the standard **OAuth 2.0 Authorization Code Flow** (
 7. Validate redirect_uri matches the one stored in session (OAuth 2.0 requirement)
 8. Validate client_id matches the one stored in session
 9. Mark authorization code as used in session (set CodeUsed = true)
-10. Generate access*token as: `"at*" + session.ID`
-11. Generate id*token as: `"idt*" + session.ID`
-12. Set token expiry: expires_in = 3600 (1 hour)
-13. Update session status to "active"
-14. Save updated session
-15. Return tokens
+10. Generate JWT access_token with claims: user_id, session_id, client_id, exp, iat, iss, aud
+11. Sign JWT with HS256 using configured signing key
+12. Generate id_token as: `"idt_" + session.ID` (placeholder for now)
+13. Set token expiry: expires_in = session TTL in seconds
+14. Update session status to "active"
+15. Save updated session
+16. Return tokens
 
 **Error Cases:**
 
@@ -218,7 +218,7 @@ This implementation follows the standard **OAuth 2.0 Authorization Code Flow** (
 
 **Input:**
 
-- Header: `Authorization: Bearer at_sess_abc123xyz`
+- Header: `Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
 
 **Output (Success - 200):**
 
@@ -237,12 +237,13 @@ This implementation follows the standard **OAuth 2.0 Authorization Code Flow** (
 
 1. Extract bearer token from Authorization header
 2. Validate format: "Bearer <token>"
-3. Parse token to extract session*id (remove "at*" prefix)
-4. Retrieve session from SessionStore
-5. If session not found, return 401
-6. Retrieve user from UserStore using session.UserID
-7. If user not found, return 401
-8. Return user profile in OIDC userinfo format
+3. Validate JWT signature and expiration using JWTService
+4. Extract session_id from JWT claims
+5. Retrieve session from SessionStore
+6. If session not found, return 401
+7. Retrieve user from UserStore using session.UserID
+8. If user not found, return 401
+9. Return user profile in OIDC userinfo format
 
 **Error Cases:**
 

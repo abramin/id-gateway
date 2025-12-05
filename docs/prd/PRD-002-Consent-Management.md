@@ -96,8 +96,13 @@ The ID Gateway requires a robust consent management system that enforces these r
 }
 ```
 
+**Authentication:**
+- Requires valid JWT bearer token in Authorization header
+- JWT must contain valid user_id, session_id, and client_id claims
+- Token validated via RequireAuth middleware
+
 **Business Logic:**
-1. Extract user from bearer token
+1. Extract user_id from JWT claims (populated by RequireAuth middleware in context)
 2. Validate all purposes are in allowed enum
 3. For each purpose:
    - Check if consent already exists for this user+purpose
@@ -163,8 +168,12 @@ The ID Gateway requires a robust consent management system that enforces these r
 }
 ```
 
+**Authentication:**
+- Requires valid JWT bearer token in Authorization header
+- Token validated via RequireAuth middleware
+
 **Business Logic:**
-1. Extract user from bearer token
+1. Extract user_id from JWT claims (populated by RequireAuth middleware in context)
 2. Validate all purposes are in allowed enum
 3. For each purpose:
    - Find active consent for this user+purpose
@@ -229,8 +238,12 @@ The ID Gateway requires a robust consent management system that enforces these r
 }
 ```
 
+**Authentication:**
+- Requires valid JWT bearer token in Authorization header
+- Token validated via RequireAuth middleware
+
 **Business Logic:**
-1. Extract user from bearer token
+1. Extract user_id from JWT claims (populated by RequireAuth middleware in context)
 2. Retrieve all consents for user from ConsentStore
 3. Apply filters if provided (status, purpose)
 4. For each consent, calculate status:

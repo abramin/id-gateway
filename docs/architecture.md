@@ -102,8 +102,11 @@ internal/
     config/         # configuration loading
     logger/         # structured logging with slog
     httpserver/     # shared HTTP server setup
-    middleware/     # HTTP middleware (recovery, logging, request ID, latency)
+    middleware/     # HTTP middleware (recovery, logging, request ID, latency, JWT auth)
     metrics/        # Prometheus metrics collection
+  jwt_token/
+    jwt.go          # JWT generation and validation with HS256
+    jwt_adapter.go  # Adapter for middleware interface
   auth/
     service.go      # Users, sessions, tokens
     store.go        # UserStore, SessionStore
@@ -472,8 +475,18 @@ Key handlers grouped by file, for example:
 - `Timeout(duration)` - Enforces request timeout (default: 30 seconds)
 - `ContentTypeJSON` - Validates Content-Type header for POST/PUT/PATCH requests
 - `LatencyMiddleware(metrics)` - Tracks endpoint latency in Prometheus histogram
+- `RequireAuth(validator, logger)` - Validates JWT tokens and populates user_id, session_id, client_id in context
 
 All middleware supports context propagation and includes request_id for distributed tracing.
+
+**JWT Authentication:**
+
+The system uses JWT (JSON Web Tokens) for access token authentication:
+- Tokens signed with HS256 (HMAC-SHA256) using a configurable signing key
+- Claims include: user_id, session_id, client_id, exp, iat, iss, aud
+- Validated via `RequireAuth` middleware on protected endpoints
+- User context (user_id, session_id, client_id) extracted from JWT and stored in request context
+- Helper functions: `GetUserID(ctx)`, `GetSessionID(ctx)`, `GetClientID(ctx)`
 
 **Metrics Collected:**
 
@@ -724,10 +737,13 @@ Having the code structured by services makes these toggles easier to reason abou
 - ✅ Prometheus metrics collection and `/metrics` endpoint
 - ✅ Comprehensive test coverage (unit, handler, integration tests)
 - ✅ Basic audit event models
+- ✅ JWT token generation and validation with HS256
+- ✅ JWT authentication middleware (RequireAuth)
 
 **What's Partially Implemented:**
 
 - ✅ Auth handlers fully implemented (authorize, token, userinfo)
+- ⚠️ JWT integration with auth service (skeleton created, needs implementation)
 - ⚠️ Consent, Evidence, Decision, and User Data Rights handlers (501 Not Implemented)
 - ⚠️ Real VC credential ID generation
 - ⚠️ Async audit worker (worker.go exists but not wired)
@@ -751,10 +767,11 @@ Key improvements to harden this design:
 
 3. **Authentication**
 
-   - Replace OIDC-lite with real OIDC provider (e.g., Ory Fosite, Keycloak)
-   - Implement JWT signing with RS256/ES256
-   - Add refresh token support
-   - Implement token revocation list
+   - ✅ JWT signing with HS256 (implemented)
+   - ⚠️ Replace HS256 with RS256/ES256 for production (asymmetric keys)
+   - ⚠️ Replace OIDC-lite with real OIDC provider (e.g., Ory Fosite, Keycloak)
+   - ⚠️ Add refresh token support
+   - ⚠️ Implement token revocation list
 
 4. **Observability** (Partially Complete)
 
