@@ -12,9 +12,11 @@ import (
 	"id-gateway/internal/platform/config"
 	"id-gateway/internal/platform/httpserver"
 	"id-gateway/internal/platform/logger"
+	"id-gateway/internal/platform/metrics"
 	httptransport "id-gateway/internal/transport/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // main wires high-level dependencies, exposes the HTTP router, and keeps the
@@ -28,12 +30,20 @@ func main() {
 		"regulated_mode", cfg.RegulatedMode,
 	)
 
+	// Initialize Prometheus metrics
+	m := metrics.New()
+
 	a := authService.NewService(
 		authStore.NewInMemoryUserStore(),
 		authStore.NewInMemorySessionStore(),
 		24*time.Hour, // TODO Make configurable
+		authService.WithMetrics(m),
 	)
 	r := chi.NewRouter()
+
+	// Add Prometheus metrics endpoint
+	r.Handle("/metrics", promhttp.Handler())
+
 	authHandler := httptransport.NewAuthHandler(a, log, cfg.RegulatedMode)
 	authHandler.Register(r)
 
