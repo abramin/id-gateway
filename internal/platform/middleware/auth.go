@@ -4,8 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-
-	"github.com/google/uuid"
 )
 
 // JWTValidator defines the interface for validating JWT tokens
@@ -26,7 +24,11 @@ type contextKeySessionID struct{}
 type contextKeyClientID struct{}
 
 // ContextKeyUserID is exported for use in handlers
-const ContextKeyUserID = contextKeyUserID{}
+var (
+	ContextKeyUserID    = contextKeyUserID{}
+	ContextKeySessionID = contextKeySessionID{}
+	ContextKeyClientID  = contextKeyClientID{}
+)
 
 // GetUserID retrieves the authenticated user ID from the context
 // TODO: Implement this function
@@ -66,11 +68,12 @@ func GetClientID(ctx context.Context) string {
 // 3. Extract the token (everything after "Bearer ")
 // 4. Call validator.ValidateToken(token)
 // 5. If validation fails:
-//    - Log a warning with the error and request ID
-//    - Return 401 Unauthorized with JSON error
+//   - Log a warning with the error and request ID
+//   - Return 401 Unauthorized with JSON error
+//
 // 6. If validation succeeds:
-//    - Add UserID, SessionID, and ClientID to context using context.WithValue
-//    - Call next.ServeHTTP with the updated context
+//   - Add UserID, SessionID, and ClientID to context using context.WithValue
+//   - Call next.ServeHTTP with the updated context
 //
 // Error response format: {"error":"unauthorized","error_description":"Invalid or expired token"}
 func RequireAuth(validator JWTValidator, logger *slog.Logger) func(http.Handler) http.Handler {

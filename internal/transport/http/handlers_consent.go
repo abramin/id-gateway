@@ -109,7 +109,7 @@ func (h *ConsentHandler) handleGrantConsent(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	userID := "" // TODO: extract user ID from access token
+	userID := ctx.Value(middleware.ContextKeyUserID).(string)
 
 	// Grant consent for each purpose
 	for _, purpose := range grantReq.Purposes {

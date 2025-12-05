@@ -99,7 +99,7 @@ func domainCodeToHTTPStatus(code dErrors.Code) int {
 	switch code {
 	case dErrors.CodeNotFound:
 		return http.StatusNotFound
-	case dErrors.CodeInvalidRequest, dErrors.CodeValidation, dErrors.CodeInvalidInput:
+	case dErrors.CodeBadRequest, dErrors.CodeValidation, dErrors.CodeInvalidInput:
 		return http.StatusBadRequest
 	case dErrors.CodeConflict:
 		return http.StatusConflict
@@ -123,7 +123,7 @@ func domainCodeToHTTPCode(code dErrors.Code) string {
 	switch code {
 	case dErrors.CodeNotFound:
 		return "not_found"
-	case dErrors.CodeInvalidRequest:
+	case dErrors.CodeBadRequest:
 		return "invalid_request"
 	case dErrors.CodeValidation:
 		return "invalid_input"

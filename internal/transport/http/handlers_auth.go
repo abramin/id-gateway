@@ -78,7 +78,7 @@ func (h *AuthHandler) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 			"error", err,
 			"request_id", requestID,
 		)
-		writeError(w, dErrors.New(dErrors.CodeInvalidRequest, "Invalid JSON in request body"))
+		writeError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
 		return
 	}
 	s.Sanitize(req)
@@ -127,7 +127,7 @@ func (h *AuthHandler) handleToken(w http.ResponseWriter, r *http.Request) {
 			"error", err,
 			"request_id", requestID,
 		)
-		writeError(w, dErrors.New(dErrors.CodeInvalidRequest, "Invalid JSON in request body"))
+		writeError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
 		return
 	}
 	s.Sanitize(&req)

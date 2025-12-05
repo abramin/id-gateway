@@ -68,7 +68,7 @@ func (s *AuthHandlerSuite) TestHandler_Authorize() {
 
 		assert.Equal(t, http.StatusBadRequest, status)
 		assert.Nil(t, got)
-		assert.Equal(t, string(dErrors.CodeInvalidRequest), errBody["error"])
+		assert.Equal(t, string(dErrors.CodeBadRequest), errBody["error"])
 	})
 
 	s.T().Run("400 error scenarios - invalid input", func(t *testing.T) {
@@ -261,26 +261,26 @@ func (s *AuthHandlerSuite) TestHandler_Token() {
 	// - 400 Bad Request: redirect_uri mismatch (doesn't match authorize request)
 	s.T().Run("redirect_uri mismatch - 400", func(t *testing.T) {
 		mockService, router := s.newHandler(t)
-		serviceErr := dErrors.New(dErrors.CodeInvalidRequest, "redirect_uri mismatch")
+		serviceErr := dErrors.New(dErrors.CodeBadRequest, "redirect_uri mismatch")
 		mockService.EXPECT().Token(gomock.Any(), gomock.Any()).Return(nil, serviceErr)
 
 		status, got, errBody := s.doTokenRequest(t, router, s.mustMarshal(validRequest, t))
 
 		assert.Equal(t, http.StatusBadRequest, status)
 		assert.Nil(t, got)
-		assert.Equal(t, string(dErrors.CodeInvalidRequest), errBody["error"])
+		assert.Equal(t, string(dErrors.CodeBadRequest), errBody["error"])
 	})
 
 	// - 400 Bad Request: client_id mismatch (doesn't match authorize request)
 	s.T().Run("client_id mismatch - 400", func(t *testing.T) {
 		mockService, router := s.newHandler(t)
-		serviceErr := dErrors.New(dErrors.CodeInvalidRequest, "client_id mismatch")
+		serviceErr := dErrors.New(dErrors.CodeBadRequest, "client_id mismatch")
 		mockService.EXPECT().Token(gomock.Any(), gomock.Any()).Return(nil, serviceErr)
 
 		status, got, errBody := s.doTokenRequest(t, router, s.mustMarshal(validRequest, t))
 		assert.Equal(t, http.StatusBadRequest, status)
 		assert.Nil(t, got)
-		assert.Equal(t, string(dErrors.CodeInvalidRequest), errBody["error"])
+		assert.Equal(t, string(dErrors.CodeBadRequest), errBody["error"])
 	})
 	// - 500 Internal Server Error: Store failure
 	s.T().Run("internal server failure - 500", func(t *testing.T) {

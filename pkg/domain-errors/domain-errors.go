@@ -8,7 +8,7 @@ type Code string
 
 const (
 	CodeNotFound        Code = "not_found"
-	CodeInvalidRequest  Code = "invalid_request"
+	CodeBadRequest      Code = "invalid_request"
 	CodeInvalidInput    Code = "invalid_input"
 	CodeValidation      Code = "validation_failed"
 	CodeInternal        Code = "internal"
