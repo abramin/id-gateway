@@ -1,4 +1,4 @@
-package consent
+package models
 
 import (
 	"time"
@@ -11,9 +11,10 @@ import (
 type ConsentPurpose string
 
 const (
-	ConsentPurposeLogin      ConsentPurpose = "login"
-	ConsentPurposeRegistry   ConsentPurpose = "registry_check"
-	ConsentPurposeVCIssuance ConsentPurpose = "vc_issuance"
+	ConsentPurposeLogin         ConsentPurpose = "login"
+	ConsentPurposeRegistryCheck ConsentPurpose = "registry_check"
+	ConsentPurposeVCIssuance    ConsentPurpose = "vc_issuance"
+	ConsentPurposeDecision      ConsentPurpose = "decision_evaluation"
 )
 
 // ConsentRecord captures a user's decision for a specific purpose.
@@ -25,8 +26,8 @@ type ConsentRecord struct {
 	RevokedAt *time.Time
 }
 
-// IsActive returns true when consent is currently valid.
-func (c ConsentRecord) IsActive(now time.Time) bool {
+// IsValid returns true when consent is currently valid.
+func (c ConsentRecord) IsValid(now time.Time) bool {
 	if c.RevokedAt != nil && c.RevokedAt.Before(now) {
 		return false
 	}
@@ -34,9 +35,9 @@ func (c ConsentRecord) IsActive(now time.Time) bool {
 }
 
 // EnsureConsent enforces that consent exists and is active for the given purpose.
-func EnsureConsent(consents []ConsentRecord, purpose ConsentPurpose, now time.Time) error {
+func EnsureConsent(consents []*ConsentRecord, purpose ConsentPurpose, now time.Time) error {
 	for _, c := range consents {
-		if c.Purpose == purpose && c.IsActive(now) {
+		if c.Purpose == purpose && c.IsValid(now) {
 			return nil
 		}
 	}
