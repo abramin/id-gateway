@@ -54,6 +54,9 @@
                 <version>${maven.surefire.version}</version>
                 <configuration>
                     <argLine>-Dfile.encoding=UTF-8</argLine>
+                    <includes>
+                        <include>**/*Runner.java</include>
+                    </includes>
                 </configuration>
             </plugin>
         </plugins>
