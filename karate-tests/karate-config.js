@@ -1,6 +1,9 @@
 function fn() {
-  // Get BASE_URL from environment variable, default to localhost:8080
-  var baseUrl = karate.env.BASE_URL || 'http://localhost:8080';
+  // Get BASE_URL from system property or environment variable, default to localhost:8080
+  var baseUrl =
+    karate.properties['BASE_URL'] ||
+    java.lang.System.getenv('BASE_URL') ||
+    'http://localhost:8080';
 
   // Configuration object that will be available in all feature files
   var config = {
@@ -29,7 +32,7 @@ function fn() {
 
   // Log configuration on startup
   karate.log('Base URL:', config.baseUrl);
-  karate.log('Environment:', karate.env);
+  karate.log('Environment:', karate.env || 'not set');
 
   return config;
 }
