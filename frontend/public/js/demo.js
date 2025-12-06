@@ -107,6 +107,16 @@ document.addEventListener('alpine:init', () => {
             this.$watch('form.clientId', () => {
                 this.updateTokenRequestBody();
             });
+
+            // Start token expiration countdown timer
+            setInterval(() => {
+                // Force Alpine to re-evaluate token expiration displays
+                if (this.tokenResponse) {
+                    this.$nextTick(() => {
+                        // This triggers Alpine's reactivity for time-based displays
+                    });
+                }
+            }, 1000);
         },
 
         // Update Step 2 request body with current form values
@@ -310,7 +320,16 @@ document.addEventListener('alpine:init', () => {
                 this.success = 'User info retrieved successfully!';
 
             } catch (err) {
-                this.error = err.message || 'UserInfo request failed';
+                // Enhanced error handling for JWT validation errors
+                const errorMessage = err.message || 'UserInfo request failed';
+
+                if (errorMessage.includes('expired')) {
+                    this.error = 'Access token has expired. Please exchange a new token in Step 2.';
+                } else if (errorMessage.includes('invalid token') || errorMessage.includes('unauthorized')) {
+                    this.error = 'Invalid or malformed access token. Please check the token format.';
+                } else {
+                    this.error = errorMessage;
+                }
                 console.error('UserInfo error:', err);
             } finally {
                 this.loading = false;
@@ -352,6 +371,103 @@ document.addEventListener('alpine:init', () => {
             this.form.state = 'random-state-' + Math.random().toString(36).substring(7);
 
             this.success = 'Demo reset successfully';
+        },
+
+        // JWT Decoding helpers
+        decodeJWT(token) {
+            try {
+                const parts = token.split('.');
+                if (parts.length !== 3) {
+                    return null;
+                }
+
+                const header = JSON.parse(atob(parts[0]));
+                const payload = JSON.parse(atob(parts[1]));
+                const signature = parts[2];
+
+                return {
+                    header,
+                    payload,
+                    signature,
+                    raw: {
+                        header: parts[0],
+                        payload: parts[1],
+                        signature: parts[2]
+                    }
+                };
+            } catch (err) {
+                console.error('Failed to decode JWT:', err);
+                return null;
+            }
+        },
+
+        // Get decoded access token
+        getDecodedAccessToken() {
+            if (!this.tokenResponse || !this.tokenResponse.access_token) {
+                return null;
+            }
+            return this.decodeJWT(this.tokenResponse.access_token);
+        },
+
+        // Get decoded ID token
+        getDecodedIDToken() {
+            if (!this.tokenResponse || !this.tokenResponse.id_token) {
+                return null;
+            }
+            return this.decodeJWT(this.tokenResponse.id_token);
+        },
+
+        // Check if token is expired
+        isTokenExpired(decodedToken) {
+            if (!decodedToken || !decodedToken.payload.exp) {
+                return false;
+            }
+            return Date.now() >= decodedToken.payload.exp * 1000;
+        },
+
+        // Get time until expiration in seconds
+        getTimeUntilExpiration(decodedToken) {
+            if (!decodedToken || !decodedToken.payload.exp) {
+                return null;
+            }
+            const expiresAt = decodedToken.payload.exp * 1000;
+            const now = Date.now();
+            return Math.max(0, Math.floor((expiresAt - now) / 1000));
+        },
+
+        // Format expiration time
+        formatExpirationTime(seconds) {
+            if (seconds === null || seconds === undefined) {
+                return 'Unknown';
+            }
+            if (seconds === 0) {
+                return 'Expired';
+            }
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+
+            if (hours > 0) {
+                return `${hours}h ${minutes}m ${secs}s`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${secs}s`;
+            } else {
+                return `${secs}s`;
+            }
+        },
+
+        // Format Unix timestamp to readable date
+        formatUnixTimestamp(timestamp) {
+            if (!timestamp) return 'N/A';
+            const date = new Date(timestamp * 1000);
+            return date.toLocaleString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
         },
 
         // Copy to clipboard helper

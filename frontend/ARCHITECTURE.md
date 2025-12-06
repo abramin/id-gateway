@@ -35,12 +35,14 @@ frontend/
 ├── public/                  # Static assets (served by nginx)
 │   ├── index.html          # User portal (main interface)
 │   ├── admin.html          # Admin dashboard
+│   ├── demo.html           # OAuth2 flow demo (interactive)
 │   ├── css/
 │   │   └── styles.css      # Custom CSS (animations, tables, etc.)
 │   └── js/
 │       ├── api.js          # API client (HTTP requests)
 │       ├── app.js          # User portal logic
-│       └── admin.js        # Admin dashboard logic
+│       ├── admin.js        # Admin dashboard logic
+│       └── demo.js         # OAuth2 demo logic + JWT utilities
 ├── Dockerfile              # Nginx container config
 ├── nginx.conf              # Reverse proxy + static serving
 └── Makefile               # Development helpers
@@ -64,9 +66,50 @@ class APIClient {
     async authorize(email) { ... }
     async getToken(sessionId) { ... }
     async getUserInfo() { ... }
-    // ... more methods per PRD specs
+    // OAuth2 specific methods
+    async authorizeOAuth(email, clientId, redirectUri, state, scopes) { ... }
+    async exchangeCodeForToken(code, redirectUri, clientId) { ... }
+    async getUserInfoWithToken(accessToken) { ... }
 }
 ```
+
+### JWT Utilities (`js/demo.js`)
+
+**Purpose:** Client-side JWT decoding and validation utilities
+
+**Features:**
+```javascript
+// JWT Decoding (browser-safe, no external libs)
+decodeJWT(token) {
+    const [header, payload, signature] = token.split('.');
+    return {
+        header: JSON.parse(atob(header)),
+        payload: JSON.parse(atob(payload)),
+        signature
+    };
+}
+
+// Token Validation
+isTokenExpired(decodedToken) {
+    return Date.now() >= decodedToken.payload.exp * 1000;
+}
+
+// Time Utilities
+getTimeUntilExpiration(decodedToken) {
+    const expiresAt = decodedToken.payload.exp * 1000;
+    return Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+}
+
+formatUnixTimestamp(timestamp) {
+    return new Date(timestamp * 1000).toLocaleString('en-US', {...});
+}
+
+formatExpirationTime(seconds) {
+    // Returns "2h 15m 30s" format
+}
+```
+
+**Note:** These utilities are currently in `demo.js` but could be extracted to a shared `jwt-utils.js` for reuse across the application.
 
 ### User Portal (`index.html` + `app.js`)
 
@@ -119,6 +162,66 @@ generateMockDecisions(count)
 generateMockUsers(count)
 generateMockAuditEvents(count)
 ```
+
+### OAuth2 Demo (`demo.html` + `demo.js`)
+
+**Purpose:** Interactive demonstration of OAuth2 Authorization Code Flow with real JWT tokens
+
+**Features:**
+- **3-Step OAuth2 Flow Visualization:**
+  1. Authorization request (email + scopes → auth code)
+  2. Token exchange (auth code → access token + ID token)
+  3. UserInfo request (access token → user claims)
+
+- **JWT Token Decoder:**
+  - Automatic JWT parsing (header.payload.signature)
+  - Syntax highlighting (blue=header, purple=payload, orange=signature)
+  - Base64 decoding of claims
+
+- **Claims Inspector:**
+  - Collapsible panels for Access Token and ID Token
+  - Custom claims display (user_id, session_id, client_id)
+  - Standard claims (iss, aud, exp, iat, jti)
+  - Human-readable timestamps with Unix epoch values
+
+- **Token Validation & Testing:**
+  - Real-time expiration countdown (updates every second)
+  - Visual status indicators (VALID/EXPIRED badges)
+  - Token lifecycle monitoring
+  - Expiration warnings and guidance
+
+- **Enhanced Error Handling:**
+  - Specific messages for expired tokens
+  - Clear guidance for invalid token formats
+  - Educational error responses
+
+**State Management:**
+```javascript
+Alpine.data('oauthDemo', () => ({
+    // Form data
+    form: { email, clientId, redirectUri, state, scopesText },
+
+    // API Responses
+    authorizeResponse: { code, redirect_uri },
+    tokenResponse: { access_token, id_token, expires_in },
+    userInfoResponse: { sub, email, name, ... },
+
+    // JWT Utilities
+    decodeJWT(token) { ... },
+    isTokenExpired(decodedToken) { ... },
+    getTimeUntilExpiration(decodedToken) { ... },
+
+    // Timeline tracking
+    timeline: { authorize, token, userinfo }
+}))
+```
+
+**Educational Value:**
+- Shows complete OAuth2 flow with real backend
+- Demonstrates JWT structure and claims
+- Teaches token validation and expiration handling
+- Provides copy-paste functionality for testing
+- Real-time visual feedback on token state
 
 ## State Management
 
@@ -291,6 +394,19 @@ Local dev (different ports):
 - [ ] Regulated mode comparison visible
 - [ ] Audit stream filters work
 - [ ] Live updates every 5 seconds
+
+**OAuth2 Demo:**
+- [ ] Step 1: Authorization code generated
+- [ ] Step 2: Tokens exchanged successfully
+- [ ] Step 3: UserInfo retrieved with access token
+- [ ] JWT syntax highlighting displays (blue, purple, orange)
+- [ ] Claims inspector shows all JWT fields
+- [ ] Token expiration countdown updates every second
+- [ ] EXPIRED badge appears when token expires
+- [ ] Enhanced error messages for expired/invalid tokens
+- [ ] Copy-to-clipboard works for codes and tokens
+- [ ] Timeline tracks completed steps
+- [ ] Reset button clears all demo state
 
 ### Browser Testing
 

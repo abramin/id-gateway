@@ -340,23 +340,44 @@
                 <div class="border border-green-200 rounded-lg p-4 bg-green-50">
                   <h4 class="font-medium text-green-900 mb-3">Tokens Issued</h4>
 
+                  <!-- JWT Format Legend -->
+                  <div class="mb-3 p-2 bg-gray-50 rounded border border-gray-200">
+                    <p class="text-xs text-gray-700 font-medium mb-1">JWT Format:</p>
+                    <div class="flex items-center gap-2 text-xs">
+                      <span class="text-blue-600 font-mono">header</span>
+                      <span class="text-gray-400">.</span>
+                      <span class="text-purple-600 font-mono">payload</span>
+                      <span class="text-gray-400">.</span>
+                      <span class="text-orange-600 font-mono">signature</span>
+                    </div>
+                  </div>
+
                   <!-- Access Token -->
                   <div class="mb-3">
                     <div class="flex items-center justify-between mb-1">
                       <span class="text-sm font-medium text-green-900"
                         >Access Token:</span
                       >
-                      <button
-                        @click="copyToClipboard(tokenResponse.access_token)"
-                        class="text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700"
-                      >
-                        Copy
-                      </button>
+                      <div class="flex gap-2">
+                        <span
+                          x-show="getDecodedAccessToken() && isTokenExpired(getDecodedAccessToken())"
+                          class="text-xs bg-red-100 text-red-800 px-2 py-1 rounded font-semibold"
+                        >
+                          EXPIRED
+                        </span>
+                        <button
+                          @click="copyToClipboard(tokenResponse.access_token)"
+                          class="text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700"
+                        >
+                          Copy
+                        </button>
+                      </div>
                     </div>
-                    <code
-                      class="text-xs font-mono break-all text-green-800 block bg-white p-2 rounded"
-                      x-text="tokenResponse.access_token"
-                    ></code>
+                    <div class="bg-white p-2 rounded border border-green-200">
+                      <code class="text-xs font-mono break-all block">
+                        <span class="text-blue-600" x-text="tokenResponse.access_token.split('.')[0]"></span>.<span class="text-purple-600" x-text="tokenResponse.access_token.split('.')[1]"></span>.<span class="text-orange-600" x-text="tokenResponse.access_token.split('.')[2]"></span>
+                      </code>
+                    </div>
                   </div>
 
                   <!-- ID Token -->
@@ -365,17 +386,26 @@
                       <span class="text-sm font-medium text-green-900"
                         >ID Token:</span
                       >
-                      <button
-                        @click="copyToClipboard(tokenResponse.id_token)"
-                        class="text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700"
-                      >
-                        Copy
-                      </button>
+                      <div class="flex gap-2">
+                        <span
+                          x-show="getDecodedIDToken() && isTokenExpired(getDecodedIDToken())"
+                          class="text-xs bg-red-100 text-red-800 px-2 py-1 rounded font-semibold"
+                        >
+                          EXPIRED
+                        </span>
+                        <button
+                          @click="copyToClipboard(tokenResponse.id_token)"
+                          class="text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700"
+                        >
+                          Copy
+                        </button>
+                      </div>
                     </div>
-                    <code
-                      class="text-xs font-mono break-all text-green-800 block bg-white p-2 rounded"
-                      x-text="tokenResponse.id_token"
-                    ></code>
+                    <div class="bg-white p-2 rounded border border-green-200">
+                      <code class="text-xs font-mono break-all block">
+                        <span class="text-blue-600" x-text="tokenResponse.id_token.split('.')[0]"></span>.<span class="text-purple-600" x-text="tokenResponse.id_token.split('.')[1]"></span>.<span class="text-orange-600" x-text="tokenResponse.id_token.split('.')[2]"></span>
+                      </code>
+                    </div>
                   </div>
 
                   <!-- Expires In -->
@@ -387,6 +417,228 @@
                       class="text-sm text-green-800 ml-2"
                       x-text="formatDuration(tokenResponse.expires_in)"
                     ></span>
+                  </div>
+                </div>
+
+                <!-- JWT Claims Inspector -->
+                <div x-data="{ showAccessClaims: false, showIDClaims: false }" class="space-y-3">
+                  <!-- Access Token Claims -->
+                  <div class="border border-blue-200 rounded-lg bg-blue-50">
+                    <button
+                      @click="showAccessClaims = !showAccessClaims"
+                      class="w-full flex items-center justify-between p-4 hover:bg-blue-100 transition-colors"
+                    >
+                      <div class="flex items-center gap-2">
+                        <span class="text-sm font-bold text-blue-900">Access Token Claims</span>
+                        <span
+                          x-show="getDecodedAccessToken() && !isTokenExpired(getDecodedAccessToken())"
+                          class="text-xs bg-green-500 text-white px-2 py-0.5 rounded"
+                        >
+                          VALID
+                        </span>
+                        <span
+                          x-show="getDecodedAccessToken() && isTokenExpired(getDecodedAccessToken())"
+                          class="text-xs bg-red-500 text-white px-2 py-0.5 rounded"
+                        >
+                          EXPIRED
+                        </span>
+                      </div>
+                      <span class="text-blue-600" x-text="showAccessClaims ? '▼' : '▶'"></span>
+                    </button>
+                    <div x-show="showAccessClaims" class="p-4 pt-0 space-y-3">
+                      <div x-show="getDecodedAccessToken()">
+                          <!-- Header -->
+                          <div class="mb-3">
+                            <h5 class="text-xs font-semibold text-blue-900 mb-2">Header</h5>
+                            <div class="bg-white p-3 rounded border border-blue-200 space-y-1 text-xs">
+                              <div class="flex justify-between">
+                                <span class="text-gray-600">Algorithm:</span>
+                                <code class="text-blue-800" x-text="getDecodedAccessToken().header.alg"></code>
+                              </div>
+                              <div class="flex justify-between">
+                                <span class="text-gray-600">Type:</span>
+                                <code class="text-blue-800" x-text="getDecodedAccessToken().header.typ"></code>
+                              </div>
+                            </div>
+                          </div>
+
+                          <!-- Payload -->
+                          <div>
+                            <h5 class="text-xs font-semibold text-blue-900 mb-2">Payload (Claims)</h5>
+                            <div class="bg-white p-3 rounded border border-blue-200 space-y-2 text-xs">
+                              <!-- Custom Claims -->
+                              <div class="pb-2 border-b border-gray-200">
+                                <p class="text-gray-500 font-semibold mb-1">Custom Claims</p>
+                                <div class="space-y-1">
+                                  <div class="flex justify-between">
+                                    <span class="text-gray-600">User ID:</span>
+                                    <code class="text-blue-800" x-text="getDecodedAccessToken().payload.user_id"></code>
+                                  </div>
+                                  <div class="flex justify-between">
+                                    <span class="text-gray-600">Session ID:</span>
+                                    <code class="text-blue-800" x-text="getDecodedAccessToken().payload.session_id"></code>
+                                  </div>
+                                  <div class="flex justify-between">
+                                    <span class="text-gray-600">Client ID:</span>
+                                    <code class="text-blue-800" x-text="getDecodedAccessToken().payload.client_id"></code>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <!-- Standard Claims -->
+                              <div>
+                                <p class="text-gray-500 font-semibold mb-1">Standard Claims</p>
+                                <div class="space-y-1">
+                                  <div class="flex justify-between">
+                                    <span class="text-gray-600">Issuer (iss):</span>
+                                    <code class="text-blue-800" x-text="getDecodedAccessToken().payload.iss"></code>
+                                  </div>
+                                  <div class="flex justify-between">
+                                    <span class="text-gray-600">Audience (aud):</span>
+                                    <code class="text-blue-800" x-text="getDecodedAccessToken().payload.aud"></code>
+                                  </div>
+                                  <div class="flex justify-between">
+                                    <span class="text-gray-600">JWT ID (jti):</span>
+                                    <code class="text-blue-800 break-all" x-text="getDecodedAccessToken().payload.jti"></code>
+                                  </div>
+                                  <div class="flex justify-between items-start">
+                                    <span class="text-gray-600">Issued At (iat):</span>
+                                    <div class="text-right">
+                                      <code class="text-blue-800 block" x-text="formatUnixTimestamp(getDecodedAccessToken().payload.iat)"></code>
+                                      <span class="text-gray-500" x-text="'(' + getDecodedAccessToken().payload.iat + ')'"></span>
+                                    </div>
+                                  </div>
+                                  <div class="flex justify-between items-start">
+                                    <span class="text-gray-600">Expires At (exp):</span>
+                                    <div class="text-right">
+                                      <code class="text-blue-800 block" x-text="formatUnixTimestamp(getDecodedAccessToken().payload.exp)"></code>
+                                      <span class="text-gray-500" x-text="'(' + getDecodedAccessToken().payload.exp + ')'"></span>
+                                    </div>
+                                  </div>
+                                  <div class="flex justify-between">
+                                    <span class="text-gray-600">Time Until Expiration:</span>
+                                    <code
+                                      class="font-bold"
+                                      :class="isTokenExpired(getDecodedAccessToken()) ? 'text-red-600' : 'text-green-600'"
+                                      x-text="formatExpirationTime(getTimeUntilExpiration(getDecodedAccessToken()))"
+                                    ></code>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- ID Token Claims -->
+                  <div class="border border-purple-200 rounded-lg bg-purple-50">
+                    <button
+                      @click="showIDClaims = !showIDClaims"
+                      class="w-full flex items-center justify-between p-4 hover:bg-purple-100 transition-colors"
+                    >
+                      <div class="flex items-center gap-2">
+                        <span class="text-sm font-bold text-purple-900">ID Token Claims</span>
+                        <span
+                          x-show="getDecodedIDToken() && !isTokenExpired(getDecodedIDToken())"
+                          class="text-xs bg-green-500 text-white px-2 py-0.5 rounded"
+                        >
+                          VALID
+                        </span>
+                        <span
+                          x-show="getDecodedIDToken() && isTokenExpired(getDecodedIDToken())"
+                          class="text-xs bg-red-500 text-white px-2 py-0.5 rounded"
+                        >
+                          EXPIRED
+                        </span>
+                      </div>
+                      <span class="text-purple-600" x-text="showIDClaims ? '▼' : '▶'"></span>
+                    </button>
+                    <div x-show="showIDClaims" class="p-4 pt-0 space-y-3">
+                      <div x-show="getDecodedIDToken()">
+                        <div>
+                          <!-- Header -->
+                          <div class="mb-3">
+                            <h5 class="text-xs font-semibold text-purple-900 mb-2">Header</h5>
+                            <div class="bg-white p-3 rounded border border-purple-200 space-y-1 text-xs">
+                              <div class="flex justify-between">
+                                <span class="text-gray-600">Algorithm:</span>
+                                <code class="text-purple-800" x-text="getDecodedIDToken().header.alg"></code>
+                              </div>
+                              <div class="flex justify-between">
+                                <span class="text-gray-600">Type:</span>
+                                <code class="text-purple-800" x-text="getDecodedIDToken().header.typ"></code>
+                              </div>
+                            </div>
+                          </div>
+
+                          <!-- Payload -->
+                          <div>
+                            <h5 class="text-xs font-semibold text-purple-900 mb-2">Payload (Claims)</h5>
+                            <div class="bg-white p-3 rounded border border-purple-200 space-y-2 text-xs">
+                              <!-- Custom Claims -->
+                              <div class="pb-2 border-b border-gray-200">
+                                <p class="text-gray-500 font-semibold mb-1">Custom Claims</p>
+                                <div class="space-y-1">
+                                  <div class="flex justify-between">
+                                    <span class="text-gray-600">User ID:</span>
+                                    <code class="text-purple-800" x-text="getDecodedIDToken().payload.user_id"></code>
+                                  </div>
+                                  <div class="flex justify-between">
+                                    <span class="text-gray-600">Session ID:</span>
+                                    <code class="text-purple-800" x-text="getDecodedIDToken().payload.session_id"></code>
+                                  </div>
+                                  <div class="flex justify-between">
+                                    <span class="text-gray-600">Client ID:</span>
+                                    <code class="text-purple-800" x-text="getDecodedIDToken().payload.client_id"></code>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <!-- Standard Claims -->
+                              <div>
+                                <p class="text-gray-500 font-semibold mb-1">Standard Claims</p>
+                                <div class="space-y-1">
+                                  <div class="flex justify-between">
+                                    <span class="text-gray-600">Issuer (iss):</span>
+                                    <code class="text-purple-800" x-text="getDecodedIDToken().payload.iss"></code>
+                                  </div>
+                                  <div class="flex justify-between">
+                                    <span class="text-gray-600">Audience (aud):</span>
+                                    <code class="text-purple-800" x-text="getDecodedIDToken().payload.aud"></code>
+                                  </div>
+                                  <div class="flex justify-between">
+                                    <span class="text-gray-600">JWT ID (jti):</span>
+                                    <code class="text-purple-800 break-all" x-text="getDecodedIDToken().payload.jti"></code>
+                                  </div>
+                                  <div class="flex justify-between items-start">
+                                    <span class="text-gray-600">Issued At (iat):</span>
+                                    <div class="text-right">
+                                      <code class="text-purple-800 block" x-text="formatUnixTimestamp(getDecodedIDToken().payload.iat)"></code>
+                                      <span class="text-gray-500" x-text="'(' + getDecodedIDToken().payload.iat + ')'"></span>
+                                    </div>
+                                  </div>
+                                  <div class="flex justify-between items-start">
+                                    <span class="text-gray-600">Expires At (exp):</span>
+                                    <div class="text-right">
+                                      <code class="text-purple-800 block" x-text="formatUnixTimestamp(getDecodedIDToken().payload.exp)"></code>
+                                      <span class="text-gray-500" x-text="'(' + getDecodedIDToken().payload.exp + ')'"></span>
+                                    </div>
+                                  </div>
+                                  <div class="flex justify-between">
+                                    <span class="text-gray-600">Time Until Expiration:</span>
+                                    <code
+                                      class="font-bold"
+                                      :class="isTokenExpired(getDecodedIDToken()) ? 'text-red-600' : 'text-green-600'"
+                                      x-text="formatExpirationTime(getTimeUntilExpiration(getDecodedIDToken()))"
+                                    ></code>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -446,9 +698,31 @@
               Use the access token to retrieve user information from the
               protected UserInfo endpoint. The Bearer token format is used:
               <code class="bg-gray-100 px-1 py-0.5 rounded text-xs"
-                >Bearer at_sess_&lt;id&gt;</code
+                >Bearer &lt;access_token&gt;</code
               >
             </p>
+
+            <!-- Token Validation Status -->
+            <template x-if="tokenResponse && getDecodedAccessToken()">
+              <div class="mb-4 p-3 rounded-lg border" :class="isTokenExpired(getDecodedAccessToken()) ? 'bg-red-50 border-red-300' : 'bg-green-50 border-green-300'">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium" :class="isTokenExpired(getDecodedAccessToken()) ? 'text-red-900' : 'text-green-900'">
+                      Token Status:
+                    </span>
+                    <span class="text-xs font-bold px-2 py-1 rounded" :class="isTokenExpired(getDecodedAccessToken()) ? 'bg-red-600 text-white' : 'bg-green-600 text-white'">
+                      <span x-text="isTokenExpired(getDecodedAccessToken()) ? 'EXPIRED' : 'VALID'"></span>
+                    </span>
+                  </div>
+                  <span class="text-xs" :class="isTokenExpired(getDecodedAccessToken()) ? 'text-red-700' : 'text-green-700'" x-text="'Expires in: ' + formatExpirationTime(getTimeUntilExpiration(getDecodedAccessToken()))"></span>
+                </div>
+                <template x-if="isTokenExpired(getDecodedAccessToken())">
+                  <p class="text-xs text-red-700 mt-2">
+                    ⚠️ This token has expired. Return to Step 2 to exchange for a new token, or continue to see how the API handles expired tokens.
+                  </p>
+                </template>
+              </div>
+            </template>
 
             <template x-if="!userInfoResponse">
               <form @submit.prevent="getUserInfo" class="space-y-4">
