@@ -1,0 +1,366 @@
+/* Attack Paths Visualization Styles */
+
+/* Diagram Container */
+#attack-diagram {
+  position: relative;
+  overflow: visible;
+}
+
+/* Diagram Nodes */
+.diagram-node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  background: white;
+  border: 3px solid #e5e7eb;
+  border-radius: 50%;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  transform: translate(-50%, -50%);
+  transition: all 0.3s ease;
+  cursor: default;
+  z-index: 10;
+}
+
+.diagram-node .node-icon {
+  font-size: 32px;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.diagram-node .node-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #374151;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.diagram-node .node-status {
+  position: absolute;
+  top: -25px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 9px;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  max-width: 120px;
+  text-align: center;
+}
+
+/* Node States */
+.diagram-node.active {
+  border-color: #3b82f6;
+  border-width: 4px;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1), 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  transform: translate(-50%, -50%) scale(1.05);
+}
+
+.diagram-node.attack {
+  border-color: #dc2626;
+  border-width: 4px;
+  background: #fee2e2;
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.2), 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  animation: pulse-attack 2s infinite;
+}
+
+.diagram-node.compromised {
+  border-color: #7c3aed;
+  border-width: 4px;
+  background: #f3e8ff;
+  box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.2), 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.diagram-node.faded {
+  opacity: 0.3;
+  border-color: #d1d5db;
+}
+
+.diagram-node.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0);
+}
+
+/* Node-specific colors */
+.node-user {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+}
+
+.node-client {
+  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+}
+
+.node-authServer {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+}
+
+.node-resourceServer {
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+}
+
+.node-attacker {
+  background: linear-gradient(135deg, #fecaca 0%, #fca5a5 100%);
+  border-color: #dc2626;
+}
+
+.node-attacker.attack {
+  background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+}
+
+.node-attacker.attack .node-icon {
+  filter: brightness(0) invert(1);
+}
+
+.node-attacker.attack .node-label {
+  color: white;
+}
+
+/* Attack Node Status Label Colors */
+.node-attacker .node-status {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.node-authServer .node-status {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.node-resourceServer .node-status {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+
+/* Pulse Animation for Attack State */
+@keyframes pulse-attack {
+  0%, 100% {
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.2), 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(220, 38, 38, 0.3), 0 0 20px rgba(220, 38, 38, 0.4);
+  }
+}
+
+/* Arrow Animations */
+.arrow {
+  transition: stroke 0.3s ease;
+}
+
+.arrow-label {
+  user-select: none;
+}
+
+/* SVG Canvas */
+#arrow-canvas {
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .diagram-node {
+    width: 60px;
+    height: 60px;
+  }
+
+  .diagram-node .node-icon {
+    font-size: 24px;
+  }
+
+  .diagram-node .node-label {
+    font-size: 8px;
+  }
+
+  .diagram-node .node-status {
+    font-size: 8px;
+    padding: 1px 4px;
+  }
+}
+
+/* Attack scenario cards hover effect */
+.attack-scenario-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.attack-scenario-card:hover {
+  transform: translateX(4px);
+}
+
+/* Step transition animations */
+.step-enter {
+  animation: slideInFromLeft 0.4s ease-out;
+}
+
+@keyframes slideInFromLeft {
+  from {
+    transform: translateX(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Progress bar animation */
+.progress-bar {
+  transition: width 0.3s ease;
+}
+
+/* Severity badge pulse effect */
+.severity-critical {
+  animation: pulse-critical 2s infinite;
+}
+
+@keyframes pulse-critical {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+/* Button hover effects */
+button:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+button:not(:disabled):active {
+  transform: translateY(0);
+}
+
+/* Mitigation list styling */
+.mitigation-item {
+  transition: background-color 0.2s ease;
+}
+
+.mitigation-item:hover {
+  background-color: #f0fdf4;
+}
+
+/* Custom scrollbar for attack list */
+.attack-list-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.attack-list-container::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.attack-list-container::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.attack-list-container::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Loading state for diagram */
+.diagram-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  opacity: 0.6;
+}
+
+.diagram-loading .spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #e5e7eb;
+  border-top-color: #dc2626;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Tooltip styles for attack info */
+.attack-tooltip {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.attack-tooltip.visible {
+  opacity: 1;
+}
+
+/* Step indicator styling */
+.step-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d1d5db;
+  transition: all 0.3s ease;
+}
+
+.step-dot.active {
+  background: #dc2626;
+  transform: scale(1.5);
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.2);
+}
+
+.step-dot.completed {
+  background: #10b981;
+}
+
+/* Attack category badges */
+.category-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.category-badge.code-flow {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.category-badge.token-security {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.category-badge.authorization {
+  background: #e0e7ff;
+  color: #4338ca;
+}

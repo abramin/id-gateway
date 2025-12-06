@@ -5,6 +5,11 @@ Demo UI for the ID Gateway identity verification system. Features two views:
 1. **User Portal** (`index.html`) - Login, consent management, identity verification, VCs, decisions, data rights
 2. **Admin Dashboard** (`admin.html`) - Real-time monitoring, audit logs, decision tracking, compliance view
 
+## Documentation
+
+- Detailed Architecture - [ARCHITECTURE.MD](ARCHITECTURE.MD)
+- Explanation of Attacker Routes and flows - [ATTACK_PATHS.MD](ATTACK_PATHS.MD)
+
 ## Technology Stack
 
 - **Alpine.js** - Lightweight reactive framework (15KB)
@@ -50,11 +55,13 @@ php -S localhost:8000
 ### User Portal
 
 #### Authentication
+
 - Email-only login (no password for demo)
 - Automatic user creation
 - Session management with tokens
 
 #### Consent Management
+
 - Grant/revoke consent for different purposes:
   - Registry checks
   - VC issuance
@@ -62,21 +69,25 @@ php -S localhost:8000
 - Visual consent cards with status
 
 #### Identity Verification
+
 - Citizen registry lookup
 - Sanctions screening
 - Shows PII stripping in regulated mode
 
 #### Verifiable Credentials
+
 - Issue "AgeOver18" credentials
 - View credential details
 - Credential-based decisions
 
 #### Decision Engine
+
 - Evaluate authorization decisions
 - Multiple purposes supported
 - Visual decision outcomes (pass/fail/conditional)
 
 #### Data Rights (GDPR)
+
 - Export all personal data
 - Delete account
 - See what's deleted vs retained
@@ -84,32 +95,38 @@ php -S localhost:8000
 ### Admin Dashboard
 
 #### Statistics
+
 - Total users
 - Active sessions
 - VCs issued
 - Decisions made
 
 #### Recent Decisions
+
 - Real-time decision feed
 - Color-coded outcomes
 - Detailed reasons
 
 #### Active Users
+
 - Current sessions
 - User activity
 - Session count
 
 #### Consent Overview
+
 - Consent grant rates
 - Purpose breakdown
 - Visual progress bars
 
 #### Regulated Mode Comparison
+
 - Side-by-side data view
 - Shows PII stripping
 - Demonstrates data minimization
 
 #### Live Audit Stream
+
 - Real-time event feed
 - Filterable by action type
 - Complete audit trail
@@ -121,26 +138,32 @@ php -S localhost:8000
 The frontend expects these backend endpoints (per PRD specs):
 
 **Auth (PRD-001):**
+
 - `POST /auth/authorize`
 - `POST /auth/token`
 - `GET /auth/userinfo`
 
 **Consent (PRD-002):**
+
 - `POST /auth/consent`
 - `POST /auth/consent/revoke`
 
 **Registry (PRD-003):**
+
 - `POST /registry/citizen`
 - `POST /registry/sanctions`
 
 **VC (PRD-004):**
+
 - `POST /vc/issue`
 - `POST /vc/verify`
 
 **Decision (PRD-005):**
+
 - `POST /decision/evaluate`
 
 **Data Rights (PRD-006, PRD-007):**
+
 - `GET /me/data-export`
 - `DELETE /me`
 
@@ -175,10 +198,12 @@ frontend/
 ### Adding New Features
 
 1. **New API Endpoint:**
+
    - Add method to `js/api.js`
    - Call from `app.js` or `admin.js`
 
 2. **New UI Component:**
+
    - Add HTML in `index.html` or `admin.html`
    - Add Alpine.js reactive logic in corresponding JS file
 
