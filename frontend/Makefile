@@ -3,7 +3,7 @@
 .PHONY: help dev build clean docker-build docker-run
 
 help:
-	@echo "ID Gateway Frontend - Make Commands"
+	@echo "Credo Frontend - Make Commands"
 	@echo ""
 	@echo "  make dev          - Start development server (Python)"
 	@echo "  make dev-node     - Start development server (Node.js)"

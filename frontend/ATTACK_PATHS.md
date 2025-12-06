@@ -5,6 +5,7 @@
 The Attack Paths module is an interactive educational tool that demonstrates common security vulnerabilities in OAuth 2.0 Authorization Code Flow. It uses visual diagram animations and step-by-step narratives to show how attacks work and how to prevent them.
 
 Related docs:
+
 - Frontend overview and entry points: [README.md](README.md)
 - Frontend architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
 - Implementation summary: [ATTACK_MODULE_SUMMARY.md](ATTACK_MODULE_SUMMARY.md)
@@ -32,36 +33,42 @@ frontend/public/
 ## Attack Scenarios Included
 
 ### 1. Authorization Code Interception
+
 - **Severity**: High
 - **Category**: Code Flow Attacks
 - **Description**: Attacker intercepts the authorization code during redirect
 - **Key Mitigations**: PKCE, short code expiration, HTTPS only
 
 ### 2. Redirect URI Manipulation
+
 - **Severity**: Critical
 - **Category**: Code Flow Attacks
 - **Description**: Attacker manipulates redirect_uri to steal authorization code
 - **Key Mitigations**: Exact URI matching, pre-registration, HTTPS enforcement
 
 ### 3. Token Leakage via Browser Storage
+
 - **Severity**: High
 - **Category**: Token Security
 - **Description**: Tokens exposed through localStorage/sessionStorage
 - **Key Mitigations**: httpOnly cookies, CSP, Backend-for-Frontend pattern
 
 ### 4. Token Leakage via Logs & Referrer Headers
+
 - **Severity**: Medium
 - **Category**: Token Security
 - **Description**: Tokens leaked through logs, URLs, or HTTP referer headers
 - **Key Mitigations**: Authorization header usage, log sanitization, Referrer-Policy
 
 ### 5. Scope Escalation Attack
+
 - **Severity**: Medium
 - **Category**: Authorization
 - **Description**: Attacker manipulates scope parameter for unauthorized permissions
 - **Key Mitigations**: Clear consent screens, scope validation, audit logging
 
 ### 6. CSRF on Callback
+
 - **Severity**: High
 - **Category**: Code Flow Attacks
 - **Description**: Attacker forces victim to complete OAuth flow with attacker's code
@@ -248,6 +255,7 @@ attacks.html (Alpine.js component)
 ## Security Considerations
 
 This module is **educational only** and demonstrates:
+
 - How vulnerabilities work
 - Why they're dangerous
 - How to prevent them
@@ -291,4 +299,4 @@ To add more attack types:
 
 ## License
 
-Part of the ID Gateway project. See main project LICENSE file.
+Part of Credo project. See main project LICENSE file.

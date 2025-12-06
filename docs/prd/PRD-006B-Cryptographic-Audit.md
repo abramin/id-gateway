@@ -11,9 +11,11 @@
 ## 1. Overview
 
 ### Problem Statement
+
 The current audit system (PRD-006) provides append-only logging, but cannot cryptographically prove that logs haven't been tampered with. For regulated systems and compliance scenarios, we need verifiable proof that audit events are authentic and unmodified.
 
 ### Goals
+
 - Replace simple append-only audit with cryptographically verifiable Merkle tree structure
 - Provide tamper-evident proof for each audit event
 - Enable verification of audit log integrity without trusted third party
@@ -22,6 +24,7 @@ The current audit system (PRD-006) provides append-only logging, but cannot cryp
 - Maintain backward compatibility with existing audit event structure
 
 ### Non-Goals
+
 - Distributed consensus (blockchain)
 - External timestamp authority integration
 - Public blockchain anchoring
@@ -54,11 +57,13 @@ The current audit system (PRD-006) provides append-only logging, but cannot cryp
 ## 3. Functional Requirements
 
 ### FR-1: Merkle Tree Construction
+
 **Internal Process** (no direct endpoint)
 
 **Description:** As audit events are appended, build a Merkle tree where each leaf is a hash of an event, and each parent node is a hash of its children.
 
 **Merkle Tree Structure:**
+
 ```
                 Root Hash
                /          \
@@ -70,6 +75,7 @@ The current audit system (PRD-006) provides append-only logging, but cannot cryp
 ```
 
 **Tree Properties:**
+
 - Each event is a leaf node
 - Leaf hash = SHA256(eventID + timestamp + userID + action + ...)
 - Parent hash = SHA256(leftChild + rightChild)
@@ -77,6 +83,7 @@ The current audit system (PRD-006) provides append-only logging, but cannot cryp
 - Changing any event changes root hash (tamper-evident)
 
 **Implementation Notes:**
+
 - Tree is append-only (no updates or deletes)
 - Tree is incrementally updated as events arrive
 - Root hash is stored separately as "tree state"
@@ -85,24 +92,27 @@ The current audit system (PRD-006) provides append-only logging, but cannot cryp
 ---
 
 ### FR-2: Generate Inclusion Proof
+
 **Endpoint:** `GET /audit/proof/{event_id}`
 
 **Description:** Generate a Merkle proof that a specific event exists in the audit trail.
 
 **Input:**
+
 - Path param: `event_id` (e.g., "evt_abc123")
 - Header: `Authorization: Bearer <admin_token>` (optional: restrict to admins)
 
 **Output (Success - 200):**
+
 ```json
 {
   "event_id": "evt_abc123",
   "event_hash": "a1b2c3...",
   "tree_root": "xyz789...",
   "proof": [
-    {"position": "right", "hash": "d4e5f6..."},
-    {"position": "left", "hash": "g7h8i9..."},
-    {"position": "right", "hash": "j0k1l2..."}
+    { "position": "right", "hash": "d4e5f6..." },
+    { "position": "left", "hash": "g7h8i9..." },
+    { "position": "right", "hash": "j0k1l2..." }
   ],
   "tree_size": 1247,
   "generated_at": "2025-12-06T10:00:00Z"
@@ -110,6 +120,7 @@ The current audit system (PRD-006) provides append-only logging, but cannot cryp
 ```
 
 **Business Logic:**
+
 1. Retrieve event from AuditStore
 2. If not found, return 404
 3. Get event's position in Merkle tree
@@ -118,6 +129,7 @@ The current audit system (PRD-006) provides append-only logging, but cannot cryp
 6. Include current root hash for verification
 
 **Merkle Proof Verification (Client-Side):**
+
 ```
 1. Hash event data → leafHash
 2. For each proof element:
@@ -128,6 +140,7 @@ The current audit system (PRD-006) provides append-only logging, but cannot cryp
 ```
 
 **Error Cases:**
+
 - 404 Not Found: Event doesn't exist
 - 401 Unauthorized: Invalid admin token (if restricted)
 - 500 Internal Server Error: Tree corruption detected
@@ -135,11 +148,13 @@ The current audit system (PRD-006) provides append-only logging, but cannot cryp
 ---
 
 ### FR-3: Verify Inclusion Proof
+
 **Endpoint:** `POST /audit/verify-proof`
 
 **Description:** Verify that a given proof demonstrates an event exists in the audit trail with the claimed root hash.
 
 **Input:**
+
 ```json
 {
   "event_id": "evt_abc123",
@@ -150,14 +165,15 @@ The current audit system (PRD-006) provides append-only logging, but cannot cryp
     "purpose": "registry_check"
   },
   "proof": [
-    {"position": "right", "hash": "d4e5f6..."},
-    {"position": "left", "hash": "g7h8i9..."}
+    { "position": "right", "hash": "d4e5f6..." },
+    { "position": "left", "hash": "g7h8i9..." }
   ],
   "claimed_root": "xyz789..."
 }
 ```
 
 **Output (Success - 200, Valid):**
+
 ```json
 {
   "valid": true,
@@ -167,6 +183,7 @@ The current audit system (PRD-006) provides append-only logging, but cannot cryp
 ```
 
 **Output (Success - 200, Invalid):**
+
 ```json
 {
   "valid": false,
@@ -177,18 +194,21 @@ The current audit system (PRD-006) provides append-only logging, but cannot cryp
 ```
 
 **Business Logic:**
+
 1. Hash event_data to get leaf hash
 2. Apply proof steps sequentially
 3. Compare final hash with claimed_root
 4. Return validation result
 
 **Error Cases:**
+
 - 400 Bad Request: Malformed proof or missing fields
 - 500 Internal Server Error: Verification logic failure
 
 ---
 
 ### FR-4: Get Current Root Hash
+
 **Endpoint:** `GET /audit/tree-root`
 
 **Description:** Return the current Merkle tree root hash (state of entire audit log).
@@ -196,6 +216,7 @@ The current audit system (PRD-006) provides append-only logging, but cannot cryp
 **Input:** None (or optional admin auth)
 
 **Output (Success - 200):**
+
 ```json
 {
   "root_hash": "xyz789abc...",
@@ -205,6 +226,7 @@ The current audit system (PRD-006) provides append-only logging, but cannot cryp
 ```
 
 **Business Logic:**
+
 1. Retrieve current tree root from MerkleTreeStore
 2. Return root hash, tree size, and timestamp
 
@@ -213,16 +235,19 @@ The current audit system (PRD-006) provides append-only logging, but cannot cryp
 ---
 
 ### FR-5: Detect Tampering
+
 **Internal Function** (no endpoint, automatic)
 
 **Description:** On every tree access, verify integrity by recomputing root hash from leaves and comparing with stored root.
 
 **Tampering Detection:**
+
 - If stored root ≠ computed root → Log CRITICAL alert
 - If event count mismatches tree size → Log alert
 - If any leaf hash doesn't match event data → Log alert
 
 **Response to Tampering:**
+
 - Do NOT auto-repair (preserve evidence)
 - Log incident to separate tamper log
 - Return error to client
@@ -294,7 +319,7 @@ type MerkleBuilder struct {
 func (b *MerkleBuilder) AppendEvent(ev Event) (string, error) {
     b.mu.Lock()
     defer b.mu.Unlock()
-    
+
     // 1. Hash event to create leaf
     leafHash := hashEvent(ev)
     leaf := &MerkleNode{
@@ -303,13 +328,13 @@ func (b *MerkleBuilder) AppendEvent(ev Event) (string, error) {
         EventID:  ev.ID,
         Position: len(b.tree.Leaves),
     }
-    
+
     // 2. Append leaf to tree
     b.tree.Leaves = append(b.tree.Leaves, leaf)
-    
+
     // 3. Rebuild tree from leaves (simple approach for MVP)
     b.rebuildTree()
-    
+
     return leafHash, nil
 }
 
@@ -347,11 +372,11 @@ func (g *ProofGenerator) GenerateProof(eventID string) (*InclusionProof, error) 
     if leaf == nil {
         return nil, errors.New("event not found")
     }
-    
+
     // 2. Collect sibling hashes along path to root
     proof := []ProofElement{}
     current := leaf
-    
+
     for current != g.tree.Root {
         sibling := g.getSibling(current)
         if sibling != nil {
@@ -366,7 +391,7 @@ func (g *ProofGenerator) GenerateProof(eventID string) (*InclusionProof, error) 
         }
         current = g.getParent(current)
     }
-    
+
     return &InclusionProof{
         EventID:   eventID,
         EventHash: leaf.Hash,
@@ -387,7 +412,7 @@ type ProofVerifier struct{}
 func (v *ProofVerifier) Verify(req VerifyRequest) VerifyResult {
     // 1. Hash event data
     leafHash := hashEvent(req.EventData)
-    
+
     // 2. Apply proof steps
     computedHash := leafHash
     for _, elem := range req.Proof {
@@ -397,10 +422,10 @@ func (v *ProofVerifier) Verify(req VerifyRequest) VerifyResult {
             computedHash = hashPair(elem.Hash, computedHash)
         }
     }
-    
+
     // 3. Compare with claimed root
     valid := computedHash == req.ClaimedRoot
-    
+
     return VerifyResult{
         Valid:        valid,
         ComputedRoot: computedHash,
@@ -423,7 +448,7 @@ func hashPair(left, right string) string {
 type Store interface {
     Append(ctx context.Context, ev Event) error
     ListByUser(ctx context.Context, userID string) ([]Event, error)
-    
+
     // NEW: Merkle tree methods
     AppendWithProof(ctx context.Context, ev Event) (leafHash string, err error)
     GetTreeRoot(ctx context.Context) (string, int, error) // root, size
@@ -446,31 +471,37 @@ func (h *Handler) handleGetTreeRoot(w http.ResponseWriter, r *http.Request)
 ## 5. Implementation Steps
 
 ### Phase 1: Merkle Tree Core (3-4 hours)
+
 1. Create `internal/audit/merkle.go` with data models
 2. Implement `MerkleBuilder` with tree construction logic
 3. Unit tests for tree building with 1, 2, 4, 8 events
 
 ### Phase 2: Proof Generation (2-3 hours)
+
 1. Implement `ProofGenerator.GenerateProof()`
 2. Test proof generation for various tree positions
 3. Test edge cases (single event, full balanced tree)
 
 ### Phase 3: Proof Verification (2 hours)
+
 1. Implement `ProofVerifier.Verify()`
 2. Test valid and invalid proofs
 3. Test tampered event detection
 
 ### Phase 4: Store Integration (2-3 hours)
+
 1. Update `InMemoryAuditStore` to use MerkleBuilder
 2. Implement `AppendWithProof()` method
 3. Store tree state alongside events
 
 ### Phase 5: HTTP Handlers (2 hours)
+
 1. Implement handleGetProof
 2. Implement handleVerifyProof
 3. Implement handleGetTreeRoot
 
 ### Phase 6: Testing & Documentation (2-3 hours)
+
 1. Integration tests for full flow
 2. Manual testing with curl
 3. Write documentation explaining cryptographic guarantees
@@ -497,6 +528,7 @@ func (h *Handler) handleGetTreeRoot(w http.ResponseWriter, r *http.Request)
 ## 7. Testing
 
 ### Unit Tests
+
 ```go
 // Test tree construction
 func TestMerkleTreeConstruction(t *testing.T) {
@@ -521,6 +553,7 @@ func TestTamperDetection(t *testing.T) {
 ```
 
 ### Integration Tests
+
 ```bash
 # Emit several audit events
 curl -X POST /auth/authorize ...
@@ -555,16 +588,19 @@ curl -X POST http://localhost:8080/audit/verify-proof \
 ## 8. Performance Considerations
 
 ### Time Complexity
+
 - **Append event:** O(n) for MVP (rebuild tree), O(log n) with incremental update
 - **Generate proof:** O(log n) (walk tree to root)
 - **Verify proof:** O(log n) (apply proof steps)
 - **Get root:** O(1) (cached)
 
 ### Space Complexity
+
 - **Tree storage:** O(n) nodes for n events
 - **Proof size:** O(log n) hashes
 
 ### Optimization Strategies (Future)
+
 1. **Incremental tree update:** Only rebuild affected branch
 2. **Proof caching:** Cache proofs for recently accessed events
 3. **Tree snapshots:** Periodically save tree state to disk
@@ -577,21 +613,25 @@ curl -X POST http://localhost:8080/audit/verify-proof \
 ### Cryptographic Guarantees
 
 **Tamper Evidence:**
+
 - Modifying any event changes its leaf hash
 - Changed leaf hash propagates up to root
 - Root hash acts as cryptographic fingerprint
 - Any tampering is detectable by verifying root
 
 **Inclusion Proof:**
+
 - Proof demonstrates event exists in specific position
 - Cannot forge proof without knowing all sibling hashes
 - Proof size is logarithmic (compact)
 
 **Non-Repudiation:**
+
 - Once event is in tree, cannot deny it existed
 - Root hash serves as commitment to all events
 
 **Limitations (Not Provided):**
+
 - **Timestamp proof:** No guarantee event occurred at claimed time (need external timestamp authority)
 - **Deletion resistance:** Relies on system not allowing deletes (append-only storage)
 - **Distributed verification:** Single system controls tree (not blockchain consensus)
@@ -601,20 +641,23 @@ curl -X POST http://localhost:8080/audit/verify-proof \
 ## 10. Documentation Requirements
 
 ### Technical Documentation
+
 1. **Architecture doc:** Explain Merkle tree structure and why it matters
 2. **API guide:** Show how to generate and verify proofs
 3. **Crypto explainer:** Non-technical explanation of guarantees
 4. **Diagrams:** Visualize tree structure, proof verification
 
 ### README Addition
+
 Add section to project README:
 
-```markdown
+````markdown
 ## Cryptographically Verifiable Audit
 
-The ID Gateway uses a **Merkle tree** to provide tamper-evident audit logging.
+Credo uses a **Merkle tree** to provide tamper-evident audit logging.
 
 ### What This Means
+
 - Every audit event becomes a leaf in a binary tree
 - The tree's root hash is a cryptographic fingerprint of all events
 - Any modification to past events changes the root hash
@@ -622,19 +665,24 @@ The ID Gateway uses a **Merkle tree** to provide tamper-evident audit logging.
 - Tampering is cryptographically detectable
 
 ### Generate Inclusion Proof
+
 ```bash
 curl http://localhost:8080/audit/proof/evt_abc123
 ```
+````
 
 ### Verify Proof
+
 ```bash
 curl -X POST http://localhost:8080/audit/verify-proof -d '{...}'
 ```
 
 ### Use Cases
+
 - Prove to auditors that logs haven't been tampered
 - Provide cryptographic proof of specific events
 - Detect unauthorized modifications to audit trail
+
 ```
 
 ---
@@ -665,3 +713,4 @@ curl -X POST http://localhost:8080/audit/verify-proof -d '{...}'
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2025-12-06 | Engineering Team | Initial PRD |
+```

@@ -11,15 +11,18 @@
 ## 1. Overview
 
 ### Problem Statement
+
 In regulated domains (GDPR, HIPAA, financial services), consent is not a simple checkbox. It must be:
+
 - **Purpose-specific** - Users consent to specific uses of their data
 - **Time-bound** - Consent has expiry dates and can be revoked
 - **Auditable** - System must prove consent existed at the time of data processing
 - **Granular** - Users can consent to some purposes while denying others
 
-The ID Gateway requires a robust consent management system that enforces these requirements at the API level.
+Credo requires a robust consent management system that enforces these requirements at the API level.
 
 ### Goals
+
 - Implement purpose-based consent model
 - Support consent granting, revocation, and expiry
 - Enforce consent checks before sensitive operations
@@ -27,6 +30,7 @@ The ID Gateway requires a robust consent management system that enforces these r
 - Provide user visibility into granted consents
 
 ### Non-Goals
+
 - Consent UI/frontend (API-only)
 - Consent renewal workflows (manual re-grant for MVP)
 - Consent withdrawal period (immediate revocation)
@@ -58,11 +62,13 @@ The ID Gateway requires a robust consent management system that enforces these r
 ## 3. Functional Requirements
 
 ### FR-1: Grant Consent
+
 **Endpoint:** `POST /auth/consent`
 
 **Description:** Grant consent for one or more purposes. If consent already exists for a purpose, it's renewed with a new expiry date.
 
 **Input:**
+
 ```json
 {
   "purposes": ["login", "registry_check", "vc_issuance"]
@@ -70,6 +76,7 @@ The ID Gateway requires a robust consent management system that enforces these r
 ```
 
 **Output (Success - 200):**
+
 ```json
 {
   "granted": [
@@ -97,11 +104,13 @@ The ID Gateway requires a robust consent management system that enforces these r
 ```
 
 **Authentication:**
+
 - Requires valid JWT bearer token in Authorization header
 - JWT must contain valid user_id, session_id, and client_id claims
 - Token validated via RequireAuth middleware
 
 **Business Logic:**
+
 1. Extract user_id from JWT claims (populated by RequireAuth middleware in context)
 2. Validate all purposes are in allowed enum
 3. For each purpose:
@@ -119,17 +128,20 @@ The ID Gateway requires a robust consent management system that enforces these r
 6. Return list of granted consents
 
 **Validation:**
+
 - User must be authenticated (valid bearer token)
 - Purposes array must not be empty
 - Each purpose must match ConsentPurpose enum
 
 **Error Cases:**
+
 - 401 Unauthorized: Invalid or missing bearer token
 - 400 Bad Request: Empty purposes array
 - 400 Bad Request: Invalid purpose value
 - 500 Internal Server Error: Store failure
 
 **Audit Event:**
+
 ```json
 {
   "action": "consent_granted",
@@ -143,11 +155,13 @@ The ID Gateway requires a robust consent management system that enforces these r
 ---
 
 ### FR-2: Revoke Consent
+
 **Endpoint:** `POST /auth/consent/revoke`
 
 **Description:** Revoke consent for one or more purposes. Once revoked, future operations requiring that purpose will fail until consent is re-granted.
 
 **Input:**
+
 ```json
 {
   "purposes": ["registry_check"]
@@ -155,6 +169,7 @@ The ID Gateway requires a robust consent management system that enforces these r
 ```
 
 **Output (Success - 200):**
+
 ```json
 {
   "revoked": [
@@ -169,10 +184,12 @@ The ID Gateway requires a robust consent management system that enforces these r
 ```
 
 **Authentication:**
+
 - Requires valid JWT bearer token in Authorization header
 - Token validated via RequireAuth middleware
 
 **Business Logic:**
+
 1. Extract user_id from JWT claims (populated by RequireAuth middleware in context)
 2. Validate all purposes are in allowed enum
 3. For each purpose:
@@ -185,12 +202,14 @@ The ID Gateway requires a robust consent management system that enforces these r
 5. Return list of revoked consents
 
 **Error Cases:**
+
 - 401 Unauthorized: Invalid or missing bearer token
 - 400 Bad Request: Empty purposes array
 - 400 Bad Request: Invalid purpose value
 - 500 Internal Server Error: Store failure
 
 **Audit Event:**
+
 ```json
 {
   "action": "consent_revoked",
@@ -204,17 +223,20 @@ The ID Gateway requires a robust consent management system that enforces these r
 ---
 
 ### FR-3: List User Consents
+
 **Endpoint:** `GET /auth/consent`
 
 **Description:** List all consent records for the authenticated user, including active, expired, and revoked consents.
 
 **Input:**
+
 - Header: `Authorization: Bearer <token>`
 - Query Parameters (optional):
   - `status` - Filter by status: "active", "expired", "revoked"
   - `purpose` - Filter by specific purpose
 
 **Output (Success - 200):**
+
 ```json
 {
   "consents": [
@@ -239,10 +261,12 @@ The ID Gateway requires a robust consent management system that enforces these r
 ```
 
 **Authentication:**
+
 - Requires valid JWT bearer token in Authorization header
 - Token validated via RequireAuth middleware
 
 **Business Logic:**
+
 1. Extract user_id from JWT claims (populated by RequireAuth middleware in context)
 2. Retrieve all consents for user from ConsentStore
 3. Apply filters if provided (status, purpose)
@@ -253,6 +277,7 @@ The ID Gateway requires a robust consent management system that enforces these r
 5. Return filtered list
 
 **Error Cases:**
+
 - 401 Unauthorized: Invalid or missing bearer token
 - 400 Bad Request: Invalid filter value
 - 500 Internal Server Error: Store failure
@@ -260,11 +285,13 @@ The ID Gateway requires a robust consent management system that enforces these r
 ---
 
 ### FR-4: Require Consent (Internal API)
+
 **Function:** `consentService.Require(ctx, userID, purpose)`
 
 **Description:** Internal service method used by other handlers to enforce consent before processing data. This is NOT an HTTP endpoint but a service method called programmatically.
 
 **Usage Example:**
+
 ```go
 // In any handler that processes user data
 err := h.consentService.Require(ctx, userID, consent.ConsentPurposeRegistryCheck)
@@ -276,6 +303,7 @@ if err != nil {
 ```
 
 **Business Logic:**
+
 1. Find active consent for user+purpose
 2. If not found, return `ErrMissingConsent`
 3. Check if expired: ExpiresAt < now
@@ -285,6 +313,7 @@ if err != nil {
 7. Return nil (consent is valid)
 
 **Error Returns:**
+
 - `errors.CodeMissingConsent` (403) - No consent granted
 - `errors.CodeInvalidConsent` (403) - Consent expired or revoked
 - `errors.CodeInternal` (500) - Store failure
@@ -296,6 +325,7 @@ if err != nil {
 ### TR-1: Data Models
 
 **ConsentPurpose Enum** (Location: `internal/consent/models.go`)
+
 ```go
 type ConsentPurpose string
 
@@ -312,6 +342,7 @@ func (cp ConsentPurpose) IsValid() bool {
 ```
 
 **ConsentRecord Model** (Location: `internal/consent/models.go`)
+
 ```go
 type ConsentRecord struct {
     ID        string         // Format: "consent_<uuid>"
@@ -337,6 +368,7 @@ func (c *ConsentRecord) IsActive(now time.Time) bool {
 ### TR-2: Storage Interface
 
 **ConsentStore** (Location: `internal/consent/store.go`)
+
 ```go
 type Store interface {
     Save(ctx context.Context, record *ConsentRecord) error
@@ -353,6 +385,7 @@ type Store interface {
 ### TR-3: Service Layer
 
 **ConsentService** (Location: `internal/consent/service.go`)
+
 ```go
 type Service struct {
     store     Store
@@ -369,6 +402,7 @@ func (s *Service) Require(ctx context.Context, userID string, purpose ConsentPur
 ### TR-4: HTTP Handlers
 
 **Handler Functions** (Location: `internal/transport/http/handlers_consent.go`)
+
 ```go
 func (h *Handler) handleConsent(w http.ResponseWriter, r *http.Request)
 func (h *Handler) handleConsentRevoke(w http.ResponseWriter, r *http.Request)
@@ -378,6 +412,7 @@ func (h *Handler) handleConsentList(w http.ResponseWriter, r *http.Request)
 ### TR-5: Error Types
 
 **Consent-Specific Errors** (Location: `pkg/errors/errors.go`)
+
 - `CodeMissingConsent` - User has not granted consent for purpose
 - `CodeInvalidConsent` - Consent expired or revoked
 - Both map to HTTP 403 Forbidden
@@ -388,11 +423,11 @@ func (h *Handler) handleConsentList(w http.ResponseWriter, r *http.Request)
 
 ### Endpoint Summary
 
-| Endpoint | Method | Auth Required | Purpose |
-|----------|--------|---------------|---------|
-| `/auth/consent` | POST | Yes | Grant consent |
-| `/auth/consent/revoke` | POST | Yes | Revoke consent |
-| `/auth/consent` | GET | Yes | List consents |
+| Endpoint               | Method | Auth Required | Purpose        |
+| ---------------------- | ------ | ------------- | -------------- |
+| `/auth/consent`        | POST   | Yes           | Grant consent  |
+| `/auth/consent/revoke` | POST   | Yes           | Revoke consent |
+| `/auth/consent`        | GET    | Yes           | List consents  |
 
 ### Consent Lifecycle States
 
@@ -414,6 +449,7 @@ func (h *Handler) handleConsentList(w http.ResponseWriter, r *http.Request)
 ```
 
 **State Transitions:**
+
 - `No Consent → Active`: User grants consent
 - `Active → Revoked`: User revokes consent
 - `Active → Expired`: Time passes beyond ExpiresAt
@@ -430,19 +466,24 @@ func (h *Handler) handleConsentList(w http.ResponseWriter, r *http.Request)
 ## 6. Integration Requirements
 
 ### IR-1: Authentication Integration
+
 All consent endpoints require valid bearer token:
+
 1. Extract token from Authorization header
 2. Validate token (call `authService.UserInfo()`)
 3. Extract user ID from token
 4. Use user ID for consent operations
 
 ### IR-2: Audit Integration
+
 Emit audit events for:
+
 - Consent granted (per purpose)
 - Consent revoked (per purpose)
 - Consent check failed (when Require() returns error)
 
 **Audit Event Format:**
+
 ```go
 audit.Event{
     ID:        uuid.New().String(),
@@ -456,9 +497,11 @@ audit.Event{
 ```
 
 ### IR-3: Handler Integration
+
 All handlers processing user data MUST call `Require()` before operations:
 
 **Example:**
+
 ```go
 // In handleRegistryCitizen
 err := h.consentService.Require(ctx, userID, consent.ConsentPurposeRegistryCheck)
@@ -470,6 +513,7 @@ if err != nil {
 ```
 
 **Handlers requiring consent:**
+
 - `handleRegistryCitizen` → ConsentPurposeRegistryCheck
 - `handleRegistrySanctions` → ConsentPurposeRegistryCheck
 - `handleVCIssue` → ConsentPurposeVCIssuance
@@ -480,16 +524,19 @@ if err != nil {
 ## 7. Security Requirements
 
 ### SR-1: Authorization
+
 - Only authenticated users can grant/revoke/list their own consents
 - Users cannot modify consents for other users
 - Service methods must validate user ID matches token
 
 ### SR-2: Audit Trail
+
 - All consent changes must be logged to audit system
 - Audit logs must be immutable (append-only)
 - Audit logs must include timestamp, user ID, purpose, action
 
 ### SR-3: Consent Enforcement
+
 - Failed consent checks must return 403 Forbidden
 - Operations requiring consent must fail fast (check consent first)
 - No data processing should occur without valid consent
@@ -499,13 +546,16 @@ if err != nil {
 ## 8. Observability Requirements
 
 ### Logging
+
 **Events to Log:**
+
 - Consent granted: `consent_granted` (audit)
 - Consent revoked: `consent_revoked` (audit)
 - Consent check passed: `consent_check_passed` (debug level)
 - Consent check failed: `consent_check_failed` (audit + warning)
 
 ### Metrics
+
 - Total consents granted (counter, labeled by purpose)
 - Total consents revoked (counter, labeled by purpose)
 - Active consents per user (gauge)
@@ -517,6 +567,7 @@ if err != nil {
 ## 9. Testing Requirements
 
 ### Unit Tests
+
 - [ ] Test consent granting for valid purposes
 - [ ] Test consent renewal (grant twice for same purpose)
 - [ ] Test consent revocation
@@ -527,6 +578,7 @@ if err != nil {
 - [ ] Test `Require()` with revoked consent (returns error)
 
 ### Integration Tests
+
 - [ ] Test grant → list → verify active
 - [ ] Test grant → revoke → verify revoked
 - [ ] Test grant → wait for expiry → verify expired
@@ -534,6 +586,7 @@ if err != nil {
 - [ ] Test handler fails with 403 when consent missing
 
 ### Manual Testing
+
 ```bash
 # 1. Grant consent
 curl -X POST http://localhost:8080/auth/consent \
@@ -585,6 +638,7 @@ curl -X POST http://localhost:8080/registry/citizen \
 ## 10. Implementation Steps
 
 ### Phase 1: Service Layer Enhancement (1-2 hours)
+
 1. Update `ConsentService` in `internal/consent/service.go`
 2. Implement `Grant()` with renewal logic
 3. Implement `Revoke()` with idempotency
@@ -593,6 +647,7 @@ curl -X POST http://localhost:8080/registry/citizen \
 6. Add audit event emission in each method
 
 ### Phase 2: HTTP Handlers (1-2 hours)
+
 1. Implement `handleConsent`:
    - Extract user from token
    - Parse purposes array
@@ -611,6 +666,7 @@ curl -X POST http://localhost:8080/registry/citizen \
    - Return consent list
 
 ### Phase 3: Integration with Other Handlers (1 hour)
+
 1. Add consent checks to:
    - `handleRegistryCitizen`
    - `handleRegistrySanctions`
@@ -619,6 +675,7 @@ curl -X POST http://localhost:8080/registry/citizen \
 2. Each should call `Require()` before processing
 
 ### Phase 4: Testing (1-2 hours)
+
 1. Unit tests for service methods
 2. Integration tests for complete flows
 3. Manual testing with curl
@@ -645,12 +702,14 @@ curl -X POST http://localhost:8080/registry/citizen \
 ## 12. Dependencies & Blockers
 
 ### Dependencies
+
 - PRD-001: Authentication & Session Management (for user extraction from token)
 - `internal/consent/store_memory.go` - ✅ Already implemented
 - `internal/audit` - ✅ Already implemented
 - `pkg/errors` - ✅ Already implemented
 
 ### Potential Blockers
+
 - None identified
 
 ---
@@ -672,6 +731,7 @@ curl -X POST http://localhost:8080/registry/citizen \
 ## 14. Regulatory Considerations
 
 ### GDPR Compliance
+
 - ✅ Consent is freely given (users can grant/revoke)
 - ✅ Consent is specific (per purpose, not blanket)
 - ✅ Consent is informed (purpose labels are clear)
@@ -680,6 +740,7 @@ curl -X POST http://localhost:8080/registry/citizen \
 - ✅ Audit trail proves consent at time of processing
 
 ### HIPAA Compliance
+
 - ✅ Consent is documented
 - ✅ Consent includes date and time
 - ✅ Consent is revocable
@@ -699,6 +760,6 @@ curl -X POST http://localhost:8080/registry/citizen \
 
 ## Revision History
 
-| Version | Date | Author | Changes |
-|---------|------|--------|---------|
-| 1.0 | 2025-12-03 | Product Team | Initial PRD |
+| Version | Date       | Author       | Changes     |
+| ------- | ---------- | ------------ | ----------- |
+| 1.0     | 2025-12-03 | Product Team | Initial PRD |

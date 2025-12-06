@@ -1,4 +1,4 @@
-# Frontend Dockerfile for ID Gateway UI
+# Frontend Dockerfile for Credo UI
 # Uses nginx to serve static files
 
 FROM nginx:alpine

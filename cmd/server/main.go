@@ -8,8 +8,12 @@ import (
 	"os/signal"
 	"time"
 
+	"id-gateway/internal/audit"
 	authService "id-gateway/internal/auth/service"
 	authStore "id-gateway/internal/auth/store"
+	consentHandler "id-gateway/internal/consent/handler"
+	consentService "id-gateway/internal/consent/service"
+	consentStore "id-gateway/internal/consent/store"
 	jwttoken "id-gateway/internal/jwt_token"
 	"id-gateway/internal/platform/config"
 	"id-gateway/internal/platform/httpserver"
@@ -95,6 +99,11 @@ func registerRoutes(
 	m *metrics.Metrics,
 ) {
 	authHandler := httptransport.NewAuthHandler(authSvc, log, cfg.RegulatedMode, m)
+	consentSvc := consentService.NewService(
+		consentStore.NewInMemoryStore(),
+		consentService.WithAuditor(audit.NewPublisher(audit.NewInMemoryStore())),
+	)
+	consentHTTPHandler := consentHandler.New(consentSvc, log, m)
 
 	// Public auth endpoints (no JWT required)
 	r.Post("/auth/authorize", authHandler.HandleAuthorize)
@@ -104,6 +113,7 @@ func registerRoutes(
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAuth(jwtValidator, log))
 		r.Get("/auth/userinfo", authHandler.HandleUserInfo)
+		consentHTTPHandler.Register(r)
 	})
 }
 

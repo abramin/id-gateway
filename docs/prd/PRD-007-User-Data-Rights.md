@@ -10,13 +10,16 @@
 ## 1. Overview
 
 ### Problem Statement
+
 GDPR grants users specific rights over their personal data:
+
 - **Right to Access** (Article 15): Users can export all their data
 - **Right to Erasure** (Article 17): Users can request data deletion ("Right to be Forgotten")
 
-The ID Gateway must implement both endpoints to comply with GDPR.
+Credo must implement both endpoints to comply with GDPR.
 
 ### Goals
+
 - Implement data export endpoint (covered in PRD-006)
 - Implement data deletion endpoint
 - Delete or pseudonymize user data across all stores
@@ -24,6 +27,7 @@ The ID Gateway must implement both endpoints to comply with GDPR.
 - Provide confirmation of deletion
 
 ### Non-Goals
+
 - Data portability to other systems (just JSON export)
 - Partial deletion (all or nothing)
 - Deletion grace period (immediate deletion)
@@ -51,19 +55,23 @@ The ID Gateway must implement both endpoints to comply with GDPR.
 ## 3. Functional Requirements
 
 ### FR-1: Data Export (Already covered in PRD-006)
+
 See **PRD-006: Audit & Compliance** for `GET /me/data-export` implementation.
 
 ---
 
 ### FR-2: Data Deletion
+
 **Endpoint:** `DELETE /me`
 
 **Description:** Delete all personal data for the authenticated user, while retaining audit logs for compliance.
 
 **Input:**
+
 - Header: `Authorization: Bearer <token>`
 
 **Output (Success - 200):**
+
 ```json
 {
   "message": "All personal data has been deleted",
@@ -75,14 +83,13 @@ See **PRD-006: Audit & Compliance** for `GET /me/data-export` implementation.
     "verifiable_credentials",
     "registry_cache"
   ],
-  "retained": [
-    "audit_logs"
-  ],
+  "retained": ["audit_logs"],
   "note": "Audit logs have been pseudonymized for compliance"
 }
 ```
 
 **Business Logic:**
+
 1. Extract user from bearer token
 2. Emit audit event: `data_deletion_requested`
 3. **Delete from each store:**
@@ -98,11 +105,13 @@ See **PRD-006: Audit & Compliance** for `GET /me/data-export` implementation.
 6. Return confirmation
 
 **GDPR Compliance Notes:**
+
 - **Audit logs retained:** Required for legal compliance (6 years retention for financial regulations)
 - **Pseudonymization:** Hash user ID so events can't be linked back to individual
 - **Immediate deletion:** No grace period (can be added later if needed)
 
 **Error Cases:**
+
 - 401 Unauthorized: Invalid bearer token
 - 500 Internal Server Error: Deletion failed (partial delete should rollback or log)
 
@@ -111,20 +120,23 @@ See **PRD-006: Audit & Compliance** for `GET /me/data-export` implementation.
 ## 4. What Gets Deleted vs Retained
 
 ### Deleted (PII removed):
-| Store | What's Deleted | Why |
-|-------|----------------|-----|
-| UserStore | User profile (email, name, etc.) | Contains PII |
-| SessionStore | All sessions for user | Linked to identity |
-| ConsentStore | All consent records | Linked to identity |
-| VCStore | All issued credentials | Contains or references PII |
-| RegistryCache | All cached registry records | Contains PII (name, DOB, address) |
+
+| Store         | What's Deleted                   | Why                               |
+| ------------- | -------------------------------- | --------------------------------- |
+| UserStore     | User profile (email, name, etc.) | Contains PII                      |
+| SessionStore  | All sessions for user            | Linked to identity                |
+| ConsentStore  | All consent records              | Linked to identity                |
+| VCStore       | All issued credentials           | Contains or references PII        |
+| RegistryCache | All cached registry records      | Contains PII (name, DOB, address) |
 
 ### Retained (Pseudonymized):
-| Store | What's Retained | Why | How Pseudonymized |
-|-------|-----------------|-----|-------------------|
+
+| Store      | What's Retained  | Why                                  | How Pseudonymized                |
+| ---------- | ---------------- | ------------------------------------ | -------------------------------- |
 | AuditStore | All audit events | Legal requirement (prove compliance) | Replace userID with hash(userID) |
 
 ### Pseudonymization Strategy:
+
 ```go
 func pseudonymizeUserID(userID string) string {
     h := sha256.Sum256([]byte(userID + "salt"))
@@ -202,6 +214,7 @@ func (h *Handler) handleDataDeletion(w http.ResponseWriter, r *http.Request) {
 ## 6. Implementation Steps
 
 ### Phase 1: Add Delete Methods to Stores (2-3 hours)
+
 1. Update each store interface with Delete method
 2. Implement in InMemory stores:
    - `InMemoryUserStore.DeleteUser()` - remove from map
@@ -215,6 +228,7 @@ func (h *Handler) handleDataDeletion(w http.ResponseWriter, r *http.Request) {
    - Keep all other fields intact
 
 ### Phase 2: Implement DeletionService (1-2 hours)
+
 1. Create `internal/platform/deletion_service.go`
 2. Implement `DeleteUserData()`:
    - Emit `data_deletion_requested` audit event
@@ -224,12 +238,14 @@ func (h *Handler) handleDataDeletion(w http.ResponseWriter, r *http.Request) {
    - Return success/error
 
 ### Phase 3: Implement handleDataDeletion (1 hour)
+
 1. Update `internal/transport/http/handlers_me.go`
 2. Extract user from token
 3. Call deletionService
 4. Return JSON confirmation
 
 ### Phase 4: Testing (1-2 hours)
+
 1. Create user, perform various operations
 2. Call DELETE /me
 3. Verify all user data deleted
@@ -287,22 +303,27 @@ curl http://localhost:8080/auth/userinfo -H "Authorization: Bearer $TOKEN"
 ## 9. Edge Cases & Error Handling
 
 ### Edge Case 1: Partial Deletion Failure
+
 **Scenario:** User deleted from UserStore, but ConsentStore.Delete() fails.
 
 **Solution:**
+
 - Log error but continue (eventual consistency)
 - OR: Implement transaction/rollback (more complex)
 - **MVP:** Continue and log errors
 
 ### Edge Case 2: User Already Deleted
+
 **Scenario:** DELETE /me called twice.
 
 **Solution:** Idempotent - return success even if user doesn't exist.
 
 ### Edge Case 3: Active Sessions After Deletion
+
 **Scenario:** User has multiple sessions, one is used after deletion request.
 
 **Solution:**
+
 - Delete all sessions immediately
 - Subsequent requests with old tokens fail (user not found)
 - **MVP:** No token revocation list needed
@@ -324,12 +345,14 @@ curl http://localhost:8080/auth/userinfo -H "Authorization: Bearer $TOKEN"
 ## 11. GDPR Compliance Notes
 
 ### Article 17 - Right to Erasure (Right to be Forgotten)
+
 ✅ **User can request deletion** - DELETE /me endpoint
 ✅ **Deletion is prompt** - Immediate, no delay
 ✅ **Deletion is complete** - All personal data removed
 ⚠️ **Exceptions apply** - Audit logs retained for legal compliance (GDPR Article 17(3)(e): "for compliance with legal obligation")
 
 ### Article 15 - Right of Access
+
 ✅ **User can export data** - GET /me/data-export (PRD-006)
 ✅ **Export is comprehensive** - Includes all audit events
 ✅ **Export is machine-readable** - JSON format
@@ -347,6 +370,6 @@ curl http://localhost:8080/auth/userinfo -H "Authorization: Bearer $TOKEN"
 
 ## Revision History
 
-| Version | Date | Author | Changes |
-|---------|------|--------|---------|
-| 1.0 | 2025-12-03 | Product Team | Initial PRD |
+| Version | Date       | Author       | Changes     |
+| ------- | ---------- | ------------ | ----------- |
+| 1.0     | 2025-12-03 | Product Team | Initial PRD |

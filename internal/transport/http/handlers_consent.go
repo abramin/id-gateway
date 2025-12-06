@@ -3,19 +3,17 @@ package httptransport
 import (
 	"context"
 	"log/slog"
-	"time"
 
-	consentHandlers "id-gateway/internal/consent/handlers"
+	consentHandlers "id-gateway/internal/consent/handler"
 	consentModel "id-gateway/internal/consent/models"
 	"id-gateway/internal/platform/metrics"
-	"id-gateway/internal/platform/middleware"
 )
 
 // ConsentService defines the interface for consent operations.
 type ConsentService interface {
-	Grant(ctx context.Context, userID string, purposes []consentModel.ConsentPurpose, ttl time.Duration) ([]*consentModel.ConsentRecord, error)
+	Grant(ctx context.Context, userID string, purposes []consentModel.ConsentPurpose) ([]*consentModel.ConsentRecord, error)
 	Revoke(ctx context.Context, userID string, purpose consentModel.ConsentPurpose) error
-	Require(ctx context.Context, userID string, purpose consentModel.ConsentPurpose, now time.Time) error
+	Require(ctx context.Context, userID string, purpose consentModel.ConsentPurpose) error
 	List(ctx context.Context, userID string) ([]*consentModel.ConsentRecord, error)
 }
 
@@ -28,7 +26,6 @@ type ConsentHandler = consentHandlers.Handler
 func NewConsentHandler(
 	consent ConsentService,
 	logger *slog.Logger,
-	metrics *metrics.Metrics,
-	jwtValidator middleware.JWTValidator) *ConsentHandler {
-	return consentHandlers.New(consent, logger, metrics, jwtValidator)
+	metrics *metrics.Metrics) *ConsentHandler {
+	return consentHandlers.New(consent, logger, metrics)
 }

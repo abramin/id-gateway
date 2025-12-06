@@ -25,7 +25,7 @@ import (
 	dErrors "id-gateway/pkg/domain-errors"
 )
 
-//go:generate mockgen -source=../auth/handlers/handler.go -destination=mocks/auth-mocks.go -package=mocks Service
+//go:generate mockgen -source=handler.go -destination=mocks/auth-mocks.go -package=mocks Service
 type AuthHandlerSuite struct {
 	suite.Suite
 	ctx context.Context
