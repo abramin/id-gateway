@@ -78,13 +78,17 @@ document.addEventListener('alpine:init', () => {
     clearArrows() {
       const canvas = document.getElementById('arrow-canvas');
       if (canvas) {
-        // Remove all path elements
+        // Remove all path elements (arrows)
         const paths = canvas.querySelectorAll('path:not([id^="arrow-"])');
         paths.forEach(path => path.remove());
 
         // Remove all text elements (labels)
         const texts = canvas.querySelectorAll('text');
         texts.forEach(text => text.remove());
+
+        // Remove all rect elements (label backgrounds)
+        const rects = canvas.querySelectorAll('rect');
+        rects.forEach(rect => rect.remove());
       }
     },
 
@@ -233,13 +237,13 @@ document.addEventListener('alpine:init', () => {
         // Create path element
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
 
-        // Use curved path for visual appeal
+        // Use curved path for visual appeal - offset curve more to avoid nodes
         const controlX = (startX + endX) / 2;
-        const controlY = (startY + endY) / 2 - 20;
+        const controlY = (startY + endY) / 2 - 40; // Increased offset for better clearance
 
         path.setAttribute('d', `M ${startX} ${startY} Q ${controlX} ${controlY} ${endX} ${endY}`);
         path.setAttribute('stroke', color);
-        path.setAttribute('stroke-width', '2');
+        path.setAttribute('stroke-width', '3'); // Thicker for better visibility
         path.setAttribute('fill', 'none');
         path.setAttribute('stroke-dasharray', strokeDasharray);
         path.setAttribute('marker-end', `url(#arrow-${arrow.color})`);
@@ -249,28 +253,35 @@ document.addEventListener('alpine:init', () => {
 
         // Add label if provided
         if (arrow.label) {
+          // Add background rectangle first (so it appears behind text)
+          const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          const textWidth = arrow.label.length * 8; // Slightly wider estimate
+          const textHeight = 20; // Taller for better padding
+          rect.setAttribute('x', controlX - textWidth / 2 - 4);
+          rect.setAttribute('y', controlY - textHeight + 2);
+          rect.setAttribute('width', textWidth + 8);
+          rect.setAttribute('height', textHeight);
+          rect.setAttribute('fill', 'white');
+          rect.setAttribute('stroke', color);
+          rect.setAttribute('stroke-width', '2');
+          rect.setAttribute('opacity', '0.95');
+          rect.setAttribute('rx', '4');
+          rect.classList.add('arrow-label-bg');
+
+          canvas.appendChild(rect);
+
+          // Add text on top of background
           const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
           text.setAttribute('x', controlX);
-          text.setAttribute('y', controlY - 5);
+          text.setAttribute('y', controlY - 4);
           text.setAttribute('text-anchor', 'middle');
+          text.setAttribute('dominant-baseline', 'middle');
           text.setAttribute('fill', color);
-          text.setAttribute('font-size', '12');
+          text.setAttribute('font-size', '13');
           text.setAttribute('font-weight', 'bold');
           text.classList.add('arrow-label');
           text.textContent = arrow.label;
 
-          // Add background for readability
-          const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-          const bbox = { width: arrow.label.length * 7, height: 16 };
-          rect.setAttribute('x', controlX - bbox.width / 2);
-          rect.setAttribute('y', controlY - bbox.height);
-          rect.setAttribute('width', bbox.width);
-          rect.setAttribute('height', bbox.height);
-          rect.setAttribute('fill', 'white');
-          rect.setAttribute('opacity', '0.9');
-          rect.setAttribute('rx', '3');
-
-          canvas.appendChild(rect);
           canvas.appendChild(text);
         }
 
