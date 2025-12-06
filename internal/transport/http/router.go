@@ -124,11 +124,11 @@ func domainCodeToHTTPCode(code dErrors.Code) string {
 	case dErrors.CodeNotFound:
 		return "not_found"
 	case dErrors.CodeBadRequest:
-		return "invalid_request"
+		return "bad_request"
 	case dErrors.CodeValidation:
-		return "invalid_input"
+		return "bad_request"
 	case dErrors.CodeInvalidInput:
-		return "invalid_input"
+		return "bad_request"
 	case dErrors.CodeConflict:
 		return "conflict"
 	case dErrors.CodeUnauthorized:
