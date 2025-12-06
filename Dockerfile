@@ -1,4 +1,4 @@
-# Backend Dockerfile for ID Gateway
+# Backend Dockerfile for Credo
 #
 # Optimized for BuildKit caching and smaller layers.
 

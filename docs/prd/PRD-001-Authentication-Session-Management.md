@@ -11,7 +11,7 @@
 
 ### Problem Statement
 
-The ID Gateway requires a lightweight authentication system that manages user identities and sessions without implementing a full OAuth2/OIDC stack. Users need to authenticate, receive tokens, and access their profile information through standard endpoints.
+Credo requires a lightweight authentication system that manages user identities and sessions without implementing a full OAuth2/OIDC stack. Users need to authenticate, receive tokens, and access their profile information through standard endpoints.
 
 ### Goals
 
@@ -191,7 +191,7 @@ This implementation follows the standard **OAuth 2.0 Authorization Code Flow** (
 9. Mark authorization code as used in session (set CodeUsed = true)
 10. Generate JWT access_token with claims: user_id, session_id, client_id, exp, iat, iss, aud
 11. Sign JWT with HS256 using configured signing key
-12. Generate id_token as: `"idt_" + session.ID` (placeholder for now)
+12. Generate id*token as: `"idt*" + session.ID` (placeholder for now)
 13. Set token expiry: expires_in = session TTL in seconds
 14. Update session status to "active"
 15. Save updated session

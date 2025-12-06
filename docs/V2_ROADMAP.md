@@ -9,7 +9,8 @@
 
 ## Philosophy
 
-V2+ transforms the ID Gateway from a functional prototype into:
+V2+ transforms Credo from a functional prototype into:
+
 1. **Production-ready system** with operational maturity
 2. **Distinctive platform** with advanced features that differentiate from "another Auth0 clone"
 
@@ -33,16 +34,19 @@ Before starting V2+, complete:
 V2+ consists of THREE parallel tracks that can be pursued simultaneously:
 
 ### Track A: Production Hardening (MUST DO)
+
 **Priority:** P0 (Critical)
 **Time:** 28-43 hours (3.5-5 days)
 **Goal:** Make system operationally credible
 
 ### Track B: Operational Excellence (RECOMMENDED)
+
 **Priority:** P1 (High)
 **Time:** 15-25 hours (2-3 days)
 **Goal:** Demonstrate scalability awareness
 
 ### Track C: Advanced/Showcase Features (DIFFERENTIATOR)
+
 **Priority:** P1-P3 (varies by feature)
 **Time:** 40-100 hours (5-12 days, pick 2-3 features)
 **Goal:** Stand out from "basic auth gateway" projects
@@ -60,6 +64,7 @@ V2+ consists of THREE parallel tracks that can be pursued simultaneously:
 ### What to Add
 
 **Token Signing:**
+
 - Replace "todo-access" and "todo-id" tokens with real **signed JWTs**
 - Use `github.com/golang-jwt/jwt/v5` or `github.com/lestrrat-go/jwx/v2`
 - Generate RSA 2048-bit keypair on server startup
@@ -67,11 +72,13 @@ V2+ consists of THREE parallel tracks that can be pursued simultaneously:
 - Include standard claims: `iss`, `sub`, `aud`, `exp`, `iat`, `jti`
 
 **JWKS Endpoint:**
+
 - Expose `GET /.well-known/jwks.json` endpoint
 - Return public key in JWK format with `kid`
 - Support key rotation
 
 **Token Structure:**
+
 ```json
 {
   "iss": "id-gateway",
@@ -87,11 +94,13 @@ V2+ consists of THREE parallel tracks that can be pursued simultaneously:
 ### Implementation Steps
 
 1. **Phase 1: Key Management** (1-2h)
+
    - Add `internal/platform/crypto/keys.go`
    - Generate RSA keypair on startup
    - Expose public key as JWK
 
 2. **Phase 2: Token Signing** (2-3h)
+
    - Update `auth/service.go` Token() method
    - Sign tokens with private key
    - Set proper expiry
@@ -100,6 +109,7 @@ V2+ consists of THREE parallel tracks that can be pursued simultaneously:
    - Add `GET /.well-known/jwks.json` handler
 
 ### Acceptance Criteria
+
 - [ ] Tokens are valid JWT format
 - [ ] Tokens can be decoded at jwt.io
 - [ ] JWKS endpoint returns valid JWK
@@ -116,12 +126,14 @@ V2+ consists of THREE parallel tracks that can be pursued simultaneously:
 ### What to Add
 
 **Database:**
+
 - Migrate from in-memory stores to **PostgreSQL**
 - Use schema migrations with **golang-migrate/migrate**
 - Write SQL queries with **sqlc** for type safety
 - Keep in-memory implementations for testing
 
 **Stores to Migrate:**
+
 - UserStore → `users` table
 - SessionStore → `sessions` table
 - ConsentStore → `consent_records` table
@@ -175,6 +187,7 @@ CREATE INDEX idx_audit_timestamp ON audit_events(timestamp);
 ```
 
 ### Acceptance Criteria
+
 - [ ] All stores use Postgres in production
 - [ ] Migrations run cleanly
 - [ ] Connection pool configured
@@ -192,11 +205,13 @@ CREATE INDEX idx_audit_timestamp ON audit_events(timestamp);
 ### What to Add
 
 **Structured Logging:**
+
 - Replace `log.Printf` with `github.com/rs/zerolog` or `go.uber.org/zap`
 - Include correlation ID in all logs
 - JSON format for production
 
 **Metrics:**
+
 - Add Prometheus metrics: `github.com/prometheus/client_golang`
 - Expose `GET /metrics` endpoint
 - Track:
@@ -206,6 +221,7 @@ CREATE INDEX idx_audit_timestamp ON audit_events(timestamp);
   - Audit queue lag (gauge)
 
 ### Acceptance Criteria
+
 - [ ] Structured logs in JSON format
 - [ ] Correlation IDs in all logs
 - [ ] Prometheus metrics exposed
@@ -255,6 +271,7 @@ func (q *AuditQueue) worker(ctx context.Context) {
 ```
 
 ### Acceptance Criteria
+
 - [ ] Audit events written asynchronously
 - [ ] Worker retries failed writes
 - [ ] Graceful shutdown drains queue
@@ -271,17 +288,20 @@ func (q *AuditQueue) worker(ctx context.Context) {
 ### What to Add
 
 **Refresh Tokens:**
+
 - Long-lived refresh tokens (30 days)
 - Short-lived access tokens (1 hour)
 - Refresh token rotation on use
 - Store refresh tokens in database
 
 **Token Revocation:**
+
 - Revocation list or "last valid time" per user
 - Check on token validation
 - Support "revoke all sessions"
 
 ### Token Flow
+
 ```
 1. Login: Issue access (1h) + refresh (30d)
 2. Access expires: Use refresh → new access
@@ -290,6 +310,7 @@ func (q *AuditQueue) worker(ctx context.Context) {
 ```
 
 ### Acceptance Criteria
+
 - [ ] Access tokens expire after 1 hour
 - [ ] Refresh tokens work for 30 days
 - [ ] Token rotation on use
@@ -306,11 +327,13 @@ func (q *AuditQueue) worker(ctx context.Context) {
 ### What to Add
 
 **Documentation:**
+
 - Document integration with Keycloak/Auth0
 - Explain when to build vs integrate
 - Architecture diagrams
 
 **Architecture:**
+
 ```
 User → Keycloak (auth) → Gateway (consent+evidence+decision)
                           ↓
@@ -318,6 +341,7 @@ User → Keycloak (auth) → Gateway (consent+evidence+decision)
 ```
 
 ### Acceptance Criteria
+
 - [ ] Documentation explains integration
 - [ ] Architecture diagrams show both modes
 - [ ] Clear guidance on build vs integrate
@@ -329,30 +353,40 @@ User → Keycloak (auth) → Gateway (consent+evidence+decision)
 See `SYSTEM_DESIGN_ROADMAP.md` for full details:
 
 ## B1. Rate Limiting & DDoS Protection
+
 **Time:** 3-5 hours
+
 - Token bucket algorithm per IP
 - Global rate limiting
 - Document: "Would add Cloudflare in production"
 
 ## B2. Advanced Monitoring
+
 **Time:** 4-6 hours
+
 - Distributed tracing (OpenTelemetry)
 - Error tracking (Sentry)
 - Alerting rules
 
 ## B3. Caching Layer
+
 **Time:** 3-4 hours
+
 - Redis for registry responses
 - Cache invalidation strategy
 
 ## B4. Health Checks & Readiness
+
 **Time:** 2-3 hours
+
 - `/health` endpoint (liveness)
 - `/ready` endpoint (readiness)
 - Database connection check
 
 ## B5. Configuration Management
+
 **Time:** 2-3 hours
+
 - Environment-based config
 - Secrets management
 - Config validation
@@ -448,7 +482,7 @@ compliance_policies:
       consent_records: 2_years
       audit_logs: 7_years
     automated_deletion: true
-    
+
   ccpa:
     opt_out_sale: true
     right_to_delete: true
@@ -633,6 +667,7 @@ Proof:
 ## Minimum Viable V2 (3-4 weeks)
 
 ### Week 1: Production Hardening (Track A)
+
 - **Days 1-2:** JWT + JWKS (4-6h) + PostgreSQL (8-12h)
 - **Days 3-4:** Observability (3-5h) + Audit Queue (4-6h)
 - **Day 5:** Token Refresh & Revocation (5-7h)
@@ -640,18 +675,21 @@ Proof:
 **Deliverable:** Production-ready gateway
 
 ### Week 2: First Showcase Feature (Track C)
+
 - **Days 1-3:** Cryptographic Audit (PRD-006B) - 8-12 hours
 - **Days 4-5:** Testing, documentation, polish
 
 **Deliverable:** Gateway with Merkle tree audit
 
 ### Week 3: Second Showcase Feature (Track C)
+
 - **Days 1-4:** GDPR Automation (PRD-008) - 12-16 hours
 - **Day 5:** Testing, documentation
 
 **Deliverable:** Gateway with compliance automation
 
 ### Week 4: Polish & Documentation
+
 - Integration testing
 - Performance optimization
 - Comprehensive documentation
@@ -660,6 +698,7 @@ Proof:
 ## Extended V2+ (4-6 weeks)
 
 Add Week 5-6 for:
+
 - **Third showcase feature** (ML Risk Scoring or DIDs)
 - **Operational excellence** (rate limiting, caching, monitoring)
 - **Advanced testing** (load tests, security audit)
@@ -671,7 +710,9 @@ Add Week 5-6 for:
 ## By Job Market
 
 ### Backend/Distributed Systems Roles
+
 **Priorities:**
+
 1. Production Hardening (Track A) - ALL
 2. Merkle Tree Audit (C1)
 3. Cerbos Authorization (C7)
@@ -680,7 +721,9 @@ Add Week 5-6 for:
 **Why:** Emphasizes system design, scalability, operational maturity
 
 ### Privacy/Compliance Roles
+
 **Priorities:**
+
 1. Production Hardening (Track A) - ALL
 2. GDPR Automation (C2)
 3. Zero-Knowledge Proofs (C5)
@@ -689,7 +732,9 @@ Add Week 5-6 for:
 **Why:** Emphasizes privacy, compliance, cryptography
 
 ### Fintech/Security Roles
+
 **Priorities:**
+
 1. Production Hardening (Track A) - ALL
 2. ML Risk Scoring (C3)
 3. Merkle Tree Audit (C1)
@@ -698,7 +743,9 @@ Add Week 5-6 for:
 **Why:** Emphasizes fraud detection, security, audit trails
 
 ### Identity/Web3 Startups
+
 **Priorities:**
+
 1. Production Hardening (Track A) - ALL
 2. Decentralized Identity (C4)
 3. Zero-Knowledge Proofs (C5)
@@ -711,6 +758,7 @@ Add Week 5-6 for:
 # Success Criteria
 
 ## Production Ready (Track A Complete)
+
 - [ ] JWT tokens signed and verifiable
 - [ ] PostgreSQL persistence working
 - [ ] Structured logging with correlation IDs
@@ -720,6 +768,7 @@ Add Week 5-6 for:
 - [ ] Documentation for external OIDC
 
 ## Operationally Mature (Track B Complete)
+
 - [ ] Rate limiting implemented
 - [ ] Distributed tracing configured
 - [ ] Redis caching layer
@@ -727,6 +776,7 @@ Add Week 5-6 for:
 - [ ] Config management externalized
 
 ## Showcase Complete (2-3 Track C Features)
+
 - [ ] Each feature has comprehensive documentation
 - [ ] Performance benchmarks documented
 - [ ] Security considerations addressed
@@ -754,7 +804,7 @@ Add Week 5-6 for:
 
 # Revision History
 
-| Version | Date | Author | Changes |
-|---------|------|--------|---------|
-| 1.0 | 2025-12-03 | Product Team | Initial V2 Roadmap |
-| 2.0 | 2025-12-06 | Product Team | Reorganized into tracks, added advanced features (DIDs, ZK, ML, GDPR) |
+| Version | Date       | Author       | Changes                                                               |
+| ------- | ---------- | ------------ | --------------------------------------------------------------------- |
+| 1.0     | 2025-12-03 | Product Team | Initial V2 Roadmap                                                    |
+| 2.0     | 2025-12-06 | Product Team | Reorganized into tracks, added advanced features (DIDs, ZK, ML, GDPR) |

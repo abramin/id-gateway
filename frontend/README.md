@@ -1,6 +1,6 @@
-# ID Gateway - Frontend UI
+# Credo - Frontend UI
 
-Demo UI for the ID Gateway identity verification system. Features two views:
+Demo UI for Credo identity verification system. Features two views:
 
 1. **User Portal** (`index.html`) - Login, consent management, identity verification, VCs, decisions, data rights
 2. **Admin Dashboard** (`admin.html`) - Real-time monitoring, audit logs, decision tracking, compliance view
@@ -256,4 +256,4 @@ The admin dashboard currently uses mock data for demonstration purposes. When th
 
 ## License
 
-Part of the ID Gateway project.
+Part of Credo project.

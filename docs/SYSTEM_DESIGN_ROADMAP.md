@@ -1,6 +1,6 @@
-# ID Gateway: System Design Roadmap
+# Credo: System Design Roadmap
 
-This roadmap describes how the ID Gateway will evolve from a secure, correct core into a fully articulated system-design showcase. Each phase highlights specific engineering principles: scalability, resilience, performance, observability, and operational clarity. The goal is not to build a production identity platform, but to demonstrate the reasoning and tradeoffs behind one.
+This roadmap describes how Credo will evolve from a secure, correct core into a fully articulated system-design showcase. Each phase highlights specific engineering principles: scalability, resilience, performance, observability, and operational clarity. The goal is not to build a production identity platform, but to demonstrate the reasoning and tradeoffs behind one.
 
 ## Phase 1: Core Gateway (Security and Correctness)
 

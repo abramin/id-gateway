@@ -1,14 +1,14 @@
 # Product Requirements Documents (PRDs)
 
-**ID Gateway Implementation Specifications**
+**Credo Implementation Specifications**
 
-This directory contains technical product requirements for implementing the ID Gateway system. Each PRD is written for developers and provides detailed specifications, API contracts, data models, and acceptance criteria.
+This directory contains technical product requirements for implementing Credo system. Each PRD is written for developers and provides detailed specifications, API contracts, data models, and acceptance criteria.
 
 ---
 
 ## Overview
 
-The ID Gateway is a **regulated identity and authorization system** that:
+Credo is a **regulated identity and authorization system** that:
 
 - Authenticates users (OIDC-lite)
 - Manages purpose-based consent

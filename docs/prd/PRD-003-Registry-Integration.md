@@ -10,13 +10,16 @@
 ## 1. Overview
 
 ### Problem Statement
-The ID Gateway needs to integrate with external government and financial registries to verify user identity and screen for sanctions/PEP status. These registries:
+
+Credo needs to integrate with external government and financial registries to verify user identity and screen for sanctions/PEP status. These registries:
+
 - Contain Personally Identifiable Information (PII)
 - Have latency (network calls to external systems)
 - Should be cached to reduce costs and improve performance
 - Must respect data minimization principles (GDPR Article 5)
 
 ### Goals
+
 - Integrate with **Citizen Registry** (population/national ID database)
 - Integrate with **Sanctions/PEP Registry** (watchlists)
 - Implement caching layer with TTL to minimize external calls
@@ -25,6 +28,7 @@ The ID Gateway needs to integrate with external government and financial registr
 - Handle registry errors gracefully (timeouts, unavailable)
 
 ### Non-Goals
+
 - Real external registry integration (use mocks for MVP)
 - Batch registry lookups
 - Registry synchronization/replication
@@ -57,11 +61,13 @@ The ID Gateway needs to integrate with external government and financial registr
 ## 3. Functional Requirements
 
 ### FR-1: Citizen Registry Lookup
+
 **Endpoint:** `POST /registry/citizen`
 
 **Description:** Lookup citizen record from national population registry. Returns identity attributes including full name, date of birth, and validation status.
 
 **Input:**
+
 ```json
 {
   "national_id": "123456789"
@@ -69,6 +75,7 @@ The ID Gateway needs to integrate with external government and financial registr
 ```
 
 **Output (Success - 200, Non-Regulated Mode):**
+
 ```json
 {
   "national_id": "123456789",
@@ -81,6 +88,7 @@ The ID Gateway needs to integrate with external government and financial registr
 ```
 
 **Output (Success - 200, Regulated Mode):**
+
 ```json
 {
   "national_id": "123456789",
@@ -90,6 +98,7 @@ The ID Gateway needs to integrate with external government and financial registr
 ```
 
 **Business Logic:**
+
 1. Extract user from bearer token
 2. Require consent for `ConsentPurposeRegistryCheck`
 3. Validate national_id format (non-empty, alphanumeric)
@@ -103,10 +112,12 @@ The ID Gateway needs to integrate with external government and financial registr
 8. Return record
 
 **Validation:**
+
 - national_id required and non-empty
 - national_id matches pattern: `^[A-Z0-9]{6,20}$`
 
 **Error Cases:**
+
 - 401 Unauthorized: Invalid bearer token
 - 403 Forbidden: Missing consent
 - 400 Bad Request: Invalid national_id format
@@ -114,6 +125,7 @@ The ID Gateway needs to integrate with external government and financial registr
 - 500 Internal Server Error: Cache or store failure
 
 **Audit Event:**
+
 ```json
 {
   "action": "registry_citizen_checked",
@@ -127,11 +139,13 @@ The ID Gateway needs to integrate with external government and financial registr
 ---
 
 ### FR-2: Sanctions/PEP Lookup
+
 **Endpoint:** `POST /registry/sanctions`
 
 **Description:** Screen user against sanctions lists and PEP databases. Returns whether user is flagged and the source of the flag.
 
 **Input:**
+
 ```json
 {
   "national_id": "123456789"
@@ -139,6 +153,7 @@ The ID Gateway needs to integrate with external government and financial registr
 ```
 
 **Output (Success - 200):**
+
 ```json
 {
   "national_id": "123456789",
@@ -149,6 +164,7 @@ The ID Gateway needs to integrate with external government and financial registr
 ```
 
 **Output (User is Sanctioned - 200):**
+
 ```json
 {
   "national_id": "987654321",
@@ -159,6 +175,7 @@ The ID Gateway needs to integrate with external government and financial registr
 ```
 
 **Business Logic:**
+
 1. Extract user from bearer token
 2. Require consent for `ConsentPurposeRegistryCheck`
 3. Validate national_id format
@@ -172,6 +189,7 @@ The ID Gateway needs to integrate with external government and financial registr
 **Note:** Sanctions records do NOT contain PII (only boolean flag), so no minimization needed.
 
 **Error Cases:**
+
 - 401 Unauthorized: Invalid bearer token
 - 403 Forbidden: Missing consent
 - 400 Bad Request: Invalid national_id format
@@ -179,12 +197,13 @@ The ID Gateway needs to integrate with external government and financial registr
 - 500 Internal Server Error: Cache or store failure
 
 **Audit Event:**
+
 ```json
 {
   "action": "registry_sanctions_checked",
   "user_id": "user_123",
   "purpose": "sanctions_screening",
-  "decision": "not_listed",  // or "listed"
+  "decision": "not_listed", // or "listed"
   "reason": "aml_ctf_compliance"
 }
 ```
@@ -192,11 +211,13 @@ The ID Gateway needs to integrate with external government and financial registr
 ---
 
 ### FR-3: Combined Registry Check (Internal Service)
+
 **Function:** `registryService.Check(ctx, nationalID)`
 
 **Description:** Internal service method that performs both citizen and sanctions lookups in one call. Used by decision engine to gather all registry evidence.
 
 **Usage Example:**
+
 ```go
 citizen, sanctions, err := h.registryService.Check(ctx, nationalID)
 if err != nil {
@@ -206,11 +227,13 @@ if err != nil {
 ```
 
 **Returns:**
+
 - `*CitizenRecord` - Full citizen data
 - `*SanctionsRecord` - Sanctions/PEP status
 - `error` - Any registry or network error
 
 **Business Logic:**
+
 1. Call Citizen() and Sanctions() in parallel (use goroutines)
 2. Wait for both to complete or timeout (5 second max)
 3. If either fails, return error
@@ -223,6 +246,7 @@ if err != nil {
 ### TR-1: Data Models
 
 **CitizenRecord** (Location: `internal/evidence/registry/models.go`)
+
 ```go
 type CitizenRecord struct {
     NationalID  string    // Unique national identifier
@@ -235,6 +259,7 @@ type CitizenRecord struct {
 ```
 
 **SanctionsRecord** (Location: `internal/evidence/registry/models.go`)
+
 ```go
 type SanctionsRecord struct {
     NationalID string    // Unique national identifier
@@ -247,6 +272,7 @@ type SanctionsRecord struct {
 ### TR-2: Registry Clients (Mocks)
 
 **CitizenRegistryClient Interface** (Location: `internal/evidence/registry/client_citizen.go`)
+
 ```go
 type CitizenClient interface {
     Check(ctx context.Context, nationalID string) (*CitizenRecord, error)
@@ -265,6 +291,7 @@ func (c *MockCitizenClient) Check(ctx context.Context, nationalID string) (*Citi
 ```
 
 **SanctionsRegistryClient Interface** (Location: `internal/evidence/registry/client_sanctions.go`)
+
 ```go
 type SanctionsClient interface {
     Check(ctx context.Context, nationalID string) (*SanctionsRecord, error)
@@ -282,6 +309,7 @@ func (c *MockSanctionsClient) Check(ctx context.Context, nationalID string) (*Sa
 ```
 
 **Mock Data Generation:**
+
 - Use hash of nationalID to deterministically generate data
 - Example: Hash(nationalID) % 100 determines age
 - Example: Hash(nationalID) % 10 determines if PEP
@@ -289,6 +317,7 @@ func (c *MockSanctionsClient) Check(ctx context.Context, nationalID string) (*Sa
 ### TR-3: Cache Store
 
 **RegistryCacheStore Interface** (Location: `internal/evidence/registry/store.go`)
+
 ```go
 type RegistryCacheStore interface {
     SaveCitizen(ctx context.Context, record *CitizenRecord) error
@@ -300,6 +329,7 @@ type RegistryCacheStore interface {
 ```
 
 **InMemoryCache** (Location: `internal/evidence/registry/store_memory.go`)
+
 ```go
 type InMemoryCache struct {
     mu        sync.RWMutex
@@ -321,6 +351,7 @@ func (c *InMemoryCache) FindCitizen(ctx context.Context, nationalID string) (*Ci
 ### TR-4: Service Layer
 
 **RegistryService** (Location: `internal/evidence/registry/service.go`)
+
 ```go
 type Service struct {
     citizenClient   CitizenClient
@@ -339,6 +370,7 @@ func (s *Service) Sanctions(ctx context.Context, nationalID string) (*SanctionsR
 ### TR-5: Data Minimization
 
 **MinimizeCitizenRecord Function** (Location: `internal/evidence/registry/models.go`)
+
 ```go
 func MinimizeCitizenRecord(record *CitizenRecord, regulatedMode bool) *CitizenRecord {
     if !regulatedMode {
@@ -355,6 +387,7 @@ func MinimizeCitizenRecord(record *CitizenRecord, regulatedMode bool) *CitizenRe
 ```
 
 **When to Apply:**
+
 - After fetching from registry client
 - Before returning in HTTP response
 - Before storing in cache (store full, minimize on read)
@@ -365,14 +398,15 @@ func MinimizeCitizenRecord(record *CitizenRecord, regulatedMode bool) *CitizenRe
 
 ### Endpoint Summary
 
-| Endpoint | Method | Auth Required | Consent Required | Purpose |
-|----------|--------|---------------|------------------|---------|
-| `/registry/citizen` | POST | Yes | `registry_check` | Citizen lookup |
-| `/registry/sanctions` | POST | Yes | `registry_check` | Sanctions screening |
+| Endpoint              | Method | Auth Required | Consent Required | Purpose             |
+| --------------------- | ------ | ------------- | ---------------- | ------------------- |
+| `/registry/citizen`   | POST   | Yes           | `registry_check` | Citizen lookup      |
+| `/registry/sanctions` | POST   | Yes           | `registry_check` | Sanctions screening |
 
 ### Mock Client Configuration
 
 **Environment Variables:**
+
 ```bash
 CITIZEN_REGISTRY_LATENCY=100ms   # Simulated latency
 SANCTIONS_REGISTRY_LATENCY=50ms  # Simulated latency
@@ -382,12 +416,14 @@ REGULATED_MODE=true              # Enable data minimization
 ### Cache Behavior
 
 **Cache Hit:**
+
 - Record found in cache
 - CheckedAt < 5 minutes ago
 - Return cached record (no external call)
 - Latency: <1ms
 
 **Cache Miss:**
+
 - Record not in cache OR expired
 - Call external client
 - Store in cache with current timestamp
@@ -399,19 +435,23 @@ REGULATED_MODE=true              # Enable data minimization
 ## 6. Security Requirements
 
 ### SR-1: Data Minimization (GDPR Article 5)
+
 In regulated mode:
+
 - Strip FullName, DateOfBirth, Address from citizen records
 - Keep only Valid flag and NationalID
 - Apply minimization before storing in logs
 - Apply minimization before returning to client
 
 ### SR-2: Cache Security
+
 - Cache TTL must be enforced (5 minutes max)
 - Cache must be cleared on user data deletion request
 - Cache should not persist to disk (in-memory only)
 - Cache keys should not leak in logs
 
 ### SR-3: Registry Call Authorization
+
 - All registry calls require valid bearer token
 - All registry calls require consent
 - Rate limiting per user (future: 10 requests/minute)
@@ -421,15 +461,18 @@ In regulated mode:
 ## 7. Performance Requirements
 
 ### PR-1: Latency
+
 - Cache hit: <5ms p99
 - Cache miss (mock client): <250ms p99
 - Combined check (parallel): <300ms p99
 
 ### PR-2: Cache Hit Rate
+
 - Target: >80% cache hit rate for repeated lookups
 - Monitor cache expiry impact on hit rate
 
 ### PR-3: Timeout Handling
+
 - Client timeout: 5 seconds
 - If registry unreachable, fail fast
 - Return 504 Gateway Timeout to client
@@ -439,7 +482,9 @@ In regulated mode:
 ## 8. Observability Requirements
 
 ### Logging
+
 **Events to Log:**
+
 - Registry call started (debug)
 - Registry call completed (debug, include latency)
 - Cache hit/miss (debug)
@@ -449,6 +494,7 @@ In regulated mode:
 - Sanctions checked (audit)
 
 ### Metrics
+
 - Registry calls total (counter, labeled by type: citizen/sanctions)
 - Cache hit rate (gauge, labeled by type)
 - Registry latency (histogram, labeled by type)
@@ -460,6 +506,7 @@ In regulated mode:
 ## 9. Testing Requirements
 
 ### Unit Tests
+
 - [ ] Test MinimizeCitizenRecord in regulated mode
 - [ ] Test MinimizeCitizenRecord in non-regulated mode
 - [ ] Test cache hit (recent record)
@@ -468,6 +515,7 @@ In regulated mode:
 - [ ] Test mock client data generation (deterministic)
 
 ### Integration Tests
+
 - [ ] Test citizen lookup with cache miss
 - [ ] Test citizen lookup with cache hit
 - [ ] Test sanctions lookup with cache
@@ -476,11 +524,13 @@ In regulated mode:
 - [ ] Test consent enforcement (403 without consent)
 
 ### Performance Tests
+
 - [ ] Test cache hit latency (<5ms)
 - [ ] Test mock client latency (~100ms)
 - [ ] Test parallel Check() latency (<300ms)
 
 ### Manual Testing
+
 ```bash
 # 1. Grant consent first
 curl -X POST http://localhost:8080/auth/consent \
@@ -546,6 +596,7 @@ curl -X POST http://localhost:8080/registry/citizen \
 ## 10. Implementation Steps
 
 ### Phase 1: Service Layer Enhancement (1-2 hours)
+
 1. Update `RegistryService` in `internal/evidence/registry/service.go`
 2. Implement `Citizen()`:
    - Check cache first
@@ -561,6 +612,7 @@ curl -X POST http://localhost:8080/registry/citizen \
    - Return both records
 
 ### Phase 2: HTTP Handlers (1-2 hours)
+
 1. Implement `handleRegistryCitizen`:
    - Extract user from token
    - Require consent
@@ -573,6 +625,7 @@ curl -X POST http://localhost:8080/registry/citizen \
    - Call service.Sanctions()
 
 ### Phase 3: Mock Clients Enhancement (30 min)
+
 1. Update `MockCitizenClient.Check()`:
    - Add configurable latency (sleep)
    - Generate deterministic test data
@@ -581,6 +634,7 @@ curl -X POST http://localhost:8080/registry/citizen \
    - Support configurable listed flag
 
 ### Phase 4: Testing (1-2 hours)
+
 1. Unit tests for service methods
 2. Integration tests for cache behavior
 3. Manual testing with curl
@@ -607,6 +661,7 @@ curl -X POST http://localhost:8080/registry/citizen \
 ## 12. Dependencies & Blockers
 
 ### Dependencies
+
 - PRD-001: Authentication & Session Management (for user extraction)
 - PRD-002: Consent Management (for consent checks)
 - `internal/evidence/registry/store_memory.go` - ✅ Implemented
@@ -614,6 +669,7 @@ curl -X POST http://localhost:8080/registry/citizen \
 - `pkg/errors` - ✅ Implemented
 
 ### Potential Blockers
+
 - None identified
 
 ---
@@ -636,12 +692,14 @@ curl -X POST http://localhost:8080/registry/citizen \
 ## 14. Regulatory Considerations
 
 ### GDPR Compliance (Article 5: Data Minimization)
+
 - ✅ Collect only necessary data (national ID for lookup)
 - ✅ Retain full data only in cache (5 min TTL)
 - ✅ Return minimized data in regulated mode
 - ✅ Clear cache on user data deletion
 
 ### KYC/AML Compliance
+
 - ✅ Verify identity against authoritative source
 - ✅ Screen against sanctions/PEP lists
 - ✅ Audit all checks for compliance evidence
@@ -660,6 +718,6 @@ curl -X POST http://localhost:8080/registry/citizen \
 
 ## Revision History
 
-| Version | Date | Author | Changes |
-|---------|------|--------|---------|
-| 1.0 | 2025-12-03 | Product Team | Initial PRD |
+| Version | Date       | Author       | Changes     |
+| ------- | ---------- | ------------ | ----------- |
+| 1.0     | 2025-12-03 | Product Team | Initial PRD |

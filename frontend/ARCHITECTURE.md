@@ -2,9 +2,10 @@
 
 ## Overview
 
-The ID Gateway frontend is a **zero-build, CDN-based single-page application** built with Alpine.js and Tailwind CSS. It demonstrates the capabilities of the identity verification gateway through two distinct interfaces.
+Credo frontend is a **zero-build, CDN-based single-page application** built with Alpine.js and Tailwind CSS. It demonstrates the capabilities of the identity verification gateway through two distinct interfaces.
 
 Related docs:
+
 - Project README (frontend overview): [README.md](README.md)
 - OAuth2 attack paths (educational module): [ATTACK_PATHS.md](ATTACK_PATHS.md)
 - Attack module implementation notes: [ATTACK_MODULE_SUMMARY.md](ATTACK_MODULE_SUMMARY.md)
@@ -12,12 +13,14 @@ Related docs:
 ## Design Principles
 
 ### 1. Zero Build Complexity
+
 - No webpack, vite, or build tools
 - Direct CDN imports (Alpine.js, Tailwind CSS)
 - Serves static files with nginx
 - Instant development setup
 
 ### 2. Separation of Concerns
+
 ```
 Presentation Layer (HTML)
     ↓
@@ -29,6 +32,7 @@ Backend API (Go)
 ```
 
 ### 3. Progressive Enhancement
+
 - Works without JavaScript (basic HTML)
 - Enhanced with Alpine.js reactivity
 - Styled with Tailwind utilities
@@ -60,12 +64,14 @@ frontend/
 **Purpose:** Abstract HTTP communication with backend
 
 **Features:**
+
 - Environment detection (dev vs docker vs prod)
 - Token management (localStorage)
 - Error handling
 - RESTful endpoint methods
 
 **Pattern:**
+
 ```javascript
 class APIClient {
     async authorize(email) { ... }
@@ -83,6 +89,7 @@ class APIClient {
 **Purpose:** Client-side JWT decoding and validation utilities
 
 **Features:**
+
 ```javascript
 // JWT Decoding (browser-safe, no external libs)
 decodeJWT(token) {
@@ -121,6 +128,7 @@ formatExpirationTime(seconds) {
 **Purpose:** End-user interface for identity verification flow
 
 **State Management:**
+
 ```javascript
 Alpine.data('app', () => ({
     // Authentication
@@ -140,6 +148,7 @@ Alpine.data('app', () => ({
 ```
 
 **User Flow:**
+
 1. Login (email-only, auto-create user)
 2. Grant consent (purpose-based)
 3. Identity verification (citizen + sanctions)
@@ -152,6 +161,7 @@ Alpine.data('app', () => ({
 **Purpose:** Real-time monitoring and compliance visualization
 
 **Features:**
+
 - Live statistics dashboard
 - Recent decisions feed
 - Active user monitoring
@@ -160,12 +170,13 @@ Alpine.data('app', () => ({
 - Live audit stream with filtering
 
 **Mock Data Strategy:**
+
 ```javascript
 // Currently uses mock data generators
 // To be replaced with real API calls when backend admin endpoints exist
-generateMockDecisions(count)
-generateMockUsers(count)
-generateMockAuditEvents(count)
+generateMockDecisions(count);
+generateMockUsers(count);
+generateMockAuditEvents(count);
 ```
 
 ### OAuth2 Demo (`demo.html` + `demo.js`)
@@ -173,23 +184,28 @@ generateMockAuditEvents(count)
 **Purpose:** Interactive demonstration of OAuth2 Authorization Code Flow with real JWT tokens
 
 **Features:**
+
 - **3-Step OAuth2 Flow Visualization:**
+
   1. Authorization request (email + scopes → auth code)
   2. Token exchange (auth code → access token + ID token)
   3. UserInfo request (access token → user claims)
 
 - **JWT Token Decoder:**
+
   - Automatic JWT parsing (header.payload.signature)
   - Syntax highlighting (blue=header, purple=payload, orange=signature)
   - Base64 decoding of claims
 
 - **Claims Inspector:**
+
   - Collapsible panels for Access Token and ID Token
   - Custom claims display (user_id, session_id, client_id)
   - Standard claims (iss, aud, exp, iat, jti)
   - Human-readable timestamps with Unix epoch values
 
 - **Token Validation & Testing:**
+
   - Real-time expiration countdown (updates every second)
   - Visual status indicators (VALID/EXPIRED badges)
   - Token lifecycle monitoring
@@ -201,6 +217,7 @@ generateMockAuditEvents(count)
   - Educational error responses
 
 **State Management:**
+
 ```javascript
 Alpine.data('oauthDemo', () => ({
     // Form data
@@ -222,6 +239,7 @@ Alpine.data('oauthDemo', () => ({
 ```
 
 **Educational Value:**
+
 - Shows complete OAuth2 flow with real backend
 - Demonstrates JWT structure and claims
 - Teaches token validation and expiration handling
@@ -236,20 +254,24 @@ Alpine.js provides fine-grained reactivity:
 
 ```html
 <div x-data="app">
-    <span x-text="userEmail"></span>          <!-- Reactive text -->
-    <input x-model="email">                   <!-- Two-way binding -->
-    <button @click="login">Login</button>     <!-- Event handling -->
-    <div x-show="isAuthenticated">...</div>   <!-- Conditional rendering -->
+  <span x-text="userEmail"></span>
+  <!-- Reactive text -->
+  <input x-model="email" />
+  <!-- Two-way binding -->
+  <button @click="login">Login</button>
+  <!-- Event handling -->
+  <div x-show="isAuthenticated">...</div>
+  <!-- Conditional rendering -->
 </div>
 ```
 
 ### Persistence Strategy
 
-| Data | Storage | Reason |
-|------|---------|--------|
-| Access Token | localStorage | Need across page reloads |
-| ID Token | localStorage | Optional, for reference |
-| User Email | localStorage | Show "logged in as..." |
+| Data          | Storage          | Reason                      |
+| ------------- | ---------------- | --------------------------- |
+| Access Token  | localStorage     | Need across page reloads    |
+| ID Token      | localStorage     | Optional, for reference     |
+| User Email    | localStorage     | Show "logged in as..."      |
 | Session State | Alpine.js memory | Reactive, cleared on logout |
 
 ## API Integration
@@ -258,13 +280,13 @@ Alpine.js provides fine-grained reactivity:
 
 ```javascript
 const API_BASE_URL = (() => {
-    if (window.location.port === '3000') {
-        return '/api';  // Docker: nginx proxy to backend
-    }
-    if (window.location.hostname === 'localhost') {
-        return 'http://localhost:8080';  // Dev: direct backend
-    }
-    return '';  // Production: same origin
+  if (window.location.port === "3000") {
+    return "/api"; // Docker: nginx proxy to backend
+  }
+  if (window.location.hostname === "localhost") {
+    return "http://localhost:8080"; // Dev: direct backend
+  }
+  return ""; // Production: same origin
 })();
 ```
 
@@ -272,13 +294,13 @@ const API_BASE_URL = (() => {
 
 ```javascript
 try {
-    const data = await api.someMethod();
-    this.success = 'Operation successful';
+  const data = await api.someMethod();
+  this.success = "Operation successful";
 } catch (err) {
-    console.error('Operation failed:', err);
-    this.error = err.message || 'Operation failed';
+  console.error("Operation failed:", err);
+  this.error = err.message || "Operation failed";
 } finally {
-    this.loading = false;
+  this.loading = false;
 }
 ```
 
@@ -290,15 +312,17 @@ try {
 - 5% custom CSS in `styles.css`
 
 **Example:**
+
 ```html
 <div class="bg-white rounded-lg shadow-md p-6">
-    <h3 class="text-lg font-bold text-gray-900 mb-4">Title</h3>
+  <h3 class="text-lg font-bold text-gray-900 mb-4">Title</h3>
 </div>
 ```
 
 ### Custom CSS (`styles.css`)
 
 Used for:
+
 - Animations (spinner, pulse, fadeOut)
 - Hover effects (cards)
 - Table styling (audit log)
@@ -327,6 +351,7 @@ Used for:
 ```
 
 **Benefits:**
+
 - Single domain (no CORS)
 - Clean URLs (/api/auth/login)
 - Production-ready setup
@@ -337,20 +362,22 @@ Used for:
 
 ⚠️ **Not Production-Ready**
 
-| Feature | Demo | Production Needed |
-|---------|------|-------------------|
-| Token Storage | localStorage | HttpOnly cookies |
-| HTTPS | No | Required |
-| CSRF Protection | No | Tokens required |
-| XSS Protection | Basic | CSP headers |
+| Feature          | Demo             | Production Needed    |
+| ---------------- | ---------------- | -------------------- |
+| Token Storage    | localStorage     | HttpOnly cookies     |
+| HTTPS            | No               | Required             |
+| CSRF Protection  | No               | Tokens required      |
+| XSS Protection   | Basic            | CSP headers          |
 | Input Validation | Client-side only | Server-side required |
 
 ### CORS Strategy
 
 Docker (nginx proxy):
+
 - No CORS needed (same origin)
 
 Local dev (different ports):
+
 - Backend must set CORS headers
 - Allow `http://localhost:8000`
 
@@ -359,11 +386,13 @@ Local dev (different ports):
 ### Optimizations
 
 1. **CDN Resources**
+
    - Alpine.js (15KB) from jsdelivr CDN
    - Tailwind CSS from CDN
    - Browser caching
 
 2. **Lazy Loading**
+
    - Alpine.js deferred with `defer` attribute
    - Images lazy-loaded (none yet)
 
@@ -382,6 +411,7 @@ Local dev (different ports):
 ### Manual Testing Checklist
 
 **User Portal:**
+
 - [ ] Login creates user
 - [ ] Token stored in localStorage
 - [ ] Consent toggle works
@@ -392,6 +422,7 @@ Local dev (different ports):
 - [ ] Delete account clears session
 
 **Admin Dashboard:**
+
 - [ ] Stats update on refresh
 - [ ] Decisions feed shows color coding
 - [ ] Active users list populates
@@ -401,6 +432,7 @@ Local dev (different ports):
 - [ ] Live updates every 5 seconds
 
 **OAuth2 Demo:**
+
 - [ ] Step 1: Authorization code generated
 - [ ] Step 2: Tokens exchanged successfully
 - [ ] Step 3: UserInfo retrieved with access token
@@ -416,6 +448,7 @@ Local dev (different ports):
 ### Browser Testing
 
 Tested on:
+
 - Chrome 120+
 - Firefox 121+
 - Safari 17+
@@ -424,18 +457,21 @@ Tested on:
 ## Future Enhancements
 
 ### Short Term
+
 - [ ] Real backend integration (replace mocks)
 - [ ] WebSocket for live updates
 - [ ] Admin authentication
 - [ ] Error boundary handling
 
 ### Medium Term
+
 - [ ] Dark mode toggle
 - [ ] Mobile responsive tables
 - [ ] Export charts/graphs
 - [ ] i18n support
 
 ### Long Term
+
 - [ ] PWA capabilities (offline)
 - [ ] E2E testing (Playwright)
 - [ ] Build step for optimization
@@ -446,6 +482,7 @@ Tested on:
 ### Adding a New Feature
 
 1. **Update API Client**
+
    ```javascript
    // js/api.js
    async newFeature(params) {
@@ -457,6 +494,7 @@ Tested on:
    ```
 
 2. **Add State to Alpine Component**
+
    ```javascript
    // js/app.js or admin.js
    newFeatureData: null,
@@ -469,28 +507,31 @@ Tested on:
    ```html
    <button @click="callNewFeature">Click</button>
    <div x-show="newFeatureData">
-       <span x-text="newFeatureData.result"></span>
+     <span x-text="newFeatureData.result"></span>
    </div>
    ```
 
 ### Debugging Tips
 
 **API Issues:**
+
 ```javascript
 // Check console for:
-console.log('API Base URL:', api.baseURL);
-console.log('Token:', localStorage.getItem('access_token'));
+console.log("API Base URL:", api.baseURL);
+console.log("Token:", localStorage.getItem("access_token"));
 ```
 
 **State Issues:**
+
 ```html
 <!-- Add to HTML for debugging -->
 <div x-data="app">
-    <pre x-text="JSON.stringify($data, null, 2)"></pre>
+  <pre x-text="JSON.stringify($data, null, 2)"></pre>
 </div>
 ```
 
 **Network Issues:**
+
 - Check browser DevTools Network tab
 - Verify backend is running
 - Check CORS errors
@@ -498,6 +539,7 @@ console.log('Token:', localStorage.getItem('access_token'));
 ## Contributing
 
 When adding new features:
+
 1. Follow existing patterns (API client → Alpine state → HTML)
 2. Use Tailwind classes (avoid custom CSS)
 3. Handle errors gracefully
