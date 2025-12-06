@@ -12,6 +12,7 @@ import (
 	"id-gateway/internal/audit"
 	"id-gateway/internal/auth/models"
 	"id-gateway/internal/auth/store"
+	jwttoken "id-gateway/internal/jwt_token"
 	"id-gateway/internal/platform/metrics"
 	"id-gateway/internal/platform/middleware"
 	"id-gateway/pkg/attrs"
@@ -38,6 +39,7 @@ type Service struct {
 	sessionTTL     time.Duration
 	logger         *slog.Logger
 	auditPublisher AuditPublisher
+	jwt            *jwttoken.JWTService
 	metrics        *metrics.Metrics
 }
 
@@ -73,6 +75,12 @@ func WithAuditPublisher(publisher AuditPublisher) Option {
 func WithMetrics(m *metrics.Metrics) Option {
 	return func(s *Service) {
 		s.metrics = m
+	}
+}
+
+func WithJWTService(jwtService *jwttoken.JWTService) Option {
+	return func(s *Service) {
+		s.jwt = jwtService
 	}
 }
 
@@ -314,8 +322,15 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 	}
 
 	// 8. Generate tokens
-	accessToken := "at_sess_" + session.ID.String()
-	idToken := "idt_" + session.ID.String()
+	accessToken, err := s.jwt.GenerateAccessToken(session.UserID, session.ID, session.ClientID)
+	if err != nil {
+		return nil, dErrors.New(dErrors.CodeInternal, "failed to generate access token")
+	}
+
+	idToken, err := s.jwt.GenerateIDToken(session.UserID, session.ID, session.ClientID)
+	if err != nil {
+		return nil, dErrors.New(dErrors.CodeInternal, "failed to generate ID token")
+	}
 	s.logAudit(ctx, eventTokenIssued,
 		"user_id", session.UserID.String(),
 		"session_id", session.ID.String(),

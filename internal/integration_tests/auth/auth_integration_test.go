@@ -31,16 +31,17 @@ func SetupSuite(t *testing.T) (*chi.Mux, *store.InMemoryUserStore, *store.InMemo
 
 	userStore := store.NewInMemoryUserStore()
 	sessionStore := store.NewInMemorySessionStore()
-
-	authService := service.NewService(userStore, sessionStore, 5*time.Minute, service.WithLogger(logger))
-
-	// Initialize JWT service for token generation/validation in tests
 	jwtService := jwttoken.NewJWTService(
 		"test-secret-key",
 		"id-gateway",
 		"id-gateway-client",
+		15*time.Minute,
 	)
 	jwtValidator := jwttoken.NewJWTServiceAdapter(jwtService)
+	authService := service.NewService(userStore, sessionStore, 5*time.Minute,
+		service.WithLogger(logger),
+		service.WithJWTService(jwtService),
+	)
 
 	router := chi.NewRouter()
 	authHandler := httptransport.NewAuthHandler(authService, logger, false, nil)

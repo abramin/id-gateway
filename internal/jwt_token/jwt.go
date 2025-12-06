@@ -23,27 +23,52 @@ type JWTService struct {
 	signingKey []byte
 	issuer     string
 	audience   string
+	tokenTTL   time.Duration
 }
 
-func NewJWTService(signingKey string, issuer string, audience string) *JWTService {
+func NewJWTService(signingKey string, issuer string, audience string, tokenTTL time.Duration) *JWTService {
 	return &JWTService{
 		signingKey: []byte(signingKey),
 		issuer:     issuer,
 		audience:   audience,
+		tokenTTL:   tokenTTL,
 	}
 }
 
 func (s *JWTService) GenerateAccessToken(
 	userID uuid.UUID,
 	sessionID uuid.UUID,
-	clientID string,
-	expiresIn time.Duration) (string, error) {
+	clientID string) (string, error) {
 	newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, Claims{
 		UserID:    userID.String(),
 		SessionID: sessionID.String(),
 		ClientID:  clientID,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(expiresIn)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(s.tokenTTL)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Issuer:    s.issuer,
+			Audience:  []string{s.audience},
+			ID:        uuid.NewString(),
+		},
+	})
+
+	signedToken, err := newToken.SignedString(s.signingKey)
+	if err != nil {
+		return "", err
+	}
+	return signedToken, nil
+}
+
+func (s *JWTService) GenerateIDToken(
+	userID uuid.UUID,
+	sessionID uuid.UUID,
+	clientID string) (string, error) {
+	newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, Claims{
+		UserID:    userID.String(),
+		SessionID: sessionID.String(),
+		ClientID:  clientID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(s.tokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			Issuer:    s.issuer,
 			Audience:  []string{s.audience},
@@ -84,20 +109,4 @@ func (s *JWTService) ValidateToken(tokenString string) (*Claims, error) {
 	}
 
 	return claims, nil
-}
-
-func (s *JWTService) ExtractUserIDFromToken(tokenString string) (uuid.UUID, error) {
-	claims, err := s.ValidateToken(tokenString)
-	if err != nil {
-		return uuid.Nil, err
-	}
-	return uuid.Parse(claims.UserID)
-}
-
-func (s *JWTService) ExtractSessionIDFromAuthHeader(authHeader string) (uuid.UUID, error) {
-	claims, err := s.ValidateToken(authHeader)
-	if err != nil {
-		return uuid.Nil, err
-	}
-	return uuid.Parse(claims.SessionID)
 }

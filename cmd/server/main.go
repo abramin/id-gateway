@@ -32,20 +32,23 @@ func main() {
 
 	// Initialize Prometheus metrics
 	m := metrics.New()
+	// Initialize JWT service and adapter for auth middleware
+	jwtService := jwttoken.NewJWTService(
+		cfg.JWTSigningKey,
+		"id-gateway",
+		"id-gateway-client",
+		cfg.TokenTTL,
+	)
 
 	a := authService.NewService(
 		authStore.NewInMemoryUserStore(),
 		authStore.NewInMemorySessionStore(),
 		24*time.Hour, // TODO Make configurable
 		authService.WithMetrics(m),
+		authService.WithLogger(log),
+		authService.WithJWTService(jwtService),
 	)
 
-	// Initialize JWT service and adapter for auth middleware
-	jwtService := jwttoken.NewJWTService(
-		cfg.JWTSigningKey,
-		"id-gateway",
-		"id-gateway-client",
-	)
 	jwtValidator := jwttoken.NewJWTServiceAdapter(jwtService)
 
 	r := chi.NewRouter()
