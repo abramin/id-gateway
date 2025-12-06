@@ -24,18 +24,23 @@ import (
 func TestConsentHandler_handleGrantConsent_HappyPath(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-
+	consentTTL := 24 * time.Hour
 	mockConsent := mocks.NewMockConsentService(ctrl)
 	mockConsent.EXPECT().
-		Grant(gomock.Any(), "user123", consentModel.ConsentPurposeLogin, 24*time.Hour).
-		Return(nil).
+		Grant(gomock.Any(), "user123", gomock.Any(), consentTTL).
+		DoAndReturn(func(ctx context.Context, userID string, purposes []consentModel.ConsentPurpose, ttl time.Duration) ([]*consentModel.ConsentRecord, error) {
+			assert.Equal(t, "user123", userID)
+			assert.Equal(t, []consentModel.ConsentPurpose{consentModel.ConsentPurposeLogin}, purposes)
+			assert.Equal(t, consentTTL, ttl)
+			return []*consentModel.ConsentRecord{}, nil
+		}).
 		Times(1)
 
 	handler := &ConsentHandler{
 		logger:     nil,
 		consent:    mockConsent,
 		metrics:    &metrics.Metrics{},
-		consentTTL: 24 * time.Hour,
+		consentTTL: consentTTL,
 	}
 
 	grantReq := consentModel.GrantConsentRequest{
