@@ -53,3 +53,14 @@ The project includes two web interfaces:
 2. **Admin Dashboard** (`/admin.html`) - Real-time monitoring, audit logs, decision tracking, compliance overview
 
 See [Frontend Readme](frontend/README.md) for details.
+
+## API quick reference
+
+Core backend endpoints (JWT-protected unless noted):
+
+- `POST /auth/authorize` (public) – issue an authorization code for the login flow.
+- `POST /auth/token` (public) – exchange the code for an access token.
+- `GET /auth/userinfo` – return the authenticated user's profile.
+- `POST /auth/consent` – grant consent for one or more purposes (login, registry check, VC issuance, decision evaluation).
+- `POST /auth/consent/revoke` – revoke consent for one or more purposes.
+- `GET /auth/consent?status=<active|expired|revoked>&purpose=<purpose>` – list consents with optional filters.
