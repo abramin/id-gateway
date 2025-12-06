@@ -71,16 +71,16 @@ func initializeJWTService(cfg *config.Server) (*jwttoken.JWTService, *jwttoken.J
 func setupRouter(log *slog.Logger, m *metrics.Metrics) *chi.Mux {
 	r := chi.NewRouter()
 
-	// Add Prometheus metrics endpoint (no auth required)
-	r.Handle("/metrics", promhttp.Handler())
-
-	// Common middleware for all routes
+	// Common middleware for all routes (must be defined before routes)
 	r.Use(middleware.Recovery(log))
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger(log))
 	r.Use(middleware.Timeout(30 * time.Second))
 	r.Use(middleware.ContentTypeJSON)
 	r.Use(middleware.LatencyMiddleware(m))
+
+	// Add Prometheus metrics endpoint (no auth required)
+	r.Handle("/metrics", promhttp.Handler())
 
 	return r
 }
