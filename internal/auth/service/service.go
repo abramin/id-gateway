@@ -12,7 +12,6 @@ import (
 	"id-gateway/internal/audit"
 	"id-gateway/internal/auth/models"
 	"id-gateway/internal/auth/store"
-	jwttoken "id-gateway/internal/jwt_token"
 	"id-gateway/internal/platform/metrics"
 	"id-gateway/internal/platform/middleware"
 	"id-gateway/pkg/attrs"
@@ -33,13 +32,18 @@ type SessionStore interface {
 	FindByCode(ctx context.Context, code string) (*models.Session, error)
 }
 
+type TokenGenerator interface {
+	GenerateAccessToken(userID uuid.UUID, sessionID uuid.UUID, clientID string) (string, error)
+	GenerateIDToken(userID uuid.UUID, sessionID uuid.UUID, clientID string) (string, error)
+}
+
 type Service struct {
 	users          UserStore
 	sessions       SessionStore
 	sessionTTL     time.Duration
 	logger         *slog.Logger
 	auditPublisher AuditPublisher
-	jwt            *jwttoken.JWTService
+	jwt            TokenGenerator
 	metrics        *metrics.Metrics
 }
 
@@ -78,7 +82,7 @@ func WithMetrics(m *metrics.Metrics) Option {
 	}
 }
 
-func WithJWTService(jwtService *jwttoken.JWTService) Option {
+func WithJWTService(jwtService TokenGenerator) Option {
 	return func(s *Service) {
 		s.jwt = jwtService
 	}

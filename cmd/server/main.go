@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -30,17 +31,21 @@ func main() {
 		"regulated_mode", cfg.RegulatedMode,
 	)
 
-	// Initialize Prometheus metrics
 	m := metrics.New()
-	// Initialize JWT service and adapter for auth middleware
-	jwtService := jwttoken.NewJWTService(
-		cfg.JWTSigningKey,
-		"id-gateway",
-		"id-gateway-client",
-		cfg.TokenTTL,
-	)
+	jwtService, jwtValidator := initializeJWTService(&cfg)
+	authSvc := initializeAuthService(m, log, jwtService)
 
-	a := authService.NewService(
+	r := setupRouter(log, m)
+	registerRoutes(r, authSvc, jwtValidator, log, &cfg, m)
+
+	srv := httpserver.New(cfg.Addr, r)
+	startServer(srv, log)
+	waitForShutdown(srv, log)
+}
+
+// initializeAuthService creates and configures the authentication service
+func initializeAuthService(m *metrics.Metrics, log *slog.Logger, jwtService *jwttoken.JWTService) *authService.Service {
+	return authService.NewService(
 		authStore.NewInMemoryUserStore(),
 		authStore.NewInMemorySessionStore(),
 		24*time.Hour, // TODO Make configurable
@@ -48,9 +53,22 @@ func main() {
 		authService.WithLogger(log),
 		authService.WithJWTService(jwtService),
 	)
+}
 
+// initializeJWTService creates and configures the JWT service and validator
+func initializeJWTService(cfg *config.Server) (*jwttoken.JWTService, *jwttoken.JWTServiceAdapter) {
+	jwtService := jwttoken.NewJWTService(
+		cfg.JWTSigningKey,
+		"id-gateway",
+		"id-gateway-client",
+		cfg.TokenTTL,
+	)
 	jwtValidator := jwttoken.NewJWTServiceAdapter(jwtService)
+	return jwtService, jwtValidator
+}
 
+// setupRouter creates a new router and configures common middleware
+func setupRouter(log *slog.Logger, m *metrics.Metrics) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Add Prometheus metrics endpoint (no auth required)
@@ -64,7 +82,19 @@ func main() {
 	r.Use(middleware.ContentTypeJSON)
 	r.Use(middleware.LatencyMiddleware(m))
 
-	authHandler := httptransport.NewAuthHandler(a, log, cfg.RegulatedMode, m)
+	return r
+}
+
+// registerRoutes registers all application routes and handlers
+func registerRoutes(
+	r *chi.Mux,
+	authSvc *authService.Service,
+	jwtValidator *jwttoken.JWTServiceAdapter,
+	log *slog.Logger,
+	cfg *config.Server,
+	m *metrics.Metrics,
+) {
+	authHandler := httptransport.NewAuthHandler(authSvc, log, cfg.RegulatedMode, m)
 
 	// Public auth endpoints (no JWT required)
 	r.Post("/auth/authorize", authHandler.HandleAuthorize)
@@ -75,10 +105,11 @@ func main() {
 		r.Use(middleware.RequireAuth(jwtValidator, log))
 		r.Get("/auth/userinfo", authHandler.HandleUserInfo)
 	})
+}
 
-	srv := httpserver.New(cfg.Addr, r)
-
-	log.Info("starting http server", "addr", cfg.Addr)
+// startServer starts the HTTP server in a goroutine
+func startServer(srv *http.Server, log *slog.Logger) {
+	log.Info("starting http server", "addr", srv.Addr)
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -86,8 +117,10 @@ func main() {
 			os.Exit(1)
 		}
 	}()
+}
 
-	// Graceful shutdown on SIGINT
+// waitForShutdown waits for an interrupt signal and gracefully shuts down the server
+func waitForShutdown(srv *http.Server, log *slog.Logger) {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt)
 	<-quit

@@ -1,6 +1,7 @@
 package service
 
-//go:generate mockgen -source=service.go -destination=mocks/mocks.go -package=mocks UserStore,SessionStoreimport
+//go:generate mockgen -source=service.go -destination=mocks/mocks.go -package=mocks UserStore,SessionStore,TokenGenerator
+
 import (
 	"context"
 	"errors"
@@ -26,6 +27,7 @@ type ServiceSuite struct {
 	ctrl          *gomock.Controller
 	mockUserStore *mocks.MockUserStore
 	mockSessStore *mocks.MockSessionStore
+	mockJWT       *mocks.MockTokenGenerator
 	service       *Service
 }
 
@@ -33,8 +35,11 @@ func (s *ServiceSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
 	s.mockUserStore = mocks.NewMockUserStore(s.ctrl)
 	s.mockSessStore = mocks.NewMockSessionStore(s.ctrl)
+	s.mockJWT = mocks.NewMockTokenGenerator(s.ctrl)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	s.service = NewService(s.mockUserStore, s.mockSessStore, 15*time.Minute, WithLogger(logger))
+	s.service = NewService(s.mockUserStore, s.mockSessStore, 15*time.Minute,
+		WithLogger(logger),
+		WithJWTService(s.mockJWT))
 }
 
 func (s *ServiceSuite) TearDownTest() {
@@ -163,10 +168,14 @@ func (s *ServiceSuite) TestToken() {
 				assert.True(s.T(), session.CodeUsed)
 				return nil
 			})
+		s.mockJWT.EXPECT().GenerateAccessToken(validSession.UserID, validSession.ID, validSession.ClientID).
+			Return("mock-access-token", nil)
+		s.mockJWT.EXPECT().GenerateIDToken(validSession.UserID, validSession.ID, validSession.ClientID).
+			Return("mock-id-token", nil)
 		result, err := s.service.Token(context.Background(), &req)
 		require.NoError(s.T(), err)
-		assert.NotEmpty(s.T(), result.AccessToken)
-		assert.NotEmpty(s.T(), result.IDToken)
+		assert.Equal(s.T(), "mock-access-token", result.AccessToken)
+		assert.Equal(s.T(), "mock-id-token", result.IDToken)
 		assert.Greater(s.T(), result.ExpiresIn, int64(0))
 	})
 
