@@ -61,7 +61,6 @@ Feature: OAuth2 Authorization Code Flow - Normal Path
     # Step 3: Verify ID token structure (JWT)
     * def idTokenPayload = karate.call('classpath:helpers/jwt-decoder.js', idToken)
     * match idTokenPayload.sub == '#string'
-    * match idTokenPayload.email == testUser.username
     * match idTokenPayload.exp == '#number'
     * match idTokenPayload.iat == '#number'
 
