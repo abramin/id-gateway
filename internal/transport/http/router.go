@@ -3,7 +3,7 @@ package httptransport
 import (
 	"github.com/go-chi/chi/v5"
 
-	authHandler "id-gateway/internal/auth/handlers"
+	authHandler "id-gateway/internal/auth/handler"
 	consentHandler "id-gateway/internal/consent/handler"
 )
 

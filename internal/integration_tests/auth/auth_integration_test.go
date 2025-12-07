@@ -12,12 +12,12 @@ import (
 	"testing"
 	"time"
 
+	auth "id-gateway/internal/auth/handler"
 	"id-gateway/internal/auth/models"
 	"id-gateway/internal/auth/service"
 	"id-gateway/internal/auth/store"
 	jwttoken "id-gateway/internal/jwt_token"
 	"id-gateway/internal/platform/middleware"
-	httptransport "id-gateway/internal/transport/http"
 	dErrors "id-gateway/pkg/domain-errors"
 
 	"github.com/go-chi/chi/v5"
@@ -44,7 +44,7 @@ func SetupSuite(t *testing.T) (*chi.Mux, *store.InMemoryUserStore, *store.InMemo
 	)
 
 	router := chi.NewRouter()
-	authHandler := httptransport.NewAuthHandler(authService, logger, false, nil)
+	authHandler := auth.New(authService, logger, false, nil)
 
 	// Public endpoints (no auth required) - mirrors production setup
 	router.Post("/auth/authorize", authHandler.HandleAuthorize)

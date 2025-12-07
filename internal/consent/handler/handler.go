@@ -93,9 +93,9 @@ func (h *Handler) handleGrantConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]any{
-		"granted": formatConsentResponses(granted, time.Now()),
-		"message": formatActionMessage("Consent granted for %d purposes", len(granted)),
+	response := &consentModel.ConsentActionResponse{
+		Granted: formatConsentResponses(granted, time.Now()),
+		Message: formatActionMessage("Consent granted for %d purposes", len(granted)),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -147,10 +147,9 @@ func (h *Handler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 		}
 		revoked = append(revoked, &consentModel.ConsentRecord{Purpose: purpose, RevokedAt: ptrTime(time.Now())})
 	}
-
-	response := map[string]any{
-		"revoked": formatConsentResponses(revoked, time.Now()),
-		"message": formatActionMessage("Consent revoked for %d purpose", len(revoked)),
+	response := &consentModel.ConsentActionResponse{
+		Granted: formatConsentResponses(revoked, time.Now()),
+		Message: formatActionMessage("Consent revoked for %d purpose", len(revoked)),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -209,16 +208,14 @@ func (h *Handler) handleGetConsent(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(response)
 }
 
-func formatConsentResponses(records []*consentModel.ConsentRecord, now time.Time) []map[string]any {
-	var resp []map[string]any
+func formatConsentResponses(records []*consentModel.ConsentRecord, now time.Time) []consentModel.ConsentGrant {
+	var resp []consentModel.ConsentGrant
 	for _, record := range records {
-		resp = append(resp, map[string]any{
-			"id":         record.ID,
-			"purpose":    record.Purpose,
-			"granted_at": record.GrantedAt,
-			"expires_at": record.ExpiresAt,
-			"revoked_at": record.RevokedAt,
-			"status":     record.Status(now),
+		resp = append(resp, consentModel.ConsentGrant{
+			Purpose:   record.Purpose,
+			GrantedAt: record.GrantedAt,
+			ExpiresAt: record.ExpiresAt,
+			Status:    record.Status(now),
 		})
 	}
 	return resp

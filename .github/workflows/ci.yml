@@ -76,3 +76,33 @@ jobs:
             echo "--- backend logs ---"
             cat /tmp/id-gateway.log
           fi
+  openapi-docs:
+    name: Build OpenAPI docs
+    runs-on: ubuntu-latest
+    # Always lint/build on PRs; build artifacts on push to main after merge
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Redocly CLI
+        run: npm install --no-package-lock --no-save @redocly/cli@1.12.0
+
+      - name: Lint OpenAPI spec
+        run: npx @redocly/cli@1.12.0 lint docs/openapi/auth.yaml
+
+      - name: Build OpenAPI docs
+        run: npx @redocly/cli@1.12.0 build-docs docs/openapi/auth.yaml -o docs/openapi/auth.html
+
+      - name: Upload OpenAPI artifact
+        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-openapi-docs
+          path: docs/openapi/auth.html

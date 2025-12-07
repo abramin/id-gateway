@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"id-gateway/internal/audit"
+	authHandler "id-gateway/internal/auth/handler"
 	authService "id-gateway/internal/auth/service"
 	authStore "id-gateway/internal/auth/store"
 	consentHandler "id-gateway/internal/consent/handler"
@@ -20,7 +21,6 @@ import (
 	"id-gateway/internal/platform/logger"
 	"id-gateway/internal/platform/metrics"
 	"id-gateway/internal/platform/middleware"
-	httptransport "id-gateway/internal/transport/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -98,7 +98,7 @@ func registerRoutes(
 	cfg *config.Server,
 	m *metrics.Metrics,
 ) {
-	authHandler := httptransport.NewAuthHandler(authSvc, log, cfg.RegulatedMode, m)
+	authHandler := authHandler.New(authSvc, log, cfg.RegulatedMode, m)
 	consentSvc := consentService.NewService(
 		consentStore.NewInMemoryStore(),
 		consentService.WithAuditor(audit.NewPublisher(audit.NewInMemoryStore())),

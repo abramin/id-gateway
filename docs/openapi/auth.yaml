@@ -1,0 +1,271 @@
+openapi: 3.0.3
+info:
+  title: ID Gateway Auth API
+  version: 0.1.0
+  description: |
+    OpenAPI specification for the ID Gateway authentication endpoints.
+    
+    The API follows an OAuth2-style authorization code flow (OIDC-lite) with
+    endpoints for initiating authorization, exchanging authorization codes for
+    tokens, and fetching user information for an authenticated session.
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+paths:
+  /auth/authorize:
+    post:
+      summary: Initiate authorization by email
+      description: |
+        Starts an authorization session for a user. If the email does not exist
+        the user record is created automatically. Returns an authorization code
+        and the redirect URI that should be used by the caller.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthorizationRequest'
+            examples:
+              default:
+                summary: Minimal authorize request
+                value:
+                  email: user@example.com
+                  client_id: demo-client
+                  scopes: ["openid", "profile"]
+                  redirect_uri: https://app.example.com/callback
+                  state: abc123
+      responses:
+        '200':
+          description: Authorization created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationResponse'
+              examples:
+                default:
+                  value:
+                    code: authz_cafedeadbeef
+                    redirect_uri: https://app.example.com/callback
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/token:
+    post:
+      summary: Exchange authorization code for tokens
+      description: |
+        Exchanges a valid authorization code for an ID token and an access
+        token. The `redirect_uri` and `client_id` must match the authorize
+        request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+            examples:
+              default:
+                value:
+                  grant_type: authorization_code
+                  code: authz_cafedeadbeef
+                  redirect_uri: https://app.example.com/callback
+                  client_id: demo-client
+      responses:
+        '200':
+          description: Tokens issued successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+              examples:
+                default:
+                  value:
+                    access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                    id_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                    expires_in: 3600
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/userinfo:
+    get:
+      summary: Get user information for the authenticated session
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User info for the session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfo'
+              examples:
+                default:
+                  value:
+                    sub: 7d3e1c6e-7e1c-4b3c-9d7d-31a322b2fbfb
+                    email: user@example.com
+                    email_verified: true
+                    given_name: Jane
+                    family_name: Doe
+                    name: Jane Doe
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    AuthorizationRequest:
+      type: object
+      required: [email, client_id, scopes, redirect_uri]
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email to authorize or create
+          maxLength: 255
+        client_id:
+          type: string
+          description: OAuth client identifier
+          minLength: 3
+          maxLength: 100
+        scopes:
+          type: array
+          minItems: 1
+          description: Scopes requested for the session
+          items:
+            type: string
+            description: Requested scope value
+        redirect_uri:
+          type: string
+          format: uri
+          description: Redirect URI to return users after authorization
+          maxLength: 2048
+        state:
+          type: string
+          description: Opaque value used to maintain state between request and callback
+          maxLength: 500
+    AuthorizationResponse:
+      type: object
+      required: [code, redirect_uri]
+      properties:
+        code:
+          type: string
+          description: Authorization code for token exchange
+        redirect_uri:
+          type: string
+          format: uri
+          description: Redirect URI to invoke after successful authorization
+    TokenRequest:
+      type: object
+      required: [grant_type, code, redirect_uri, client_id]
+      properties:
+        grant_type:
+          type: string
+          enum: [authorization_code]
+          description: Must be `authorization_code`
+        code:
+          type: string
+          description: Authorization code received from `/auth/authorize`
+        redirect_uri:
+          type: string
+          format: uri
+          description: Redirect URI that matches the authorize call
+        client_id:
+          type: string
+          description: OAuth client identifier used during authorization
+    TokenResponse:
+      type: object
+      required: [access_token, id_token, expires_in]
+      properties:
+        access_token:
+          type: string
+          description: Access token for authenticated requests
+        id_token:
+          type: string
+          description: ID token containing authenticated user claims
+        expires_in:
+          type: integer
+          description: Token expiration in seconds
+          minimum: 1
+          example: 3600
+    UserInfo:
+      type: object
+      required: [sub, email, email_verified]
+      properties:
+        sub:
+          type: string
+          format: uuid
+          description: Subject identifier for the authenticated user
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          description: Preferred email address
+        email_verified:
+          type: boolean
+          description: Indicates whether the email has been verified
+        given_name:
+          type: string
+          maxLength: 100
+          description: User's given name
+        family_name:
+          type: string
+          maxLength: 100
+          description: User's family name
+        name:
+          type: string
+          maxLength: 100
+          description: Full name
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Machine readable error code
+          enum: [bad_request, unauthorized, conflict, not_found, internal_error, invalid_consent, missing_consent, policy_violation, registry_timeout]
+        error_description:
+          type: string
+          description: Human readable explanation of the error
+  responses:
+    BadRequest:
+      description: Invalid or malformed request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            validation_failure:
+              value:
+                error: bad_request
+                error_description: Invalid JSON in request body
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            missing_header:
+              value:
+                error: unauthorized
+                error_description: Missing or invalid Authorization header
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            generic:
+              value:
+                error: internal_error

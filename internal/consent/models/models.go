@@ -14,6 +14,24 @@ type GrantConsentRequest struct {
 	Purposes []ConsentPurpose `json:"purposes" validate:"required,min=1,dive,oneof=login registry_check vc_issuance decision_evaluation"`
 }
 
+// response := map[string]any{
+// 	"granted": formatConsentResponses(granted, time.Now()),
+// 	"message": formatActionMessage("Consent granted for %d purposes", len(granted)),
+// }
+
+type ConsentActionResponse struct {
+	Granted []ConsentGrant `json:"granted"`
+	Message string         `json:"message,omitempty"`
+}
+
+type ConsentGrant struct {
+	Purpose   ConsentPurpose `json:"purpose" validate:"required,oneof=login registry_check vc_issuance decision_evaluation"`
+	GrantedAt time.Time      `json:"granted_at" validate:"required"`
+	ExpiresAt *time.Time     `json:"expires_at,omitempty" validate:"omitempty"`
+	Status    string         `json:"status"` // "active" for new grant
+}
+
+// RevokeConsentRequest specifies which purposes to revoke.
 type RevokeConsentRequest struct {
 	Purposes []ConsentPurpose `json:"purposes" validate:"required,min=1,dive,oneof=login registry_check vc_issuance decision_evaluation"`
 }

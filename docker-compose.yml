@@ -40,6 +40,21 @@ services:
       timeout: 10s
       retries: 3
 
+  openapi-docs:
+    image: swaggerapi/swagger-ui:latest
+    container_name: id-gateway-openapi
+    environment:
+      - SWAGGER_JSON=/openapi/auth.yaml
+    volumes:
+      - ./docs/openapi/auth.yaml:/openapi/auth.yaml:ro
+    ports:
+      - "8081:8080"
+    depends_on:
+      - backend
+    networks:
+      - id-gateway-network
+    restart: unless-stopped
+
 networks:
   id-gateway-network:
     driver: bridge

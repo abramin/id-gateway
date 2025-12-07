@@ -31,6 +31,7 @@ Access the application:
 
 - **Frontend UI:** http://localhost:3000
 - **Backend API:** http://localhost:8080
+- **OpenAPI docs:** http://localhost:8081 (Swagger UI for `docs/openapi/auth.yaml`)
 
 ### Development Mode
 
