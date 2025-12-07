@@ -1,0 +1,39 @@
+services:
+  credo:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      - ID_GATEWAY_ADDR=:8080
+      - JWT_SIGNING_KEY=lab-shared-secret
+      - REGULATED_MODE=false
+    volumes:
+      - ./credo-config:/lab/credo-config:ro
+    networks:
+      - credo-lab
+
+  resource-server:
+    build: ./resource-server
+    environment:
+      - PORT=9000
+      - JWT_SIGNING_KEY=lab-shared-secret
+    depends_on:
+      - credo
+    networks:
+      - credo-lab
+
+  attacker-ui:
+    build: ./attacker-ui
+    environment:
+      - PORT=4170
+      - CREDO_BASE_URL=http://credo:8080
+      - RESOURCE_SERVER_URL=http://resource-server:9000
+    depends_on:
+      - credo
+      - resource-server
+    networks:
+      - credo-lab
+
+networks:
+  credo-lab:
+    driver: bridge
