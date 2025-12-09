@@ -9,39 +9,25 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"id-gateway/internal/audit"
+	"id-gateway/internal/consent/handler"
 	consentModel "id-gateway/internal/consent/models"
 	"id-gateway/internal/consent/service"
 	"id-gateway/internal/consent/store"
 	"id-gateway/internal/platform/middleware"
 )
 
-/*Issues Found:
-
-Grant endpoint response structure - The test expects the grant response but doesn't validate it. According to PRD FR-1, it should return ConsentActionResponse with granted array and message.
-
-Revoke response not validated - Test doesn't check the revoke response structure at all.
-
-Purpose comparison issue - The test compares purpose string directly ("registry_check"), but ConsentPurpose is a custom type.
-
-Missing grant response validation - Should verify the granted response contains the expected fields.
-
-Status field access - The test assumes Status is a string field on ConsentRecord, but based on the code it's now part of ConsentRecordWithStatus.*/
-
 func TestConsentIntegrationFlow(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	consentStore := store.NewInMemoryStore()
 	auditStore := audit.NewInMemoryStore()
-	svc := service.NewService(consentStore, service.WithNow(func() time.Time {
-		return time.Date(2025, 12, 3, 10, 0, 0, 0, time.UTC)
-	}), service.WithAuditor(audit.NewPublisher(auditStore)))
-	handler := New(svc, logger, nil)
+	svc := service.NewService(consentStore, audit.NewPublisher(auditStore))
+	handler := handler.New(svc, logger, nil)
 
 	router := chi.NewRouter()
 	router.Use(func(next http.Handler) http.Handler {
@@ -66,12 +52,12 @@ func TestConsentIntegrationFlow(t *testing.T) {
 
 	// Verify grant response
 	grantRespBody, _ := io.ReadAll(resp.Body)
-	var grantData consentModel.ConsentActionResponse
+	var grantData consentModel.ActionResponse
 	require.NoError(t, json.Unmarshal(grantRespBody, &grantData))
 	assert.Len(t, grantData.Granted, 2)
 	assert.Contains(t, grantData.Message, "Consent granted for 2 purposes")
 	for _, g := range grantData.Granted {
-		assert.Equal(t, "active", g.Status)
+		assert.Equal(t, consentModel.StatusActive, g.Status)
 		assert.NotNil(t, g.ExpiresAt)
 	}
 
@@ -82,13 +68,13 @@ func TestConsentIntegrationFlow(t *testing.T) {
 	assert.Equal(t, http.StatusOK, listResp.StatusCode)
 
 	bodyBytes, _ := io.ReadAll(listResp.Body)
-	var listData consentModel.ConsentRecordsResponse
+	var listData consentModel.RecordsResponse
 	require.NoError(t, json.Unmarshal(bodyBytes, &listData))
-	require.Len(t, listData.ConsentRecords, 2)
+	require.Len(t, listData.Records, 2)
 
 	// Verify all consents are active
-	for _, record := range listData.ConsentRecords {
-		assert.Equal(t, consentModel.ConsentStatusActive, record.Status)
+	for _, record := range listData.Records {
+		assert.Equal(t, consentModel.StatusActive, record.Status)
 		assert.Nil(t, record.RevokedAt)
 	}
 
@@ -96,12 +82,14 @@ func TestConsentIntegrationFlow(t *testing.T) {
 	revokeBody, _ := json.Marshal(map[string]any{"purposes": []string{"registry_check"}})
 	revokeResp, err := http.Post(server.URL+"/auth/consent/revoke", "application/json", bytes.NewReader(revokeBody))
 	require.NoError(t, err)
+	assert.NotNil(t, revokeResp)
+
 	defer revokeResp.Body.Close()
 	assert.Equal(t, http.StatusOK, revokeResp.StatusCode)
 
 	// Verify revoke response
 	revokeRespBody, _ := io.ReadAll(revokeResp.Body)
-	var revokeData consentModel.ConsentActionResponse
+	var revokeData consentModel.ActionResponse
 	require.NoError(t, json.Unmarshal(revokeRespBody, &revokeData))
 	assert.Len(t, revokeData.Granted, 1) // Revoke response uses "Granted" field (see handler)
 	assert.Contains(t, revokeData.Message, "Consent revoked for 1 purpose")
@@ -113,21 +101,22 @@ func TestConsentIntegrationFlow(t *testing.T) {
 	assert.Equal(t, http.StatusOK, listResp2.StatusCode)
 
 	bodyBytes2, _ := io.ReadAll(listResp2.Body)
-	var listData2 consentModel.ConsentRecordsResponse
+	var listData2 consentModel.RecordsResponse
 	require.NoError(t, json.Unmarshal(bodyBytes2, &listData2))
-	require.Len(t, listData2.ConsentRecords, 2)
+	require.Len(t, listData2.Records, 2)
 
 	// Verify status changes: login should still be active, registry_check should be revoked
 	loginFound := false
 	registryCheckFound := false
-	for _, record := range listData2.ConsentRecords {
-		if record.Purpose == consentModel.ConsentPurposeLogin {
+	for _, record := range listData2.Records {
+		switch record.Purpose {
+		case consentModel.PurposeLogin:
 			loginFound = true
-			assert.Equal(t, consentModel.ConsentStatusActive, record.Status)
+			assert.Equal(t, consentModel.StatusActive, record.Status)
 			assert.Nil(t, record.RevokedAt)
-		} else if record.Purpose == consentModel.ConsentPurposeRegistryCheck {
+		case consentModel.PurposeRegistryCheck:
 			registryCheckFound = true
-			assert.Equal(t, consentModel.ConsentStatusRevoked, record.Status)
+			assert.Equal(t, consentModel.StatusRevoked, record.Status)
 			assert.NotNil(t, record.RevokedAt)
 		}
 	}

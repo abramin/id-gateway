@@ -14,57 +14,7 @@ import (
 	dErrors "id-gateway/pkg/domain-errors"
 )
 
-type stubStore struct {
-	saveFn   func(ctx context.Context, consent *models.ConsentRecord) error
-	findFn   func(ctx context.Context, userID string, purpose models.ConsentPurpose) (*models.ConsentRecord, error)
-	listFn   func(ctx context.Context, userID string) ([]*models.ConsentRecord, error)
-	updateFn func(ctx context.Context, consent *models.ConsentRecord) error
-	revokeFn func(ctx context.Context, userID string, purpose models.ConsentPurpose, revokedAt time.Time) error
-	deleteFn func(ctx context.Context, userID string) error
-}
-
-func (s stubStore) Save(ctx context.Context, consent *models.ConsentRecord) error {
-	if s.saveFn == nil {
-		return nil
-	}
-	return s.saveFn(ctx, consent)
-}
-
-func (s stubStore) FindByUserAndPurpose(ctx context.Context, userID string, purpose models.ConsentPurpose) (*models.ConsentRecord, error) {
-	if s.findFn == nil {
-		return nil, nil
-	}
-	return s.findFn(ctx, userID, purpose)
-}
-
-func (s stubStore) ListByUser(ctx context.Context, userID string) ([]*models.ConsentRecord, error) {
-	if s.listFn == nil {
-		return nil, nil
-	}
-	return s.listFn(ctx, userID)
-}
-
-func (s stubStore) Update(ctx context.Context, consent *models.ConsentRecord) error {
-	if s.updateFn == nil {
-		return nil
-	}
-	return s.updateFn(ctx, consent)
-}
-
-func (s stubStore) RevokeByUserAndPurpose(ctx context.Context, userID string, purpose models.ConsentPurpose, revokedAt time.Time) error {
-	if s.revokeFn == nil {
-		return nil
-	}
-	return s.revokeFn(ctx, userID, purpose, revokedAt)
-}
-
-func (s stubStore) DeleteByUser(ctx context.Context, userID string) error {
-	if s.deleteFn == nil {
-		return nil
-	}
-	return s.deleteFn(ctx, userID)
-}
-
+//go:generate mockgen -source=service.go -destination=mocks/mocks.go -package=mocks Store
 func TestGrantCreatesConsent(t *testing.T) {
 	now := time.Date(2025, 12, 3, 10, 0, 0, 0, time.UTC)
 	ttl := 24 * time.Hour

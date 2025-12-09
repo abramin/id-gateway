@@ -101,7 +101,7 @@ func registerRoutes(
 	authHandler := authHandler.New(authSvc, log, cfg.RegulatedMode, m)
 	consentSvc := consentService.NewService(
 		consentStore.NewInMemoryStore(),
-		consentService.WithAuditor(audit.NewPublisher(audit.NewInMemoryStore())),
+		audit.NewPublisher(audit.NewInMemoryStore()),
 	)
 	consentHTTPHandler := consentHandler.New(consentSvc, log, m)
 

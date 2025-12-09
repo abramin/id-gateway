@@ -22,9 +22,9 @@ import (
 
 // Service defines the interface for consent operations.
 type Service interface {
-	Grant(ctx context.Context, userID string, purposes []consentModel.ConsentPurpose) ([]*consentModel.ConsentRecord, error)
-	Revoke(ctx context.Context, userID string, purpose consentModel.ConsentPurpose) error
-	List(ctx context.Context, userID string, filter *consentModel.ConsentRecordFilter) ([]*consentModel.ConsentRecordWithStatus, error)
+	Grant(ctx context.Context, userID string, purposes []consentModel.Purpose) ([]*consentModel.Record, error)
+	Revoke(ctx context.Context, userID string, purposes []consentModel.Purpose) ([]*consentModel.Record, error)
+	List(ctx context.Context, userID string, filter *consentModel.RecordFilter) ([]*consentModel.RecordWithStatus, error)
 }
 
 // Handler handles consent-related endpoints.
@@ -64,7 +64,7 @@ func (h *Handler) handleGrantConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var grantReq consentModel.GrantConsentRequest
+	var grantReq consentModel.GrantRequest
 	if err := json.NewDecoder(r.Body).Decode(&grantReq); err != nil {
 		h.logger.WarnContext(ctx, "failed to decode grant consent request",
 			"request_id", requestID,
@@ -93,9 +93,9 @@ func (h *Handler) handleGrantConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := &consentModel.ConsentActionResponse{
+	res := &consentModel.ActionResponse{
 		Granted: formatConsentResponses(granted, time.Now()),
-		Message: formatActionMessage("Consent granted for %d purposes", len(granted)),
+		Message: formatActionMessage("Consent granted for %d purpose", len(granted)),
 	}
 
 	respond.WriteJSON(w, http.StatusOK, res)
@@ -114,7 +114,7 @@ func (h *Handler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var revokeReq consentModel.RevokeConsentRequest
+	var revokeReq consentModel.RevokeRequest
 	if err := json.NewDecoder(r.Body).Decode(&revokeReq); err != nil {
 		h.logger.WarnContext(ctx, "failed to decode revoke consent request",
 			"request_id", requestID,
@@ -133,19 +133,17 @@ func (h *Handler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var revoked []*consentModel.ConsentRecord
-	for _, purpose := range revokeReq.Purposes {
-		if err := h.consent.Revoke(ctx, userID, purpose); err != nil {
-			h.logger.ErrorContext(ctx, "failed to revoke consent",
-				"request_id", requestID,
-				"error", err,
-			)
-			shared.WriteError(w, err)
-			return
-		}
-		revoked = append(revoked, &consentModel.ConsentRecord{Purpose: purpose, RevokedAt: ptrTime(time.Now())})
+	revoked, err := h.consent.Revoke(ctx, userID, revokeReq.Purposes)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "failed to revoke consent",
+			"request_id", requestID,
+			"error", err,
+		)
+		shared.WriteError(w, err)
+		return
 	}
-	res := &consentModel.ConsentActionResponse{
+
+	res := &consentModel.ActionResponse{
 		Granted: formatConsentResponses(revoked, time.Now()),
 		Message: formatActionMessage("Consent revoked for %d purpose", len(revoked)),
 	}
@@ -175,7 +173,7 @@ func (h *Handler) handleGetConsents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := h.consent.List(ctx, userID, &consentModel.ConsentRecordFilter{
+	res, err := h.consent.List(ctx, userID, &consentModel.RecordFilter{
 		Purpose: purposeFilter,
 		Status:  statusFilter,
 	})
@@ -188,20 +186,20 @@ func (h *Handler) handleGetConsents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respond.WriteJSON(w, http.StatusOK, consentModel.ConsentRecordsResponse{
-		ConsentRecords: res,
+	respond.WriteJSON(w, http.StatusOK, consentModel.RecordsResponse{
+		Records: res,
 	})
 }
 
 // TODO: move to models or service package
-func formatConsentResponses(records []*consentModel.ConsentRecord, now time.Time) []consentModel.ConsentGrant {
-	var resp []consentModel.ConsentGrant
+func formatConsentResponses(records []*consentModel.Record, now time.Time) []consentModel.Grant {
+	var resp []consentModel.Grant
 	for _, record := range records {
-		resp = append(resp, consentModel.ConsentGrant{
+		resp = append(resp, consentModel.Grant{
 			Purpose:   record.Purpose,
 			GrantedAt: record.GrantedAt,
 			ExpiresAt: record.ExpiresAt,
-			Status:    record.Status(now),
+			Status:    record.ComputeStatus(now),
 		})
 	}
 	return resp

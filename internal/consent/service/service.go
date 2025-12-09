@@ -13,11 +13,11 @@ import (
 )
 
 type Store interface {
-	Save(ctx context.Context, consent *models.ConsentRecord) error
-	FindByUserAndPurpose(ctx context.Context, userID string, purpose models.ConsentPurpose) (*models.ConsentRecord, error)
-	ListByUser(ctx context.Context, userID string) ([]*models.ConsentRecord, error)
-	Update(ctx context.Context, consent *models.ConsentRecord) error
-	RevokeByUserAndPurpose(ctx context.Context, userID string, purpose models.ConsentPurpose, revokedAt time.Time) error
+	Save(ctx context.Context, consent *models.Record) error
+	FindByUserAndPurpose(ctx context.Context, userID string, purpose models.Purpose) (*models.Record, error)
+	ListByUser(ctx context.Context, userID string) ([]*models.Record, error)
+	Update(ctx context.Context, consent *models.Record) error
+	RevokeByUserAndPurpose(ctx context.Context, userID string, purpose models.Purpose, revokedAt time.Time) (*models.Record, error)
 	DeleteByUser(ctx context.Context, userID string) error
 }
 
@@ -25,43 +25,18 @@ type Store interface {
 type Service struct {
 	store   Store
 	auditor *audit.Publisher
-	now     func() time.Time
 	ttl     time.Duration
 }
 
-type Option func(*Service)
-
-func WithAuditor(a *audit.Publisher) Option {
-	return func(s *Service) {
-		s.auditor = a
-	}
-}
-
-func WithNow(now func() time.Time) Option {
-	return func(s *Service) {
-		s.now = now
-	}
-}
-
-func WithTTL(ttl time.Duration) Option {
-	return func(s *Service) {
-		s.ttl = ttl
-	}
-}
-
-func NewService(store Store, opts ...Option) *Service {
+func NewService(store Store, auditor *audit.Publisher) *Service {
 	svc := &Service{
 		store: store,
-		now:   time.Now,
-		ttl:   365 * 24 * time.Hour,
-	}
-	for _, opt := range opts {
-		opt(svc)
+		ttl:   365 * 24 * time.Hour, // TODO: add to config
 	}
 	return svc
 }
 
-func (s *Service) Grant(ctx context.Context, userID string, purposes []models.ConsentPurpose) ([]*models.ConsentRecord, error) {
+func (s *Service) Grant(ctx context.Context, userID string, purposes []models.Purpose) ([]*models.Record, error) {
 	if userID == "" {
 		return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, "missing user context")
 	}
@@ -74,7 +49,7 @@ func (s *Service) Grant(ctx context.Context, userID string, purposes []models.Co
 		}
 	}
 
-	var granted []*models.ConsentRecord
+	var granted []*models.Record
 	for _, purpose := range purposes {
 		record, err := s.upsertGrant(ctx, userID, purpose)
 		if err != nil {
@@ -85,8 +60,8 @@ func (s *Service) Grant(ctx context.Context, userID string, purposes []models.Co
 	return granted, nil
 }
 
-func (s *Service) upsertGrant(ctx context.Context, userID string, purpose models.ConsentPurpose) (*models.ConsentRecord, error) {
-	now := s.now()
+func (s *Service) upsertGrant(ctx context.Context, userID string, purpose models.Purpose) (*models.Record, error) {
+	now := time.Now()
 	expiry := now.Add(s.ttl)
 	existing, err := s.store.FindByUserAndPurpose(ctx, userID, purpose)
 	if err != nil {
@@ -104,7 +79,7 @@ func (s *Service) upsertGrant(ctx context.Context, userID string, purpose models
 		return existing, nil
 	}
 
-	record := &models.ConsentRecord{
+	record := &models.Record{
 		ID:        fmt.Sprintf("consent_%s", uuid.New().String()),
 		UserID:    userID,
 		Purpose:   purpose,
@@ -118,33 +93,39 @@ func (s *Service) upsertGrant(ctx context.Context, userID string, purpose models
 	return record, nil
 }
 
-func (s *Service) Revoke(ctx context.Context, userID string, purpose models.ConsentPurpose) error {
+func (s *Service) Revoke(ctx context.Context, userID string, purposes []models.Purpose) ([]*models.Record, error) {
 	if userID == "" {
-		return pkgerrors.New(pkgerrors.CodeUnauthorized, "missing user context")
+		return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, "missing user context")
 	}
-	if !purpose.IsValid() {
-		return pkgerrors.New(pkgerrors.CodeBadRequest, fmt.Sprintf("invalid purpose: %s", purpose))
+	for _, purpose := range purposes {
+		if !purpose.IsValid() {
+			return nil, pkgerrors.New(pkgerrors.CodeBadRequest, fmt.Sprintf("invalid purpose: %s", purpose))
+		}
 	}
 
-	now := s.now()
-	record, err := s.store.FindByUserAndPurpose(ctx, userID, purpose)
-	if err != nil {
-		return pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to read consent", err)
+	var revoked []*models.Record
+	for _, purpose := range purposes {
+		record, err := s.store.FindByUserAndPurpose(ctx, userID, purpose)
+		if err != nil {
+			return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to read consent", err)
+		}
+		if record == nil || record.RevokedAt != nil {
+			continue
+		}
+		if record.ExpiresAt != nil && record.ExpiresAt.Before(time.Now()) {
+			continue
+		}
+		_, err = s.store.RevokeByUserAndPurpose(ctx, userID, record.Purpose, time.Now())
+		if err != nil {
+			return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to revoke consent", err)
+		}
+		s.emitAudit(ctx, userID, record.Purpose, "revoked", "consent_revoked")
+		revoked = append(revoked, record)
 	}
-	if record == nil || record.RevokedAt != nil {
-		return nil
-	}
-	if record.ExpiresAt != nil && record.ExpiresAt.Before(now) {
-		return nil
-	}
-	if err := s.store.RevokeByUserAndPurpose(ctx, userID, purpose, now); err != nil {
-		return pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to revoke consent", err)
-	}
-	s.emitAudit(ctx, userID, purpose, "revoked", "consent_revoked")
-	return nil
+	return revoked, nil
 }
 
-func (s *Service) List(ctx context.Context, userID string, filter *models.ConsentRecordFilter) ([]*models.ConsentRecordWithStatus, error) {
+func (s *Service) List(ctx context.Context, userID string, filter *models.RecordFilter) ([]*models.RecordWithStatus, error) {
 	if userID == "" {
 		return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, "missing user context")
 	}
@@ -155,7 +136,7 @@ func (s *Service) List(ctx context.Context, userID string, filter *models.Consen
 	return nil, nil
 }
 
-func (s *Service) Require(ctx context.Context, userID string, purpose models.ConsentPurpose) error {
+func (s *Service) Require(ctx context.Context, userID string, purpose models.Purpose) error {
 	if userID == "" {
 		return pkgerrors.New(pkgerrors.CodeUnauthorized, "missing user context")
 	}
@@ -163,7 +144,6 @@ func (s *Service) Require(ctx context.Context, userID string, purpose models.Con
 		return pkgerrors.New(pkgerrors.CodeBadRequest, fmt.Sprintf("invalid purpose: %s", purpose))
 	}
 
-	now := s.now()
 	record, err := s.store.FindByUserAndPurpose(ctx, userID, purpose)
 	if err != nil {
 		return pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to read consent", err)
@@ -176,7 +156,7 @@ func (s *Service) Require(ctx context.Context, userID string, purpose models.Con
 		s.emitAudit(ctx, userID, purpose, "denied", "consent_check_failed")
 		return pkgerrors.New(pkgerrors.CodeInvalidConsent, "consent revoked")
 	}
-	if record.ExpiresAt != nil && record.ExpiresAt.Before(now) {
+	if record.ExpiresAt != nil && record.ExpiresAt.Before(time.Now()) {
 		s.emitAudit(ctx, userID, purpose, "denied", "consent_check_failed")
 		return pkgerrors.New(pkgerrors.CodeInvalidConsent, "consent expired")
 	}
@@ -184,7 +164,7 @@ func (s *Service) Require(ctx context.Context, userID string, purpose models.Con
 	return nil
 }
 
-func (s *Service) emitAudit(ctx context.Context, userID string, purpose models.ConsentPurpose, decision string, action string) {
+func (s *Service) emitAudit(ctx context.Context, userID string, purpose models.Purpose, decision string, action string) {
 	if s.auditor == nil {
 		return
 	}
@@ -193,6 +173,6 @@ func (s *Service) emitAudit(ctx context.Context, userID string, purpose models.C
 		Purpose:   string(purpose),
 		Action:    action,
 		Decision:  decision,
-		Timestamp: s.now(),
+		Timestamp: time.Now(),
 	})
 }
