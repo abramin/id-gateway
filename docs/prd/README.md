@@ -39,16 +39,17 @@ The ID Gateway is a **regulated identity and authorization system** that:
 
 ### Advanced Features (V2+ - Showcase & Production)
 
-| PRD                                                       | Feature                           | Priority | Status         | Est. Time   |
-| --------------------------------------------------------- | --------------------------------- | -------- | -------------- | ----------- |
-| [PRD-004B](./PRD-004B-Enhanced-Verifiable-Credentials.md) | Enhanced VCs (BBS+, Status List)  | P1       | 🔵 Not Started | 10-14 hours |
-| [PRD-005B](./PRD-005B-Cerbos-Authorization.md)            | Cerbos-Based Authorization        | P1       | 🔵 Not Started | 6-8 hours   |
-| [PRD-006B](./PRD-006B-Cryptographic-Audit.md)             | Cryptographic Audit (Merkle Tree) | P1       | 🔵 Not Started | 8-12 hours  |
-| [PRD-007B](./PRD-007B-ML-Risk-Scoring.md)                 | ML-Based Risk Scoring             | P2       | 🔵 Not Started | 14-18 hours |
-| [PRD-008](./PRD-008-GDPR-CCPA-Automation.md)              | Automated GDPR/CCPA Compliance    | P1       | 🔵 Not Started | 12-16 hours |
-| [PRD-009](./PRD-009-Decentralized-Identity-DIDs.md)       | Decentralized Identity (DIDs)     | P2       | 🔵 Not Started | 16-20 hours |
-| [PRD-010](./PRD-010-Zero-Knowledge-Proofs.md)             | Zero-Knowledge Proofs             | P3       | 🔵 Not Started | 20-24 hours |
-| [PRD-011](./PRD-011-Internal-TCP-Event-Ingester.md)       | Internal TCP Event Ingester       | P1       | 🔵 Not Started | 8-12 hours  |
+| PRD                                                                        | Feature                           | Priority | Status         | Est. Time   |
+| -------------------------------------------------------------------------- | --------------------------------- | -------- | -------------- | ----------- |
+| [PRD-004B](./PRD-004B-Enhanced-Verifiable-Credentials.md)                  | Enhanced VCs (BBS+, Status List)  | P1       | 🔵 Not Started | 10-14 hours |
+| [PRD-005B](./PRD-005B-Cerbos-Authorization.md)                             | Cerbos-Based Authorization        | P1       | 🔵 Not Started | 6-8 hours   |
+| [PRD-006B](./PRD-006B-Cryptographic-Audit.md)                              | Cryptographic Audit (Merkle Tree) | P1       | 🔵 Not Started | 8-12 hours  |
+| [PRD-007B](./PRD-007B-ML-Risk-Scoring.md)                                  | ML-Based Risk Scoring             | P2       | 🔵 Not Started | 14-18 hours |
+| [PRD-008](./PRD-008-GDPR-CCPA-Automation.md)                               | Automated GDPR/CCPA Compliance    | P1       | 🔵 Not Started | 12-16 hours |
+| [PRD-009](./PRD-009-Decentralized-Identity-DIDs.md)                        | Decentralized Identity (DIDs)     | P2       | 🔵 Not Started | 16-20 hours |
+| [PRD-010](./PRD-010-Zero-Knowledge-Proofs.md)                              | Zero-Knowledge Proofs             | P3       | 🔵 Not Started | 20-24 hours |
+| [PRD-011](./PRD-011-Internal-TCP-Event-Ingester.md)                        | Internal TCP Event Ingester       | P1       | 🔵 Not Started | 8-12 hours  |
+| [PRD-012](./PRD-012-Cloud-Connectors-Credo-Audit-Identity-Event-Export.md) | Cloud Connectors- Audit Export    | P1       | 🔵 Not Started | ?           |
 
 **Advanced Features Time:** ~94-124 hours (11-15 days)
 
