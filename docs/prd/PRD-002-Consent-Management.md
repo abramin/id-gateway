@@ -115,17 +115,37 @@ Credo requires a robust consent management system that enforces these requiremen
 2. Validate all purposes are in allowed enum
 3. For each purpose:
    - Check if consent already exists for this user+purpose
-   - If exists and active, update expiry date (renewal)
-   - If exists and revoked, create new consent record
-   - If not exists, create new consent record
+   - If exists and active:
+     - **Idempotency Window**: If granted < 5 minutes ago, return existing without update (no audit event)
+     - If granted ≥ 5 minutes ago, update expiry date (renewal) and emit audit event
+   - If exists and expired/revoked: Reuse existing consent ID, update timestamps, clear RevokedAt, emit audit event
+   - If not exists, create new consent record with new ID
 4. For each consent:
-   - Generate unique consent ID
-   - Set GrantedAt = current timestamp
-   - Set ExpiresAt = current timestamp + 1 year
-   - Set RevokedAt = nil
-   - Save to ConsentStore
-5. Emit audit event for each granted purpose
+   - Reuse existing ID or generate unique consent ID (format: `consent_<uuid>`)
+   - Set GrantedAt = current timestamp (if updating)
+   - Set ExpiresAt = current timestamp + 1 year (if updating)
+   - Set RevokedAt = nil (if updating)
+   - Save to ConsentStore (Update for existing, Save for new)
+5. Emit audit event for each granted purpose (skipped if within idempotency window)
 6. Return list of granted consents
+
+**Idempotency Behavior:**
+
+To prevent audit noise from rapid repeated requests (double-clicks, retries), consent grants are idempotent within a **5-minute window**:
+
+- If user re-requests consent for an **active** purpose that was granted < 5 minutes ago → Return existing consent without update, no audit event
+- If user re-requests consent for an **active** purpose that was granted ≥ 5 minutes ago → Update timestamps and extend TTL, emit audit event (supports long-running sessions)
+- If user re-requests consent for an **expired** or **revoked** purpose → Always update regardless of time window
+
+This approach:
+
+- ✅ Prevents duplicate audit events from accidental double-clicks
+- ✅ Supports legitimate TTL extensions for active sessions
+- ✅ Ensures expired/revoked consents are always renewable immediately
+
+**Consent ID Reuse:**
+
+The system always reuses existing consent IDs (whether active, expired, or revoked) to maintain a clean database. Consent history is tracked through the audit log, not by creating multiple consent records per user+purpose.
 
 **Validation:**
 
@@ -390,14 +410,29 @@ type Store interface {
 type Service struct {
     store     Store
     auditor   audit.Publisher
-    now       func() time.Time // For testing
+    ttl       time.Duration  // Consent expiry duration (default: 365 days)
 }
 
-func (s *Service) Grant(ctx context.Context, userID string, purpose ConsentPurpose) error
-func (s *Service) Revoke(ctx context.Context, userID string, purpose ConsentPurpose) error
-func (s *Service) List(ctx context.Context, userID string) ([]*ConsentRecord, error)
-func (s *Service) Require(ctx context.Context, userID string, purpose ConsentPurpose) error
+// Grant accepts multiple purposes and grants/renews consent for each
+// Returns idempotently if consent was granted < 5 minutes ago (active only)
+func (s *Service) Grant(ctx context.Context, userID string, purposes []Purpose) ([]*Record, error)
+
+// Revoke accepts multiple purposes and revokes consent for each
+func (s *Service) Revoke(ctx context.Context, userID string, purposes []Purpose) ([]*Record, error)
+
+// List returns all consent records for a user (optionally filtered)
+func (s *Service) List(ctx context.Context, userID string, filter *RecordFilter) ([]*Record, error)
+
+// Require checks if user has active consent for a purpose (internal validation method)
+func (s *Service) Require(ctx context.Context, userID string, purpose Purpose) error
 ```
+
+**Key Implementation Details:**
+
+- **Idempotency Window**: 5 minutes for active consents (configurable via comment in code)
+- **ID Reuse**: Always reuses existing consent IDs (active, expired, revoked)
+- **Audit Events**: Emitted on every update except within idempotency window
+- **TTL**: 365 days by default (configurable via service constructor)
 
 ### TR-4: HTTP Handlers
 
@@ -568,22 +603,29 @@ if err != nil {
 
 ### Unit Tests
 
-- [ ] Test consent granting for valid purposes
-- [ ] Test consent renewal (grant twice for same purpose)
-- [ ] Test consent revocation
-- [ ] Test `IsActive()` with various states
-- [ ] Test `Require()` with active consent
-- [ ] Test `Require()` with missing consent (returns error)
-- [ ] Test `Require()` with expired consent (returns error)
-- [ ] Test `Require()` with revoked consent (returns error)
+- [x] Test consent granting for valid purposes
+- [x] Test consent renewal (grant twice for same purpose)
+- [x] Test idempotent grants within 5-minute window (no update, no audit)
+- [x] Test consent updates after 5-minute window expires (updates timestamps)
+- [x] Test expired consent always updates regardless of time window
+- [x] Test revoked consent always updates regardless of time window
+- [x] Test consent revocation
+- [x] Test `IsActive()` with various states
+- [x] Test `Require()` with active consent
+- [x] Test `Require()` with missing consent (returns error)
+- [x] Test `Require()` with expired consent (returns error)
+- [x] Test `Require()` with revoked consent (returns error)
 
 ### Integration Tests
 
-- [ ] Test grant → list → verify active
-- [ ] Test grant → revoke → verify revoked
-- [ ] Test grant → wait for expiry → verify expired
-- [ ] Test require consent before registry lookup
-- [ ] Test handler fails with 403 when consent missing
+- [x] Test grant → list → verify active
+- [x] Test grant → revoke → verify revoked
+- [x] Test grant → expire (forced) → verify expired → re-grant → verify ID reused
+- [x] Test idempotency: immediate re-grant → verify no audit event, same timestamps
+- [x] Test TTL extension: re-grant after 6 minutes → verify new timestamps, new audit event
+- [x] Test revoke + immediate re-grant → verify timestamps updated despite time window
+- [x] Test require consent before registry lookup
+- [x] Test handler fails with 403 when consent missing
 
 ### Manual Testing
 
@@ -685,17 +727,20 @@ curl -X POST http://localhost:8080/registry/citizen \
 
 ## 11. Acceptance Criteria
 
-- [ ] Users can grant consent for multiple purposes in one request
-- [ ] Users can revoke consent for specific purposes
-- [ ] Users can list all their consents with current status
-- [ ] Operations requiring consent fail with 403 when consent missing
-- [ ] Operations requiring consent succeed when consent is active
-- [ ] Expired consents are treated as missing consent
-- [ ] Revoked consents are treated as missing consent
-- [ ] All consent changes emit audit events
-- [ ] Re-granting consent after revocation works correctly
-- [ ] Consent renewal updates expiry date
-- [ ] Code passes `make test` and `make lint`
+- [x] Users can grant consent for multiple purposes in one request
+- [x] Users can revoke consent for specific purposes
+- [x] Users can list all their consents with current status
+- [x] Operations requiring consent fail with 403 when consent missing
+- [x] Operations requiring consent succeed when consent is active
+- [x] Expired consents are treated as missing consent
+- [x] Revoked consents are treated as missing consent
+- [x] All consent changes emit audit events (except idempotent requests)
+- [x] Re-granting consent after revocation works correctly (reuses ID)
+- [x] Consent renewal updates expiry date (if outside idempotency window)
+- [x] **NEW**: Rapid repeated grants (< 5 min) are idempotent (no audit noise)
+- [x] **NEW**: Session extension grants (≥ 5 min) update TTL and emit audit
+- [x] **NEW**: Consent IDs are always reused (no duplicate records per user+purpose)
+- [x] Code passes `make test` and `make lint`
 
 ---
 
@@ -754,12 +799,15 @@ curl -X POST http://localhost:8080/registry/citizen \
 - [GDPR Recital 32: Conditions for consent](https://gdpr-info.eu/recitals/no-32/)
 - Tutorial: `docs/TUTORIAL.md` Section 2
 - Architecture: `docs/architecture.md`
-- Existing Implementation: `internal/consent/models.go`
+- Implementation: `internal/consent/service/service.go`
+- Models: `internal/consent/models/models.go`
+- Tests: `internal/consent/service/service_test.go`, `internal/consent/integration_test.go`
 
 ---
 
 ## Revision History
 
-| Version | Date       | Author       | Changes     |
-| ------- | ---------- | ------------ | ----------- |
-| 1.0     | 2025-12-03 | Product Team | Initial PRD |
+| Version | Date       | Author       | Changes                                          |
+| ------- | ---------- | ------------ | ------------------------------------------------ |
+| 1.0     | 2025-12-03 | Product Team | Initial PRD                                      |
+| 1.1     | 2025-12-10 | Engineering  | Added 5-min idempotency window, ID reuse details |
