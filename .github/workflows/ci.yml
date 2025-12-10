@@ -69,9 +69,7 @@ jobs:
         run: |
           if [ -f e2e/reports/cucumber.json ]; then
             npm install --no-save @cucumber/html-formatter
-            npx cucumber-html-formatter \
-              --output=e2e/reports/report.html \
-              e2e/reports/cucumber.json || echo "HTML generation failed but continuing..."
+            npx cucumber-html-formatter e2e/reports/cucumber.json > e2e/reports/report.html || echo "HTML generation failed but continuing..."
             ls -la e2e/reports/
           else
             echo "cucumber.json not found, skipping HTML generation"
@@ -150,8 +148,17 @@ jobs:
       - name: Prepare E2E directory structure
         run: |
           mkdir -p pages/e2e
-          cp e2e-reports/report.html pages/e2e/index.html
-          cp e2e-reports/cucumber.json pages/e2e/cucumber.json
+          ls -la e2e-reports/
+          if [ -f e2e-reports/report.html ]; then
+            cp e2e-reports/report.html pages/e2e/index.html
+          else
+            echo "HTML report not found, skipping"
+          fi
+          if [ -f e2e-reports/cucumber.json ]; then
+            cp e2e-reports/cucumber.json pages/e2e/cucumber.json
+          else
+            echo "cucumber.json not found"
+          fi
 
       - name: Upload E2E Pages artifact
         uses: actions/upload-artifact@v4
