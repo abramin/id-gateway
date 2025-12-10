@@ -15,7 +15,15 @@ services:
       - id-gateway-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8080/health",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -35,25 +43,18 @@ services:
       - id-gateway-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost:80",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
-
-  openapi-docs:
-    image: swaggerapi/swagger-ui:latest
-    container_name: id-gateway-openapi
-    environment:
-      - SWAGGER_JSON=/openapi/auth.yaml
-    volumes:
-      - ./docs/openapi/auth.yaml:/openapi/auth.yaml:ro
-    ports:
-      - "8081:8080"
-    depends_on:
-      - backend
-    networks:
-      - id-gateway-network
-    restart: unless-stopped
 
 networks:
   id-gateway-network:

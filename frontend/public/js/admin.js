@@ -137,7 +137,7 @@ document.addEventListener('alpine:init', () => {
 
         generateMockUsers(count) {
             const users = [];
-            const emails = ['alice@example.com', 'bob@example.com', 'charlie@example.com', 'diana@example.com'];
+            const emails = ['alice@example.com', 'ahmed@example.com', 'diego@example.com', 'diana@example.com'];
 
             for (let i = 0; i < count; i++) {
                 users.push({
