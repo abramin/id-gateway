@@ -60,17 +60,23 @@ jobs:
         working-directory: e2e
         run: |
           mkdir -p reports
-          go test -v
+          go test -v -- -godog.format=cucumber:$(pwd)/reports/cucumber.json
         env:
           BASE_URL: http://localhost:8080
 
       - name: Generate HTML report
         if: always()
         run: |
-          npm install --no-save @cucumber/html-formatter
-          npx cucumber-html-formatter \
-            --output=e2e/reports/report.html \
-            e2e/reports/cucumber.json
+          if [ -f e2e/reports/cucumber.json ]; then
+            npm install --no-save @cucumber/html-formatter
+            npx cucumber-html-formatter \
+              --output=e2e/reports/report.html \
+              e2e/reports/cucumber.json || echo "HTML generation failed but continuing..."
+            ls -la e2e/reports/
+          else
+            echo "cucumber.json not found, skipping HTML generation"
+            ls -la e2e/reports/ || echo "reports directory not found"
+          fi
 
       - name: Stop backend server
         if: always()
