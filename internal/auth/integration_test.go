@@ -40,7 +40,8 @@ func SetupSuite(t *testing.T) (*chi.Mux, *store.InMemoryUserStore, *store.InMemo
 	)
 	auditStore := audit.NewInMemoryStore()
 	jwtValidator := jwttoken.NewJWTServiceAdapter(jwtService)
-	authService := service.NewService(userStore, sessionStore, 5*time.Minute,
+	authService := service.NewService(userStore, sessionStore,
+		service.WithSessionTTL(5*time.Minute),
 		service.WithLogger(logger),
 		service.WithJWTService(jwtService),
 		service.WithAuditPublisher(audit.NewPublisher(auditStore)),

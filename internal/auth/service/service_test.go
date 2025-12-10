@@ -37,7 +37,8 @@ func (s *ServiceSuite) SetupTest() {
 	s.mockSessStore = mocks.NewMockSessionStore(s.ctrl)
 	s.mockJWT = mocks.NewMockTokenGenerator(s.ctrl)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	s.service = NewService(s.mockUserStore, s.mockSessStore, 15*time.Minute,
+	s.service = NewService(s.mockUserStore, s.mockSessStore,
+		WithSessionTTL(15*time.Minute),
 		WithLogger(logger),
 		WithJWTService(s.mockJWT))
 }

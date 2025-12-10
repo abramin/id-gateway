@@ -103,7 +103,7 @@ func registerRoutes(
 		consentStore.NewInMemoryStore(),
 		audit.NewPublisher(audit.NewInMemoryStore()),
 		log,
-		cfg.ConsentTTL,
+		consentService.WithConsentTTL(cfg.ConsentTTL),
 	)
 	consentHTTPHandler := consentHandler.New(consentSvc, log, m)
 
