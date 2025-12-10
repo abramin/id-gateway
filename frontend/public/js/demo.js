@@ -263,10 +263,6 @@ document.addEventListener('alpine:init', () => {
                 this.timeline.token.completed = true;
                 this.timeline.token.timestamp = new Date();
                 
-                console.log('Token response received:', response);
-                console.log('Access token:', response.access_token);
-                console.log('Response keys:', Object.keys(response));
-                
                 // Store token in sessionStorage for consent demo
                 const accessToken = response.access_token || response.accessToken || response.AccessToken;
                 if (accessToken) {
