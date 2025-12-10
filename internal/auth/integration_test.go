@@ -73,7 +73,7 @@ func TestCompleteAuthFlow(t *testing.T) {
 	}
 	payload, err := json.Marshal(reqBody)
 	require.NoError(t, err)
-
+	t.Log("Step 1: Authorization Request")
 	req := httptest.NewRequest(http.MethodPost, "/auth/authorize", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -93,6 +93,7 @@ func TestCompleteAuthFlow(t *testing.T) {
 	assert.Contains(t, redirectURI, "code="+code)
 	assert.Contains(t, redirectURI, "state=state-xyz")
 
+	t.Log("Verifying session created with pending consent status")
 	session, err := sessionStore.FindByCode(context.Background(), code)
 	require.NoError(t, err)
 	assert.Equal(t, service.StatusPendingConsent, session.Status)
@@ -102,7 +103,7 @@ func TestCompleteAuthFlow(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, user.ID, session.UserID)
 
-	// Exchange code for token
+	t.Log("Step 2: Token Request")
 	tokenRequest := &models.TokenRequest{
 		GrantType:   "authorization_code",
 		Code:        session.Code,
@@ -128,7 +129,7 @@ func TestCompleteAuthFlow(t *testing.T) {
 	accessToken := tokenBody["access_token"]
 	assert.NotEmpty(t, accessToken)
 
-	// Use token to get user info
+	t.Log("Step 3: UserInfo Request")
 	userInfoReq := httptest.NewRequest(http.MethodGet, "/auth/userinfo", nil)
 	userInfoReq.Header.Set("Authorization", "Bearer "+accessToken.(string))
 	userInfoReq.Header.Set("Content-Type", "application/json")
@@ -148,18 +149,18 @@ func TestCompleteAuthFlow(t *testing.T) {
 	assert.Equal(t, user.LastName, userInfo.FamilyName)
 	assert.Equal(t, user.ID.String(), userInfo.Sub)
 
-	// Verify session is updated to active status
+	t.Log("Verifying session is updated to active status")
 	session, err = sessionStore.FindByCode(context.Background(), code)
 	require.NoError(t, err)
 	assert.Equal(t, service.StatusActive, session.Status)
 
-	// Verify user store has the user
+	t.Log("Verifying user stored correctly")
 	users, err := userStore.ListAll(context.Background())
 	require.NoError(t, err)
 	assert.Len(t, users, 1)
 	assert.Equal(t, user.ID, users[user.ID.String()].ID)
 
-	// Verify audit events recorded throughout the flow
+	t.Log("Verifying audit events recorded")
 	auditEvents, err := auditStore.ListByUser(context.Background(), user.ID.String())
 	require.NoError(t, err)
 	assert.Len(t, auditEvents, 4) // user created, session created, tokens issued, userinfo accessed
