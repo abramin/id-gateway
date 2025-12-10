@@ -35,7 +35,8 @@ type GrantRequest struct {
 }
 
 type GrantResponse struct {
-	Granted []Consent `json:"granted"`
+	Granted []*Grant `json:"granted"`
+	Message string   `json:"message,omitempty"`
 }
 
 type Consent struct {
@@ -49,11 +50,6 @@ type Consent struct {
 type ConsentWithStatus struct {
 	Consent
 	Status Status `json:"status"` // "active", "expired", "revoked"
-}
-
-type ActionResponse struct {
-	Granted []Grant `json:"granted"`
-	Message string  `json:"message,omitempty"`
 }
 
 type Grant struct {
@@ -70,7 +66,14 @@ type RevokeRequest struct {
 
 // RevokeResponse matches PRD-002 spec - only revoked records
 type RevokeResponse struct {
-	Revoked []*Consent `json:"revoked"`
+	Revoked []*Revoked `json:"revoked"`
+	Message string     `json:"message,omitempty"`
+}
+
+type Revoked struct {
+	Purpose   Purpose   `json:"purpose" validate:"required,oneof=login registry_check vc_issuance decision_evaluation"`
+	RevokedAt time.Time `json:"revoked_at" validate:"required"`
+	Status    Status    `json:"status" validate:"required,oneof=active expired revoked"` // "revoked" for revoked consent
 }
 
 // ListResponse matches PRD-002 spec - uses "consents" not "consent_records"

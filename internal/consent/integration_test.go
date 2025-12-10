@@ -52,7 +52,7 @@ func TestConsentIntegrationFlow(t *testing.T) {
 
 	// Verify grant response
 	grantRespBody, _ := io.ReadAll(resp.Body)
-	var grantData consentModel.ActionResponse
+	var grantData consentModel.GrantResponse
 	require.NoError(t, json.Unmarshal(grantRespBody, &grantData))
 	assert.Len(t, grantData.Granted, 2)
 	assert.Contains(t, grantData.Message, "Consent granted for 2 purposes")
@@ -100,9 +100,9 @@ func TestConsentIntegrationFlow(t *testing.T) {
 
 	// Verify revoke response
 	revokeRespBody, _ := io.ReadAll(revokeResp.Body)
-	var revokeData consentModel.ActionResponse
+	var revokeData consentModel.RevokeResponse
 	require.NoError(t, json.Unmarshal(revokeRespBody, &revokeData))
-	assert.Len(t, revokeData.Granted, 1) // Revoke response uses "Granted" field (see handler)
+	assert.Len(t, revokeData.Revoked, 1) // Revoke response uses "Revoked" field (see handler)
 	assert.Contains(t, revokeData.Message, "Consent revoked for 1 purpose")
 
 	// Verify audit events after revoke

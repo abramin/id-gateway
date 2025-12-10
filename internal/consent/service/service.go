@@ -159,13 +159,13 @@ func (s *Service) Revoke(ctx context.Context, userID string, purposes []models.P
 		}
 		s.emitAudit(ctx, audit.Event{
 			UserID:    userID,
-			Purpose:   string(revokedRecord.Purpose),
+			Purpose:   string(record.Purpose),
 			Action:    models.AuditActionConsentRevoked,
 			Decision:  models.AuditDecisionRevoked,
 			Reason:    models.AuditReasonUserInitiated,
 			Timestamp: now,
 		})
-		s.incrementConsentsRevoked(revokedRecord.Purpose)
+		s.incrementConsentsRevoked(record.Purpose)
 		s.decrementActiveConsents(1)
 		revoked = append(revoked, revokedRecord)
 	}

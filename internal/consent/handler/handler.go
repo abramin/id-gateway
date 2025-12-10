@@ -100,8 +100,8 @@ func (h *Handler) handleGrantConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := &models.ActionResponse{
-		Granted: formatConsentResponses(granted, time.Now()),
+	res := &models.GrantResponse{
+		Granted: formatGrantResponses(granted, time.Now()),
 		Message: formatActionMessage("Consent granted for %d purpose", len(granted)),
 	}
 
@@ -150,12 +150,22 @@ func (h *Handler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := make([]*models.Consent, len(revoked))
-	for i, r := range revoked {
-		res[i] = models.ToConsentDTO(r)
-	}
+	respond.WriteJSON(w, http.StatusOK, models.RevokeResponse{
+		Revoked: formatRevokeResponses(revoked),
+		Message: formatActionMessage("Consent revoked for %d purpose", len(revoked)),
+	})
+}
 
-	respond.WriteJSON(w, http.StatusOK, models.RevokeResponse{Revoked: res})
+func formatRevokeResponses(revoked []*models.Record) []*models.Revoked {
+	var resp []*models.Revoked
+	for _, record := range revoked {
+		resp = append(resp, &models.Revoked{
+			Purpose:   record.Purpose,
+			RevokedAt: *record.RevokedAt,
+			Status:    record.ComputeStatus(time.Now()),
+		})
+	}
+	return resp
 }
 
 func (h *Handler) handleGetConsents(w http.ResponseWriter, r *http.Request) {
@@ -197,10 +207,10 @@ func (h *Handler) handleGetConsents(w http.ResponseWriter, r *http.Request) {
 }
 
 // TODO: move to models or service package
-func formatConsentResponses(records []*models.Record, now time.Time) []models.Grant {
-	var resp []models.Grant
+func formatGrantResponses(records []*models.Record, now time.Time) []*models.Grant {
+	var resp []*models.Grant
 	for _, record := range records {
-		resp = append(resp, models.Grant{
+		resp = append(resp, &models.Grant{
 			Purpose:   record.Purpose,
 			GrantedAt: record.GrantedAt,
 			ExpiresAt: record.ExpiresAt,

@@ -62,7 +62,7 @@ func (s *ConsentHandlerSuite) TestHandleGrantConsent() {
 		handler.handleGrantConsent(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		var resp consentModel.ActionResponse
+		var resp consentModel.GrantResponse
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 		granted := resp.Granted[0]
 		assert.Equal(t, consentModel.PurposeLogin, granted.Purpose)
