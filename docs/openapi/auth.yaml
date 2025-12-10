@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: |
     OpenAPI specification for the ID Gateway authentication endpoints.
-    
+
     The API follows an OAuth2-style authorization code flow (OIDC-lite) with
     endpoints for initiating authorization, exchanging authorization codes for
     tokens, and fetching user information for an authenticated session.
@@ -14,6 +14,7 @@ servers:
 paths:
   /auth/authorize:
     post:
+      security: []
       summary: Initiate authorization by email
       description: |
         Starts an authorization session for a user. If the email does not exist
@@ -24,7 +25,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AuthorizationRequest'
+              $ref: "#/components/schemas/AuthorizationRequest"
             examples:
               default:
                 summary: Minimal authorize request
@@ -35,25 +36,26 @@ paths:
                   redirect_uri: https://app.example.com/callback
                   state: abc123
       responses:
-        '200':
+        "200":
           description: Authorization created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthorizationResponse'
+                $ref: "#/components/schemas/AuthorizationResponse"
               examples:
                 default:
                   value:
                     code: authz_cafedeadbeef
                     redirect_uri: https://app.example.com/callback
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalError'
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /auth/token:
     post:
+      security: []
       summary: Exchange authorization code for tokens
       description: |
         Exchanges a valid authorization code for an ID token and an access
@@ -64,7 +66,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TokenRequest'
+              $ref: "#/components/schemas/TokenRequest"
             examples:
               default:
                 value:
@@ -73,36 +75,36 @@ paths:
                   redirect_uri: https://app.example.com/callback
                   client_id: demo-client
       responses:
-        '200':
+        "200":
           description: Tokens issued successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TokenResponse'
+                $ref: "#/components/schemas/TokenResponse"
               examples:
                 default:
                   value:
                     access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
                     id_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
                     expires_in: 3600
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalError'
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /auth/userinfo:
     get:
       summary: Get user information for the authenticated session
       security:
         - bearerAuth: []
       responses:
-        '200':
+        "200":
           description: User info for the session
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserInfo'
+                $ref: "#/components/schemas/UserInfo"
               examples:
                 default:
                   value:
@@ -112,10 +114,10 @@ paths:
                     given_name: Jane
                     family_name: Doe
                     name: Jane Doe
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalError'
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   securitySchemes:
     bearerAuth:
@@ -232,7 +234,18 @@ components:
         error:
           type: string
           description: Machine readable error code
-          enum: [bad_request, unauthorized, conflict, not_found, internal_error, invalid_consent, missing_consent, policy_violation, registry_timeout]
+          enum:
+            [
+              bad_request,
+              unauthorized,
+              conflict,
+              not_found,
+              internal_error,
+              invalid_consent,
+              missing_consent,
+              policy_violation,
+              registry_timeout,
+            ]
         error_description:
           type: string
           description: Human readable explanation of the error
@@ -242,7 +255,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           examples:
             validation_failure:
               value:
@@ -253,7 +266,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           examples:
             missing_header:
               value:
@@ -264,7 +277,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           examples:
             generic:
               value:
