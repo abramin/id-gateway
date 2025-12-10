@@ -52,7 +52,7 @@ func initializeAuthService(m *metrics.Metrics, log *slog.Logger, jwtService *jwt
 	return authService.NewService(
 		authStore.NewInMemoryUserStore(),
 		authStore.NewInMemorySessionStore(),
-		cfg.SessionTTL, // TODO Make configurable
+		cfg.SessionTTL,
 		authService.WithMetrics(m),
 		authService.WithLogger(log),
 		authService.WithJWTService(jwtService),
