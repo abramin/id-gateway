@@ -144,7 +144,11 @@ func (s *consentSteps) postWithEmptyPurposes(ctx context.Context, path string) e
 	body := map[string]interface{}{
 		"purposes": []string{},
 	}
-	return s.tc.POST(path, body)
+	headers := map[string]string{}
+	if token := s.tc.GetAccessToken(); token != "" {
+		headers["Authorization"] = "Bearer " + token
+	}
+	return s.tc.POSTWithHeaders(path, body, headers)
 }
 
 func (s *consentSteps) waitSeconds(ctx context.Context, seconds int) error {
