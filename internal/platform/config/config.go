@@ -51,5 +51,6 @@ func FromEnv() Server {
 		RegulatedMode: regulated,
 		JWTSigningKey: jwtSigningKey,
 		TokenTTL:      TokenTTL,
+		ConsentTTL:    ConsentTTL,
 	}
 }
