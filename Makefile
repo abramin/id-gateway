@@ -1,5 +1,5 @@
 # === VARIABLES ===
-APP_NAME := id-gateway
+APP_NAME := credo
 PKG := ./...
 MAIN := ./cmd/server/main.go
 

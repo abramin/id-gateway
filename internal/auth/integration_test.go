@@ -12,14 +12,14 @@ import (
 	"testing"
 	"time"
 
-	"id-gateway/internal/audit"
-	auth "id-gateway/internal/auth/handler"
-	"id-gateway/internal/auth/models"
-	"id-gateway/internal/auth/service"
-	"id-gateway/internal/auth/store"
-	jwttoken "id-gateway/internal/jwt_token"
-	"id-gateway/internal/platform/middleware"
-	dErrors "id-gateway/pkg/domain-errors"
+	"credo/internal/audit"
+	auth "credo/internal/auth/handler"
+	"credo/internal/auth/models"
+	"credo/internal/auth/service"
+	"credo/internal/auth/store"
+	jwttoken "credo/internal/jwt_token"
+	"credo/internal/platform/middleware"
+	dErrors "credo/pkg/domain-errors"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -34,8 +34,8 @@ func SetupSuite(t *testing.T) (*chi.Mux, *store.InMemoryUserStore, *store.InMemo
 	sessionStore := store.NewInMemorySessionStore()
 	jwtService := jwttoken.NewJWTService(
 		"test-secret-key",
-		"id-gateway",
-		"id-gateway-client",
+		"credo",
+		"credo-client",
 		15*time.Minute,
 	)
 	auditStore := audit.NewInMemoryStore()

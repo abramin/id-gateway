@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"id-gateway/internal/auth/models"
-	"id-gateway/internal/auth/service/mocks"
-	"id-gateway/internal/auth/store"
-	dErrors "id-gateway/pkg/domain-errors"
+	"credo/internal/auth/models"
+	"credo/internal/auth/service/mocks"
+	"credo/internal/auth/store"
+	dErrors "credo/pkg/domain-errors"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"

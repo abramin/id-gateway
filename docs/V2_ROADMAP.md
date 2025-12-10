@@ -81,7 +81,7 @@ V2+ consists of THREE parallel tracks that can be pursued simultaneously:
 
 ```json
 {
-  "iss": "id-gateway",
+  "iss": "credo",
   "sub": "user_123",
   "aud": ["demo-client"],
   "exp": 1735934400,

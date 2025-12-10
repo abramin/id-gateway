@@ -10,9 +10,11 @@
 ## 1. Overview
 
 ### Problem Statement
+
 Users need portable, verifiable proof of identity attributes (like age) without repeatedly querying registries or exposing raw PII. Verifiable Credentials (VCs) solve this by creating signed attestations that can be verified later without re-fetching source data.
 
 ### Goals
+
 - Issue "AgeOver18" verifiable credentials based on citizen registry data
 - Store issued credentials for later verification
 - Support credential verification without re-fetching registry data
@@ -20,6 +22,7 @@ Users need portable, verifiable proof of identity attributes (like age) without 
 - Provide revocation capability (future: real revocation registry)
 
 ### Non-Goals
+
 - Real cryptographic signatures (use mock for MVP)
 - Multiple credential types beyond AgeOver18
 - Credential presentation protocol (W3C VP)
@@ -32,11 +35,13 @@ Users need portable, verifiable proof of identity attributes (like age) without 
 ## 2. Functional Requirements
 
 ### FR-1: Issue Verifiable Credential
+
 **Endpoint:** `POST /vc/issue`
 
 **Description:** Issue an "AgeOver18" credential after verifying user's date of birth from citizen registry.
 
 **Input:**
+
 ```json
 {
   "type": "AgeOver18",
@@ -45,12 +50,13 @@ Users need portable, verifiable proof of identity attributes (like age) without 
 ```
 
 **Output (Success - 200, Non-Regulated):**
+
 ```json
 {
   "credential_id": "vc_abc123xyz",
   "type": "AgeOver18",
   "subject": "user_def456",
-  "issuer": "id-gateway",
+  "issuer": "credo",
   "issued_at": "2025-12-03T10:00:00Z",
   "claims": {
     "is_over_18": true,
@@ -60,6 +66,7 @@ Users need portable, verifiable proof of identity attributes (like age) without 
 ```
 
 **Output (Success - 200, Regulated):**
+
 ```json
 {
   "credential_id": "vc_abc123xyz",
@@ -72,6 +79,7 @@ Users need portable, verifiable proof of identity attributes (like age) without 
 ```
 
 **Business Logic:**
+
 1. Extract user from bearer token
 2. Require consent for `ConsentPurposeVCIssuance`
 3. Validate credential type is "AgeOver18"
@@ -81,10 +89,10 @@ Users need portable, verifiable proof of identity attributes (like age) without 
 7. Calculate age: `now.Year() - dob.Year()`
 8. If age < 18, return 400 "User does not meet age requirement"
 9. Create credential:
-   - ID: "vc_" + uuid
+   - ID: "vc\_" + uuid
    - Type: "AgeOver18"
    - Subject: userID
-   - Issuer: "id-gateway"
+   - Issuer: "credo"
    - IssuedAt: now
    - Claims: {"is_over_18": true, "verified_via": "national_registry"}
 10. If regulated mode, minimize claims (remove "verified_via")
@@ -93,6 +101,7 @@ Users need portable, verifiable proof of identity attributes (like age) without 
 13. Return credential
 
 **Error Cases:**
+
 - 401 Unauthorized: Invalid bearer token
 - 403 Forbidden: Missing consent
 - 400 Bad Request: Invalid credential type
@@ -105,11 +114,13 @@ Users need portable, verifiable proof of identity attributes (like age) without 
 ---
 
 ### FR-2: Verify Credential
+
 **Endpoint:** `POST /vc/verify`
 
 **Description:** Verify a previously issued credential by ID. Returns validity status and claims.
 
 **Input:**
+
 ```json
 {
   "credential_id": "vc_abc123xyz"
@@ -117,6 +128,7 @@ Users need portable, verifiable proof of identity attributes (like age) without 
 ```
 
 **Output (Success - 200):**
+
 ```json
 {
   "valid": true,
@@ -131,6 +143,7 @@ Users need portable, verifiable proof of identity attributes (like age) without 
 ```
 
 **Output (Not Found - 404):**
+
 ```json
 {
   "valid": false,
@@ -139,6 +152,7 @@ Users need portable, verifiable proof of identity attributes (like age) without 
 ```
 
 **Business Logic:**
+
 1. Validate credential_id is provided
 2. Retrieve credential from VCStore
 3. If not found, return 404
@@ -146,6 +160,7 @@ Users need portable, verifiable proof of identity attributes (like age) without 
 5. Return credential details with valid=true
 
 **Error Cases:**
+
 - 400 Bad Request: Missing credential_id
 - 404 Not Found: Credential doesn't exist
 - 500 Internal Server Error: Store failure
@@ -185,7 +200,7 @@ type VerifiableCredential struct {
     ID        string
     Type      string
     Subject   string // UserID
-    Issuer    string // "id-gateway"
+    Issuer    string // "credo"
     IssuedAt  time.Time
     Claims    map[string]any
     Revoked   bool
@@ -210,6 +225,7 @@ func (s *Service) Verify(ctx context.Context, credID string) (*VerifyResult, err
 ### TR-3: Data Minimization
 
 **MinimizeClaims Function:**
+
 ```go
 func MinimizeClaims(claims map[string]any, regulatedMode bool) map[string]any {
     if !regulatedMode {
@@ -297,6 +313,7 @@ curl -X POST http://localhost:8080/vc/verify \
 ---
 
 ## References
+
 - [W3C Verifiable Credentials Data Model](https://www.w3.org/TR/vc-data-model/)
 - Tutorial: `docs/TUTORIAL.md` Section 4
 - Existing Code: `internal/evidence/vc/`

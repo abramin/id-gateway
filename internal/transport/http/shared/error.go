@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	dErrors "id-gateway/pkg/domain-errors"
+	dErrors "credo/pkg/domain-errors"
 )
 
 // TODO: combine with shared json package?

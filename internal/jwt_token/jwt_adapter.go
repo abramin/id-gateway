@@ -1,7 +1,7 @@
 package jwttoken
 
 import (
-	"id-gateway/internal/platform/middleware"
+	"credo/internal/platform/middleware"
 )
 
 func ToMiddlewareClaims(claims *Claims) *middleware.JWTClaims {

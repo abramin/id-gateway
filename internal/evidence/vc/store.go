@@ -3,7 +3,7 @@ package vc
 import (
 	"context"
 
-	pkgerrors "id-gateway/pkg/domain-errors"
+	pkgerrors "credo/pkg/domain-errors"
 )
 
 var (

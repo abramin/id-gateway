@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"id-gateway/internal/auth/models"
+	"credo/internal/auth/models"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"

@@ -1,4 +1,4 @@
-module id-gateway/e2e
+module credo/e2e
 
 go 1.21
 

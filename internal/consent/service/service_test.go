@@ -14,10 +14,10 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
-	"id-gateway/internal/audit"
-	"id-gateway/internal/consent/models"
-	"id-gateway/internal/consent/service/mocks"
-	dErrors "id-gateway/pkg/domain-errors"
+	"credo/internal/audit"
+	"credo/internal/consent/models"
+	"credo/internal/consent/service/mocks"
+	dErrors "credo/pkg/domain-errors"
 )
 
 type ServiceSuite struct {

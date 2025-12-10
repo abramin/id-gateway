@@ -6,8 +6,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"id-gateway/internal/auth/models"
-	dErrors "id-gateway/pkg/domain-errors"
+	"credo/internal/auth/models"
+	dErrors "credo/pkg/domain-errors"
 )
 
 var ErrNotFound = dErrors.New(dErrors.CodeNotFound, "record not found")

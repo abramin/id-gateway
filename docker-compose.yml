@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: id-gateway-backend
+    container_name: credo-backend
     ports:
       - "8080:8080"
     environment:
@@ -12,7 +12,7 @@ services:
       - REGULATED_MODE=true
       - LOG_LEVEL=info
     networks:
-      - id-gateway-network
+      - credo-network
     restart: unless-stopped
     healthcheck:
       test:
@@ -34,13 +34,13 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: id-gateway-frontend
+    container_name: credo-frontend
     ports:
       - "3000:80"
     depends_on:
       - backend
     networks:
-      - id-gateway-network
+      - credo-network
     restart: unless-stopped
     healthcheck:
       test:
@@ -57,7 +57,7 @@ services:
       retries: 3
 
 networks:
-  id-gateway-network:
+  credo-network:
     driver: bridge
 
 volumes:

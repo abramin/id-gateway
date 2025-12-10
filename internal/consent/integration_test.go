@@ -15,12 +15,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"id-gateway/internal/audit"
-	"id-gateway/internal/consent/handler"
-	consentModel "id-gateway/internal/consent/models"
-	"id-gateway/internal/consent/service"
-	"id-gateway/internal/consent/store"
-	"id-gateway/internal/platform/middleware"
+	"credo/internal/audit"
+	"credo/internal/consent/handler"
+	consentModel "credo/internal/consent/models"
+	"credo/internal/consent/service"
+	"credo/internal/consent/store"
+	"credo/internal/platform/middleware"
 )
 
 func TestConsentIntegrationFlow(t *testing.T) {

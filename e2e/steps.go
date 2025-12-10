@@ -3,9 +3,9 @@ package e2e
 import (
 	"github.com/cucumber/godog"
 
-	"id-gateway/e2e/steps/auth"
-	"id-gateway/e2e/steps/common"
-	"id-gateway/e2e/steps/consent"
+	"credo/e2e/steps/auth"
+	"credo/e2e/steps/common"
+	"credo/e2e/steps/consent"
 )
 
 // RegisterSteps registers all step definitions from modular packages

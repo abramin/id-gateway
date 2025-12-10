@@ -11,7 +11,7 @@ package mocks
 
 import (
 	context "context"
-	models "id-gateway/internal/consent/models"
+	models "credo/internal/consent/models"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"

@@ -42,11 +42,11 @@ jobs:
           cache: true
 
       - name: Build Go application
-        run: go build -o bin/id-gateway ./cmd/server/main.go
+        run: go build -o bin/credo ./cmd/server/main.go
 
       - name: Start backend server
         run: |
-          ./bin/id-gateway &
+          ./bin/credo &
           echo $! > server.pid
         env:
           PORT: 8080
