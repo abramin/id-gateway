@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"os"
@@ -73,10 +74,13 @@ func initializeAuthService(m *metrics.Metrics, log *slog.Logger, jwtService *jwt
 func initializeJWTService(cfg *config.Server) (*jwttoken.JWTService, *jwttoken.JWTServiceAdapter) {
 	jwtService := jwttoken.NewJWTService(
 		cfg.JWTSigningKey,
-		"credo",
+		cfg.JWTIssuer,
 		"credo-client",
 		cfg.TokenTTL,
 	)
+	if cfg.DemoMode {
+		jwtService.SetEnv("demo")
+	}
 	jwtValidator := jwttoken.NewJWTServiceAdapter(jwtService)
 	return jwtService, jwtValidator
 }
@@ -121,6 +125,18 @@ func registerRoutes(
 		consentService.WithGrantWindow(cfg.ConsentGrantWindow),
 	)
 	consentHTTPHandler := consentHandler.New(consentSvc, log, m)
+	if cfg.DemoMode {
+		r.Get("/demo/info", func(w http.ResponseWriter, _ *http.Request) {
+			resp := map[string]any{
+				"env":        "demo",
+				"users":      []string{"alice", "bob", "charlie"},
+				"jwt_issuer": cfg.JWTIssuer,
+				"data_store": "in-memory",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+	}
 
 	// Public auth endpoints (no JWT required)
 	r.Post("/auth/authorize", authHandler.HandleAuthorize)
