@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -150,4 +151,58 @@ func TestConsentIntegrationFlow(t *testing.T) {
 	}
 	assert.True(t, loginFound, "login consent not found")
 	assert.True(t, registryCheckFound, "registry_check consent not found")
+}
+
+func TestConsentExpiryIntegration(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	consentStore := store.NewInMemoryStore()
+	auditStore := audit.NewInMemoryStore()
+	svc := service.NewService(consentStore, audit.NewPublisher(auditStore))
+	handler := handler.New(svc, logger, nil)
+
+	router := chi.NewRouter()
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), middleware.ContextKeyUserID, "user123")
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
+	handler.Register(router)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	// Grant a consent
+	grantBody, _ := json.Marshal(map[string]any{"purposes": []string{"login"}})
+	resp, err := http.Post(server.URL+"/auth/consent", "application/json", bytes.NewReader(grantBody))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Force expiry in the store
+	expiredAt := time.Now().Add(-time.Hour)
+	record, err := consentStore.FindByUserAndPurpose(context.Background(), "user123", consentModel.PurposeLogin)
+	require.NoError(t, err)
+	require.NotNil(t, record)
+	record.ExpiresAt = &expiredAt
+	record.RevokedAt = nil
+	require.NoError(t, consentStore.Update(context.Background(), record))
+
+	// List consents and verify status shows expired
+	listResp, err := http.Get(server.URL + "/auth/consent")
+	require.NoError(t, err)
+	defer listResp.Body.Close()
+	assert.Equal(t, http.StatusOK, listResp.StatusCode)
+
+	bodyBytes, _ := io.ReadAll(listResp.Body)
+	var listData consentModel.ListResponse
+	require.NoError(t, json.Unmarshal(bodyBytes, &listData))
+	require.Len(t, listData.Consents, 1)
+	assert.Equal(t, consentModel.StatusExpired, listData.Consents[0].Status)
+
+	// Ensure audit recorded the original grant
+	events, auditErr := auditStore.ListByUser(context.Background(), "user123")
+	require.NoError(t, auditErr)
+	assert.Len(t, events, 1)
+	assert.Equal(t, "consent_granted", events[0].Action)
 }
