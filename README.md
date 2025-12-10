@@ -19,6 +19,7 @@ Identity verification gateway built as a modular monolith. It simulates OIDC-sty
 
 - [Architecture overview](docs/architecture.md)
 - [Product requirements](docs/prd/README.md) - (links to PRDs for auth, consent, registry, VC, decision, audit, and user data rights).
+- OpenAPI docs (hosted): https://abramin.github.io/Credo
 
 ## Run it
 
@@ -34,7 +35,7 @@ Access the application:
 
 - **Frontend UI:** http://localhost:3000
 - **Backend API:** http://localhost:8080
-- **OpenAPI docs:** http://localhost:8081 (Swagger UI for `docs/openapi/auth.yaml`)
+- **OpenAPI docs (local):** http://localhost:8081 (Swagger UI for `docs/openapi/auth.yaml`)
 
 ### Development Mode
 
@@ -59,6 +60,11 @@ python3 -m http.server 8000
 The project includes demo web interfaces:
 
 See [Frontend Readme](frontend/README.md) for details.
+
+## Testing
+
+- Unit/integration tests: `go test ./...`
+- Contract-style E2E API tests: `go test -v ./e2e --godog.tags=@normal` (uses [godog](https://github.com/cucumber/godog) Cucumber-style features)
 
 ## API quick reference
 
