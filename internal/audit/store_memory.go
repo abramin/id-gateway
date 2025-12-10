@@ -10,6 +10,12 @@ type InMemoryStore struct {
 	events map[string][]Event
 }
 
+func (s *InMemoryStore) Clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = make(map[string][]Event)
+}
+
 func NewInMemoryStore() *InMemoryStore {
 	return &InMemoryStore{events: make(map[string][]Event)}
 }

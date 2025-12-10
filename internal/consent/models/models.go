@@ -8,6 +8,26 @@ import (
 
 // Purpose labels why data is processed. Purpose binding allows selective
 // revocation without affecting other flows.
+// Audit event actions
+const (
+	AuditActionConsentGranted     = "consent_granted"
+	AuditActionConsentRevoked     = "consent_revoked"
+	AuditActionConsentCheckPassed = "consent_check_passed"
+	AuditActionConsentCheckFailed = "consent_check_failed"
+)
+
+// Audit event decisions
+const (
+	AuditDecisionGranted = "granted"
+	AuditDecisionRevoked = "revoked"
+	AuditDecisionDenied  = "denied"
+)
+
+// Audit event reasons
+const (
+	AuditReasonUserInitiated = "user_initiated"
+)
+
 type Purpose string
 
 type GrantRequest struct {

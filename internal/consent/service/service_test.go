@@ -21,16 +21,17 @@ import (
 
 type ServiceSuite struct {
 	suite.Suite
-	ctrl      *gomock.Controller
-	mockStore *mocks.MockStore
-	service   *Service
+	ctrl       *gomock.Controller
+	mockStore  *mocks.MockStore
+	service    *Service
+	auditStore *audit.InMemoryStore
 }
 
 func (s *ServiceSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
 	s.mockStore = mocks.NewMockStore(s.ctrl)
-	auditStore := audit.NewInMemoryStore()
-	auditor := audit.NewPublisher(auditStore)
+	s.auditStore = audit.NewInMemoryStore()
+	auditor := audit.NewPublisher(s.auditStore)
 	s.service = NewService(s.mockStore, auditor)
 }
 
@@ -123,6 +124,29 @@ func (s *ServiceSuite) TestGrant() {
 		granted, err := s.service.Grant(context.Background(), "user123", purposes)
 		assert.NoError(t, err)
 		assert.Len(t, granted, 2)
+	})
+
+	s.T().Run("emits audit with reason for grant", func(t *testing.T) {
+		s.auditStore.Clear()
+		purposes := []models.Purpose{models.PurposeLogin}
+
+		s.mockStore.EXPECT().
+			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeLogin).
+			Return(nil, nil)
+
+		s.mockStore.EXPECT().
+			Save(gomock.Any(), gomock.Any()).
+			Return(nil)
+
+		_, err := s.service.Grant(context.Background(), "user123", purposes)
+		assert.NoError(t, err)
+
+		events, auditErr := s.auditStore.ListByUser(context.Background(), "user123")
+		require.NoError(t, auditErr)
+		require.Len(t, events, 1)
+		assert.Equal(t, "consent_granted", events[0].Action)
+		assert.Equal(t, "granted", events[0].Decision)
+		assert.Equal(t, "user_initiated", events[0].Reason)
 	})
 
 	s.T().Run("validation errors", func(t *testing.T) {
@@ -287,6 +311,33 @@ func (s *ServiceSuite) TestRevoke() {
 		// Note: Audit verification would require access to audit store which is created in SetupTest
 		// For a complete test, we'd need to refactor to inject the audit store or make it accessible
 	})
+
+	s.T().Run("returns revoked record with revokedAt set", func(t *testing.T) {
+		now := time.Now()
+		existing := &models.Record{
+			ID:        "consent_1",
+			UserID:    "user123",
+			Purpose:   models.PurposeLogin,
+			GrantedAt: now.Add(-24 * time.Hour),
+		}
+		revokedAt := now.Add(time.Hour)
+		updated := *existing
+		updated.RevokedAt = &revokedAt
+
+		s.mockStore.EXPECT().
+			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeLogin).
+			Return(existing, nil)
+
+		s.mockStore.EXPECT().
+			RevokeByUserAndPurpose(gomock.Any(), "user123", models.PurposeLogin, gomock.Any()).
+			Return(&updated, nil)
+
+		revoked, err := s.service.Revoke(context.Background(), "user123", []models.Purpose{models.PurposeLogin})
+		assert.NoError(t, err)
+		assert.Len(t, revoked, 1)
+		assert.NotNil(t, revoked[0].RevokedAt)
+		assert.Equal(t, revokedAt, *revoked[0].RevokedAt)
+	})
 }
 
 func (s *ServiceSuite) TestRequire() {
@@ -295,6 +346,7 @@ func (s *ServiceSuite) TestRequire() {
 	expired := now.Add(-time.Hour)
 
 	s.T().Run("allows active consent", func(t *testing.T) {
+		s.auditStore.Clear()
 		record := &models.Record{
 			ID:        "consent_1",
 			Purpose:   models.PurposeVCIssuance,
@@ -310,12 +362,20 @@ func (s *ServiceSuite) TestRequire() {
 	})
 
 	s.T().Run("rejects missing consent", func(t *testing.T) {
+		s.auditStore.Clear()
 		s.mockStore.EXPECT().
 			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeVCIssuance).
 			Return(nil, nil)
 
 		err := s.service.Require(context.Background(), "user123", models.PurposeVCIssuance)
 		assert.True(t, dErrors.Is(err, dErrors.CodeMissingConsent))
+
+		events, auditErr := s.auditStore.ListByUser(context.Background(), "user123")
+		require.NoError(t, auditErr)
+		require.Len(t, events, 1)
+		assert.Equal(t, "consent_check_failed", events[0].Action)
+		assert.Equal(t, "denied", events[0].Decision)
+		assert.Equal(t, "user_initiated", events[0].Reason)
 	})
 
 	s.T().Run("rejects revoked consent", func(t *testing.T) {

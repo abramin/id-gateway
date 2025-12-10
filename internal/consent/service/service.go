@@ -85,7 +85,14 @@ func (s *Service) upsertGrant(ctx context.Context, userID string, purpose models
 		if err := s.store.Update(ctx, existing); err != nil {
 			return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to renew consent", err)
 		}
-		s.emitAudit(ctx, userID, purpose, "granted", "consent_granted")
+		s.emitAudit(ctx, audit.Event{
+			UserID:    userID,
+			Purpose:   string(purpose),
+			Action:    models.AuditActionConsentGranted,
+			Decision:  models.AuditDecisionGranted,
+			Reason:    models.AuditReasonUserInitiated,
+			Timestamp: now,
+		})
 		s.incrementConsentsGranted(purpose)
 		return existing, nil
 	}
@@ -100,7 +107,14 @@ func (s *Service) upsertGrant(ctx context.Context, userID string, purpose models
 	if err := s.store.Save(ctx, record); err != nil {
 		return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to save consent", err)
 	}
-	s.emitAudit(ctx, userID, purpose, "granted", "consent_granted")
+	s.emitAudit(ctx, audit.Event{
+		UserID:    userID,
+		Purpose:   string(purpose),
+		Action:    models.AuditActionConsentGranted,
+		Decision:  models.AuditDecisionGranted,
+		Reason:    models.AuditReasonUserInitiated,
+		Timestamp: now,
+	})
 	s.incrementConsentsGranted(purpose)
 	return record, nil
 }
@@ -127,11 +141,19 @@ func (s *Service) Revoke(ctx context.Context, userID string, purposes []models.P
 		if record.ExpiresAt != nil && record.ExpiresAt.Before(time.Now()) {
 			continue
 		}
-		_, err = s.store.RevokeByUserAndPurpose(ctx, userID, record.Purpose, time.Now())
+		now := time.Now()
+		_, err = s.store.RevokeByUserAndPurpose(ctx, userID, record.Purpose, now)
 		if err != nil {
 			return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to revoke consent", err)
 		}
-		s.emitAudit(ctx, userID, record.Purpose, "revoked", "consent_revoked")
+		s.emitAudit(ctx, audit.Event{
+			UserID:    userID,
+			Purpose:   string(record.Purpose),
+			Action:    models.AuditActionConsentRevoked,
+			Decision:  models.AuditDecisionRevoked,
+			Reason:    models.AuditReasonUserInitiated,
+			Timestamp: now,
+		})
 		s.incrementConsentsRevoked(record.Purpose)
 		revoked = append(revoked, record)
 	}
@@ -177,37 +199,60 @@ func (s *Service) Require(ctx context.Context, userID string, purpose models.Pur
 	if err != nil {
 		return pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to read consent", err)
 	}
+	now := time.Now()
 	if record == nil {
-		s.emitAudit(ctx, userID, purpose, "denied", "consent_check_failed")
+		s.emitAudit(ctx, audit.Event{
+			UserID:    userID,
+			Purpose:   string(purpose),
+			Action:    models.AuditActionConsentCheckFailed,
+			Decision:  models.AuditDecisionDenied,
+			Reason:    models.AuditReasonUserInitiated,
+			Timestamp: now,
+		})
 		s.incrementConsentCheckFailed(purpose)
 		return pkgerrors.New(pkgerrors.CodeMissingConsent, "consent not granted for required purpose")
 	}
 	if record.RevokedAt != nil {
-		s.emitAudit(ctx, userID, purpose, "denied", "consent_check_failed")
+		s.emitAudit(ctx, audit.Event{
+			UserID:    userID,
+			Purpose:   string(purpose),
+			Action:    models.AuditActionConsentCheckFailed,
+			Decision:  models.AuditDecisionDenied,
+			Reason:    models.AuditReasonUserInitiated,
+			Timestamp: now,
+		})
 		s.incrementConsentCheckFailed(purpose)
 		return pkgerrors.New(pkgerrors.CodeInvalidConsent, "consent revoked")
 	}
-	if record.ExpiresAt != nil && record.ExpiresAt.Before(time.Now()) {
-		s.emitAudit(ctx, userID, purpose, "denied", "consent_check_failed")
+	if record.ExpiresAt != nil && record.ExpiresAt.Before(now) {
+		s.emitAudit(ctx, audit.Event{
+			UserID:    userID,
+			Purpose:   string(purpose),
+			Action:    models.AuditActionConsentCheckFailed,
+			Decision:  models.AuditDecisionDenied,
+			Reason:    models.AuditReasonUserInitiated,
+			Timestamp: now,
+		})
 		s.incrementConsentCheckFailed(purpose)
 		return pkgerrors.New(pkgerrors.CodeInvalidConsent, "consent expired")
 	}
-	s.emitAudit(ctx, userID, purpose, "granted", "consent_check_passed")
+	s.emitAudit(ctx, audit.Event{
+		UserID:    userID,
+		Purpose:   string(purpose),
+		Action:    models.AuditActionConsentCheckPassed,
+		Decision:  models.AuditDecisionGranted,
+		Reason:    models.AuditReasonUserInitiated,
+		Timestamp: now,
+	})
 	s.incrementConsentCheckPassed(purpose)
 	return nil
 }
 
-func (s *Service) emitAudit(ctx context.Context, userID string, purpose models.Purpose, decision string, action string) {
+func (s *Service) emitAudit(ctx context.Context, event audit.Event) {
 	if s.auditor == nil {
 		return
 	}
-	_ = s.auditor.Emit(ctx, audit.Event{
-		UserID:    userID,
-		Purpose:   string(purpose),
-		Action:    action,
-		Decision:  decision,
-		Timestamp: time.Now(),
-	})
+	_ = s.auditor.Emit(ctx, event)
 }
 
 // incrementConsentsGranted increments the consents granted metric if metrics are enabled
