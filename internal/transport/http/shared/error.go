@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"credo/internal/transport/http/shared/json"
 	dErrors "credo/pkg/domain-errors"
 )
 
