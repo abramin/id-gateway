@@ -18,6 +18,7 @@ Credo is a **regulated identity and authorization system** that:
 - Maintains comprehensive audit trails
 - Supports GDPR data rights (export, deletion)
 - **NEW:** Advanced privacy-preserving features (ZK proofs, DIDs, ML risk scoring)
+- Validates API contracts with godog-based E2E feature tests in `e2e/`
 
 ---
 

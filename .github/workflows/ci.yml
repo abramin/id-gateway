@@ -60,10 +60,23 @@ jobs:
         working-directory: e2e
         run: |
           mkdir -p reports
-          go test -v
+          go test -v -- -godog.format=cucumber:$(pwd)/reports/cucumber.json
         env:
           BASE_URL: http://localhost:8080
-          GODOG_FORMAT: cucumber:reports/cucumber.json
+
+      - name: Generate HTML report
+        if: always()
+        run: |
+          if [ -f e2e/reports/cucumber.json ]; then
+            npm install --no-save @cucumber/html-formatter
+            npx cucumber-html-formatter \
+              --output=e2e/reports/report.html \
+              e2e/reports/cucumber.json || echo "HTML generation failed but continuing..."
+            ls -la e2e/reports/
+          else
+            echo "cucumber.json not found, skipping HTML generation"
+            ls -la e2e/reports/ || echo "reports directory not found"
+          fi
 
       - name: Stop backend server
         if: always()
@@ -78,7 +91,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-test-results
-          path: e2e/reports/
+          path: |
+            e2e/reports/cucumber.json
+            e2e/reports/report.html
           retention-days: 7
 
   openapi-docs:
@@ -112,16 +127,69 @@ jobs:
           path: docs/openapi/*.html
           retention-days: 7
 
-      - name: Upload to GitHub Pages artifact
+      - name: Upload OpenAPI docs artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-html-docs
+          path: docs/openapi/*.html
+          retention-days: 1
+
+  e2e-reports:
+    name: Prepare E2E reports for Pages
+    runs-on: ubuntu-latest
+    needs: e2e
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Download E2E report
+        uses: actions/download-artifact@v4
+        with:
+          name: e2e-test-results
+          path: e2e-reports/
+
+      - name: Prepare E2E directory structure
+        run: |
+          mkdir -p pages/e2e
+          cp e2e-reports/report.html pages/e2e/index.html
+          cp e2e-reports/cucumber.json pages/e2e/cucumber.json
+
+      - name: Upload E2E Pages artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-pages
+          path: pages/
+          retention-days: 1
+
+  combine-pages:
+    name: Combine artifacts for Pages
+    runs-on: ubuntu-latest
+    needs: [openapi-docs, e2e-reports]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download OpenAPI docs
+        uses: actions/download-artifact@v4
+        with:
+          name: openapi-html-docs
+          path: pages/
+
+      - name: Download E2E reports
+        uses: actions/download-artifact@v4
+        with:
+          name: e2e-pages
+          path: pages/
+
+      - name: Upload to GitHub Pages
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/openapi/
+          path: pages/
 
   deploy-pages:
     name: Deploy to GitHub Pages
     runs-on: ubuntu-latest
-    needs: openapi-docs
+    needs: combine-pages
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       pages: write

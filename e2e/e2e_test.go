@@ -12,26 +12,32 @@ import (
 )
 
 var opts = godog.Options{
+	Paths:  []string{"features"},
+	Format: "pretty,cucumber:reports/cucumber.json",
 	Output: colors.Colored(os.Stdout),
-	Format: "pretty",
 }
 
 func init() {
 	godog.BindCommandLineFlags("godog.", &opts)
 }
 
-func TestFeatures(t *testing.T) {
+func TestMain(m *testing.M) {
 	flag.Parse()
-	opts.TestingT = t
 
 	suite := godog.TestSuite{
 		ScenarioInitializer: InitializeScenario,
 		Options:             &opts,
 	}
 
-	if suite.Run() != 0 {
-		t.Fatal("non-zero status returned, failed to run feature tests")
+	// Run Godog
+	status := suite.Run()
+
+	// Run any normal Go tests
+	if st := m.Run(); st > status {
+		status = st
 	}
+
+	os.Exit(status)
 }
 
 func InitializeScenario(sc *godog.ScenarioContext) {
