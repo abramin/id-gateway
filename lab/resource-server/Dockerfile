@@ -12,4 +12,6 @@ FROM alpine:3.19
 WORKDIR /app
 COPY --from=builder /app/resource-server ./resource-server
 EXPOSE 9000
+RUN addgroup -g 1000 app && adduser -D -u 1000 -G app app
+USER app
 CMD ["./resource-server"]

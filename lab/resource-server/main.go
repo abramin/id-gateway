@@ -86,12 +86,18 @@ func parseAndVerify(token string, key []byte) (map[string]interface{}, map[strin
 	}
 
 	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
-	if err == nil {
-		_ = json.Unmarshal(headerBytes, &header)
+	if err != nil {
+		return header, claims, fmt.Errorf("failed to base64 decode header: %w", err)
+	}
+	if err := json.Unmarshal(headerBytes, &header); err != nil {
+		return header, claims, fmt.Errorf("failed to unmarshal header JSON: %w", err)
 	}
 	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err == nil {
-		_ = json.Unmarshal(payloadBytes, &claims)
+	if err != nil {
+		return header, claims, fmt.Errorf("failed to base64 decode claims: %w", err)
+	}
+	if err := json.Unmarshal(payloadBytes, &claims); err != nil {
+		return header, claims, fmt.Errorf("failed to unmarshal claims JSON: %w", err)
 	}
 
 	mac := hmac.New(sha256.New, key)

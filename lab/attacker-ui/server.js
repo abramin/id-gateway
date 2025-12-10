@@ -118,7 +118,17 @@ async function runMissingAudienceScenario() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(tokenBody),
   });
-  const tokenJSON = await tokenResp.json();
+  let tokenJSON;
+  if (tokenResp.ok) {
+    tokenJSON = await tokenResp.json();
+  } else {
+    // Try to parse error response, or fallback to status text
+    try {
+      tokenJSON = await tokenResp.json();
+    } catch (e) {
+      tokenJSON = { error: tokenResp.statusText || "Unknown error", status: tokenResp.status };
+    }
+  }
   steps.push({
     title: "Token exchange",
     request: tokenBody,
@@ -130,7 +140,12 @@ async function runMissingAudienceScenario() {
   const rsResp = await fetch(`${resourceBase}/api/data`, {
     headers: { Authorization: `Bearer ${tokenJSON.access_token || ""}` },
   });
-  const rsJSON = await rsResp.json();
+  let rsJSON;
+  if (rsResp.ok) {
+    rsJSON = await rsResp.json();
+  } else {
+    rsJSON = { error: `HTTP error ${rsResp.status}`, body: await rsResp.text() };
+  }
   steps.push({
     title: "Replay token against naive resource server",
     request: { resource: `${resourceBase}/api/data` },

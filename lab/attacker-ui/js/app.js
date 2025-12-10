@@ -11,9 +11,19 @@ function attackerLab() {
       }
     },
     async fetchScenarios() {
-      const resp = await fetch('/api/scenarios');
-      const json = await resp.json();
-      this.scenarios = json.scenarios || [];
+      try {
+        const resp = await fetch('/api/scenarios');
+        if (!resp.ok) {
+          this.scenarios = [];
+          // Optionally, handle/display error: e.g., console.error('Failed to fetch scenarios:', resp.statusText);
+          return;
+        }
+        const json = await resp.json();
+        this.scenarios = json.scenarios || [];
+      } catch (err) {
+        this.scenarios = [];
+        // Optionally, handle/display error: e.g., console.error('Fetch error:', err);
+      }
     },
     async runScenario(id) {
       this.loading = true;
