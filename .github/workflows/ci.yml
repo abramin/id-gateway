@@ -180,13 +180,19 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: openapi-html-docs
-          path: pages/
+          path: pages/openapi/
 
       - name: Download E2E reports
         uses: actions/download-artifact@v4
         with:
           name: e2e-pages
           path: pages/
+
+      - name: Copy frontend UI
+        run: |
+          mkdir -p pages
+          cp -r frontend/public/* pages/
+          ls -la pages/
 
       - name: Upload to GitHub Pages
         uses: actions/upload-pages-artifact@v3
