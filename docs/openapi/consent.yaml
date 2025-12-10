@@ -1,0 +1,359 @@
+openapi: 3.0.3
+info:
+  title: ID Gateway Consent API
+  version: 0.1.0
+  description: |
+    OpenAPI specification for the ID Gateway consent management endpoints.
+
+    The API provides purpose-based consent management with support for granting,
+    revoking, and listing user consents. All endpoints require authentication
+    via JWT bearer token.
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+paths:
+  /auth/consent:
+    post:
+      summary: Grant consent for purposes
+      description: |
+        Grant consent for one or more purposes. If consent already exists for
+        a purpose and is active, it's renewed with a new expiry date. If consent
+        was previously revoked or expired, the same consent ID is reused and
+        updated to active status.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrantConsentRequest"
+            examples:
+              multiple_purposes:
+                summary: Grant multiple purposes
+                value:
+                  purposes: ["login", "registry_check", "vc_issuance"]
+              single_purpose:
+                summary: Grant single purpose
+                value:
+                  purposes: ["login"]
+      responses:
+        "200":
+          description: Consent granted successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrantConsentResponse"
+              examples:
+                success:
+                  value:
+                    granted:
+                      - purpose: "login"
+                        granted_at: "2025-12-03T10:00:00Z"
+                        expires_at: "2026-12-03T10:00:00Z"
+                        status: "active"
+                      - purpose: "registry_check"
+                        granted_at: "2025-12-03T10:00:00Z"
+                        expires_at: "2026-12-03T10:00:00Z"
+                        status: "active"
+                    message: "Consent granted for 2 purposes"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    get:
+      summary: List user consents
+      description: |
+        Retrieve all consent records for the authenticated user, including
+        active, expired, and revoked consents. The status field is computed
+        based on the revoked_at and expires_at timestamps.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          description: Filter by consent status
+          required: false
+          schema:
+            type: string
+            enum: [active, expired, revoked]
+        - name: purpose
+          in: query
+          description: Filter by specific purpose
+          required: false
+          schema:
+            type: string
+            enum: [login, registry_check, vc_issuance, decision_evaluation]
+      responses:
+        "200":
+          description: List of consents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListConsentsResponse"
+              examples:
+                mixed_status:
+                  value:
+                    consents:
+                      - id: "consent_abc123"
+                        purpose: "login"
+                        granted_at: "2025-12-03T10:00:00Z"
+                        expires_at: "2026-12-03T10:00:00Z"
+                        revoked_at: null
+                        status: "active"
+                      - id: "consent_def456"
+                        purpose: "registry_check"
+                        granted_at: "2025-12-03T10:00:00Z"
+                        expires_at: "2026-12-03T10:00:00Z"
+                        revoked_at: "2025-12-03T11:00:00Z"
+                        status: "revoked"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /auth/consent/revoke:
+    post:
+      summary: Revoke consent for purposes
+      description: |
+        Revoke consent for one or more purposes. Once revoked, future operations
+        requiring that purpose will fail until consent is re-granted. Revoking
+        already revoked consent is idempotent.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevokeConsentRequest"
+            examples:
+              single_revoke:
+                summary: Revoke single purpose
+                value:
+                  purposes: ["registry_check"]
+              multiple_revoke:
+                summary: Revoke multiple purposes
+                value:
+                  purposes: ["registry_check", "vc_issuance"]
+      responses:
+        "200":
+          description: Consent revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevokeConsentResponse"
+              examples:
+                success:
+                  value:
+                    revoked:
+                      - purpose: "registry_check"
+                        revoked_at: "2025-12-03T11:00:00Z"
+                        status: "revoked"
+                    message: "Consent revoked for 1 purpose"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token obtained from /auth/token endpoint
+  schemas:
+    ConsentPurpose:
+      type: string
+      enum:
+        - login
+        - registry_check
+        - vc_issuance
+        - decision_evaluation
+      description: |
+        Purpose for which consent is granted:
+        - `login`: User authentication and session management
+        - `registry_check`: External registry verification
+        - `vc_issuance`: Verifiable credential issuance
+        - `decision_evaluation`: Risk scoring and decision engine processing
+    ConsentStatus:
+      type: string
+      enum:
+        - active
+        - expired
+        - revoked
+      description: |
+        Computed consent status:
+        - `active`: Consent is valid and not revoked or expired
+        - `expired`: Consent has passed its expiry date
+        - `revoked`: User has explicitly revoked consent
+    GrantConsentRequest:
+      type: object
+      required: [purposes]
+      properties:
+        purposes:
+          type: array
+          minItems: 1
+          description: List of purposes to grant consent for
+          items:
+            $ref: "#/components/schemas/ConsentPurpose"
+    GrantConsentResponse:
+      type: object
+      required: [granted]
+      properties:
+        granted:
+          type: array
+          description: List of granted consents
+          items:
+            $ref: "#/components/schemas/GrantedConsent"
+        message:
+          type: string
+          description: Human-readable success message
+          example: "Consent granted for 2 purposes"
+    GrantedConsent:
+      type: object
+      required: [purpose, granted_at, status]
+      properties:
+        purpose:
+          $ref: "#/components/schemas/ConsentPurpose"
+        granted_at:
+          type: string
+          format: date-time
+          description: Timestamp when consent was granted
+        expires_at:
+          type: string
+          format: date-time
+          description: Timestamp when consent expires (typically 1 year from grant)
+        status:
+          $ref: "#/components/schemas/ConsentStatus"
+    RevokeConsentRequest:
+      type: object
+      required: [purposes]
+      properties:
+        purposes:
+          type: array
+          minItems: 1
+          description: List of purposes to revoke consent for
+          items:
+            $ref: "#/components/schemas/ConsentPurpose"
+    RevokeConsentResponse:
+      type: object
+      required: [revoked]
+      properties:
+        revoked:
+          type: array
+          description: List of revoked consents
+          items:
+            $ref: "#/components/schemas/RevokedConsent"
+        message:
+          type: string
+          description: Human-readable success message
+          example: "Consent revoked for 1 purpose"
+    RevokedConsent:
+      type: object
+      required: [purpose, revoked_at, status]
+      properties:
+        purpose:
+          $ref: "#/components/schemas/ConsentPurpose"
+        revoked_at:
+          type: string
+          format: date-time
+          description: Timestamp when consent was revoked
+        status:
+          $ref: "#/components/schemas/ConsentStatus"
+    ListConsentsResponse:
+      type: object
+      required: [consents]
+      properties:
+        consents:
+          type: array
+          description: List of all consent records for the user
+          items:
+            $ref: "#/components/schemas/ConsentRecord"
+    ConsentRecord:
+      type: object
+      required: [id, purpose, granted_at, status]
+      properties:
+        id:
+          type: string
+          description: Unique consent identifier
+          example: "consent_abc123"
+        purpose:
+          $ref: "#/components/schemas/ConsentPurpose"
+        granted_at:
+          type: string
+          format: date-time
+          description: Timestamp when consent was initially granted
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when consent expires
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when consent was revoked (null if not revoked)
+        status:
+          $ref: "#/components/schemas/ConsentStatus"
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Machine readable error code
+          enum:
+            - bad_request
+            - unauthorized
+            - forbidden
+            - not_found
+            - internal_error
+            - invalid_consent
+            - missing_consent
+        error_description:
+          type: string
+          description: Human readable explanation of the error
+  responses:
+    BadRequest:
+      description: Invalid or malformed request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            empty_purposes:
+              value:
+                error: bad_request
+                error_description: "purposes array must not be empty"
+            invalid_purpose:
+              value:
+                error: bad_request
+                error_description: "invalid purpose: invalid_purpose"
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            missing_token:
+              value:
+                error: unauthorized
+                error_description: "Missing or invalid Authorization header"
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            generic:
+              value:
+                error: internal_error
+                error_description: "An unexpected error occurred"

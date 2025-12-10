@@ -6,7 +6,7 @@ MAIN := ./cmd/server/main.go
 # === DEFAULT ===
 default: dev
 
-.PHONY: default build run test test-cover test-one e2e e2e-normal e2e-security e2e-report e2e-clean lint fmt imports clean docker-clean help
+.PHONY: default build run test test-cover test-one e2e e2e-normal e2e-security e2e-report e2e-clean lint fmt imports openapi-lint openapi-build clean docker-clean help
 
 # === BUILD ===
 build:
@@ -80,6 +80,29 @@ e2e-clean:
 	@echo "Cleaning E2E test artifacts..."
 	cd e2e && rm -rf reports
 
+# === OPENAPI ===
+openapi-lint:
+	@if command -v npx >/dev/null 2>&1; then \
+		echo "Linting OpenAPI specs..."; \
+		npx @redocly/cli@1.12.0 lint 'docs/openapi/*.yaml'; \
+	else \
+		echo "npx not found. Install Node.js to lint OpenAPI specs."; \
+		exit 1; \
+	fi
+
+openapi-build:
+	@if command -v npx >/dev/null 2>&1; then \
+		echo "Building OpenAPI documentation..."; \
+		npx @redocly/cli@1.12.0 build-docs docs/openapi/auth.yaml -o docs/openapi/auth.html; \
+		npx @redocly/cli@1.12.0 build-docs docs/openapi/consent.yaml -o docs/openapi/consent.html; \
+		echo "Documentation built:"; \
+		echo "  - docs/openapi/auth.html"; \
+		echo "  - docs/openapi/consent.html"; \
+	else \
+		echo "npx not found. Install Node.js to build OpenAPI docs."; \
+		exit 1; \
+	fi
+
 # === HELP ===
 help:
 	@echo "Available targets:"
@@ -93,6 +116,8 @@ help:
 	@echo "  e2e-security Run only security simulation tests"
 	@echo "  e2e-report   Run E2E tests and generate JSON report"
 	@echo "  e2e-clean    Clean E2E test artifacts"
+	@echo "  openapi-lint Lint OpenAPI specifications"
+	@echo "  openapi-build Build OpenAPI HTML documentation"
 	@echo "  lint         Run golangci-lint if available"
 	@echo "  fmt          Format code and run vet"
 	@echo "  imports      Fix import ordering (goimports)"
