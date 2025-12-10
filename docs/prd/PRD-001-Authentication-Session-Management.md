@@ -463,22 +463,22 @@ logger.Info("session created",
 
 ### Unit Tests
 
-- [ ] Test user creation with valid email
-- [ ] Test user retrieval by ID and email
-- [ ] Test session creation and retrieval
-- [ ] Test token generation format
-- [ ] Test token validation and parsing
-- [ ] Test redirect_uri building with session_id and state
-- [ ] Test redirect_uri validation (https required, localhost exception)
-- [ ] Test state parameter echo in response
-- [ ] Test error cases (invalid email, invalid redirect_uri, not found, etc.)
+- [x] Test user creation with valid email
+- [x] Test user retrieval by ID and email
+- [x] Test session creation and retrieval
+- [x] Test token generation format
+- [x] Test token validation and parsing
+- [x] Test redirect_uri building with session_id and state
+- [x] Test redirect_uri validation (https required, localhost exception)
+- [x] Test state parameter echo in response
+- [x] Test error cases (invalid email, invalid redirect_uri, not found, etc.)
 
 ### Integration Tests
 
-- [ ] Test complete flow: authorize → token → userinfo
-- [ ] Test concurrent user creation (race conditions)
-- [ ] Test session expiry handling
-- [ ] Test invalid bearer token rejection
+- [x] Test complete flow: authorize → token → userinfo
+- [x] Test concurrent user creation (race conditions)
+- [x] Test session expiry handling
+- [x] Test invalid bearer token rejection
 
 ### Manual Testing
 
@@ -626,16 +626,16 @@ curl -X POST http://localhost:8080/auth/token \
 
 ## 10. Acceptance Criteria
 
-- [ ] User can authenticate with email and receive authcode
-- [ ] User can exchange authcode for access and ID tokens
-- [ ] User can retrieve profile using bearer token
-- [ ] Invalid bearer tokens return 401 Unauthorized
-- [ ] Non-existent sessions return 404 Not Found
-- [ ] All authentication events are logged to audit system
-- [ ] Concurrent requests don't cause race conditions
-- [ ] All endpoints return proper error responses
-- [ ] Code passes `make test` and `make lint`
-- [ ] Manual curl tests work as documented
+- [x] User can authenticate with email and receive authcode
+- [x] User can exchange authcode for access and ID tokens
+- [x] User can retrieve profile using bearer token
+- [x] Invalid bearer tokens return 401 Unauthorized
+- [x] Non-existent sessions return 404 Not Found
+- [x] All authentication events are logged to audit system
+- [x] Concurrent requests don't cause race conditions
+- [x] All endpoints return proper error responses
+- [x] Code passes `make test` and `make lint`
+- [x] Manual curl tests work as documented
 
 ---
 
