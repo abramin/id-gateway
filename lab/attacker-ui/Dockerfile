@@ -7,4 +7,5 @@ COPY css ./css
 
 ENV PORT=4170
 EXPOSE 4170
+USER node
 CMD ["node", "server.js"]
