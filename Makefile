@@ -58,6 +58,9 @@ docker-clean:
 	@echo "Stopping and removing docker-compose services, images, and volumes for $(APP_NAME)..."
 	docker compose down --rmi local --volumes --remove-orphans
 
+docker-demo:
+	docker compose --env-file .env.demo -f docker-compose.yml -f docker-compose.demo.yml up --build
+
 # === E2E TESTS ===
 e2e:
 	@echo "Running E2E tests with godog..."

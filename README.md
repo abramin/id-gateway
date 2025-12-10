@@ -36,6 +36,16 @@ Access the application:
 - **Backend API:** http://localhost:8080
 - **OpenAPI docs (local):** http://localhost:8081 (Swagger UI for `docs/openapi/auth.yaml`)
 
+#### Demo mode (isolated, in-memory)
+
+To run the ring-fenced demo environment (no real secrets or external services):
+
+```bash
+docker compose --env-file .env.demo -f docker-compose.yml -f docker-compose.demo.yml up --build
+```
+
+You should see `CRENE_ENV=demo — starting isolated demo environment` on startup. Health checks remain at `/health`, and `/demo/info` returns demo metadata (`env: "demo"`, in-memory stores, demo issuer).
+
 ### Development Mode
 
 Run backend only:

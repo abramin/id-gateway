@@ -1,0 +1,8 @@
+services:
+  backend:
+    env_file:
+      - .env.demo
+    environment:
+      ID_GATEWAY_ADDR: ":8080"
+      REGULATED_MODE: "false"
+      LOG_LEVEL: debug
