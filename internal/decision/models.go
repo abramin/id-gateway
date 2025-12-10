@@ -3,8 +3,8 @@ package decision
 import (
 	"time"
 
+	registrycontracts "credo/contracts/registry"
 	authModel "credo/internal/auth/models"
-	"credo/internal/evidence/registry"
 	"credo/internal/evidence/vc"
 )
 
@@ -29,13 +29,13 @@ type DerivedIdentity struct {
 // raw PII by requiring derived identity attributes.
 type DecisionInput struct {
 	Identity   DerivedIdentity
-	Sanctions  registry.SanctionsRecord
+	Sanctions  registrycontracts.SanctionsRecord
 	Credential vc.Claims
 }
 
 // DerivedIdentityFromCitizen strips PII while producing attributes required for
 // decisions in regulated mode.
-func DerivedIdentityFromCitizen(user authModel.User, citizen registry.CitizenRecord) DerivedIdentity {
+func DerivedIdentityFromCitizen(user authModel.User, citizen registrycontracts.CitizenRecord) DerivedIdentity {
 	isOver18 := deriveIsOver18(citizen.DateOfBirth)
 	return DerivedIdentity{
 		PseudonymousID: user.ID.String(), // treat as pseudonymous identifier; avoid emails/names.

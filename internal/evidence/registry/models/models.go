@@ -1,4 +1,4 @@
-package registry
+package models
 
 // CitizenRecord holds registry attributes that may include PII depending on the
 // regulated mode.
@@ -17,8 +17,8 @@ type SanctionsRecord struct {
 }
 
 type RegistryResult struct {
-	Citizen  CitizenRecord
-	Sanction SanctionsRecord
+	Citizen  *CitizenRecord
+	Sanction *SanctionsRecord
 }
 
 // MinimizeCitizenRecord strips PII when regulated mode is enabled.

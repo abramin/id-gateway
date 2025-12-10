@@ -1,20 +1,22 @@
-package registry
+package store
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
+	"credo/internal/evidence/registry/models"
 	"credo/internal/platform/config"
 )
 
 type cachedCitizen struct {
-	record   CitizenRecord
+	record   models.CitizenRecord
 	storedAt time.Time
 }
 
 type cachedSanction struct {
-	record   SanctionsRecord
+	record   models.SanctionsRecord
 	storedAt time.Time
 }
 
@@ -24,6 +26,8 @@ type InMemoryCache struct {
 	sanctions map[string]cachedSanction
 }
 
+var ErrNotFound = errors.New("not found") // TODO: move to a more appropriate package
+
 func NewInMemoryCache() *InMemoryCache {
 	return &InMemoryCache{
 		citizens:  make(map[string]cachedCitizen),
@@ -31,14 +35,14 @@ func NewInMemoryCache() *InMemoryCache {
 	}
 }
 
-func (c *InMemoryCache) SaveCitizen(_ context.Context, record CitizenRecord) error {
+func (c *InMemoryCache) SaveCitizen(_ context.Context, record models.CitizenRecord) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.citizens[record.NationalID] = cachedCitizen{record: record, storedAt: time.Now()}
 	return nil
 }
 
-func (c *InMemoryCache) FindCitizen(_ context.Context, nationalID string) (CitizenRecord, error) {
+func (c *InMemoryCache) FindCitizen(_ context.Context, nationalID string) (models.CitizenRecord, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if cached, ok := c.citizens[nationalID]; ok {
@@ -46,17 +50,17 @@ func (c *InMemoryCache) FindCitizen(_ context.Context, nationalID string) (Citiz
 			return cached.record, nil
 		}
 	}
-	return CitizenRecord{}, ErrNotFound
+	return models.CitizenRecord{}, ErrNotFound
 }
 
-func (c *InMemoryCache) SaveSanction(_ context.Context, record SanctionsRecord) error {
+func (c *InMemoryCache) SaveSanction(_ context.Context, record models.SanctionsRecord) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.sanctions[record.NationalID] = cachedSanction{record: record, storedAt: time.Now()}
 	return nil
 }
 
-func (c *InMemoryCache) FindSanction(_ context.Context, nationalID string) (SanctionsRecord, error) {
+func (c *InMemoryCache) FindSanction(_ context.Context, nationalID string) (models.SanctionsRecord, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if cached, ok := c.sanctions[nationalID]; ok {
@@ -64,5 +68,5 @@ func (c *InMemoryCache) FindSanction(_ context.Context, nationalID string) (Sanc
 			return cached.record, nil
 		}
 	}
-	return SanctionsRecord{}, ErrNotFound
+	return models.SanctionsRecord{}, ErrNotFound
 }
