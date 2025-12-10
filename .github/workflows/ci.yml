@@ -68,8 +68,8 @@ jobs:
         if: always()
         run: |
           if [ -f e2e/reports/cucumber.json ]; then
-            npm install --no-save @cucumber/html-formatter
-            npx cucumber-html-formatter e2e/reports/cucumber.json > e2e/reports/report.html || echo "HTML generation failed but continuing..."
+            npm install --no-save cucumber-html-reporter
+            node e2e/generate-report.js || echo "HTML generation failed but continuing..."
             ls -la e2e/reports/
           else
             echo "cucumber.json not found, skipping HTML generation"
@@ -91,7 +91,7 @@ jobs:
           name: e2e-test-results
           path: |
             e2e/reports/cucumber.json
-            e2e/reports/report.html
+            e2e/reports/index.html
           retention-days: 7
 
   openapi-docs:
@@ -149,8 +149,8 @@ jobs:
         run: |
           mkdir -p pages/e2e
           ls -la e2e-reports/
-          if [ -f e2e-reports/report.html ]; then
-            cp e2e-reports/report.html pages/e2e/index.html
+          if [ -f e2e-reports/index.html ]; then
+            cp e2e-reports/index.html pages/e2e/index.html
           else
             echo "HTML report not found, skipping"
           fi
