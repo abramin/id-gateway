@@ -118,7 +118,17 @@ async function runMissingAudienceScenario() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(tokenBody),
   });
-  const tokenJSON = await tokenResp.json();
+  let tokenJSON;
+  if (tokenResp.ok) {
+    tokenJSON = await tokenResp.json();
+  } else {
+    // Try to parse error response, or fallback to status text
+    try {
+      tokenJSON = await tokenResp.json();
+    } catch (e) {
+      tokenJSON = { error: tokenResp.statusText || "Unknown error", status: tokenResp.status };
+    }
+  }
   steps.push({
     title: "Token exchange",
     request: tokenBody,
