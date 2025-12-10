@@ -78,9 +78,10 @@ jobs:
           path: e2e/reports/
           retention-days: 7
 
-  openapi-docs:
-    name: Build OpenAPI docs
+  openapi-lint:
+    name: Lint OpenAPI specs
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -96,21 +97,28 @@ jobs:
       - name: Lint OpenAPI specs
         run: npx @redocly/cli@1.12.0 lint 'docs/openapi/*.yaml'
 
+  openapi-docs:
+    name: Build and Deploy OpenAPI docs
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Redocly CLI
+        run: npm install --no-package-lock --no-save @redocly/cli@1.12.0
+
       - name: Build OpenAPI docs
         run: |
           npx @redocly/cli@1.12.0 build-docs docs/openapi/auth.yaml -o docs/openapi/auth.html
           npx @redocly/cli@1.12.0 build-docs docs/openapi/consent.yaml -o docs/openapi/consent.html
 
-      - name: Upload OpenAPI artifacts for PR review
-        if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: openapi-docs
-          path: docs/openapi/*.html
-          retention-days: 7
-
       - name: Upload to GitHub Pages artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs/openapi/
