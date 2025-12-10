@@ -31,7 +31,7 @@
         <article class="card">
           <p class="card-eyebrow" x-text="scenario.title"></p>
           <p class="card-body" x-text="scenario.description"></p>
-          <button class="primary" @click="runScenario(scenario.id)" :disabled="loading">
+          <button type="button" class="primary" @click="runScenario(scenario.id)" :disabled="loading">
             <span x-show="!loading">Run scenario</span>
             <span x-show="loading">Running...</span>
           </button>
