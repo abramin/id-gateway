@@ -222,7 +222,11 @@ func (s *consentSteps) revokedConsentShouldHaveFieldPresent(ctx context.Context,
 func (s *consentSteps) consentForPurposeShouldHaveStatus(ctx context.Context, purpose, status string) error {
 	consents, err := s.extractArray("consents")
 	if err != nil {
-		return err
+		// try "granted" for immediate grant responses
+		consents, err = s.extractArray("granted")
+		if err != nil {
+			return err
+		}
 	}
 	for _, c := range consents {
 		if c["purpose"] == purpose {
