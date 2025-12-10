@@ -13,10 +13,7 @@ type ClientSuite struct {
 }
 
 func (s *ClientSuite) SetupTest() {
-	s.client = &Client{
-		Latency:       0, // No latency for fast tests
-		RegulatedMode: false,
-	}
+
 }
 
 func TestClientSuite(t *testing.T) {

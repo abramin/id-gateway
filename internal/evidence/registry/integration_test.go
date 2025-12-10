@@ -7,28 +7,25 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/suite"
 
 	"credo/internal/audit"
 	"credo/internal/auth/service"
-	"credo/internal/evidence/registry/clients/citizen"
-	"credo/internal/evidence/registry/clients/sanctions"
 	"credo/internal/evidence/registry/handler"
+	"credo/internal/evidence/registry/service/mocks"
 	"credo/internal/evidence/registry/store"
 	"credo/internal/platform/middleware"
 )
 
-// RegistryIntegrationSuite tests the full registry flow end-to-end
 type RegistryIntegrationSuite struct {
 	suite.Suite
 	logger          *slog.Logger
 	auditStore      *audit.InMemoryStore
 	cacheStore      *store.InMemoryCache
-	citizenClient   *citizen.Client
-	sanctionsClient *sanctions.Client
+	citizenClient   *mocks.MockCitizenClient
+	sanctionsClient *mocks.MockSanctionsClient
 	service         *service.Service
 	handler         *handler.Handler
 	router          *chi.Mux
@@ -44,16 +41,6 @@ func (s *RegistryIntegrationSuite) SetupTest() {
 
 	// Setup cache store
 	s.cacheStore = store.NewInMemoryCache()
-
-	// Setup mock clients
-	s.citizenClient = &citizen.Client{
-		Latency:       50 * time.Millisecond, // Simulate network latency
-		RegulatedMode: false,
-	}
-	s.sanctionsClient = &sanctions.Client{
-		Latency: 50 * time.Millisecond,
-		Listed:  false, // Default: not sanctioned
-	}
 
 	// TODO: Initialize service when complete
 	// s.service = registry.NewService(
