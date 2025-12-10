@@ -57,10 +57,10 @@ func (mr *MockServiceMockRecorder) Grant(ctx, userID, purposes any) *gomock.Call
 }
 
 // List mocks base method.
-func (m *MockService) List(ctx context.Context, userID string, filter *models.RecordFilter) ([]*models.RecordWithStatus, error) {
+func (m *MockService) List(ctx context.Context, userID string, filter *models.RecordFilter) ([]*models.ConsentWithStatus, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "List", ctx, userID, filter)
-	ret0, _ := ret[0].([]*models.RecordWithStatus)
+	ret0, _ := ret[0].([]*models.ConsentWithStatus)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

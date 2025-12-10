@@ -137,7 +137,7 @@ func (s *ConsentHandlerSuite) TestHandleGetConsent_WithFilters() {
 			gomock.Any(),
 			"user123",
 			gomock.Any(),
-		).Return([]*consentModel.RecordWithStatus{
+		).Return([]*consentModel.ConsentWithStatus{
 			newMockRecord(consentModel.PurposeLogin, consentModel.StatusActive, nil),
 			newMockRecord(consentModel.PurposeRegistryCheck, consentModel.StatusRevoked, ptrTime(time.Date(2025, 3, 1, 10, 0, 0, 0, time.UTC))),
 		}, nil)
@@ -148,17 +148,16 @@ func (s *ConsentHandlerSuite) TestHandleGetConsent_WithFilters() {
 		w := httptest.NewRecorder()
 		handler.handleGetConsents(w, req)
 
-		var resp consentModel.RecordsResponse
+		var resp consentModel.ListResponse
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Equal(t, 2, len(resp.Records))
-		assert.Equal(t, consentModel.PurposeLogin, resp.Records[0].Purpose)
-		assert.Equal(t, consentModel.StatusActive, resp.Records[0].Status)
-		assert.Equal(t, consentModel.PurposeRegistryCheck, resp.Records[1].Purpose)
-		assert.Equal(t, consentModel.StatusRevoked, resp.Records[1].Status)
-		assert.NotNil(t, resp.Records[1].RevokedAt)
-
+		assert.Equal(t, 2, len(resp.Consents))
+		assert.Equal(t, consentModel.PurposeLogin, resp.Consents[0].Purpose)
+		assert.Equal(t, consentModel.StatusActive, resp.Consents[0].Status)
+		assert.Equal(t, consentModel.PurposeRegistryCheck, resp.Consents[1].Purpose)
+		assert.Equal(t, consentModel.StatusRevoked, resp.Consents[1].Status)
+		assert.NotNil(t, resp.Consents[1].RevokedAt)
 	})
 
 	s.T().Run("200 - get consent records with filter", func(t *testing.T) {
@@ -170,7 +169,7 @@ func (s *ConsentHandlerSuite) TestHandleGetConsent_WithFilters() {
 				Purpose: string(consentModel.PurposeLogin),
 				Status:  string(consentModel.StatusActive),
 			},
-		).Return([]*consentModel.RecordWithStatus{
+		).Return([]*consentModel.ConsentWithStatus{
 			newMockRecord(consentModel.PurposeLogin, consentModel.StatusActive, nil),
 		}, nil)
 
@@ -181,12 +180,12 @@ func (s *ConsentHandlerSuite) TestHandleGetConsent_WithFilters() {
 		w := httptest.NewRecorder()
 		handler.handleGetConsents(w, req)
 
-		var resp consentModel.RecordsResponse
+		var resp consentModel.ListResponse
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Equal(t, 1, len(resp.Records))
-		assert.Equal(t, consentModel.PurposeLogin, resp.Records[0].Purpose)
-		assert.Equal(t, consentModel.StatusActive, resp.Records[0].Status)
+		assert.Equal(t, 1, len(resp.Consents))
+		assert.Equal(t, consentModel.PurposeLogin, resp.Consents[0].Purpose)
+		assert.Equal(t, consentModel.StatusActive, resp.Consents[0].Status)
 	})
 
 	s.T().Run("401 unauthorized - missing bearer token", func(t *testing.T) {
@@ -261,16 +260,18 @@ func assertStatusAndError(t *testing.T, w *httptest.ResponseRecorder, expectedSt
 	assertErrorResponse(t, w, expectedCode)
 }
 
-// newMockRecord creates a RecordWithStatus for testing.
-func newMockRecord(purpose consentModel.Purpose, status consentModel.Status, revokedAt *time.Time) *consentModel.RecordWithStatus {
+// newMockRecord creates a ConsentWithStatus for testing.
+func newMockRecord(purpose consentModel.Purpose, status consentModel.Status, revokedAt *time.Time) *consentModel.ConsentWithStatus {
 	grantedAt := time.Date(2025, 1, 1, 10, 0, 0, 0, time.UTC)
 	expiresAt := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
-	return &consentModel.RecordWithStatus{
-		ID:        "consent_" + string(purpose),
-		Purpose:   purpose,
-		GrantedAt: grantedAt,
-		ExpiresAt: ptrTime(expiresAt),
-		Status:    status,
-		RevokedAt: revokedAt,
+	return &consentModel.ConsentWithStatus{
+		Consent: consentModel.Consent{
+			ID:        "consent_" + string(purpose),
+			Purpose:   purpose,
+			GrantedAt: grantedAt,
+			ExpiresAt: ptrTime(expiresAt),
+			RevokedAt: revokedAt,
+		},
+		Status: status,
 	}
 }

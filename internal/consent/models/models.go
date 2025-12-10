@@ -34,6 +34,23 @@ type GrantRequest struct {
 	Purposes []Purpose `json:"purposes" validate:"required,min=1,dive,oneof=login registry_check vc_issuance decision_evaluation"`
 }
 
+type GrantResponse struct {
+	Granted []Consent `json:"granted"`
+}
+
+type Consent struct {
+	ID        string     `json:"id"`
+	Purpose   Purpose    `json:"purpose"`
+	GrantedAt time.Time  `json:"granted_at"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	RevokedAt *time.Time `json:"revoked_at,omitempty"`
+}
+
+type ConsentWithStatus struct {
+	Consent
+	Status Status `json:"status"` // "active", "expired", "revoked"
+}
+
 type ActionResponse struct {
 	Granted []Grant `json:"granted"`
 	Message string  `json:"message,omitempty"`
@@ -51,17 +68,14 @@ type RevokeRequest struct {
 	Purposes []Purpose `json:"purposes" validate:"required,min=1,dive,oneof=login registry_check vc_issuance decision_evaluation"`
 }
 
-type RecordsResponse struct {
-	Records []*RecordWithStatus `json:"consent_records"`
+// RevokeResponse matches PRD-002 spec - only revoked records
+type RevokeResponse struct {
+	Revoked []*Consent `json:"revoked"`
 }
 
-type RecordWithStatus struct {
-	ID        string     `json:"id"`
-	Purpose   Purpose    `json:"purpose"`
-	GrantedAt time.Time  `json:"granted_at"`
-	ExpiresAt *time.Time `json:"expires_at,omitempty"`
-	RevokedAt *time.Time `json:"revoked_at,omitempty"`
-	Status    Status     `json:"status"` // "active", "expired", "revoked"
+// ListResponse matches PRD-002 spec - uses "consents" not "consent_records"
+type ListResponse struct {
+	Consents []*ConsentWithStatus `json:"consents"`
 }
 
 type Status string
@@ -138,4 +152,15 @@ func Ensure(consents []*Record, purpose Purpose, now time.Time) error {
 // IsValid checks if the consent purpose is one of the supported enum values.
 func (cp Purpose) IsValid() bool {
 	return ValidPurposes[cp]
+}
+
+// TODO: not sure this is needed
+func ToConsentDTO(r *Record) *Consent {
+	return &Consent{
+		ID:        r.ID,
+		Purpose:   r.Purpose,
+		GrantedAt: r.GrantedAt,
+		ExpiresAt: r.ExpiresAt,
+		RevokedAt: r.RevokedAt,
+	}
 }

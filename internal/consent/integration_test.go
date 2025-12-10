@@ -79,12 +79,12 @@ func TestConsentIntegrationFlow(t *testing.T) {
 	assert.Equal(t, http.StatusOK, listResp.StatusCode)
 
 	bodyBytes, _ := io.ReadAll(listResp.Body)
-	var listData consentModel.RecordsResponse
+	var listData consentModel.ListResponse
 	require.NoError(t, json.Unmarshal(bodyBytes, &listData))
-	require.Len(t, listData.Records, 2)
+	require.Len(t, listData.Consents, 2)
 
 	// Verify all consents are active
-	for _, record := range listData.Records {
+	for _, record := range listData.Consents {
 		assert.Equal(t, consentModel.StatusActive, record.Status)
 		assert.Nil(t, record.RevokedAt)
 	}
@@ -109,7 +109,7 @@ func TestConsentIntegrationFlow(t *testing.T) {
 	auditEvents2, err := auditStore.ListByUser(context.Background(), "user123")
 	require.NoError(t, err)
 	assert.Len(t, auditEvents2, 3, "expected 3 audit events total (2 grants + 1 revoke)")
-	
+
 	// Find the revoke event
 	revokeEventFound := false
 	for _, event := range auditEvents2 {
@@ -129,14 +129,14 @@ func TestConsentIntegrationFlow(t *testing.T) {
 	assert.Equal(t, http.StatusOK, listResp2.StatusCode)
 
 	bodyBytes2, _ := io.ReadAll(listResp2.Body)
-	var listData2 consentModel.RecordsResponse
+	var listData2 consentModel.ListResponse
 	require.NoError(t, json.Unmarshal(bodyBytes2, &listData2))
-	require.Len(t, listData2.Records, 2)
+	require.Len(t, listData2.Consents, 2)
 
 	// Verify status changes: login should still be active, registry_check should be revoked
 	loginFound := false
 	registryCheckFound := false
-	for _, record := range listData2.Records {
+	for _, record := range listData2.Consents {
 		switch record.Purpose {
 		case consentModel.PurposeLogin:
 			loginFound = true

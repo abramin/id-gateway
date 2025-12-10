@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,6 +28,7 @@ type Service struct {
 	store   Store
 	auditor *audit.Publisher
 	metrics *metrics.Metrics
+	logger  *slog.Logger
 	ttl     time.Duration
 }
 
@@ -34,6 +36,7 @@ func NewService(store Store, auditor *audit.Publisher) *Service {
 	svc := &Service{
 		store:   store,
 		auditor: auditor,
+		logger:  slog.Default(),
 		ttl:     365 * 24 * time.Hour, // TODO: add to config
 	}
 	return svc
@@ -43,6 +46,13 @@ func NewService(store Store, auditor *audit.Publisher) *Service {
 func WithMetrics(m *metrics.Metrics) func(*Service) {
 	return func(s *Service) {
 		s.metrics = m
+	}
+}
+
+// WithLogger sets the logger instance for the service.
+func WithLogger(logger *slog.Logger) func(*Service) {
+	return func(s *Service) {
+		s.logger = logger
 	}
 }
 
@@ -116,6 +126,7 @@ func (s *Service) upsertGrant(ctx context.Context, userID string, purpose models
 		Timestamp: now,
 	})
 	s.incrementConsentsGranted(purpose)
+	s.incrementActiveConsents(1)
 	return record, nil
 }
 
@@ -142,25 +153,26 @@ func (s *Service) Revoke(ctx context.Context, userID string, purposes []models.P
 			continue
 		}
 		now := time.Now()
-		_, err = s.store.RevokeByUserAndPurpose(ctx, userID, record.Purpose, now)
+		revokedRecord, err := s.store.RevokeByUserAndPurpose(ctx, userID, record.Purpose, now)
 		if err != nil {
 			return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to revoke consent", err)
 		}
 		s.emitAudit(ctx, audit.Event{
 			UserID:    userID,
-			Purpose:   string(record.Purpose),
+			Purpose:   string(revokedRecord.Purpose),
 			Action:    models.AuditActionConsentRevoked,
 			Decision:  models.AuditDecisionRevoked,
 			Reason:    models.AuditReasonUserInitiated,
 			Timestamp: now,
 		})
-		s.incrementConsentsRevoked(record.Purpose)
-		revoked = append(revoked, record)
+		s.incrementConsentsRevoked(revokedRecord.Purpose)
+		s.decrementActiveConsents(1)
+		revoked = append(revoked, revokedRecord)
 	}
 	return revoked, nil
 }
 
-func (s *Service) List(ctx context.Context, userID string, filter *models.RecordFilter) ([]*models.RecordWithStatus, error) {
+func (s *Service) List(ctx context.Context, userID string, filter *models.RecordFilter) ([]*models.ConsentWithStatus, error) {
 	if userID == "" {
 		return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, "missing user context")
 	}
@@ -171,16 +183,18 @@ func (s *Service) List(ctx context.Context, userID string, filter *models.Record
 	}
 
 	now := time.Now()
-	var result []*models.RecordWithStatus
+	var result []*models.ConsentWithStatus
 
 	for _, record := range records {
-		result = append(result, &models.RecordWithStatus{
-			ID:        record.ID,
-			Purpose:   record.Purpose,
-			GrantedAt: record.GrantedAt,
-			ExpiresAt: record.ExpiresAt,
-			RevokedAt: record.RevokedAt,
-			Status:    record.ComputeStatus(now),
+		result = append(result, &models.ConsentWithStatus{
+			Consent: models.Consent{
+				ID:        record.ID,
+				Purpose:   record.Purpose,
+				GrantedAt: record.GrantedAt,
+				ExpiresAt: record.ExpiresAt,
+				RevokedAt: record.RevokedAt,
+			},
+			Status: record.ComputeStatus(now),
 		})
 	}
 
@@ -209,6 +223,7 @@ func (s *Service) Require(ctx context.Context, userID string, purpose models.Pur
 			Reason:    models.AuditReasonUserInitiated,
 			Timestamp: now,
 		})
+		s.logConsentCheck(ctx, slog.LevelWarn, "consent_check_failed", userID, purpose, "missing")
 		s.incrementConsentCheckFailed(purpose)
 		return pkgerrors.New(pkgerrors.CodeMissingConsent, "consent not granted for required purpose")
 	}
@@ -221,6 +236,7 @@ func (s *Service) Require(ctx context.Context, userID string, purpose models.Pur
 			Reason:    models.AuditReasonUserInitiated,
 			Timestamp: now,
 		})
+		s.logConsentCheck(ctx, slog.LevelWarn, "consent_check_failed", userID, purpose, "revoked")
 		s.incrementConsentCheckFailed(purpose)
 		return pkgerrors.New(pkgerrors.CodeInvalidConsent, "consent revoked")
 	}
@@ -233,6 +249,7 @@ func (s *Service) Require(ctx context.Context, userID string, purpose models.Pur
 			Reason:    models.AuditReasonUserInitiated,
 			Timestamp: now,
 		})
+		s.logConsentCheck(ctx, slog.LevelWarn, "consent_check_failed", userID, purpose, "expired")
 		s.incrementConsentCheckFailed(purpose)
 		return pkgerrors.New(pkgerrors.CodeInvalidConsent, "consent expired")
 	}
@@ -244,6 +261,7 @@ func (s *Service) Require(ctx context.Context, userID string, purpose models.Pur
 		Reason:    models.AuditReasonUserInitiated,
 		Timestamp: now,
 	})
+	s.logConsentCheck(ctx, slog.LevelInfo, "consent_check_passed", userID, purpose, "active")
 	s.incrementConsentCheckPassed(purpose)
 	return nil
 }
@@ -281,4 +299,29 @@ func (s *Service) incrementConsentCheckFailed(purpose models.Purpose) {
 	if s.metrics != nil {
 		s.metrics.IncrementConsentCheckFailed(string(purpose))
 	}
+}
+
+// incrementActiveConsents updates the active consents gauge when it increases.
+func (s *Service) incrementActiveConsents(count float64) {
+	if s.metrics != nil {
+		s.metrics.IncrementActiveConsentsPerUser(count)
+	}
+}
+
+// decrementActiveConsents updates the active consents gauge when it decreases.
+func (s *Service) decrementActiveConsents(count float64) {
+	if s.metrics != nil {
+		s.metrics.DecrementActiveConsentsPerUser(count)
+	}
+}
+
+func (s *Service) logConsentCheck(ctx context.Context, level slog.Level, msg string, userID string, purpose models.Purpose, state string) {
+	if s.logger == nil {
+		return
+	}
+	s.logger.Log(ctx, level, msg,
+		"user_id", userID,
+		"purpose", purpose,
+		"state", state,
+	)
 }

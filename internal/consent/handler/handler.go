@@ -24,7 +24,7 @@ import (
 type Service interface {
 	Grant(ctx context.Context, userID string, purposes []models.Purpose) ([]*models.Record, error)
 	Revoke(ctx context.Context, userID string, purposes []models.Purpose) ([]*models.Record, error)
-	List(ctx context.Context, userID string, filter *models.RecordFilter) ([]*models.RecordWithStatus, error)
+	List(ctx context.Context, userID string, filter *models.RecordFilter) ([]*models.ConsentWithStatus, error)
 }
 
 // Handler handles consent-related endpoints.
@@ -53,6 +53,13 @@ func (h *Handler) Register(r chi.Router) {
 // handleGrantConsent grants consent for the authenticated user per PRD-002 FR-1.
 func (h *Handler) handleGrantConsent(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	start := time.Now()
+	defer func() {
+		if h.metrics != nil {
+			h.metrics.ObserveConsentGrantLatency(time.Since(start).Seconds())
+		}
+	}()
+
 	requestID := middleware.GetRequestID(ctx)
 	userID := middleware.GetUserID(ctx)
 
@@ -143,12 +150,12 @@ func (h *Handler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := &models.ActionResponse{
-		Granted: formatConsentResponses(revoked, time.Now()),
-		Message: formatActionMessage("Consent revoked for %d purpose", len(revoked)),
+	res := make([]*models.Consent, len(revoked))
+	for i, r := range revoked {
+		res[i] = models.ToConsentDTO(r)
 	}
 
-	respond.WriteJSON(w, http.StatusOK, res)
+	respond.WriteJSON(w, http.StatusOK, models.RevokeResponse{Revoked: res})
 }
 
 func (h *Handler) handleGetConsents(w http.ResponseWriter, r *http.Request) {
@@ -186,9 +193,7 @@ func (h *Handler) handleGetConsents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respond.WriteJSON(w, http.StatusOK, models.RecordsResponse{
-		Records: res,
-	})
+	respond.WriteJSON(w, http.StatusOK, models.ListResponse{Consents: res})
 }
 
 // TODO: move to models or service package
