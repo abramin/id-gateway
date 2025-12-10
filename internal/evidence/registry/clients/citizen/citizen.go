@@ -8,16 +8,13 @@ import (
 
 // Citint queries a citizen registry. Mock implementations use
 // deterministic data and a configurable latency to mimic real-world calls.
-type Citint interface {
-	Lookup(ctx context.Context, nationalID string) (models.CitizenRecord, error)
-}
 
-type MockClient struct {
+type Client struct {
 	Latency       time.Duration
 	RegulatedMode bool
 }
 
-func (c MockClient) Lookup(_ context.Context, nationalID string) (*models.CitizenRecord, error) {
+func (c Client) Lookup(_ context.Context, nationalID string) (*models.CitizenRecord, error) {
 	time.Sleep(c.Latency)
 	record := models.CitizenRecord{
 		NationalID:  nationalID,

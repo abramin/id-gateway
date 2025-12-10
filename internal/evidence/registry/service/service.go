@@ -1,25 +1,39 @@
-package registry
+package service
 
 import (
 	"context"
-	"credo/internal/evidence/registry/cache"
 	"credo/internal/evidence/registry/models"
 	"credo/internal/evidence/registry/store"
 	"errors"
-
-	"credo/internal/evidence/registry/clients/citizen"
-	"credo/internal/evidence/registry/clients/sanctions"
 )
 
 // Service coordinates registry lookups with caching and optional minimisation.
 type Service struct {
-	citizens  *citizen.MockClient
-	sanctions *sanctions.MockClient
-	cache     *cache.RegistryCacheStore
+	citizens  CitizenClient
+	sanctions SanctionsClient
+	cache     CacheStore
 	regulated bool
 }
 
-func NewService(citizens *citizen.MockClient, sanctions *sanctions.MockClient, cache *cache.RegistryCacheStore, regulated bool) *Service {
+// CitizenClient defines the interface for citizen registry lookups
+type CitizenClient interface {
+	Lookup(ctx context.Context, nationalID string) (*models.CitizenRecord, error)
+}
+
+// SanctionsClient defines the interface for sanctions registry lookups
+type SanctionsClient interface {
+	Check(ctx context.Context, nationalID string) (*models.SanctionsRecord, error)
+}
+
+// CacheStore defines the interface for registry caching operations
+type CacheStore interface {
+	FindCitizen(ctx context.Context, nationalID string) (*models.CitizenRecord, error)
+	SaveCitizen(ctx context.Context, record *models.CitizenRecord) error
+	FindSanction(ctx context.Context, nationalID string) (*models.SanctionsRecord, error)
+	SaveSanction(ctx context.Context, record *models.SanctionsRecord) error
+}
+
+func NewService(citizens CitizenClient, sanctions SanctionsClient, cache CacheStore, regulated bool) *Service {
 	return &Service{
 		citizens:  citizens,
 		sanctions: sanctions,
