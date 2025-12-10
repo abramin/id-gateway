@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Credo Attack Lab</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+    <script src="/js/app.js"></script>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
+  </head>
+  <body class="bg-surface" x-data="attackerLab()">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Educational sandbox</p>
+        <h1>Credo Attack Lab</h1>
+        <p class="lede">
+          Explore how misconfigured OAuth and resource servers can be abused.
+          Credo stays unchanged; the lab mounts alternate config profiles to
+          simulate unsafe deployments.
+        </p>
+        <div class="hero-meta">
+          <span class="tag">No lab mode in Credo</span>
+          <span class="tag"
+            >Configs mounted from <code>lab/credo-config</code></span
+          >
+          <span class="tag">Private docker compose network</span>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="grid" aria-label="Scenarios">
+        <template x-for="scenario in scenarios" :key="scenario.id">
+          <article class="card">
+            <p class="card-eyebrow" x-text="scenario.title"></p>
+            <p class="card-body" x-text="scenario.description"></p>
+            <button
+              type="button"
+              class="primary"
+              @click="runScenario(scenario.id)"
+              :disabled="loading"
+            >
+              <span x-show="!loading">Run scenario</span>
+              <span x-show="loading">Running...</span>
+            </button>
+          </article>
+        </template>
+      </section>
+
+      <section class="panel" aria-label="Result" x-show="result">
+        <div class="panel-header">
+          <h2 x-text="result?.scenario?.title || 'Scenario output'"></h2>
+          <p class="subtle" x-text="result?.scenario?.description"></p>
+        </div>
+        <template x-if="result">
+          <ol class="steps">
+            <template x-for="(step, index) in result.steps" :key="index">
+              <li class="step">
+                <div class="step-header">
+                  <p class="step-title" x-text="step.title"></p>
+                  <span
+                    class="pill"
+                    :class="step.status === 200 ? 'pill-success' : 'pill-warn'"
+                    x-text="`HTTP ${step.status || 'n/a'}`"
+                  ></span>
+                </div>
+                <p class="subtle" x-text="step.note"></p>
+                <details>
+                  <summary>Request</summary>
+                  <pre x-text="formatJSON(step.request)"></pre>
+                </details>
+                <details open>
+                  <summary>Response</summary>
+                  <pre x-text="formatJSON(step.response)"></pre>
+                </details>
+              </li>
+            </template>
+          </ol>
+        </template>
+      </section>
+    </main>
+  </body>
+</html>

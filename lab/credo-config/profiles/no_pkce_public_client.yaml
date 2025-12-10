@@ -1,0 +1,16 @@
+profile: no_pkce_public_client
+description: |
+  Simulates a public client configured without PKCE enforcement. Codes can be
+  intercepted and replayed by an attacker who controls the redirect URI.
+client: toy-client
+oauth:
+  pkce_required: false
+  allow_plain_redirects: true
+  code_challenge_methods: []
+redirect_uris:
+  - "https://toy-client.example.com/callback"
+  - "http://127.0.0.1:3001/callback"
+notes: |
+  This profile exists only inside the lab. The core Credo binary is unchanged;
+  the lab simply mounts this YAML as an alternative configuration example to
+  mirror a real-world deployment mistake.

@@ -1,0 +1,17 @@
+id: toy-client
+name: "Toy Public Client"
+application_type: "spa"
+default_redirect_uri: "https://toy-client.example.com/callback"
+redirect_uris:
+  - "https://toy-client.example.com/callback"
+  - "http://localhost:3001/callback"
+scopes:
+  - "openid"
+  - "profile"
+  - "payments:write"
+  - "audit:read"
+notes: |
+  Example client used across the Credo Attack Lab scenarios. The lab mounts
+  alternate profile YAML files that intentionally loosen client restrictions
+  to demonstrate how misuse of redirect URIs, PKCE, scopes, or audience rules
+  can be exploited when mirrored by downstream resource servers.

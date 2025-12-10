@@ -1,0 +1,16 @@
+profile: wildcard_redirects
+description: |
+  Emulates a deployment that mistakenly uses wildcard redirect URIs. Attackers
+  can swap the redirect to an attacker-controlled host and still complete the
+  login flow.
+client: toy-client
+redirect_policy:
+  allow_wildcards: true
+  allowed_patterns:
+    - "https://*.attacker.example.com/callback"
+    - "https://*.toy-client.example.com/*"
+authz:
+  allow_state_passthrough: true
+notes: |
+  The wildcard redirect rules only exist in this lab profile. They are mounted
+  at runtime and do not alter the Credo binary in any way.

@@ -1,0 +1,12 @@
+profile: missing_audience
+description: |
+  Shows what happens when tokens are issued without an audience requirement and
+  a downstream resource server forgets to enforce aud. Tokens meant for one
+  service can be replayed against another.
+client: toy-client
+jwt:
+  audience: ""
+  disable_audience_enforcement: true
+notes: |
+  The toy resource server in the lab deliberately skips audience checks to
+  illustrate how easy it is to misuse bearer tokens.
