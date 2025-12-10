@@ -18,6 +18,10 @@ type TestContext interface {
 	GetResponseField(field string) (interface{}, error)
 	ResponseContains(field string) bool
 	GetAccessToken() string
+	SetAccessToken(token string)
+	GetClientID() string
+	GetRedirectURI() string
+	GetLastResponseBody() []byte
 }
 
 // RegisterSteps registers consent-related step definitions
