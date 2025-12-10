@@ -24,6 +24,8 @@ services:
 
   attacker-ui:
     build: ./attacker-ui
+    ports:
+      - "4170:4170"
     environment:
       - PORT=4170
       - CREDO_BASE_URL=http://credo:8080
