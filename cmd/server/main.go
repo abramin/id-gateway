@@ -37,7 +37,7 @@ func main() {
 
 	m := metrics.New()
 	jwtService, jwtValidator := initializeJWTService(&cfg)
-	authSvc := initializeAuthService(m, log, jwtService)
+	authSvc := initializeAuthService(m, log, jwtService, &cfg)
 
 	r := setupRouter(log, m)
 	registerRoutes(r, authSvc, jwtValidator, log, &cfg, m)
@@ -48,11 +48,11 @@ func main() {
 }
 
 // initializeAuthService creates and configures the authentication service
-func initializeAuthService(m *metrics.Metrics, log *slog.Logger, jwtService *jwttoken.JWTService) *authService.Service {
+func initializeAuthService(m *metrics.Metrics, log *slog.Logger, jwtService *jwttoken.JWTService, cfg *config.Server) *authService.Service {
 	return authService.NewService(
 		authStore.NewInMemoryUserStore(),
 		authStore.NewInMemorySessionStore(),
-		24*time.Hour, // TODO Make configurable
+		cfg.SessionTTL, // TODO Make configurable
 		authService.WithMetrics(m),
 		authService.WithLogger(log),
 		authService.WithJWTService(jwtService),
