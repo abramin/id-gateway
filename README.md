@@ -2,7 +2,6 @@
 
 <img width="120" height="120" alt="credo" src="https://github.com/user-attachments/assets/cc9f2d5a-6b70-4f92-a9e7-8f3ab1315181" />
 
-
 Identity verification gateway built as a modular monolith. It simulates OIDC-style auth, consent, registry evidence, VC issuance/verification, decisions, and audit logging.
 
 ## What’s inside
@@ -65,6 +64,7 @@ See [Frontend Readme](frontend/README.md) for details.
 
 - Unit/integration tests: `go test ./...`
 - Contract-style E2E API tests: `go test -v ./e2e --godog.tags=@normal` (uses [godog](https://github.com/cucumber/godog) Cucumber-style features)
+- Latest Main e2e runs can be viewed here - [E2E Test Results](https://abramin.github.io/Credo/e2e/)
 
 ## API quick reference
 
