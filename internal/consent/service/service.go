@@ -27,7 +27,7 @@ type Option func(*Service)
 
 const (
 	defaultConsentTTL             = 365 * 24 * time.Hour // 1 year
-	defaultGrantIdempotencyWindow = 5 * time.Minute
+	defaultGrantIdempotencyWindow = 1 * time.Second
 )
 
 // Service persists consent decisions and enforces lifecycle rules per PRD-002.
@@ -86,7 +86,7 @@ func WithConsentTTL(ttl time.Duration) Option {
 }
 
 // WithGrantWindow configures the idempotency window for repeated grants.
-// If not set or set to zero/negative, defaults to 5 minutes.
+// If not set or set to zero/negative, defaults to 1 second.
 func WithGrantWindow(window time.Duration) Option {
 	return func(s *Service) {
 		if window > 0 {

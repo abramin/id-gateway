@@ -38,6 +38,7 @@ func (s *ServiceSuite) SetupTest() {
 		auditor,
 		slog.Default(),
 		WithConsentTTL(365*24*time.Hour),
+		WithGrantWindow(5*time.Minute),
 	)
 }
 
