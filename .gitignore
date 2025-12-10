@@ -40,4 +40,15 @@ frontend/node_modules/
 frontend/dist/
 frontend/.cache/
 
+# E2E Tests
+e2e-tests/node_modules/
+e2e-tests/dist/
+e2e-tests/reports/
+e2e-tests/test-results/
+e2e-tests/playwright-report/
+
+# Karate Tests (deprecated - migrated to Playwright)
+karate-tests/target/
+karate-tests/.mvn/
+
 temp_docs/

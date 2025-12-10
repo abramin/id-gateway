@@ -6,7 +6,7 @@ MAIN := ./cmd/server/main.go
 # === DEFAULT ===
 default: dev
 
-.PHONY: default build run test test-cover test-one lint fmt imports clean docker-clean help
+.PHONY: default build run test test-cover test-one e2e e2e-normal e2e-security e2e-report e2e-clean lint fmt imports clean docker-clean help
 
 # === BUILD ===
 build:
@@ -58,6 +58,33 @@ docker-clean:
 	@echo "Stopping and removing docker-compose services, images, and volumes for $(APP_NAME)..."
 	docker compose down --rmi local --volumes --remove-orphans
 
+# === E2E TESTS ===
+e2e:
+	@echo "Running E2E tests with Playwright + Cucumber..."
+	@if command -v npm >/dev/null 2>&1; then \
+		cd e2e-tests && npm install && npm test; \
+	else \
+		echo "npm not found. Install Node.js with: brew install node"; \
+		exit 1; \
+	fi
+
+e2e-normal:
+	@echo "Running normal flow E2E tests..."
+	@cd e2e-tests && npm install && npm run test:normal
+
+e2e-security:
+	@echo "Running security simulation tests..."
+	@cd e2e-tests && npm install && npm run test:security
+
+e2e-report:
+	@echo "Running E2E tests with HTML report..."
+	@cd e2e-tests && npm install && npm run test:report
+	@echo "Report generated at: e2e-tests/reports/cucumber-report.html"
+
+e2e-clean:
+	@echo "Cleaning E2E test artifacts..."
+	cd e2e-tests && rm -rf node_modules dist reports test-results playwright-report
+
 # === HELP ===
 help:
 	@echo "Available targets:"
@@ -66,6 +93,11 @@ help:
 	@echo "  test         Run all tests"
 	@echo "  test-cover   Run tests with coverage"
 	@echo "  test-one     Run a single test (use: make test-one t=TestName)"
+	@echo "  e2e          Run E2E tests with Playwright + Cucumber"
+	@echo "  e2e-normal   Run only normal flow E2E tests"
+	@echo "  e2e-security Run only security simulation tests"
+	@echo "  e2e-report   Run E2E tests and generate HTML report"
+	@echo "  e2e-clean    Clean E2E test artifacts"
 	@echo "  lint         Run golangci-lint if available"
 	@echo "  fmt          Format code and run vet"
 	@echo "  imports      Fix import ordering (goimports)"
