@@ -2,42 +2,53 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"time"
 
-	"id-gateway/internal/audit"
-	authHandler "id-gateway/internal/auth/handler"
-	authService "id-gateway/internal/auth/service"
-	authStore "id-gateway/internal/auth/store"
-	consentHandler "id-gateway/internal/consent/handler"
-	consentService "id-gateway/internal/consent/service"
-	consentStore "id-gateway/internal/consent/store"
-	jwttoken "id-gateway/internal/jwt_token"
-	"id-gateway/internal/platform/config"
-	"id-gateway/internal/platform/httpserver"
-	"id-gateway/internal/platform/logger"
-	"id-gateway/internal/platform/metrics"
-	"id-gateway/internal/platform/middleware"
+	"credo/internal/audit"
+	authHandler "credo/internal/auth/handler"
+	authService "credo/internal/auth/service"
+	authStore "credo/internal/auth/store"
+	consentHandler "credo/internal/consent/handler"
+	consentService "credo/internal/consent/service"
+	consentStore "credo/internal/consent/store"
+	jwttoken "credo/internal/jwt_token"
+	"credo/internal/platform/config"
+	"credo/internal/platform/httpserver"
+	"credo/internal/platform/logger"
+	"credo/internal/platform/metrics"
+	"credo/internal/platform/middleware"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
-	cfg := config.FromEnv()
+	cfg, err := config.FromEnv()
+	if err != nil {
+		panic(err)
+	}
 	log := logger.New()
 
-	log.Info("initializing id-gateway",
+	log.Info("initializing credo",
 		"addr", cfg.Addr,
 		"regulated_mode", cfg.RegulatedMode,
+		"env", cfg.Environment,
 	)
+	if cfg.DemoMode {
+		log.Info("CRENE_ENV=demo — starting isolated demo environment",
+			"stores", "in-memory",
+			"issuer", cfg.JWTIssuer,
+		)
+	}
 
 	m := metrics.New()
 	jwtService, jwtValidator := initializeJWTService(&cfg)
-	authSvc := initializeAuthService(m, log, jwtService)
+	authSvc := initializeAuthService(m, log, jwtService, &cfg)
 
 	r := setupRouter(log, m)
 	registerRoutes(r, authSvc, jwtValidator, log, &cfg, m)
@@ -48,11 +59,11 @@ func main() {
 }
 
 // initializeAuthService creates and configures the authentication service
-func initializeAuthService(m *metrics.Metrics, log *slog.Logger, jwtService *jwttoken.JWTService) *authService.Service {
+func initializeAuthService(m *metrics.Metrics, log *slog.Logger, jwtService *jwttoken.JWTService, cfg *config.Server) *authService.Service {
 	return authService.NewService(
 		authStore.NewInMemoryUserStore(),
 		authStore.NewInMemorySessionStore(),
-		24*time.Hour, // TODO Make configurable
+		authService.WithSessionTTL(cfg.SessionTTL),
 		authService.WithMetrics(m),
 		authService.WithLogger(log),
 		authService.WithJWTService(jwtService),
@@ -63,10 +74,13 @@ func initializeAuthService(m *metrics.Metrics, log *slog.Logger, jwtService *jwt
 func initializeJWTService(cfg *config.Server) (*jwttoken.JWTService, *jwttoken.JWTServiceAdapter) {
 	jwtService := jwttoken.NewJWTService(
 		cfg.JWTSigningKey,
-		"id-gateway",
-		"id-gateway-client",
+		cfg.JWTIssuer,
+		"credo-client",
 		cfg.TokenTTL,
 	)
+	if cfg.DemoMode {
+		jwtService.SetEnv("demo")
+	}
 	jwtValidator := jwttoken.NewJWTServiceAdapter(jwtService)
 	return jwtService, jwtValidator
 }
@@ -85,6 +99,10 @@ func setupRouter(log *slog.Logger, m *metrics.Metrics) *chi.Mux {
 
 	// Add Prometheus metrics endpoint (no auth required)
 	r.Handle("/metrics", promhttp.Handler())
+	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
 
 	return r
 }
@@ -103,9 +121,22 @@ func registerRoutes(
 		consentStore.NewInMemoryStore(),
 		audit.NewPublisher(audit.NewInMemoryStore()),
 		log,
-		cfg.ConsentTTL,
+		consentService.WithConsentTTL(cfg.ConsentTTL),
+		consentService.WithGrantWindow(cfg.ConsentGrantWindow),
 	)
 	consentHTTPHandler := consentHandler.New(consentSvc, log, m)
+	if cfg.DemoMode {
+		r.Get("/demo/info", func(w http.ResponseWriter, _ *http.Request) {
+			resp := map[string]any{
+				"env":        "demo",
+				"users":      []string{"alice", "bob", "charlie"},
+				"jwt_issuer": cfg.JWTIssuer,
+				"data_store": "in-memory",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+	}
 
 	// Public auth endpoints (no JWT required)
 	r.Post("/auth/authorize", authHandler.HandleAuthorize)

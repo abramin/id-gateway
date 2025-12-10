@@ -256,7 +256,7 @@ curl http://localhost:8080/auth/userinfo \
 
 ## Support
 
-- Issues: https://github.com/your-repo/id-gateway/issues
+- Issues: https://github.com/your-repo/credo/issues
 - Docs: `docs/` directory
 - PRDs: `docs/prd/` directory
 - Frontend: `frontend/README.md`

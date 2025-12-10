@@ -10,14 +10,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"id-gateway/internal/consent/models"
-	"id-gateway/internal/platform/metrics"
-	"id-gateway/internal/platform/middleware"
-	"id-gateway/internal/transport/http/shared"
-	respond "id-gateway/internal/transport/http/shared/json"
-	dErrors "id-gateway/pkg/domain-errors"
-	s "id-gateway/pkg/string"
-	"id-gateway/pkg/validation"
+	"credo/internal/consent/models"
+	"credo/internal/platform/metrics"
+	"credo/internal/platform/middleware"
+	"credo/internal/transport/http/shared"
+	respond "credo/internal/transport/http/shared/json"
+	dErrors "credo/pkg/domain-errors"
+	s "credo/pkg/string"
+	"credo/pkg/validation"
 )
 
 // Service defines the interface for consent operations.
@@ -32,6 +32,11 @@ type Handler struct {
 	logger  *slog.Logger
 	consent Service
 	metrics *metrics.Metrics
+}
+
+type listConsentsQueryDTO struct {
+	Status  string `validate:"omitempty,oneof=active expired revoked"`
+	Purpose string `validate:"omitempty,oneof=login registry_check vc_issuance decision_evaluation"`
 }
 
 // New creates a new consent Handler.
@@ -156,18 +161,6 @@ func (h *Handler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func formatRevokeResponses(revoked []*models.Record) []*models.Revoked {
-	var resp []*models.Revoked
-	for _, record := range revoked {
-		resp = append(resp, &models.Revoked{
-			Purpose:   record.Purpose,
-			RevokedAt: *record.RevokedAt,
-			Status:    record.ComputeStatus(time.Now()),
-		})
-	}
-	return resp
-}
-
 func (h *Handler) handleGetConsents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
@@ -181,18 +174,19 @@ func (h *Handler) handleGetConsents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: consider using DTO here
-	statusFilter := r.URL.Query().Get("status")
-	purposeFilter := r.URL.Query().Get("purpose")
-
-	if statusFilter != "" && statusFilter != string(models.StatusActive) && statusFilter != string(models.StatusExpired) && statusFilter != string(models.StatusRevoked) {
-		shared.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid status filter"))
+	query := listConsentsQueryDTO{
+		Status:  r.URL.Query().Get("status"),
+		Purpose: r.URL.Query().Get("purpose"),
+	}
+	s.Sanitize(&query)
+	if err := validation.Validate(&query); err != nil {
+		shared.WriteError(w, err)
 		return
 	}
 
 	res, err := h.consent.List(ctx, userID, &models.RecordFilter{
-		Purpose: purposeFilter,
-		Status:  statusFilter,
+		Purpose: query.Purpose,
+		Status:  query.Status,
 	})
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to list consent",
@@ -206,7 +200,6 @@ func (h *Handler) handleGetConsents(w http.ResponseWriter, r *http.Request) {
 	respond.WriteJSON(w, http.StatusOK, models.ListResponse{Consents: res})
 }
 
-// TODO: move to models or service package
 func formatGrantResponses(records []*models.Record, now time.Time) []*models.Grant {
 	var resp []*models.Grant
 	for _, record := range records {
@@ -233,4 +226,16 @@ func pluralSuffix(count int) string {
 		return ""
 	}
 	return "s"
+}
+
+func formatRevokeResponses(revoked []*models.Record) []*models.Revoked {
+	var resp []*models.Revoked
+	for _, record := range revoked {
+		resp = append(resp, &models.Revoked{
+			Purpose:   record.Purpose,
+			RevokedAt: *record.RevokedAt,
+			Status:    record.ComputeStatus(time.Now()),
+		})
+	}
+	return resp
 }

@@ -1,29 +1,44 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
 // Server captures HTTP server level configuration.
 type Server struct {
-	Addr          string
-	RegulatedMode bool
-	JWTSigningKey string
-	TokenTTL      time.Duration
-	ConsentTTL    time.Duration
+	Addr               string
+	RegulatedMode      bool
+	DemoMode           bool
+	Environment        string
+	JWTSigningKey      string
+	JWTIssuer          string
+	TokenTTL           time.Duration
+	ConsentTTL         time.Duration
+	ConsentGrantWindow time.Duration
+	SessionTTL         time.Duration
 }
 
 // RegistryCacheTTL enforces retention for sensitive registry data.
 var RegistryCacheTTL = 5 * time.Minute
 var TokenTTL = 15 * time.Minute
 var ConsentTTL = 365 * 24 * time.Hour // 1 year
+var ConsentGrantWindow = 1 * time.Second
+var SessionTTL = 24 * time.Hour
+var JWTIssuer = "credo"
 
 // FromEnv builds a Server config from environment variables so main stays lean.
-func FromEnv() Server {
+func FromEnv() (Server, error) {
 	addr := os.Getenv("ID_GATEWAY_ADDR")
 	if addr == "" {
 		addr = ":8080"
+	}
+	env := os.Getenv("CRENE_ENV")
+	demoMode := env == "demo"
+	if env == "" {
+		env = "local"
 	}
 	regulated := os.Getenv("REGULATED_MODE") == "true"
 	tokenTTLStr := os.Getenv("TOKEN_TTL")
@@ -40,16 +55,58 @@ func FromEnv() Server {
 		}
 	}
 
+	consentGrantWindowStr := os.Getenv("CONSENT_GRANT_WINDOW")
+	if consentGrantWindowStr != "" {
+		if duration, err := time.ParseDuration(consentGrantWindowStr); err == nil {
+			ConsentGrantWindow = duration
+		}
+	}
+
+	SessionTTLStr := os.Getenv("SESSION_TTL")
+	if SessionTTLStr != "" {
+		if duration, err := time.ParseDuration(SessionTTLStr); err == nil {
+			SessionTTL = duration
+		}
+	}
+
 	jwtSigningKey := os.Getenv("JWT_SIGNING_KEY")
 	if jwtSigningKey == "" {
 		// Use a default for development - should be overridden in production
 		jwtSigningKey = "dev-secret-key-change-in-production"
 	}
+	JWTIssuer = os.Getenv("JWT_ISSUER")
+	if JWTIssuer == "" {
+		JWTIssuer = "credo"
+	}
+	if demoMode {
+		// Fail fast if any production-looking variables are present
+		prodVars := []string{"DB_URL", "JWT_SIGNING_KEY", "REDIS_URL"}
+		for _, key := range prodVars {
+			if val := os.Getenv(key); val != "" {
+				return Server{}, fmt.Errorf("refusing to start demo env with production variables: %s", key)
+			}
+		}
+		for _, kv := range os.Environ() {
+			parts := strings.SplitN(kv, "=", 2)
+			if len(parts) == 2 && strings.Contains(strings.ToLower(parts[0]), "prod") {
+				return Server{}, fmt.Errorf("refusing to start demo env with production variables: %s", parts[0])
+			}
+		}
+		jwtSigningKey = "demo-signing-key-change-me-locally"
+		JWTIssuer = "credo-demo"
+		regulated = false
+	}
 
 	return Server{
-		Addr:          addr,
-		RegulatedMode: regulated,
-		JWTSigningKey: jwtSigningKey,
-		TokenTTL:      TokenTTL,
-	}
+		Addr:               addr,
+		RegulatedMode:      regulated,
+		DemoMode:           demoMode,
+		Environment:        env,
+		JWTSigningKey:      jwtSigningKey,
+		JWTIssuer:          JWTIssuer,
+		TokenTTL:           TokenTTL,
+		ConsentTTL:         ConsentTTL,
+		ConsentGrantWindow: ConsentGrantWindow,
+		SessionTTL:         SessionTTL,
+	}, nil
 }

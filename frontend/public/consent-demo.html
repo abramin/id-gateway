@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Consent Management Demo - Credo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/js/api.js"></script>
+    <script defer src="/js/consent-demo.js"></script>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body class="bg-gray-50 min-h-screen" x-data="consentDemo" x-init="init()">
+    <div style="background:#fff3cd; color:#664d03; padding:10px; font-size:14px; border-bottom:1px solid #ffeeba; text-align:center;">
+      Demo environment only. No real identity data is processed or stored.
+    </div>
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm border-b border-gray-200">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center h-16">
+          <div class="flex items-center">
+            <h1 class="text-xl font-bold text-gray-900">
+              Consent Management Demo
+            </h1>
+          </div>
+          <div class="flex items-center space-x-4">
+            <a
+              href="demo.html"
+              class="text-sm text-gray-600 hover:text-gray-900"
+              >OAuth Demo</a
+            >
+            <a
+              href="index.html"
+              class="text-sm text-gray-600 hover:text-gray-900"
+              >User Portal</a
+            >
+            <a
+              href="admin.html"
+              class="text-sm text-gray-600 hover:text-gray-900"
+              >Admin View</a
+            >
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Authentication Status Banner -->
+    <div
+      x-show="!isAuthenticated"
+      class="bg-red-50 border-b border-red-200 px-4 sm:px-6 lg:px-8 py-4"
+    >
+      <div class="max-w-7xl mx-auto">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-semibold text-red-900">
+              🔐 Authentication Required
+            </h3>
+            <p class="text-sm text-red-800 mt-1">
+              You need an access token to use this demo. Complete the OAuth flow to get one:
+            </p>
+            <ol class="text-sm text-red-700 ml-4 mt-2 list-decimal">
+              <li>Click "Get Token via OAuth" button</li>
+              <li>Complete the authorization flow</li>
+              <li>You'll be redirected back with an access token</li>
+            </ol>
+          </div>
+          <button
+            @click="startOAuthFlow()"
+            class="px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 whitespace-nowrap ml-4"
+          >
+            Get Token via OAuth →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Authenticated Banner -->
+    <div
+      x-show="isAuthenticated"
+      class="bg-green-50 border-b border-green-200 px-4 sm:px-6 lg:px-8 py-3"
+    >
+      <div class="max-w-7xl mx-auto flex items-center justify-between">
+        <div>
+          <h3 class="text-sm font-semibold text-green-900">
+            ✅ Authenticated - Backend Enabled
+          </h3>
+          <p class="text-xs text-green-700 mt-1">
+            Your access token is valid. All API calls use the backend consent service.
+          </p>
+        </div>
+        <button
+          @click="isAuthenticated = false; accessToken = null; error = 'Logged out'; consents = [];"
+          class="px-3 py-1 text-xs bg-red-600 text-white rounded font-medium hover:bg-red-700"
+        >
+          Logout
+        </button>
+      </div>
+    </div>
+    </div>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <!-- Introduction -->
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+        <h2 class="text-lg font-semibold text-blue-900 mb-2">
+          🔒 PRD-002: Consent Management System
+        </h2>
+        <p class="text-sm text-blue-800 mb-3">
+          This demo demonstrates Credo's consent lifecycle: granting, listing,
+          and revoking user consents for different purposes.
+        </p>
+        <div class="text-xs text-blue-700 space-y-1">
+          <div><strong>Features:</strong></div>
+          <ul class="list-disc list-inside ml-2">
+            <li>Grant consent for specific purposes with configurable TTL</li>
+            <li>View active consents with expiry dates</li>
+            <li>Revoke consents at any time</li>
+            <li>5-minute idempotency window prevents duplicate grants</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Notifications -->
+      <div x-show="error" x-transition class="mb-6">
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div class="flex items-start">
+            <div class="flex-shrink-0">
+              <svg
+                class="h-5 w-5 text-red-400"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+            </div>
+            <div class="ml-3">
+              <h3 class="text-sm font-medium text-red-800">Error</h3>
+              <p class="text-sm text-red-700 mt-1" x-text="error"></p>
+            </div>
+            <button
+              @click="error = null"
+              class="ml-auto text-red-500 hover:text-red-700"
+            >
+              <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fill-rule="evenodd"
+                  d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div x-show="success" x-transition class="mb-6">
+        <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+          <div class="flex items-start">
+            <div class="flex-shrink-0">
+              <svg
+                class="h-5 w-5 text-green-400"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+            </div>
+            <div class="ml-3">
+              <p class="text-sm text-green-700" x-text="success"></p>
+            </div>
+            <button
+              @click="success = null"
+              class="ml-auto text-green-500 hover:text-green-700"
+            >
+              <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fill-rule="evenodd"
+                  d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Left Column: User Selector & Available Purposes -->
+        <div class="lg:col-span-1 space-y-6">
+          <!-- User Selector -->
+          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">
+              Select User
+            </h2>
+            <select
+              x-model="currentUser"
+              @change="switchUser()"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">-- Choose a user --</option>
+              <template x-for="user in users" :key="user.id">
+                <option
+                  :value="user.id"
+                  x-text="user.name + ' (' + user.id + ')'"
+                ></option>
+              </template>
+            </select>
+            <p class="text-xs text-gray-500 mt-2">
+              Demo users for testing consent flows
+            </p>
+          </div>
+
+          <!-- Available Purposes -->
+          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-lg font-semibold text-gray-900">
+                Available Purposes
+              </h2>
+              <button
+                @click="loadPurposes()"
+                :disabled="loading"
+                class="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
+              >
+                Refresh
+              </button>
+            </div>
+
+            <div
+              x-show="!currentUser"
+              class="text-sm text-gray-500 text-center py-4"
+            >
+              Please select a user first
+            </div>
+
+            <div
+              x-show="currentUser && purposesLoading"
+              class="text-center py-4"
+            >
+              <div class="spinner mx-auto"></div>
+              <p class="text-sm text-gray-500 mt-2">Loading purposes...</p>
+            </div>
+
+            <div x-show="currentUser && !purposesLoading" class="space-y-3">
+              <template x-for="purpose in purposes" :key="purpose.id">
+                <div
+                  class="border rounded-lg p-4 hover-card"
+                  :class="purpose.isInvalid ? 'border-red-300 bg-red-50' : 'border-gray-200'"
+                >
+                  <div class="flex items-start justify-between mb-2">
+                    <div class="flex-1">
+                      <h3
+                        class="font-semibold text-sm"
+                        :class="purpose.isInvalid ? 'text-red-900' : 'text-gray-900'"
+                        x-text="purpose.name"
+                      ></h3>
+                      <p
+                        class="text-xs mt-1"
+                        :class="purpose.isInvalid ? 'text-red-700' : 'text-gray-600'"
+                        x-text="purpose.description"
+                      ></p>
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-between mt-3">
+                    <span
+                      class="text-xs text-gray-500"
+                      x-text="'Default: ' + formatDuration(purpose.default_ttl_hours)"
+                    ></span>
+                    <button
+                      @click="grantConsent(purpose.id)"
+                      :disabled="loading || isGranted(purpose.id)"
+                      class="px-3 py-1 text-xs font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      :class="isGranted(purpose.id) ? 'bg-gray-100 text-gray-400' : purpose.isInvalid ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-blue-600 text-white hover:bg-blue-700'"
+                      x-text="isGranted(purpose.id) ? 'Granted' : 'Grant'"
+                    ></button>
+                  </div>
+                </div>
+              </template>
+
+              <div
+                x-show="purposes.length === 0"
+                class="text-sm text-gray-500 text-center py-4"
+              >
+                No purposes available
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column: Active Consents -->
+        <div class="lg:col-span-2">
+          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div class="flex items-center justify-between mb-6">
+              <h2 class="text-lg font-semibold text-gray-900">
+                Active Consents
+              </h2>
+              <button
+                @click="loadUserConsents()"
+                :disabled="!currentUser || loading"
+                class="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
+              >
+                Refresh
+              </button>
+            </div>
+
+            <div
+              x-show="!currentUser"
+              class="text-sm text-gray-500 text-center py-8"
+            >
+              Please select a user to view their consents
+            </div>
+
+            <div
+              x-show="currentUser && consentsLoading"
+              class="text-center py-8"
+            >
+              <div class="spinner mx-auto"></div>
+              <p class="text-sm text-gray-500 mt-2">Loading consents...</p>
+            </div>
+
+            <div x-show="currentUser && !consentsLoading">
+              <!-- Consents Table -->
+              <div x-show="consents.length > 0" class="overflow-x-auto">
+                <table class="audit-table">
+                  <thead>
+                    <tr>
+                      <th>Purpose</th>
+                      <th>Status</th>
+                      <th>Granted At</th>
+                      <th>Expires At</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template x-for="consent in consents" :key="consent.id">
+                      <tr>
+                        <td>
+                          <div>
+                            <div
+                              class="font-medium text-gray-900"
+                              x-text="consent.purpose"
+                            ></div>
+                            <div
+                              class="text-xs text-gray-500 mono"
+                              x-text="consent.id"
+                            ></div>
+                          </div>
+                        </td>
+                        <td>
+                          <span
+                            class="status-badge"
+                            :class="getStatusClass(consent.status)"
+                            x-text="consent.status"
+                          ></span>
+                        </td>
+                        <td>
+                          <div
+                            class="text-sm text-gray-900"
+                            x-text="formatDateTime(consent.granted_at)"
+                          ></div>
+                        </td>
+                        <td>
+                          <div
+                            class="text-sm text-gray-900"
+                            x-text="formatDateTime(consent.expires_at)"
+                          ></div>
+                          <div
+                            class="text-xs text-gray-500"
+                            x-text="getTimeRemaining(consent.expires_at)"
+                          ></div>
+                        </td>
+                        <td>
+                          <button
+                            @click="revokeConsent(consent.purpose)"
+                            :disabled="loading || consent.status !== 'active'"
+                            class="px-3 py-1 text-xs font-medium text-red-600 hover:text-red-800 border border-red-300 hover:border-red-400 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            Revoke
+                          </button>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Empty State -->
+              <div x-show="consents.length === 0" class="text-center py-8">
+                <svg
+                  class="mx-auto h-12 w-12 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                <h3 class="mt-2 text-sm font-medium text-gray-900">
+                  No active consents
+                </h3>
+                <p class="mt-1 text-sm text-gray-500">
+                  This user hasn't granted any consents yet. Grant a purpose
+                  from the left panel.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- API Information -->
+      <div class="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-6">
+        <h3 class="text-sm font-semibold text-gray-900 mb-3">
+          Backend API Endpoints
+        </h3>
+        <div
+          x-show="isAuthenticated"
+          class="mb-3 text-xs text-green-700 bg-green-50 border border-green-200 rounded p-3"
+        >
+          ✅ <strong>Live Mode:</strong> Making real requests to backend with
+          your access token (Authorization: Bearer ...)
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div>
+            <span class="font-mono bg-blue-100 text-blue-800 px-2 py-1 rounded"
+              >POST</span
+            >
+            <span class="ml-2 text-gray-700">/auth/consent</span>
+            <p class="text-gray-500 mt-1">Grant consent</p>
+            <p class="text-gray-400 text-xs mt-1 font-mono">
+              {"purposes": ["login"]}
+            </p>
+          </div>
+          <div>
+            <span class="font-mono bg-red-100 text-red-800 px-2 py-1 rounded"
+              >POST</span
+            >
+            <span class="ml-2 text-gray-700">/auth/consent/revoke</span>
+            <p class="text-gray-500 mt-1">Revoke consent</p>
+            <p class="text-gray-400 text-xs mt-1 font-mono">
+              {"purposes": ["login"]}
+            </p>
+          </div>
+          <div>
+            <span
+              class="font-mono bg-green-100 text-green-800 px-2 py-1 rounded"
+              >GET</span
+            >
+            <span class="ml-2 text-gray-700">/auth/consent</span>
+            <p class="text-gray-500 mt-1">List user consents</p>
+          </div>
+        </div>
+        <div class="mt-4 text-xs text-gray-600">
+          <strong>Valid Purposes:</strong>
+          <code class="bg-gray-100 px-1 rounded">login</code>,
+          <code class="bg-gray-100 px-1 rounded">vc_issuance</code>,
+          <code class="bg-gray-100 px-1 rounded">registry_check</code>,
+          <code class="bg-gray-100 px-1 rounded">decision_evaluation</code>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

@@ -9,9 +9,21 @@
       defer
       src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
     ></script>
-    <link rel="stylesheet" href="css/styles.css" />
+    <link rel="stylesheet" href="/css/styles.css" />
   </head>
   <body class="bg-gray-50 min-h-screen" x-data="adminApp">
+    <div
+      style="
+        background: #fff3cd;
+        color: #664d03;
+        padding: 10px;
+        font-size: 14px;
+        border-bottom: 1px solid #ffeeba;
+        text-align: center;
+      "
+    >
+      Demo environment only. No real identity data is processed or stored.
+    </div>
     <!-- Navigation -->
     <nav class="bg-white shadow-sm border-b border-gray-200">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -54,6 +66,11 @@
               href="demo.html"
               class="text-sm text-blue-600 hover:text-blue-800 font-medium"
               >OAuth Demo</a
+            >
+            <a
+              href="consent-demo.html"
+              class="text-sm text-green-600 hover:text-green-800 font-medium"
+              >Consent Demo</a
             >
             <a
               href="attacks.html"

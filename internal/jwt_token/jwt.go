@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	dErrors "id-gateway/pkg/domain-errors"
+	dErrors "credo/pkg/domain-errors"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -15,6 +15,7 @@ type Claims struct {
 	UserID    string `json:"user_id"`
 	SessionID string `json:"session_id"`
 	ClientID  string `json:"client_id"`
+	Env       string `json:"env,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -23,6 +24,7 @@ type Claims struct {
 type IDTokenClaims struct {
 	SessionID string `json:"sid,omitempty"`
 	ClientID  string `json:"azp,omitempty"`
+	Env       string `json:"env,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -32,6 +34,7 @@ type JWTService struct {
 	issuer     string
 	audience   string
 	tokenTTL   time.Duration
+	env        string
 }
 
 func NewJWTService(signingKey string, issuer string, audience string, tokenTTL time.Duration) *JWTService {
@@ -51,6 +54,7 @@ func (s *JWTService) GenerateAccessToken(
 		UserID:    userID.String(),
 		SessionID: sessionID.String(),
 		ClientID:  clientID,
+		Env:       s.env,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(s.tokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -75,6 +79,7 @@ func (s *JWTService) GenerateIDToken(
 	newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, IDTokenClaims{
 		SessionID: sessionID.String(),
 		ClientID:  clientID,
+		Env:       s.env,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID.String(), // OIDC sub
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.tokenTTL)),
@@ -90,6 +95,11 @@ func (s *JWTService) GenerateIDToken(
 		return "", err
 	}
 	return signedToken, nil
+}
+
+// SetEnv annotates issued tokens with an environment string (e.g., \"demo\").
+func (s *JWTService) SetEnv(env string) {
+	s.env = env
 }
 
 func (s *JWTService) ValidateToken(tokenString string) (*Claims, error) {

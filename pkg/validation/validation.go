@@ -7,8 +7,8 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	dErrors "id-gateway/pkg/domain-errors"
-	s "id-gateway/pkg/string"
+	dErrors "credo/pkg/domain-errors"
+	s "credo/pkg/string"
 )
 
 var defaultValidator = newValidator()

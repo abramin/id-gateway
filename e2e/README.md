@@ -92,12 +92,3 @@ ctx.Step(`^I POST to "([^"]*)" with body$`, tc.postRequest)
   env:
     BASE_URL: http://localhost:8080
 ```
-
-## Migrated from Playwright
-
-This test suite replaces the Playwright implementation for better:
-
-- Go ecosystem integration
-- Simpler dependencies (no Node.js)
-- Faster execution
-- Better IDE support in Go projects

@@ -128,7 +128,7 @@ document.addEventListener('alpine:init', () => {
                 this.manualTokenRequestBody = JSON.stringify(currentBody, null, 2);
             } catch (err) {
                 // If JSON is invalid, don't update
-                console.warn('Could not update token request body:', err);
+                    console.warn('Could not update token request body');
             }
         },
 
@@ -262,7 +262,31 @@ document.addEventListener('alpine:init', () => {
                 this.tokenResponse = response;
                 this.timeline.token.completed = true;
                 this.timeline.token.timestamp = new Date();
-                this.success = 'Tokens issued successfully!';
+                
+                // Store token in sessionStorage for consent demo
+                const accessToken = response.access_token || response.accessToken || response.AccessToken;
+                if (accessToken) {
+                    sessionStorage.setItem('access_token', accessToken);
+                } else {
+                    console.error('No access token found in response!', response);
+                }
+
+                // Check if we should redirect back to consent demo
+                const returnUrl = sessionStorage.getItem('consent-demo-return');
+                
+                if (returnUrl && accessToken) {
+                    const redirectUrl = returnUrl + '#access_token=' + accessToken;
+                    this.success = 'Tokens issued successfully! Redirecting back to Consent Demo...';
+                    sessionStorage.removeItem('consent-demo-return'); // Clean up
+                    setTimeout(() => {
+                        window.location.href = redirectUrl;
+                    }, 1500); // Give user time to see success message
+                } else {
+                    this.success = 'Tokens issued successfully!';
+                    if (returnUrl && !accessToken) {
+                        console.warn('Return URL found but no access token');
+                    }
+                }
 
             } catch (err) {
                 this.error = err.message || 'Token exchange failed';

@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"context"
-	"id-gateway/internal/platform/metrics"
+	"credo/internal/platform/metrics"
 	"log/slog"
 	"mime"
 	"net/http"

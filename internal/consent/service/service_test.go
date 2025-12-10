@@ -14,10 +14,10 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
-	"id-gateway/internal/audit"
-	"id-gateway/internal/consent/models"
-	"id-gateway/internal/consent/service/mocks"
-	dErrors "id-gateway/pkg/domain-errors"
+	"credo/internal/audit"
+	"credo/internal/consent/models"
+	"credo/internal/consent/service/mocks"
+	dErrors "credo/pkg/domain-errors"
 )
 
 type ServiceSuite struct {
@@ -33,7 +33,13 @@ func (s *ServiceSuite) SetupTest() {
 	s.mockStore = mocks.NewMockStore(s.ctrl)
 	s.auditStore = audit.NewInMemoryStore()
 	auditor := audit.NewPublisher(s.auditStore)
-	s.service = NewService(s.mockStore, auditor, slog.Default(), 365*24*time.Hour)
+	s.service = NewService(
+		s.mockStore,
+		auditor,
+		slog.Default(),
+		WithConsentTTL(365*24*time.Hour),
+		WithGrantWindow(5*time.Minute),
+	)
 }
 
 func (s *ServiceSuite) TearDownTest() {
@@ -101,6 +107,138 @@ func (s *ServiceSuite) TestGrant() {
 		assert.NoError(t, err)
 		assert.Len(t, granted, 1)
 		assert.Equal(t, "consent_abc", granted[0].ID)
+	})
+
+	s.T().Run("idempotent within 5-minute window - returns existing without update", func(t *testing.T) {
+		now := time.Now()
+		expiry := now.Add(24 * time.Hour)
+		// Consent granted 2 minutes ago (within 5-minute window)
+		existing := &models.Record{
+			ID:        "consent_recent",
+			UserID:    "user123",
+			Purpose:   models.PurposeLogin,
+			GrantedAt: now.Add(-2 * time.Minute),
+			ExpiresAt: &expiry,
+		}
+
+		s.mockStore.EXPECT().
+			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeLogin).
+			Return(existing, nil)
+
+		// Should NOT call Update or Save - no store write expected
+		// No need to set expectations for Update/Save
+
+		granted, err := s.service.Grant(context.Background(), "user123", []models.Purpose{models.PurposeLogin})
+		assert.NoError(t, err)
+		assert.Len(t, granted, 1)
+		assert.Equal(t, "consent_recent", granted[0].ID)
+		// Verify timestamps weren't updated
+		assert.Equal(t, existing.GrantedAt, granted[0].GrantedAt)
+		assert.Equal(t, existing.ExpiresAt, granted[0].ExpiresAt)
+	})
+
+	s.T().Run("updates consent after 5-minute window expires", func(t *testing.T) {
+		now := time.Now()
+		expiry := now.Add(24 * time.Hour)
+		// Consent granted 6 minutes ago (outside 5-minute window)
+		oldGrantedAt := now.Add(-6 * time.Minute)
+		existing := &models.Record{
+			ID:        "consent_old",
+			UserID:    "user123",
+			Purpose:   models.PurposeLogin,
+			GrantedAt: oldGrantedAt,
+			ExpiresAt: &expiry,
+		}
+
+		s.mockStore.EXPECT().
+			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeLogin).
+			Return(existing, nil)
+
+		s.mockStore.EXPECT().
+			Update(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, consent *models.Record) error {
+				assert.Equal(t, "consent_old", consent.ID)
+				// Should have new timestamps (service mutates the existing object)
+				assert.True(t, consent.GrantedAt.After(oldGrantedAt), "GrantedAt should be updated")
+				assert.True(t, consent.ExpiresAt.After(expiry), "ExpiresAt should be extended")
+				return nil
+			})
+
+		granted, err := s.service.Grant(context.Background(), "user123", []models.Purpose{models.PurposeLogin})
+		assert.NoError(t, err)
+		assert.Len(t, granted, 1)
+		assert.Equal(t, "consent_old", granted[0].ID)
+	})
+
+	s.T().Run("always updates expired consent regardless of time window", func(t *testing.T) {
+		now := time.Now()
+		// Consent granted 2 minutes ago but already expired
+		expiry := now.Add(-1 * time.Minute)
+		oldGrantedAt := now.Add(-2 * time.Minute)
+		existing := &models.Record{
+			ID:        "consent_expired",
+			UserID:    "user123",
+			Purpose:   models.PurposeLogin,
+			GrantedAt: oldGrantedAt,
+			ExpiresAt: &expiry,
+		}
+
+		s.mockStore.EXPECT().
+			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeLogin).
+			Return(existing, nil)
+
+		s.mockStore.EXPECT().
+			Update(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, consent *models.Record) error {
+				assert.Equal(t, "consent_expired", consent.ID)
+				// Should have new timestamps even though within 5-min window
+				assert.True(t, consent.GrantedAt.After(oldGrantedAt), "GrantedAt should be updated")
+				assert.True(t, consent.ExpiresAt.After(expiry), "ExpiresAt should be extended")
+				assert.Nil(t, consent.RevokedAt)
+				return nil
+			})
+
+		granted, err := s.service.Grant(context.Background(), "user123", []models.Purpose{models.PurposeLogin})
+		assert.NoError(t, err)
+		assert.Len(t, granted, 1)
+		assert.Equal(t, "consent_expired", granted[0].ID)
+	})
+
+	s.T().Run("always updates revoked consent regardless of time window", func(t *testing.T) {
+		now := time.Now()
+		expiry := now.Add(24 * time.Hour)
+		revokedAt := now.Add(-1 * time.Minute)
+		oldGrantedAt := now.Add(-2 * time.Minute)
+		// Consent granted 2 minutes ago but revoked
+		existing := &models.Record{
+			ID:        "consent_revoked",
+			UserID:    "user123",
+			Purpose:   models.PurposeLogin,
+			GrantedAt: oldGrantedAt,
+			ExpiresAt: &expiry,
+			RevokedAt: &revokedAt,
+		}
+
+		s.mockStore.EXPECT().
+			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeLogin).
+			Return(existing, nil)
+
+		s.mockStore.EXPECT().
+			Update(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, consent *models.Record) error {
+				assert.Equal(t, "consent_revoked", consent.ID)
+				// Should have new timestamps even though within 5-min window
+				assert.True(t, consent.GrantedAt.After(oldGrantedAt), "GrantedAt should be updated")
+				assert.True(t, consent.ExpiresAt.After(expiry), "ExpiresAt should be extended")
+				// RevokedAt should be cleared
+				assert.Nil(t, consent.RevokedAt)
+				return nil
+			})
+
+		granted, err := s.service.Grant(context.Background(), "user123", []models.Purpose{models.PurposeLogin})
+		assert.NoError(t, err)
+		assert.Len(t, granted, 1)
+		assert.Equal(t, "consent_revoked", granted[0].ID)
 	})
 
 	s.T().Run("grants multiple purposes", func(t *testing.T) {

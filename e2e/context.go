@@ -48,6 +48,11 @@ func NewTestContext() *TestContext {
 
 // POST makes a POST request and stores the response
 func (tc *TestContext) POST(path string, body interface{}) error {
+	return tc.POSTWithHeaders(path, body, nil)
+}
+
+// POSTWithHeaders makes a POST request with optional headers
+func (tc *TestContext) POSTWithHeaders(path string, body interface{}, headers map[string]string) error {
 	data, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("failed to marshal request body: %w", err)
@@ -59,6 +64,9 @@ func (tc *TestContext) POST(path string, body interface{}) error {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 
 	resp, err := tc.HTTPClient.Do(req)
 	if err != nil {

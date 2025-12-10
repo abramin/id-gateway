@@ -42,11 +42,11 @@ jobs:
           cache: true
 
       - name: Build Go application
-        run: go build -o bin/id-gateway ./cmd/server/main.go
+        run: go build -o bin/credo ./cmd/server/main.go
 
       - name: Start backend server
         run: |
-          ./bin/id-gateway &
+          ./bin/credo &
           echo $! > server.pid
         env:
           PORT: 8080
@@ -68,10 +68,8 @@ jobs:
         if: always()
         run: |
           if [ -f e2e/reports/cucumber.json ]; then
-            npm install --no-save @cucumber/html-formatter
-            npx cucumber-html-formatter \
-              --output=e2e/reports/report.html \
-              e2e/reports/cucumber.json || echo "HTML generation failed but continuing..."
+            npm install --no-save cucumber-html-reporter
+            node e2e/generate-report.js || echo "HTML generation failed but continuing..."
             ls -la e2e/reports/
           else
             echo "cucumber.json not found, skipping HTML generation"
@@ -93,7 +91,7 @@ jobs:
           name: e2e-test-results
           path: |
             e2e/reports/cucumber.json
-            e2e/reports/report.html
+            e2e/reports/index.html
           retention-days: 7
 
   openapi-docs:
@@ -150,8 +148,17 @@ jobs:
       - name: Prepare E2E directory structure
         run: |
           mkdir -p pages/e2e
-          cp e2e-reports/report.html pages/e2e/index.html
-          cp e2e-reports/cucumber.json pages/e2e/cucumber.json
+          ls -la e2e-reports/
+          if [ -f e2e-reports/index.html ]; then
+            cp e2e-reports/index.html pages/e2e/index.html
+          else
+            echo "HTML report not found, skipping"
+          fi
+          if [ -f e2e-reports/cucumber.json ]; then
+            cp e2e-reports/cucumber.json pages/e2e/cucumber.json
+          else
+            echo "cucumber.json not found"
+          fi
 
       - name: Upload E2E Pages artifact
         uses: actions/upload-artifact@v4

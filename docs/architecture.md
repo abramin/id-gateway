@@ -238,19 +238,19 @@ type Session struct {
 **Key types**
 
 ```go
-type ConsentPurpose string
+type Purpose string
 
 const (
-    ConsentPurposeLogin         ConsentPurpose = "login"
-    ConsentPurposeRegistryCheck ConsentPurpose = "registry_check"
-    ConsentPurposeVCIssuance    ConsentPurpose = "vc_issuance"
-    ConsentPurposeDecision      ConsentPurpose = "decision_evaluation"
+    PurposeLogin         Purpose = "login"
+    PurposeRegistryCheck Purpose = "registry_check"
+    PurposeVCIssuance    Purpose = "vc_issuance"
+    PurposeDecision      Purpose = "decision_evaluation"
 )
 
 type ConsentRecord struct {
-    ID        string
+    ID        string     // Format: "consent_<uuid>" - Always reused per user+purpose
     UserID    string
-    Purpose   ConsentPurpose
+    Purpose   Purpose
     GrantedAt time.Time
     ExpiresAt *time.Time
     RevokedAt *time.Time
@@ -259,8 +259,20 @@ type ConsentRecord struct {
 
 **Services**
 
-- `GrantPurposes(userID, purposes)`
-- `RequireConsent(userID, purpose)` returns typed errors `ErrMissingConsent`, `ErrConsentExpired`.
+- `Grant(ctx, userID, purposes []Purpose)` - Grant/renew consent for multiple purposes
+  - **Idempotency**: If active consent granted < 5 minutes ago, returns existing without update (no audit)
+  - **ID Reuse**: Always reuses existing consent IDs (active, expired, revoked)
+  - **TTL Extension**: If active consent ≥ 5 minutes old, updates timestamps (supports sessions)
+- `Revoke(ctx, userID, purposes []Purpose)` - Revoke consent for multiple purposes
+- `List(ctx, userID, filter)` - List all consents with status (active/expired/revoked)
+- `Require(ctx, userID, purpose)` - Returns typed errors `ErrMissingConsent`, `ErrConsentExpired`
+
+**Idempotency Design**:
+To prevent audit noise from rapid repeated requests (double-clicks, retries), consent grants within a 5-minute window are idempotent for active consents. This balances:
+
+- Preventing duplicate audit events
+- Supporting legitimate session TTL extensions
+- Ensuring expired/revoked consents are always renewable
 
 **Clients**
 
@@ -482,6 +494,7 @@ All middleware supports context propagation and includes request_id for distribu
 **JWT Authentication:**
 
 The system uses JWT (JSON Web Tokens) for access token authentication:
+
 - Tokens signed with HS256 (HMAC-SHA256) using a configurable signing key
 - Claims include: user_id, session_id, client_id, exp, iat, iss, aud
 - Validated via `RequireAuth` middleware on protected endpoints

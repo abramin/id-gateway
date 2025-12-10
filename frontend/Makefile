@@ -21,11 +21,11 @@ dev-node:
 
 docker-build:
 	@echo "Building frontend Docker image..."
-	docker build -t id-gateway-frontend .
+	docker build -t credo-frontend .
 
 docker-run:
 	@echo "Running frontend container on http://localhost:3000"
-	docker run -p 3000:80 id-gateway-frontend
+	docker run -p 3000:80 credo-frontend
 
 clean:
 	@echo "Cleaning up..."

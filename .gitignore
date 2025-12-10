@@ -45,3 +45,5 @@ frontend/.cache/
 
 
 temp_docs/
+# Build output
+bin/

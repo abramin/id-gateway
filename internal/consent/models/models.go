@@ -3,7 +3,7 @@ package models
 import (
 	"time"
 
-	pkgerrors "id-gateway/pkg/domain-errors"
+	pkgerrors "credo/pkg/domain-errors"
 )
 
 // Purpose labels why data is processed. Purpose binding allows selective
@@ -155,15 +155,4 @@ func Ensure(consents []*Record, purpose Purpose, now time.Time) error {
 // IsValid checks if the consent purpose is one of the supported enum values.
 func (cp Purpose) IsValid() bool {
 	return ValidPurposes[cp]
-}
-
-// TODO: not sure this is needed
-func ToConsentDTO(r *Record) *Consent {
-	return &Consent{
-		ID:        r.ID,
-		Purpose:   r.Purpose,
-		GrantedAt: r.GrantedAt,
-		ExpiresAt: r.ExpiresAt,
-		RevokedAt: r.RevokedAt,
-	}
 }

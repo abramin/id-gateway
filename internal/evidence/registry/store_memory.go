@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"id-gateway/internal/platform/config"
+	"credo/internal/platform/config"
 )
 
 type cachedCitizen struct {

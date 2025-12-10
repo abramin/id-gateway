@@ -17,10 +17,10 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
-	"id-gateway/internal/consent/handler/mocks"
-	consentModel "id-gateway/internal/consent/models"
-	"id-gateway/internal/platform/middleware"
-	dErrors "id-gateway/pkg/domain-errors"
+	"credo/internal/consent/handler/mocks"
+	consentModel "credo/internal/consent/models"
+	"credo/internal/platform/middleware"
+	dErrors "credo/pkg/domain-errors"
 )
 
 //go:generate mockgen -source=handler.go -destination=mocks/consent-mocks.go -package=mocks Service

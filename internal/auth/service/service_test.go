@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"id-gateway/internal/auth/models"
-	"id-gateway/internal/auth/service/mocks"
-	"id-gateway/internal/auth/store"
-	dErrors "id-gateway/pkg/domain-errors"
+	"credo/internal/auth/models"
+	"credo/internal/auth/service/mocks"
+	"credo/internal/auth/store"
+	dErrors "credo/pkg/domain-errors"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -37,7 +37,8 @@ func (s *ServiceSuite) SetupTest() {
 	s.mockSessStore = mocks.NewMockSessionStore(s.ctrl)
 	s.mockJWT = mocks.NewMockTokenGenerator(s.ctrl)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	s.service = NewService(s.mockUserStore, s.mockSessStore, 15*time.Minute,
+	s.service = NewService(s.mockUserStore, s.mockSessStore,
+		WithSessionTTL(15*time.Minute),
 		WithLogger(logger),
 		WithJWTService(s.mockJWT))
 }
