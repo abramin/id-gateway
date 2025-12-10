@@ -82,7 +82,7 @@ func TestCompleteAuthFlow(t *testing.T) {
 	res := rec.Result()
 	defer res.Body.Close()
 
-	require.Equal(t, http.StatusOK, res.StatusCode)
+	assert.Equal(t, http.StatusOK, res.StatusCode)
 
 	var body map[string]string
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&body))
@@ -90,17 +90,17 @@ func TestCompleteAuthFlow(t *testing.T) {
 	code := body["code"]
 	redirectURI := body["redirect_uri"]
 	require.NotEmpty(t, code)
-	require.Contains(t, redirectURI, "code="+code)
-	require.Contains(t, redirectURI, "state=state-xyz")
+	assert.Contains(t, redirectURI, "code="+code)
+	assert.Contains(t, redirectURI, "state=state-xyz")
 
 	session, err := sessionStore.FindByCode(context.Background(), code)
 	require.NoError(t, err)
-	require.Equal(t, service.StatusPendingConsent, session.Status)
-	require.Equal(t, reqBody.Scopes, session.RequestedScope)
+	assert.Equal(t, service.StatusPendingConsent, session.Status)
+	assert.Equal(t, reqBody.Scopes, session.RequestedScope)
 
 	user, err := userStore.FindByEmail(context.Background(), reqBody.Email)
 	require.NoError(t, err)
-	require.Equal(t, user.ID, session.UserID)
+	assert.Equal(t, user.ID, session.UserID)
 
 	// Exchange code for token
 	tokenRequest := &models.TokenRequest{
@@ -120,13 +120,13 @@ func TestCompleteAuthFlow(t *testing.T) {
 	tokenRes := tokenRec.Result()
 	defer tokenRes.Body.Close()
 
-	require.Equal(t, http.StatusOK, tokenRes.StatusCode)
+	assert.Equal(t, http.StatusOK, tokenRes.StatusCode)
 
 	var tokenBody map[string]any
 	require.NoError(t, json.NewDecoder(tokenRes.Body).Decode(&tokenBody))
 
 	accessToken := tokenBody["access_token"]
-	require.NotEmpty(t, accessToken)
+	assert.NotEmpty(t, accessToken)
 
 	// Use token to get user info
 	userInfoReq := httptest.NewRequest(http.MethodGet, "/auth/userinfo", nil)
@@ -138,7 +138,7 @@ func TestCompleteAuthFlow(t *testing.T) {
 	userInfoRes := userInfoRec.Result()
 	defer userInfoRes.Body.Close()
 
-	require.Equal(t, http.StatusOK, userInfoRes.StatusCode)
+	assert.Equal(t, http.StatusOK, userInfoRes.StatusCode)
 
 	var userInfo models.UserInfoResult
 	require.NoError(t, json.NewDecoder(userInfoRes.Body).Decode(&userInfo))
@@ -261,7 +261,7 @@ func TestSessionExpiryHandling(t *testing.T) {
 	tokenRes := tokenRec.Result()
 	defer tokenRes.Body.Close()
 
-	require.Equal(t, http.StatusUnauthorized, tokenRes.StatusCode)
+	assert.Equal(t, http.StatusUnauthorized, tokenRes.StatusCode)
 
 	var tokenBody map[string]string
 	require.NoError(t, json.NewDecoder(tokenRes.Body).Decode(&tokenBody))

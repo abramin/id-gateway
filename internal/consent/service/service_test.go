@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -32,7 +33,7 @@ func (s *ServiceSuite) SetupTest() {
 	s.mockStore = mocks.NewMockStore(s.ctrl)
 	s.auditStore = audit.NewInMemoryStore()
 	auditor := audit.NewPublisher(s.auditStore)
-	s.service = NewService(s.mockStore, auditor)
+	s.service = NewService(s.mockStore, auditor, slog.Default(), 365*24*time.Hour)
 }
 
 func (s *ServiceSuite) TearDownTest() {

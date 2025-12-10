@@ -32,12 +32,12 @@ type Service struct {
 	ttl     time.Duration
 }
 
-func NewService(store Store, auditor *audit.Publisher) *Service {
+func NewService(store Store, auditor *audit.Publisher, logger *slog.Logger, ttl time.Duration) *Service {
 	svc := &Service{
 		store:   store,
 		auditor: auditor,
-		logger:  slog.Default(),
-		ttl:     365 * 24 * time.Hour, // TODO: add to config
+		logger:  logger,
+		ttl:     ttl,
 	}
 	return svc
 }
