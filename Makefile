@@ -60,30 +60,25 @@ docker-clean:
 
 # === E2E TESTS ===
 e2e:
-	@echo "Running E2E tests with Playwright + Cucumber..."
-	@if command -v npm >/dev/null 2>&1; then \
-		cd e2e-tests && npm install && npm test; \
-	else \
-		echo "npm not found. Install Node.js with: brew install node"; \
-		exit 1; \
-	fi
+	@echo "Running E2E tests with godog..."
+	@cd e2e && go test -v --godog.format=pretty
 
 e2e-normal:
 	@echo "Running normal flow E2E tests..."
-	@cd e2e-tests && npm install && npm run test:normal
+	@cd e2e && go test -v --godog.tags=@normal
 
 e2e-security:
 	@echo "Running security simulation tests..."
-	@cd e2e-tests && npm install && npm run test:security
+	@cd e2e && go test -v --godog.tags=@security
 
 e2e-report:
-	@echo "Running E2E tests with HTML report..."
-	@cd e2e-tests && npm install && npm run test:report
-	@echo "Report generated at: e2e-tests/reports/cucumber-report.html"
+	@echo "Running E2E tests with JSON report..."
+	@cd e2e && go test -v --godog.format=cucumber:reports/cucumber.json
+	@echo "Report generated at: e2e/reports/cucumber.json"
 
 e2e-clean:
 	@echo "Cleaning E2E test artifacts..."
-	cd e2e-tests && rm -rf node_modules dist reports test-results playwright-report
+	cd e2e && rm -rf reports
 
 # === HELP ===
 help:
@@ -93,10 +88,10 @@ help:
 	@echo "  test         Run all tests"
 	@echo "  test-cover   Run tests with coverage"
 	@echo "  test-one     Run a single test (use: make test-one t=TestName)"
-	@echo "  e2e          Run E2E tests with Playwright + Cucumber"
+	@echo "  e2e          Run E2E tests with godog"
 	@echo "  e2e-normal   Run only normal flow E2E tests"
 	@echo "  e2e-security Run only security simulation tests"
-	@echo "  e2e-report   Run E2E tests and generate HTML report"
+	@echo "  e2e-report   Run E2E tests and generate JSON report"
 	@echo "  e2e-clean    Clean E2E test artifacts"
 	@echo "  lint         Run golangci-lint if available"
 	@echo "  fmt          Format code and run vet"
