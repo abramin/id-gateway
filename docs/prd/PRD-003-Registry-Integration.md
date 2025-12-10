@@ -501,6 +501,14 @@ In regulated mode:
 - Registry timeouts (counter, labeled by type)
 - Registry errors (counter, labeled by type)
 
+### Tracing
+
+- All registry flows **MUST** emit distributed traces using an internal tracer interface (do not depend directly on OpenTelemetry APIs). The interface **MUST** support `Start(ctx, name, attrs...) (context.Context, Span)` and `Span.End(err error)` so spans can record failures without panics.
+- `Service.Check` **MUST** start a parent span named `registry.check` with attributes for `national_id` (hashed or redacted) and `regulated_mode`. Child spans **MUST** wrap `Citizen` and `Sanctions` calls (`registry.citizen` and `registry.sanctions`) and annotate cache hits/misses via span attributes (`cache.hit`, `cache.ttl_remaining_ms`).
+- Mock clients **MUST** start spans for outbound calls (`registry.citizen.call`, `registry.sanctions.call`) and include attributes for simulated latency and deterministic test data branches (e.g., `listed`, `age_bucket`).
+- Emit a span event named `audit.emitted` after audit publishing to show ordering of compliance logging versus registry calls.
+- Provide a **no-op tracer** for tests and **inject** the tracer into `Service` and mock clients so tracing is optional but configurable. Production wiring should use OpenTelemetry to satisfy the interface.
+
 ---
 
 ## 9. Testing Requirements
