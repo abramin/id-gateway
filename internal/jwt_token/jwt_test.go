@@ -1,7 +1,7 @@
 package jwttoken
 
 import (
-	dErrors "id-gateway/pkg/domain-errors"
+	dErrors "credo/pkg/domain-errors"
 	"testing"
 	"time"
 

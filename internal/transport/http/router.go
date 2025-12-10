@@ -3,8 +3,8 @@ package httptransport
 import (
 	"github.com/go-chi/chi/v5"
 
-	authHandler "id-gateway/internal/auth/handler"
-	consentHandler "id-gateway/internal/consent/handler"
+	authHandler "credo/internal/auth/handler"
+	consentHandler "credo/internal/consent/handler"
 )
 
 // HTTPHandler defines the interface for domain handlers that register their routes.

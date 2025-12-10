@@ -40,7 +40,7 @@ Uses existing shared resources:
 1. Start the Credo backend server:
 
    ```bash
-   cd /Users/alexanderramin/Documents/GitHub/id-gateway
+   cd /Users/alexanderramin/Documents/GitHub/credo
    make run
    # or
    go run cmd/server/main.go

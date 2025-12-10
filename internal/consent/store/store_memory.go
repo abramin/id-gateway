@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"id-gateway/internal/consent/models"
+	"credo/internal/consent/models"
 )
 
 type InMemoryStore struct {

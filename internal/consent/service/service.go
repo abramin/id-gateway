@@ -8,10 +8,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"id-gateway/internal/audit"
-	"id-gateway/internal/consent/models"
-	"id-gateway/internal/platform/metrics"
-	pkgerrors "id-gateway/pkg/domain-errors"
+	"credo/internal/audit"
+	"credo/internal/consent/models"
+	"credo/internal/platform/metrics"
+	pkgerrors "credo/pkg/domain-errors"
 )
 
 type Store interface {

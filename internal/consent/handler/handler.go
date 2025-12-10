@@ -10,14 +10,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"id-gateway/internal/consent/models"
-	"id-gateway/internal/platform/metrics"
-	"id-gateway/internal/platform/middleware"
-	"id-gateway/internal/transport/http/shared"
-	respond "id-gateway/internal/transport/http/shared/json"
-	dErrors "id-gateway/pkg/domain-errors"
-	s "id-gateway/pkg/string"
-	"id-gateway/pkg/validation"
+	"credo/internal/consent/models"
+	"credo/internal/platform/metrics"
+	"credo/internal/platform/middleware"
+	"credo/internal/transport/http/shared"
+	respond "credo/internal/transport/http/shared/json"
+	dErrors "credo/pkg/domain-errors"
+	s "credo/pkg/string"
+	"credo/pkg/validation"
 )
 
 // Service defines the interface for consent operations.

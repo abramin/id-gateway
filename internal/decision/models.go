@@ -3,9 +3,9 @@ package decision
 import (
 	"time"
 
-	authModel "id-gateway/internal/auth/models"
-	"id-gateway/internal/evidence/registry"
-	"id-gateway/internal/evidence/vc"
+	authModel "credo/internal/auth/models"
+	"credo/internal/evidence/registry"
+	"credo/internal/evidence/vc"
 )
 
 // DecisionOutcome enumerates the possible gateway decisions.

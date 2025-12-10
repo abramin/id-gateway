@@ -1,4 +1,4 @@
-module id-gateway
+module credo
 
 go 1.25.5
 

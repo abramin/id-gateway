@@ -9,14 +9,14 @@ import (
 
 	"github.com/google/uuid"
 
-	"id-gateway/internal/audit"
-	"id-gateway/internal/auth/models"
-	"id-gateway/internal/auth/store"
-	"id-gateway/internal/platform/metrics"
-	"id-gateway/internal/platform/middleware"
-	"id-gateway/pkg/attrs"
-	dErrors "id-gateway/pkg/domain-errors"
-	"id-gateway/pkg/email"
+	"credo/internal/audit"
+	"credo/internal/auth/models"
+	"credo/internal/auth/store"
+	"credo/internal/platform/metrics"
+	"credo/internal/platform/middleware"
+	"credo/pkg/attrs"
+	dErrors "credo/pkg/domain-errors"
+	"credo/pkg/email"
 )
 
 type UserStore interface {

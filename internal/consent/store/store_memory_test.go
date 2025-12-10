@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"id-gateway/internal/consent/models"
+	"credo/internal/consent/models"
 )
 
 func TestInMemoryStoreOperations(t *testing.T) {

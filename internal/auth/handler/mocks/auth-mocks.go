@@ -11,7 +11,7 @@ package mocks
 
 import (
 	context "context"
-	models "id-gateway/internal/auth/models"
+	models "credo/internal/auth/models"
 	reflect "reflect"
 
 	uuid "github.com/google/uuid"

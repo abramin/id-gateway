@@ -3,7 +3,7 @@ package models
 import (
 	"time"
 
-	pkgerrors "id-gateway/pkg/domain-errors"
+	pkgerrors "credo/pkg/domain-errors"
 )
 
 // Purpose labels why data is processed. Purpose binding allows selective

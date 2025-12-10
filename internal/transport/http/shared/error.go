@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"id-gateway/internal/transport/http/shared/json"
-	dErrors "id-gateway/pkg/domain-errors"
+	"credo/internal/transport/http/shared/json"
+	dErrors "credo/pkg/domain-errors"
 )
 
 // WriteError centralizes domain error translation to HTTP responses.

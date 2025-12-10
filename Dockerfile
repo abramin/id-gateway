@@ -28,7 +28,7 @@ COPY pkg pkg
 # Build the application
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build -o /build/id-gateway ./cmd/server
+    CGO_ENABLED=0 GOOS=linux go build -o /build/credo ./cmd/server
 
 # Runtime stage
 FROM alpine:latest
@@ -39,10 +39,10 @@ WORKDIR /app
 RUN apk --no-cache add ca-certificates
 
 # Copy binary from builder
-COPY --from=builder /build/id-gateway .
+COPY --from=builder /build/credo .
 
 # Expose port
 EXPOSE 8080
 
 # Run the application
-CMD ["./id-gateway"]
+CMD ["./credo"]
