@@ -27,7 +27,12 @@ func TestConsentIntegrationFlow(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	consentStore := store.NewInMemoryStore()
 	auditStore := audit.NewInMemoryStore()
-	svc := service.NewService(consentStore, audit.NewPublisher(auditStore), logger, 365*24*time.Hour)
+	svc := service.NewService(
+		consentStore,
+		audit.NewPublisher(auditStore),
+		logger,
+		service.WithConsentTTL(365*24*time.Hour),
+	)
 	handler := handler.New(svc, logger, nil)
 
 	router := chi.NewRouter()
@@ -196,7 +201,7 @@ func TestConsentIdempotencyWindow(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	consentStore := store.NewInMemoryStore()
 	auditStore := audit.NewInMemoryStore()
-	svc := service.NewService(consentStore, audit.NewPublisher(auditStore), logger, 365*24*time.Hour)
+	svc := service.NewService(consentStore, audit.NewPublisher(auditStore), logger, service.WithConsentTTL(365*24*time.Hour))
 	handler := handler.New(svc, logger, nil)
 
 	router := chi.NewRouter()

@@ -161,18 +161,6 @@ func (h *Handler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func formatRevokeResponses(revoked []*models.Record) []*models.Revoked {
-	var resp []*models.Revoked
-	for _, record := range revoked {
-		resp = append(resp, &models.Revoked{
-			Purpose:   record.Purpose,
-			RevokedAt: *record.RevokedAt,
-			Status:    record.ComputeStatus(time.Now()),
-		})
-	}
-	return resp
-}
-
 func (h *Handler) handleGetConsents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
@@ -212,7 +200,6 @@ func (h *Handler) handleGetConsents(w http.ResponseWriter, r *http.Request) {
 	respond.WriteJSON(w, http.StatusOK, models.ListResponse{Consents: res})
 }
 
-// TODO: move to models or service package
 func formatGrantResponses(records []*models.Record, now time.Time) []*models.Grant {
 	var resp []*models.Grant
 	for _, record := range records {
@@ -239,4 +226,16 @@ func pluralSuffix(count int) string {
 		return ""
 	}
 	return "s"
+}
+
+func formatRevokeResponses(revoked []*models.Record) []*models.Revoked {
+	var resp []*models.Revoked
+	for _, record := range revoked {
+		resp = append(resp, &models.Revoked{
+			Purpose:   record.Purpose,
+			RevokedAt: *record.RevokedAt,
+			Status:    record.ComputeStatus(time.Now()),
+		})
+	}
+	return resp
 }

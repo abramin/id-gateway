@@ -47,8 +47,11 @@ type Service struct {
 	metrics        *metrics.Metrics
 }
 
-const StatusPendingConsent = "pending_consent"
-const StatusActive = "active"
+const (
+	StatusPendingConsent = "pending_consent"
+	StatusActive         = "active"
+	defaultSessionTTL    = 24 * time.Hour
+)
 
 type AuditPublisher interface {
 	Emit(ctx context.Context, base audit.Event) error
@@ -80,20 +83,31 @@ func WithJWTService(jwtService TokenGenerator) Option {
 	}
 }
 
-func NewService(users UserStore, sessions SessionStore, sessionTTL time.Duration, opts ...Option) *Service {
-	if sessionTTL <= 0 {
-		sessionTTL = 15 * time.Minute
+// WithSessionTTL configures the time-to-live duration for sessions.
+// If not set or set to zero/negative, defaults to 24 hours.
+func WithSessionTTL(ttl time.Duration) Option {
+	return func(s *Service) {
+		if ttl > 0 {
+			s.sessionTTL = ttl
+		}
 	}
+}
+
+func NewService(users UserStore, sessions SessionStore, opts ...Option) *Service {
 	svc := &Service{
 		users:      users,
 		sessions:   sessions,
-		sessionTTL: sessionTTL,
+		sessionTTL: defaultSessionTTL,
 	}
 	for _, opt := range opts {
 		opt(svc)
 	}
 	if svc.logger == nil {
 		svc.logger = slog.Default()
+	}
+	// Validate and apply default if needed
+	if svc.sessionTTL <= 0 {
+		svc.sessionTTL = defaultSessionTTL
 	}
 	return svc
 }
