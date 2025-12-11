@@ -307,9 +307,9 @@ func (s *AuthHandlerSuite) TestHandler_UserInfo() {
 			FamilyName:    "Mustafa",
 			Name:          "Ahmed Mustafa",
 		}
-		mockService.EXPECT().UserInfo(gomock.Any(), validSessionID).Return(expectedResp, nil)
+		mockService.EXPECT().UserInfo(gomock.Any(), validSessionID.String()).Return(expectedResp, nil)
 
-		status, got, errBody := s.doUserInfoRequest(t, router, validSessionID)
+		status, got, errBody := s.doUserInfoRequest(t, router, validSessionID.String())
 
 		assert.Equal(t, http.StatusOK, status)
 		assert.NotNil(t, got)
@@ -325,9 +325,20 @@ func (s *AuthHandlerSuite) TestHandler_UserInfo() {
 	// 	- 401 Unauthorized: Missing or invalid Authorization header
 	s.T().Run("missing or invalid authorization header - 401", func(t *testing.T) {
 		mockService, router := s.newHandler(t)
-		mockService.EXPECT().UserInfo(gomock.Any(), gomock.Any()).Times(0)
+		mockService.EXPECT().UserInfo(gomock.Any(), "").Return(nil, dErrors.New(dErrors.CodeUnauthorized, "missing or invalid session"))
 
-		status, got, errBody := s.doUserInfoRequest(t, router, uuid.Nil)
+		status, got, errBody := s.doUserInfoRequest(t, router, "")
+		assert.Equal(t, http.StatusUnauthorized, status)
+		assert.Nil(t, got)
+		assert.Equal(t, string(dErrors.CodeUnauthorized), errBody["error"])
+	})
+
+	s.T().Run("invalid session identifier format - 401", func(t *testing.T) {
+		mockService, router := s.newHandler(t)
+		invalidSession := "not-a-uuid"
+		mockService.EXPECT().UserInfo(gomock.Any(), invalidSession).Return(nil, dErrors.New(dErrors.CodeUnauthorized, "invalid session ID"))
+
+		status, got, errBody := s.doUserInfoRequest(t, router, invalidSession)
 		assert.Equal(t, http.StatusUnauthorized, status)
 		assert.Nil(t, got)
 		assert.Equal(t, string(dErrors.CodeUnauthorized), errBody["error"])
@@ -337,9 +348,9 @@ func (s *AuthHandlerSuite) TestHandler_UserInfo() {
 	s.T().Run("session not found or expired - 401", func(t *testing.T) {
 		mockService, router := s.newHandler(t)
 		serviceErr := dErrors.New(dErrors.CodeUnauthorized, "session not found or expired")
-		mockService.EXPECT().UserInfo(gomock.Any(), validSessionID).Return(nil, serviceErr)
+		mockService.EXPECT().UserInfo(gomock.Any(), validSessionID.String()).Return(nil, serviceErr)
 
-		status, got, errBody := s.doUserInfoRequest(t, router, validSessionID)
+		status, got, errBody := s.doUserInfoRequest(t, router, validSessionID.String())
 
 		assert.Equal(t, http.StatusUnauthorized, status)
 		assert.Nil(t, got)
@@ -350,9 +361,9 @@ func (s *AuthHandlerSuite) TestHandler_UserInfo() {
 	s.T().Run("user not found - 401", func(t *testing.T) {
 		mockService, router := s.newHandler(t)
 		serviceErr := dErrors.New(dErrors.CodeUnauthorized, "user not found")
-		mockService.EXPECT().UserInfo(gomock.Any(), validSessionID).Return(nil, serviceErr)
+		mockService.EXPECT().UserInfo(gomock.Any(), validSessionID.String()).Return(nil, serviceErr)
 
-		status, got, errBody := s.doUserInfoRequest(t, router, validSessionID)
+		status, got, errBody := s.doUserInfoRequest(t, router, validSessionID.String())
 
 		assert.Equal(t, http.StatusUnauthorized, status)
 		assert.Nil(t, got)
@@ -361,9 +372,9 @@ func (s *AuthHandlerSuite) TestHandler_UserInfo() {
 
 	s.T().Run("internal server failure - 500", func(t *testing.T) {
 		mockService, router := s.newHandler(t)
-		mockService.EXPECT().UserInfo(gomock.Any(), validSessionID).Return(nil, errors.New("database error"))
+		mockService.EXPECT().UserInfo(gomock.Any(), validSessionID.String()).Return(nil, errors.New("database error"))
 
-		status, got, errBody := s.doUserInfoRequest(t, router, validSessionID)
+		status, got, errBody := s.doUserInfoRequest(t, router, validSessionID.String())
 
 		assert.Equal(t, http.StatusInternalServerError, status)
 		assert.Nil(t, got)
@@ -382,20 +393,20 @@ func (s *AuthHandlerSuite) newHandler(t *testing.T) (*mocks.MockAuthService, *ch
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	mockService := mocks.NewMockAuthService(ctrl)
-	handler := New(mockService, logger, false, nil)
+	handler := New(mockService, logger, false)
 	r := chi.NewRouter()
 	handler.Register(r)
 	return mockService, r
 }
 
-func (s *AuthHandlerSuite) doUserInfoRequest(t *testing.T, router *chi.Mux, sessionID uuid.UUID) (int, *authModel.UserInfoResult, map[string]string) {
+func (s *AuthHandlerSuite) doUserInfoRequest(t *testing.T, router *chi.Mux, sessionID string) (int, *authModel.UserInfoResult, map[string]string) {
 	t.Helper()
 	httpReq := httptest.NewRequest(http.MethodGet, "/auth/userinfo", nil)
 
 	// Inject session ID into context (simulating what the auth middleware would do)
-	if sessionID != uuid.Nil {
+	if sessionID != "" {
 		ctx := httpReq.Context()
-		ctx = context.WithValue(ctx, middleware.ContextKeySessionID, sessionID.String())
+		ctx = context.WithValue(ctx, middleware.ContextKeySessionID, sessionID)
 		httpReq = httpReq.WithContext(ctx)
 	}
 

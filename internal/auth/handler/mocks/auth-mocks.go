@@ -14,7 +14,6 @@ import (
 	models "credo/internal/auth/models"
 	reflect "reflect"
 
-	uuid "github.com/google/uuid"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -73,7 +72,7 @@ func (mr *MockAuthServiceMockRecorder) Token(ctx, req any) *gomock.Call {
 }
 
 // UserInfo mocks base method.
-func (m *MockAuthService) UserInfo(ctx context.Context, sessionID uuid.UUID) (*models.UserInfoResult, error) {
+func (m *MockAuthService) UserInfo(ctx context.Context, sessionID string) (*models.UserInfoResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UserInfo", ctx, sessionID)
 	ret0, _ := ret[0].(*models.UserInfoResult)

@@ -7,10 +7,8 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 
 	"credo/internal/auth/models"
-	"credo/internal/platform/metrics"
 	"credo/internal/platform/middleware"
 	"credo/internal/transport/http/shared"
 	respond "credo/internal/transport/http/shared/json"
@@ -23,7 +21,7 @@ import (
 type Service interface {
 	Authorize(ctx context.Context, req *models.AuthorizationRequest) (*models.AuthorizationResult, error)
 	Token(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error)
-	UserInfo(ctx context.Context, sessionID uuid.UUID) (*models.UserInfoResult, error)
+	UserInfo(ctx context.Context, sessionID string) (*models.UserInfoResult, error)
 }
 
 // Handler handles authentication endpoints including authorize, token, and userinfo.
@@ -32,16 +30,14 @@ type Handler struct {
 	regulatedMode bool
 	auth          Service
 	logger        *slog.Logger
-	metrics       *metrics.Metrics
 }
 
 // New creates a new auth Handler with the given service and logger.
-func New(auth Service, logger *slog.Logger, regulatedMode bool, metrics *metrics.Metrics) *Handler {
+func New(auth Service, logger *slog.Logger, regulatedMode bool) *Handler {
 	return &Handler{
 		regulatedMode: regulatedMode,
 		auth:          auth,
 		logger:        logger,
-		metrics:       metrics,
 	}
 }
 
@@ -140,9 +136,6 @@ func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 		"request_id", requestID,
 		"client_id", req.ClientID,
 	)
-	if h.metrics != nil {
-		h.metrics.IncrementTokenRequests()
-	}
 
 	respond.WriteJSON(w, http.StatusOK, res)
 }
@@ -153,26 +146,7 @@ func (h *Handler) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
 	requestID := middleware.GetRequestID(ctx)
 	sessionIDStr := middleware.GetSessionID(ctx)
 
-	if sessionIDStr == "" {
-		h.logger.WarnContext(ctx, "missing session ID in context",
-			"request_id", requestID,
-		)
-		shared.WriteError(w, dErrors.New(dErrors.CodeUnauthorized, "Missing or invalid session"))
-		return
-	}
-
-	sessionID, err := uuid.Parse(sessionIDStr)
-	if err != nil {
-		h.logger.WarnContext(ctx, "invalid session ID format",
-			"error", err,
-			"request_id", requestID,
-			"session_id", sessionIDStr,
-		)
-		shared.WriteError(w, dErrors.New(dErrors.CodeUnauthorized, "Invalid session ID"))
-		return
-	}
-
-	res, err := h.auth.UserInfo(ctx, sessionID)
+	res, err := h.auth.UserInfo(ctx, sessionIDStr)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to get user info",
 			"error", err,

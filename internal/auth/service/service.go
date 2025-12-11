@@ -189,18 +189,34 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 	return res, nil
 }
 
-func (s *Service) UserInfo(ctx context.Context, sessionID uuid.UUID) (*models.UserInfoResult, error) {
-	session, err := s.sessions.FindByID(ctx, sessionID)
+func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserInfoResult, error) {
+	if sessionID == "" {
+		s.logAuthFailure(ctx, "missing_session_id", false)
+		s.incrementAuthFailure()
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "missing or invalid session")
+	}
+
+	parsedSessionID, err := uuid.Parse(sessionID)
+	if err != nil {
+		s.logAuthFailure(ctx, "invalid_session_id_format", false,
+			"session_id", sessionID,
+			"error", err,
+		)
+		s.incrementAuthFailure()
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid session ID")
+	}
+
+	session, err := s.sessions.FindByID(ctx, parsedSessionID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			s.logAuthFailure(ctx, "session_not_found", false,
-				"session_id", sessionID.String(),
+				"session_id", parsedSessionID.String(),
 			)
 			s.incrementAuthFailure()
 			return nil, dErrors.New(dErrors.CodeUnauthorized, "session not found")
 		}
 		s.logAuthFailure(ctx, "session_lookup_failed", true,
-			"session_id", sessionID.String(),
+			"session_id", parsedSessionID.String(),
 			"error", err,
 		)
 		return nil, dErrors.New(dErrors.CodeInternal, "failed to find session")
@@ -208,7 +224,7 @@ func (s *Service) UserInfo(ctx context.Context, sessionID uuid.UUID) (*models.Us
 
 	if session.Status != StatusActive {
 		s.logAuthFailure(ctx, "session_not_active", false,
-			"session_id", sessionID.String(),
+			"session_id", parsedSessionID.String(),
 			"status", session.Status,
 		)
 		s.incrementAuthFailure()
@@ -219,14 +235,14 @@ func (s *Service) UserInfo(ctx context.Context, sessionID uuid.UUID) (*models.Us
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			s.logAuthFailure(ctx, "user_not_found", false,
-				"session_id", sessionID.String(),
+				"session_id", parsedSessionID.String(),
 				"user_id", session.UserID.String(),
 			)
 			s.incrementAuthFailure()
 			return nil, dErrors.New(dErrors.CodeUnauthorized, "user not found")
 		}
 		s.logAuthFailure(ctx, "user_lookup_failed", true,
-			"session_id", sessionID.String(),
+			"session_id", parsedSessionID.String(),
 			"user_id", session.UserID.String(),
 			"error", err,
 		)
@@ -346,6 +362,7 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 		"session_id", session.ID.String(),
 		"client_id", session.ClientID,
 	)
+	s.incrementTokenRequests()
 
 	return &models.TokenResult{
 		AccessToken: accessToken,
@@ -408,5 +425,12 @@ func (s *Service) incrementActiveSession() {
 func (s *Service) incrementAuthFailure() {
 	if s.metrics != nil {
 		s.metrics.IncrementAuthFailures()
+	}
+}
+
+// incrementTokenRequests increments the token requests metric if metrics are enabled
+func (s *Service) incrementTokenRequests() {
+	if s.metrics != nil {
+		s.metrics.IncrementTokenRequests()
 	}
 }

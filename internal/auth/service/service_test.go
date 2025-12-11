@@ -252,7 +252,7 @@ func (s *ServiceSuite) TestUserInfo() {
 		}, nil)
 		s.mockUserStore.EXPECT().FindByID(gomock.Any(), existingUser.ID).Return(existingUser, nil)
 
-		result, err := s.service.UserInfo(context.Background(), uuid.New())
+		result, err := s.service.UserInfo(context.Background(), uuid.New().String())
 		require.NoError(s.T(), err)
 		assert.Equal(s.T(), existingUser.ID.String(), result.Sub)
 		assert.Equal(s.T(), existingUser.Email, result.Email)
@@ -265,7 +265,7 @@ func (s *ServiceSuite) TestUserInfo() {
 	s.T().Run("session not found", func(t *testing.T) {
 		s.mockSessStore.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(nil, store.ErrNotFound)
 
-		result, err := s.service.UserInfo(context.Background(), uuid.New())
+		result, err := s.service.UserInfo(context.Background(), uuid.New().String())
 		assert.ErrorIs(s.T(), err, dErrors.New(dErrors.CodeUnauthorized, "session not found"))
 		assert.Nil(s.T(), result)
 	})
@@ -277,7 +277,7 @@ func (s *ServiceSuite) TestUserInfo() {
 		}, nil)
 		s.mockUserStore.EXPECT().FindByID(gomock.Any(), existingUser.ID).Return(nil, store.ErrNotFound)
 
-		result, err := s.service.UserInfo(context.Background(), uuid.New())
+		result, err := s.service.UserInfo(context.Background(), uuid.New().String())
 		assert.ErrorIs(s.T(), err, dErrors.New(dErrors.CodeUnauthorized, "user not found"))
 		assert.Nil(s.T(), result)
 	})
@@ -287,7 +287,7 @@ func (s *ServiceSuite) TestUserInfo() {
 			Status: StatusPendingConsent,
 		}, nil)
 
-		result, err := s.service.UserInfo(context.Background(), uuid.New())
+		result, err := s.service.UserInfo(context.Background(), uuid.New().String())
 		assert.ErrorIs(s.T(), err, dErrors.New(dErrors.CodeUnauthorized, "session not active"))
 		assert.Nil(s.T(), result)
 	})
@@ -295,7 +295,7 @@ func (s *ServiceSuite) TestUserInfo() {
 	s.T().Run("session store error", func(t *testing.T) {
 		s.mockSessStore.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(nil, assert.AnError)
 
-		result, err := s.service.UserInfo(context.Background(), uuid.New())
+		result, err := s.service.UserInfo(context.Background(), uuid.New().String())
 		assert.ErrorIs(s.T(), err, dErrors.New(dErrors.CodeInternal, "failed to find session"))
 		assert.Nil(s.T(), result)
 	})
@@ -307,8 +307,20 @@ func (s *ServiceSuite) TestUserInfo() {
 		}, nil)
 		s.mockUserStore.EXPECT().FindByID(gomock.Any(), existingUser.ID).Return(nil, errors.New("db error"))
 
-		result, err := s.service.UserInfo(context.Background(), uuid.New())
+		result, err := s.service.UserInfo(context.Background(), uuid.New().String())
 		assert.ErrorIs(s.T(), err, dErrors.New(dErrors.CodeInternal, "failed to find user"))
+		assert.Nil(s.T(), result)
+	})
+
+	s.T().Run("missing session identifier", func(t *testing.T) {
+		result, err := s.service.UserInfo(context.Background(), "")
+		assert.ErrorIs(s.T(), err, dErrors.New(dErrors.CodeUnauthorized, "missing or invalid session"))
+		assert.Nil(s.T(), result)
+	})
+
+	s.T().Run("invalid session identifier", func(t *testing.T) {
+		result, err := s.service.UserInfo(context.Background(), "invalid-uuid")
+		assert.ErrorIs(s.T(), err, dErrors.New(dErrors.CodeUnauthorized, "invalid session ID"))
 		assert.Nil(s.T(), result)
 	})
 }
