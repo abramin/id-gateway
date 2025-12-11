@@ -40,21 +40,23 @@ Credo is a **regulated identity and authorization system** that:
 
 ### Advanced Features (V2+ - Showcase & Production)
 
-| PRD                                                                        | Feature                           | Priority | Status         | Est. Time   |
-| -------------------------------------------------------------------------- | --------------------------------- | -------- | -------------- | ----------- |
-| [PRD-004B](./PRD-004B-Enhanced-Verifiable-Credentials.md)                  | Enhanced VCs (BBS+, Status List)  | P1       | 🔵 Not Started | 10-14 hours |
-| [PRD-005B](./PRD-005B-Cerbos-Authorization.md)                             | Cerbos-Based Authorization        | P1       | 🔵 Not Started | 6-8 hours   |
-| [PRD-006B](./PRD-006B-Cryptographic-Audit.md)                              | Cryptographic Audit (Merkle Tree) | P1       | 🔵 Not Started | 8-12 hours  |
-| [PRD-007B](./PRD-007B-ML-Risk-Scoring.md)                                  | ML-Based Risk Scoring             | P2       | 🔵 Not Started | 14-18 hours |
-| [PRD-008](./PRD-008-GDPR-CCPA-Automation.md)                               | Automated GDPR/CCPA Compliance    | P1       | 🔵 Not Started | 12-16 hours |
-| [PRD-009](./PRD-009-Decentralized-Identity-DIDs.md)                        | Decentralized Identity (DIDs)     | P2       | 🔵 Not Started | 16-20 hours |
-| [PRD-010](./PRD-010-Zero-Knowledge-Proofs.md)                              | Zero-Knowledge Proofs             | P3       | 🔵 Not Started | 20-24 hours |
-| [PRD-011](./PRD-011-Internal-TCP-Event-Ingester.md)                        | Internal TCP Event Ingester       | P1       | 🔵 Not Started | 8-12 hours  |
-| [PRD-012](./PRD-012-Cloud-Connectors-Credo-Audit-Identity-Event-Export.md) | Cloud Connectors- Audit Export    | P1       | 🔵 Not Started | ?           |
+| PRD                                                                        | Feature                            | Priority | Status         | Est. Time   |
+| -------------------------------------------------------------------------- | ---------------------------------- | -------- | -------------- | ----------- |
+| [PRD-004B](./PRD-004B-Enhanced-Verifiable-Credentials.md)                  | Enhanced VCs (BBS+, Status List)   | P1       | 🔵 Not Started | 10-14 hours |
+| [PRD-005B](./PRD-005B-Cerbos-Authorization.md)                             | Cerbos-Based Authorization         | P1       | 🔵 Not Started | 6-8 hours   |
+| [PRD-006B](./PRD-006B-Cryptographic-Audit.md)                              | Cryptographic Audit (Merkle Tree)  | P1       | 🔵 Not Started | 8-12 hours  |
+| [PRD-007B](./PRD-007B-ML-Risk-Scoring.md)                                  | ML-Based Risk Scoring              | P2       | 🔵 Not Started | 14-18 hours |
+| [PRD-008](./PRD-008-GDPR-CCPA-Automation.md)                               | Automated GDPR/CCPA Compliance     | P1       | 🔵 Not Started | 12-16 hours |
+| [PRD-009](./PRD-009-Decentralized-Identity-DIDs.md)                        | Decentralized Identity (DIDs)      | P2       | 🔵 Not Started | 16-20 hours |
+| [PRD-010](./PRD-010-Zero-Knowledge-Proofs.md)                              | Zero-Knowledge Proofs              | P3       | 🔵 Not Started | 20-24 hours |
+| [PRD-011](./PRD-011-Internal-TCP-Event-Ingester.md)                        | Internal TCP Event Ingester        | P1       | 🔵 Not Started | 8-12 hours  |
+| [PRD-012](./PRD-012-Cloud-Connectors-Credo-Audit-Identity-Event-Export.md) | Cloud Connectors- Audit Export     | P1       | 🔵 Not Started | ?           |
+| [PRD-013](./PRD-013-Biometric-Verification.md)                             | Biometric Verification             | P1       | 🔵 Not Started | 8-12 hours  |
+| [PRD-014](./PRD-014-Client-SDKs-Platform-Integration.md)                   | Client SDKs & Platform Integration | P1       | 🔵 Not Started | 10-14 hours |
 
-**Advanced Features Time:** ~94-124 hours (11-15 days)
+**Advanced Features Time:** ~112-150 hours (14-19 days)
 
-**Total System Time:** ~142-185 hours (18-23 days)
+**Total System Time:** ~160-211 hours (20-26 days)
 
 ---
 
@@ -87,41 +89,55 @@ Implement PRDs 001-007 to establish:
 
 **Deliverable:** Production-ready gateway with operational maturity
 
-### Phase 3: Advanced Features - Showcase Track (10-14 days)
+### Phase 3: Advanced Features - Showcase Track (14-19 days)
 
 **Goal:** Add distinctive features that differentiate from "another Auth0 clone"
 
 **Recommended Priority Order:**
 
-1. **PRD-006B: Cryptographic Audit Trail** (8-12 hours) - **START HERE**
+1. **PRD-013: Biometric Verification** (8-12 hours) - **START HERE**
 
-   - **Why first:** Easiest advanced feature, clear value
+   - **Why first:** Critical for modern identity verification, shows understanding of KYC/AML
+   - **Impact:** Face matching + liveness detection for identity verification
+   - **Resume line:** "Implemented biometric verification with face matching and anti-spoofing"
+   - **Best for:** Fintech, identity verification platforms, regulated industries
+
+2. **PRD-014: Client SDKs & Platform Integration** (10-14 hours) - **DO SECOND**
+
+   - **Why second:** Enables adoption, shows full-stack capability
+   - **Impact:** TypeScript/React SDK for rapid integration
+   - **Resume line:** "Built developer SDK with OAuth 2.0, token management, and React hooks"
+   - **Best for:** Developer tools, API platforms, identity-as-a-service companies
+
+3. **PRD-006B: Cryptographic Audit Trail** (8-12 hours) - **DO THIRD**
+
+   - **Why third:** Easiest advanced cryptographic feature, clear value
    - **Impact:** Tamper-proof audit logs using Merkle trees
-   - **Resume line:** "Built cryptographically verifiable audit system"
+   - **Resume line:** "Built cryptographically verifiable audit system using Merkle trees"
    - **Best for:** Fintech, healthcare, compliance-heavy domains
 
-2. **PRD-008: GDPR/CCPA Automation** (12-16 hours) - **DO SECOND**
+4. **PRD-008: GDPR/CCPA Automation** (12-16 hours) - **DO FOURTH**
 
-   - **Why second:** Practical, relevant to EU, builds on audit
+   - **Why fourth:** Practical, relevant to EU, builds on audit
    - **Impact:** Real-time compliance checking, automated data retention
    - **Resume line:** "Implemented automated GDPR/CCPA compliance engine"
    - **Best for:** European companies, privacy-focused organizations
 
-3. **PRD-007B: ML-Based Risk Scoring** (14-18 hours) - **DO THIRD**
+5. **PRD-007B: ML-Based Risk Scoring** (14-18 hours) - **DO FIFTH**
 
-   - **Why third:** Shows polyglot skills (Go + Python), trendy (AI/ML)
+   - **Why fifth:** Shows polyglot skills (Go + Python), trendy (AI/ML)
    - **Impact:** Learning fraud detection, adaptive risk assessment
    - **Resume line:** "Integrated ML-based risk scoring into decision engine"
    - **Best for:** Fintech, e-commerce, fraud prevention roles
 
-4. **PRD-009: Decentralized Identity (DIDs)** (16-20 hours) - **DO FOURTH**
+6. **PRD-009: Decentralized Identity (DIDs)** (16-20 hours) - **DO SIXTH**
 
-   - **Why fourth:** Emerging standard, shows forward thinking
+   - **Why sixth:** Emerging standard, shows forward thinking
    - **Impact:** W3C-standard DIDs, user-controlled identity
    - **Resume line:** "Built identity gateway using W3C Decentralized Identifiers"
    - **Best for:** Blockchain/Web3 companies, identity startups (Digidentity)
 
-5. **PRD-010: Zero-Knowledge Proofs** (20-24 hours) - **DO LAST**
+7. **PRD-010: Zero-Knowledge Proofs** (20-24 hours) - **DO LAST**
    - **Why last:** Most technically impressive, requires solid foundation
    - **Impact:** Privacy-preserving age verification (prove "over 18" without revealing birthdate)
    - **Resume line:** "Implemented zero-knowledge proofs for privacy-preserving verification"
@@ -190,24 +206,40 @@ Follow V2_ROADMAP.md for operational maturity features
 
 #### Track B: Showcase Features (Differentiation)
 
+**For Identity Verification / KYC Platforms (Onfido, Jumio, Veriff):**
+
+- Start with: PRD-013 (Biometric Verification)
+- Then add: PRD-003 (Registry Integration) enhancement
+- Then add: PRD-005 (Decision Engine) with biometric evidence
+
+**For Developer Tools / API Platforms (Auth0, Okta, Clerk):**
+
+- Start with: PRD-014 (Client SDKs)
+- Then add: PRD-001 enhancement (refresh tokens, PKCE)
+- Then add: Developer portal and documentation
+
 **For Backend/Distributed Systems Roles:**
 
 - Start with: PRD-006B (Merkle Tree Audit)
 - Then add: PRD-005B (Cerbos Authorization)
+- Then add: PRD-011 (TCP Event Ingester)
 
 **For Privacy/Compliance Roles:**
 
-- Start with: PRD-008 (GDPR Automation)
+- Start with: PRD-013 (Biometric Verification - GDPR Article 9)
+- Then add: PRD-008 (GDPR Automation)
 - Then add: PRD-010 (Zero-Knowledge Proofs)
 
 **For Fintech/Security Roles:**
 
-- Start with: PRD-007B (ML Risk Scoring)
+- Start with: PRD-013 (Biometric Verification - fraud prevention)
+- Then add: PRD-007B (ML Risk Scoring)
 - Then add: PRD-006B (Cryptographic Audit)
 
-**For Identity/Web3 Startups:**
+**For Identity/Web3 Startups (Digidentity, uPort, Civic):**
 
 - Start with: PRD-009 (DIDs)
+- Then add: PRD-004B (Enhanced VCs with BBS+)
 - Then add: PRD-010 (Zero-Knowledge Proofs)
 
 ---
@@ -447,6 +479,14 @@ _ = h.auditPublisher.Emit(ctx, audit.Event{
 
 "Built identity verification gateway with OIDC auth, consent management, verifiable credentials, and decision engine. Go, PostgreSQL, Docker, 80%+ test coverage."
 
+### With Biometric Verification
+
+"...with **biometric face matching and liveness detection** for KYC/AML compliance (GDPR Article 9)."
+
+### With Client SDKs
+
+"...and **TypeScript/React SDK** enabling 10-minute integration with OAuth 2.0, token management, and consent hooks."
+
 ### With Merkle Tree Audit
 
 "...with **cryptographically verifiable audit system using Merkle trees** for tamper-proof logging."
@@ -467,6 +507,10 @@ _ = h.auditPublisher.Emit(ctx, audit.Event{
 
 "...with **zero-knowledge proofs** for privacy-preserving age verification (Bulletproofs/Rust)."
 
+### Full Stack (All Features)
+
+"Built comprehensive identity verification platform with **biometric authentication**, **W3C VCs/DIDs**, **client SDKs** (TypeScript/React), **ML fraud detection**, **zero-knowledge proofs**, and **Merkle tree audit trail**. Go, TypeScript, Python, PostgreSQL, Docker. Demonstrates OAuth 2.0, GDPR Article 9 compliance, cryptographic protocols, and full-stack engineering."
+
 ---
 
 ## Getting Help
@@ -479,7 +523,9 @@ _ = h.auditPublisher.Emit(ctx, audit.Event{
 
 ## Revision History
 
-| Version | Date       | Author       | Changes                                                        |
-| ------- | ---------- | ------------ | -------------------------------------------------------------- |
-| 1.0     | 2025-12-03 | Product Team | Initial PRD suite                                              |
-| 2.0     | 2025-12-06 | Product Team | Added advanced features (DIDs, ZK proofs, ML, GDPR automation) |
+| Version | Date       | Author           | Changes                                                        |
+| ------- | ---------- | ---------------- | -------------------------------------------------------------- |
+| 1.0     | 2025-12-03 | Product Team     | Initial PRD suite                                              |
+| 2.0     | 2025-12-06 | Product Team     | Added advanced features (DIDs, ZK proofs, ML, GDPR automation) |
+| 2.2     | 2025-12-11 | Engineering Team | minor edits to reflect latest architecture                     |
+| 2.2     | 2025-12-11 | Product Team     | Added biometric verifcaiton and client sdk prds                |
