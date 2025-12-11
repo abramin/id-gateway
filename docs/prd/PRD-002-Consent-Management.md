@@ -452,6 +452,28 @@ func (h *Handler) handleConsentList(w http.ResponseWriter, r *http.Request)
 - `CodeInvalidConsent` - Consent expired or revoked
 - Both map to HTTP 403 Forbidden
 
+### TR-6: CQRS Read Model & Projection Store
+
+**Objective:** Separate the high-volume "has consent?" reads from write-heavy grant/revoke flows using a dedicated read model ba
+cked by a low-latency NoSQL/TTL store.
+
+**Projection Contents:**
+- Key: `user_id:purpose`
+- Value: `{status: active|revoked|expired, expires_at, revoked_at, version}`
+
+**Write Path Responsibilities:**
+- Consent service writes canonical records to `ConsentStore` (SQL/in-memory) and emits change events to the audit/event bus.
+- A projection worker consumes these events and updates the read model idempotently (version checks to avoid stale writes).
+
+**Read Path Responsibilities:**
+- `Require` calls and other services first read from the projection store (Redis/DynamoDB/Mongo) for sub-5ms lookups; cache
+  misses trigger fallback to `ConsentStore` and projection refresh.
+- Projection lag budget: ≤1s; on stale reads, downstream can re-validate via canonical store.
+
+**Resilience & Ops:**
+- Provide a replay tool to rebuild the projection from the append-only audit log.
+- Support in-memory projection implementation for local/dev while keeping interfaces identical to production NoSQL/Redis.
+
 ---
 
 ## 5. API Specifications

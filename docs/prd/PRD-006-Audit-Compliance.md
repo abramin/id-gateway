@@ -25,10 +25,11 @@ This requires an **append-only**, **immutable**, **searchable** audit log.
 - Provide audit export for users (GDPR transparency)
 - Non-blocking event emission (async publishing)
 - Support querying by user, action, time range
+- Provide a searchable index (Elasticsearch/OpenSearch) for investigative queries with eventual consistency
 
 ### Non-Goals
 - Real-time audit dashboards
-- Advanced search/analytics (Elasticsearch integration)
+- SIEM-grade correlation rules (can be exported later)
 - Audit log retention policies (assume permanent for MVP)
 - Audit log encryption at rest
 - External audit log shipping (Splunk, Datadog)
@@ -120,6 +121,48 @@ _ = h.auditPublisher.Emit(ctx, audit.Event{
   "total": 3
 }
 ```
+
+---
+
+### FR-3: Searchable Audit Queries (Investigations)
+
+**Endpoint:** `GET /audit/search`
+
+**Description:** Allow authorized compliance users to search audit events across users with filters. Backed by an Elasticsearch/
+OpenSearch index fed from the append-only event stream.
+
+**Input:**
+- Query params:
+  - `user_id` (optional)
+  - `action` (optional, multi-value)
+  - `purpose` (optional)
+  - `from`, `to` (ISO timestamps)
+  - `decision` (optional)
+- Header: `Authorization: Bearer <token>` with `admin/compliance` role
+
+**Output (Success - 200):**
+```json
+{
+  "results": [
+    {
+      "id": "evt_def456",
+      "timestamp": "2025-12-03T09:05:00Z",
+      "user_id": "user_123",
+      "action": "consent_granted",
+      "purpose": "registry_check",
+      "decision": "granted",
+      "reason": "user_initiated"
+    }
+  ],
+  "total": 1,
+  "took_ms": 12
+}
+```
+
+**Implementation Notes:**
+- Events are appended to durable storage (object store or SQL) and streamed into Elasticsearch/OpenSearch for indexing.
+- Index mappings should accommodate nested payloads and time-based indices for retention; daily indices acceptable for MVP.
+- On query errors or index lag, fall back to exporting raw events (slower) but keep the API contract stable.
 
 **Business Logic:**
 1. Extract user from bearer token

@@ -317,6 +317,20 @@ func (h *Handler) handleDecisionEvaluate(w http.ResponseWriter, r *http.Request)
 }
 ```
 
+### TR-5: CQRS & Read-Optimized Projections
+
+**Objective:** Keep write-side decision orchestration isolated from read-optimized evidence lookups and decision history.
+
+- **Write Model:** The HTTP handler + service orchestrate registry/VC/audit lookups and emit `decision_made` events to the
+  audit/event bus. Canonical decision inputs/outputs remain in the service layer.
+- **Read Model:** Maintain a denormalized projection for "recent decisions by user+purpose" in a NoSQL/TTL store (Redis,
+  DynamoDB, or Mongo) to power fast re-checks and idempotent retries. Projection fields: `user_id`, `purpose`, `status`,
+  `reason`, `conditions`, `evaluated_at`, `evidence_hash`.
+- **Evidence Caches:** Registry and VC results used during evaluation SHOULD be cached in the same NoSQL tier with short TTLs to
+  avoid repeated upstream calls during an evaluation burst.
+- **Consistency:** Write path is source of truth; read model is eventually consistent (≤1s lag). On cache miss or suspected
+  staleness, fall back to canonical evaluation or rebuild projection from audit log replay.
+
 ---
 
 ## 6. Implementation Steps
