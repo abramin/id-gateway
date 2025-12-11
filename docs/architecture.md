@@ -97,55 +97,61 @@ Everything runs in one binary, but each internal package has a clear responsibil
 ## Package Layout
 
 ```text
+contracts/
+  registry/             # PII-light DTO contracts, versioned separately
+
 internal/
   platform/
-    config/         # configuration loading
-    logger/         # structured logging with slog
-    httpserver/     # shared HTTP server setup
-    middleware/     # HTTP middleware (recovery, logging, request ID, latency, JWT auth)
-    metrics/        # Prometheus metrics collection
+    config/             # configuration loading
+    logger/             # structured logging with slog
+    httpserver/         # shared HTTP server setup
+    middleware/         # HTTP middleware (recovery, logging, request ID, latency, JWT auth)
+    metrics/            # Prometheus metrics collection
   jwt_token/
-    jwt.go          # JWT generation and validation with HS256
-    jwt_adapter.go  # Adapter for middleware interface
+    jwt.go              # JWT generation and validation with HS256
+    jwt_adapter.go      # Adapter for middleware interface
   auth/
-    service.go      # Users, sessions, tokens
-    store.go        # UserStore, SessionStore
+    service.go          # Users, sessions, tokens
+    store.go            # UserStore, SessionStore
     models.go
   consent/
-    service.go      # Grant, revoke, RequireConsent
+    service.go          # Grant, revoke, RequireConsent
     store.go
     models.go
   evidence/
     registry/
-      client_citizen.go    # citizen registry mock
-      client_sanctions.go  # sanctions registry mock
-      service.go           # RegistryService, caching, minimisation
-      store.go             # RegistryCacheStore
-      models.go
+      clients/
+        citizen/citizen.go      # citizen registry mock
+        sanctions/sanctions.go  # sanctions registry mock
+      handler/handler.go        # optional HTTP adapter (demo)
+      models/models.go          # internal registry models
+      service/service.go        # registry orchestration, caching, minimisation
+      store/store_memory.go     # in-memory cache store (TTL via config)
+      integration_test.go
     vc/
-      service.go           # VCService
-      store.go             # VCStore
+      service.go                # VCService
+      store.go                  # VCStore
+      store_memory.go
       models.go
   decision/
-    service.go      # Evaluate decisions
-    store.go        # DecisionStore
+    service.go                  # Evaluate decisions
+    store.go                    # DecisionStore
     models.go
   audit/
-    publisher.go    # queue or channel publisher
-    worker.go       # background consumer
-    store.go        # AuditStore
+    publisher.go                # queue or channel publisher
+    worker.go                   # background consumer
+    store.go                    # AuditStore
     models.go
   transport/
     http/
       router.go
-      handlers_auth.go
-      handlers_consent.go
       handlers_evidence.go
       handlers_decision.go
       handlers_me.go
+      shared/                   # shared HTTP helpers
 cmd/
   server/
-    main.go         # wires everything together
+    main.go                     # wires everything together
 ```
 
 Rules of thumb:
@@ -297,19 +303,21 @@ Evidence is split into `registry` and `vc`.
 
 ```go
 type CitizenRecord struct {
-    NationalID  string    // Unique national identifier
-    FullName    string    // Full legal name
-    DateOfBirth string    // Format: YYYY-MM-DD
-    Address     string    // Full address
-    Valid       bool      // Whether record is valid/active
-    CheckedAt   time.Time // When this record was fetched
+    NationalID  string // Unique national identifier
+    FullName    string // Full legal name
+    DateOfBirth string // Format: YYYY-MM-DD
+    Valid       bool   // Whether record is valid/active
 }
 
 type SanctionsRecord struct {
-    NationalID string    // Unique national identifier
-    Listed     bool      // Whether person is on sanctions/PEP list
-    Source     string    // Source of the flag
-    CheckedAt  time.Time // When this record was fetched
+    NationalID string // Unique national identifier
+    Listed     bool   // Whether person is on sanctions/PEP list
+    Source     string // Source of the flag
+}
+
+type RegistryResult struct {
+    Citizen  *CitizenRecord
+    Sanction *SanctionsRecord
 }
 ```
 
@@ -320,6 +328,14 @@ type SanctionsRecord struct {
 - `Sanctions(ctx, nationalID)` - Returns sanctions record from cache or registry
 
 This service is the only place that knows about external registry details. It handles caching with a 5-minute TTL and applies data minimization in regulated mode using `MinimizeCitizenRecord()`.
+
+**Cross-module contracts**
+
+- `contracts/registry` defines the PII-light DTOs (`CitizenRecord{DateOfBirth, Valid}`, `SanctionsRecord{Listed}`) and a `ContractVersion` for compatibility.
+- The registry service maps internal models into these DTOs before handing data to decision or other modules; raw identifiers stay inside the registry boundary.
+- Decision imports only the contract package, avoiding reach into registry internals and keeping the future microservice split clean.
+- PII minimization is enforced by passing only derived/necessary fields across the boundary.
+
 
 #### VC
 
@@ -361,41 +377,32 @@ The service supports claim minimization in regulated mode using `MinimizeClaims(
 **Key types**
 
 ```go
-type DecisionStatus string
+type DecisionOutcome string
 
 const (
-    DecisionPass              DecisionStatus = "pass"
-    DecisionPassWithConditions               = "pass_with_conditions"
-    DecisionFail                             = "fail"
+    DecisionPass               DecisionOutcome = "pass"
+    DecisionPassWithConditions DecisionOutcome = "pass_with_conditions"
+    DecisionFail               DecisionOutcome = "fail"
 )
 
-type DecisionInput struct {
-    UserID          string
-    Purpose         string
-    SanctionsListed bool
-    CitizenValid    bool
-    HasCredential   bool
-    DerivedIdentity DerivedIdentity
-    Context         map[string]any // Extra data (amount, country, etc.)
-}
-
 type DerivedIdentity struct {
-    PseudonymousID string // Hash of user ID for privacy
-    IsOver18       bool   // Derived from DateOfBirth, no PII
+    PseudonymousID string // user pseudonym, not email/name
+    IsOver18       bool   // derived from DOB or credential
+    CitizenValid   bool   // registry validity flag
 }
 
-type DecisionOutcome struct {
-    Status     DecisionStatus
-    Reason     string
-    Conditions []string // e.g., ["obtain_credential", "manual_review"]
+type DecisionInput struct {
+    Identity   DerivedIdentity
+    Sanctions  registrycontracts.SanctionsRecord // PII-light contract (listed flag)
+    Credential vc.Claims                          // minimized VC claims
 }
 ```
 
 **Service**
 
-- `Evaluate(ctx, DecisionInput) (DecisionOutcome, error)`
+- `Evaluate(ctx, DecisionInput) DecisionOutcome`
 
-The `DecisionInput` structure contains pre-processed evidence (sanctions status, citizen validity, credential existence) and derived identity attributes. This ensures no PII is passed to the decision engine - only boolean flags and computed values.
+`DecisionInput` keeps the engine dependency-free: derived identity flags, a contract `SanctionsRecord` (listed flag only), and minimized VC claims. No raw PII or registry internals cross the boundary.
 
 ---
 
@@ -660,9 +667,9 @@ High level entities across services:
 
 - `evidence.registry`
 
-  - `CitizenRecord` - NationalID, FullName, DateOfBirth (string), Address, Valid, CheckedAt
-  - `SanctionsRecord` - NationalID, Listed, Source, CheckedAt
-  - Cached in `RegistryCacheStore` with 5-minute TTL
+  - `CitizenRecord` - NationalID, FullName, DateOfBirth (string), Valid
+  - `SanctionsRecord` - NationalID, Listed, Source
+  - Cached in `RegistryCacheStore` with 5-minute TTL; mapped to PII-light `contracts/registry` DTOs for cross-module sharing
 
 - `evidence.vc`
 
@@ -672,9 +679,9 @@ High level entities across services:
 
 - `decision`
 
-  - `DecisionInput` - UserID, Purpose, SanctionsListed, CitizenValid, HasCredential, DerivedIdentity, Context
-  - `DerivedIdentity` - PseudonymousID, IsOver18 (no PII)
-  - `DecisionOutcome` - Status, Reason, Conditions
+  - `DecisionInput` - Identity (DerivedIdentity), Sanctions (contract DTO), Credential (vc.Claims)
+  - `DerivedIdentity` - PseudonymousID, IsOver18, CitizenValid (no PII)
+  - `DecisionOutcome` - pass | pass_with_conditions | fail
 
 - `audit`
   - `Event` - ID, Timestamp, UserID, Action, Purpose, Decision, Reason, RequestID
@@ -701,11 +708,11 @@ High level entities across services:
 - `evidence.registry`
   **Key minimization logic:**
 
-  - Calls `MinimizeCitizenRecord()` before returning data
-  - In regulated mode: strips `FullName`, `DateOfBirth`, `Address` - keeps only `Valid` boolean and `NationalID`
-  - Derives `IsOver18` from `DateOfBirth` in decision logic, then discards raw DOB
-  - Cache TTL enforced at 5 minutes (from `config.RegistryCacheTTL`)
-  - Sanctions records are not minimized (contain no PII, only boolean `Listed` flag)
+  - Calls `MinimizeCitizenRecord()` before returning data when regulated.
+  - Strips `NationalID`, `FullName`, and `DateOfBirth`; keeps only the `Valid` boolean in regulated mode.
+  - Maps internal records to PII-light `contracts/registry` DTOs for downstream use; DOB may be omitted once minimized.
+  - Cache TTL enforced at 5 minutes (from `config.RegistryCacheTTL`).
+  - Sanctions records are not minimized, but only the `Listed` flag crosses the contract boundary; provider details stay internal.
 
 - `evidence.vc`
   **Key minimization logic:**
@@ -718,9 +725,9 @@ High level entities across services:
 - `decision`
   **Privacy-first design:**
 
-  - Accepts `DerivedIdentity` struct with `IsOver18` boolean, not raw DOB
-  - Decision logic operates on pre-computed flags (`SanctionsListed`, `CitizenValid`, `HasCredential`)
-  - No PII flows through decision engine, only boolean evidence
+  - Accepts `DerivedIdentity` with `IsOver18` and `CitizenValid`, plus contract `SanctionsRecord` and minimized VC claims.
+  - No raw PII flows through the decision engine; registry internals and identifiers stay behind the contract boundary.
+  - Policy rules operate on derived flags, not on raw DOB or names.
 
 - `audit`
   Required for all sensitive operations. Events include action, purpose, decision, reason but avoid logging raw PII (use user IDs, not emails).
