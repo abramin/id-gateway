@@ -1,0 +1,445 @@
+openapi: 3.0.3
+info:
+  title: ID Gateway Registry API
+  version: 0.1.0
+  description: |
+    OpenAPI specification for the ID Gateway registry integration endpoints.
+
+    The Registry API provides identity verification and sanctions screening through
+    integration with external registries. All endpoints require authentication and
+    explicit user consent for registry lookups.
+
+    ## Features
+    - Citizen registry lookup for identity verification
+    - Sanctions/PEP screening for AML/CTF compliance
+    - Response caching with configurable TTL (5 minutes)
+    - Data minimization in regulated mode (GDPR Article 5)
+    - Audit logging for all registry operations
+
+    ## Security
+    - All endpoints require valid bearer token (JWT)
+    - Consent required: `registry_check` purpose
+    - Rate limiting: 10 requests/minute per user (future)
+    - TLS-only transport in production
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+paths:
+  /registry/citizen:
+    post:
+      summary: Lookup citizen record from national registry
+      description: |
+        Retrieves citizen identity information from the national population registry.
+        Returns full identity attributes including name, date of birth, and address.
+
+        **Caching:** Responses are cached for 5 minutes. Repeated lookups within the
+        TTL window will return cached data without calling the external registry.
+
+        **Data Minimization:** In regulated mode, PII fields (full_name, date_of_birth,
+        address) are stripped from the response, returning only validation status.
+
+        **Audit:** All lookups emit an audit event with action `registry_citizen_checked`.
+
+      security:
+        - bearerAuth: []
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CitizenLookupRequest"
+            examples:
+              default:
+                summary: Standard citizen lookup
+                value:
+                  national_id: "CITIZEN123456"
+              minimal:
+                summary: Minimal valid national ID
+                value:
+                  national_id: "ABC123"
+
+      responses:
+        "200":
+          description: Citizen record retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CitizenRecord"
+              examples:
+                full_data:
+                  summary: Non-regulated mode (full data)
+                  value:
+                    national_id: "CITIZEN123456"
+                    full_name: "Alice Marie Johnson"
+                    date_of_birth: "1990-05-15"
+                    address: "123 Main Street, Springfield, IL 62701"
+                    valid: true
+                    checked_at: "2025-12-11T10:00:00Z"
+                regulated_mode:
+                  summary: Regulated mode (minimized data)
+                  value:
+                    national_id: "CITIZEN123456"
+                    valid: true
+                    checked_at: "2025-12-11T10:00:00Z"
+                invalid_record:
+                  summary: Invalid/inactive citizen record
+                  value:
+                    national_id: "INVALID999"
+                    full_name: "John Doe"
+                    date_of_birth: "1985-01-01"
+                    address: ""
+                    valid: false
+                    checked_at: "2025-12-11T10:00:00Z"
+
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+        "403":
+          $ref: "#/components/responses/MissingConsent"
+
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+        "504":
+          $ref: "#/components/responses/RegistryTimeout"
+
+  /registry/sanctions:
+    post:
+      summary: Check sanctions and PEP status
+      description: |
+        Screens a national ID against sanctions lists, PEP databases, and watchlists.
+        Returns whether the individual is flagged and the source of the flag.
+
+        **Caching:** Responses are cached for 5 minutes to reduce external calls.
+
+        **Data Minimization:** Sanctions records contain no PII (only boolean flag),
+        so no additional minimization is applied.
+
+        **Audit:** All checks emit an audit event with action `registry_sanctions_checked`
+        and include the screening result (listed/not_listed).
+
+      security:
+        - bearerAuth: []
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SanctionsCheckRequest"
+            examples:
+              default:
+                summary: Standard sanctions check
+                value:
+                  national_id: "CITIZEN123456"
+
+      responses:
+        "200":
+          description: Sanctions check completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SanctionsRecord"
+              examples:
+                not_listed:
+                  summary: Individual not on any lists
+                  value:
+                    national_id: "CITIZEN123456"
+                    listed: false
+                    source: "Mock International Sanctions Database"
+                    checked_at: "2025-12-11T10:00:00Z"
+                listed:
+                  summary: Individual is sanctioned
+                  value:
+                    national_id: "SANCTIONED999"
+                    listed: true
+                    source: "EU Sanctions List"
+                    checked_at: "2025-12-11T10:00:00Z"
+
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+        "403":
+          $ref: "#/components/responses/MissingConsent"
+
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+        "504":
+          $ref: "#/components/responses/RegistryTimeout"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT access token obtained from `/auth/token` endpoint.
+        Include in Authorization header as: `Bearer <token>`
+
+  schemas:
+    CitizenLookupRequest:
+      type: object
+      required: [national_id]
+      properties:
+        national_id:
+          type: string
+          description: National identifier to lookup
+          pattern: "^[A-Z0-9]{6,20}$"
+          minLength: 6
+          maxLength: 20
+          example: "CITIZEN123456"
+      example:
+        national_id: "CITIZEN123456"
+
+    CitizenRecord:
+      type: object
+      required: [national_id, valid, checked_at]
+      properties:
+        national_id:
+          type: string
+          description: National identifier
+          example: "CITIZEN123456"
+        full_name:
+          type: string
+          description: Full legal name (omitted in regulated mode)
+          maxLength: 255
+          example: "Alice Marie Johnson"
+        date_of_birth:
+          type: string
+          format: date
+          description: Date of birth in YYYY-MM-DD format (omitted in regulated mode)
+          example: "1990-05-15"
+        address:
+          type: string
+          description: Full residential address (omitted in regulated mode)
+          maxLength: 500
+          example: "123 Main Street, Springfield, IL 62701"
+        valid:
+          type: boolean
+          description: Whether the citizen record is valid and active
+          example: true
+        checked_at:
+          type: string
+          format: date-time
+          description: Timestamp when this record was retrieved (ISO 8601 RFC3339)
+          example: "2025-12-11T10:00:00Z"
+      example:
+        national_id: "CITIZEN123456"
+        full_name: "Alice Marie Johnson"
+        date_of_birth: "1990-05-15"
+        address: "123 Main Street, Springfield, IL 62701"
+        valid: true
+        checked_at: "2025-12-11T10:00:00Z"
+
+    SanctionsCheckRequest:
+      type: object
+      required: [national_id]
+      properties:
+        national_id:
+          type: string
+          description: National identifier to screen
+          pattern: "^[A-Z0-9]{6,20}$"
+          minLength: 6
+          maxLength: 20
+          example: "CITIZEN123456"
+      example:
+        national_id: "CITIZEN123456"
+
+    SanctionsRecord:
+      type: object
+      required: [national_id, listed, source, checked_at]
+      properties:
+        national_id:
+          type: string
+          description: National identifier that was screened
+          example: "CITIZEN123456"
+        listed:
+          type: boolean
+          description: Whether the individual is on a sanctions, PEP, or watchlist
+          example: false
+        source:
+          type: string
+          description: Name of the sanctions database or list
+          maxLength: 255
+          example: "Mock International Sanctions Database"
+        checked_at:
+          type: string
+          format: date-time
+          description: Timestamp when this check was performed (ISO 8601 RFC3339)
+          example: "2025-12-11T10:00:00Z"
+      example:
+        national_id: "CITIZEN123456"
+        listed: false
+        source: "Mock International Sanctions Database"
+        checked_at: "2025-12-11T10:00:00Z"
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code
+          enum:
+            - bad_request
+            - unauthorized
+            - missing_consent
+            - invalid_consent
+            - not_found
+            - conflict
+            - policy_violation
+            - internal_error
+            - registry_timeout
+        error_description:
+          type: string
+          description: Human-readable error explanation
+          maxLength: 500
+      example:
+        error: bad_request
+        error_description: "national_id must match pattern ^[A-Z0-9]{6,20}$"
+
+  responses:
+    BadRequest:
+      description: Invalid or malformed request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            missing_field:
+              summary: Missing required field
+              value:
+                error: bad_request
+                error_description: "national_id is required"
+            invalid_format:
+              summary: Invalid national_id format
+              value:
+                error: bad_request
+                error_description: "national_id must match pattern ^[A-Z0-9]{6,20}$"
+            too_short:
+              summary: National ID too short
+              value:
+                error: bad_request
+                error_description: "national_id must be at least 6 characters"
+
+    Unauthorized:
+      description: Missing or invalid authentication credentials
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            missing_token:
+              summary: Missing Authorization header
+              value:
+                error: unauthorized
+                error_description: "Missing or invalid Authorization header"
+            invalid_token:
+              summary: Invalid JWT token
+              value:
+                error: unauthorized
+                error_description: "Invalid or expired bearer token"
+
+    MissingConsent:
+      description: User has not granted required consent
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            no_consent:
+              summary: Registry check consent not granted
+              value:
+                error: missing_consent
+                error_description: "Consent required for purpose: registry_check"
+            revoked_consent:
+              summary: Previously granted consent was revoked
+              value:
+                error: missing_consent
+                error_description: "Consent for registry_check has been revoked"
+
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            generic:
+              summary: Generic internal error
+              value:
+                error: internal_error
+                error_description: "An unexpected error occurred"
+            cache_failure:
+              summary: Cache storage failure
+              value:
+                error: internal_error
+                error_description: "Failed to store registry response in cache"
+
+    RegistryTimeout:
+      description: External registry did not respond within timeout window
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            citizen_timeout:
+              summary: Citizen registry timeout
+              value:
+                error: registry_timeout
+                error_description: "Citizen registry did not respond within 5 seconds"
+            sanctions_timeout:
+              summary: Sanctions registry timeout
+              value:
+                error: registry_timeout
+                error_description: "Sanctions registry did not respond within 5 seconds"
+            network_error:
+              summary: Network connectivity error
+              value:
+                error: registry_timeout
+                error_description: "Unable to connect to external registry"
+
+  examples:
+    CitizenLookupSuccess:
+      summary: Successful citizen lookup with full data
+      value:
+        national_id: "CITIZEN123456"
+        full_name: "Alice Marie Johnson"
+        date_of_birth: "1990-05-15"
+        address: "123 Main Street, Springfield, IL 62701"
+        valid: true
+        checked_at: "2025-12-11T10:00:00Z"
+
+    CitizenLookupRegulated:
+      summary: Citizen lookup in regulated mode (minimized)
+      value:
+        national_id: "CITIZEN123456"
+        valid: true
+        checked_at: "2025-12-11T10:00:00Z"
+
+    SanctionsNotListed:
+      summary: Individual not on sanctions lists
+      value:
+        national_id: "CITIZEN123456"
+        listed: false
+        source: "Mock International Sanctions Database"
+        checked_at: "2025-12-11T10:00:00Z"
+
+    SanctionsListed:
+      summary: Individual is sanctioned
+      value:
+        national_id: "SANCTIONED999"
+        listed: true
+        source: "EU Sanctions List"
+        checked_at: "2025-12-11T10:00:00Z"
