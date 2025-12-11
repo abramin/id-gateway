@@ -21,11 +21,21 @@ type citizenHTTPResponse struct {
 
 // NewCitizenProvider creates a citizen registry provider using HTTP
 func NewCitizenProvider(id, baseURL, apiKey string, timeout time.Duration) providers.Provider {
+	return NewCitizenProviderWithClient(id, baseURL, apiKey, timeout, nil)
+}
+
+// NewCitizenProviderWithClient allows injecting a custom HTTP client (for testing).
+func NewCitizenProviderWithClient(
+	id, baseURL, apiKey string,
+	timeout time.Duration,
+	client adapters.HTTPDoer,
+) providers.Provider {
 	return adapters.NewHTTPAdapter(adapters.HTTPAdapterConfig{
-		ID:      id,
-		BaseURL: baseURL,
-		APIKey:  apiKey,
-		Timeout: timeout,
+		ID:         id,
+		BaseURL:    baseURL,
+		APIKey:     apiKey,
+		Timeout:    timeout,
+		HTTPClient: client,
 		Capabilities: providers.Capabilities{
 			Protocol: providers.ProtocolHTTP,
 			Type:     providers.ProviderTypeCitizen,

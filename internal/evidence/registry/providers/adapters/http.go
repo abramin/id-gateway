@@ -17,10 +17,16 @@ type HTTPAdapter struct {
 	id      string
 	baseURL string
 	apiKey  string
-	client  *http.Client
+	client  HTTPDoer
 	timeout time.Duration
 	capabs  providers.Capabilities
 	parser  ResponseParser
+}
+
+// TODO: revisit this
+// HTTPDoer is the minimal interface needed from an HTTP client.
+type HTTPDoer interface {
+	Do(req *http.Request) (*http.Response, error)
 }
 
 // ResponseParser converts HTTP responses to Evidence
@@ -32,6 +38,7 @@ type HTTPAdapterConfig struct {
 	BaseURL      string
 	APIKey       string
 	Timeout      time.Duration
+	HTTPClient   HTTPDoer
 	Capabilities providers.Capabilities
 	Parser       ResponseParser
 }
@@ -46,12 +53,20 @@ func NewHTTPAdapter(cfg HTTPAdapterConfig) *HTTPAdapter {
 		id:      cfg.ID,
 		baseURL: cfg.BaseURL,
 		apiKey:  cfg.APIKey,
-		client: &http.Client{
-			Timeout: cfg.Timeout,
-		},
+		client:  selectHTTPClient(cfg),
 		timeout: cfg.Timeout,
 		capabs:  cfg.Capabilities,
 		parser:  cfg.Parser,
+	}
+}
+
+func selectHTTPClient(cfg HTTPAdapterConfig) HTTPDoer {
+	if cfg.HTTPClient != nil {
+		return cfg.HTTPClient
+	}
+
+	return &http.Client{
+		Timeout: cfg.Timeout,
 	}
 }
 

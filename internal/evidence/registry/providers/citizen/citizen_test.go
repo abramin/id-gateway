@@ -2,13 +2,18 @@ package citizen
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"credo/internal/evidence/registry/providers"
+	adaptersmocks "credo/internal/evidence/registry/providers/adapters/mocks"
 	"credo/internal/evidence/registry/providers/contract"
 )
 
@@ -38,12 +43,35 @@ func TestCitizenProvider(t *testing.T) {
 }
 
 func TestCitizenProviderContract(t *testing.T) {
-	// Use the contract testing framework
-	provider := NewCitizenProvider(
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockClient := adaptersmocks.NewMockHTTPDoer(ctrl)
+	mockClient.EXPECT().
+		Do(gomock.Any()).
+		Times(2).
+		DoAndReturn(func(req *http.Request) (*http.Response, error) {
+			body := `{
+				"national_id": "123456789",
+				"full_name": "Alice Johnson",
+				"date_of_birth": "1990-05-15",
+				"address": "123 Main St",
+				"valid": true,
+				"checked_at": "2025-12-11T10:00:00Z"
+			}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     make(http.Header),
+			}, nil
+		})
+
+	provider := NewCitizenProviderWithClient(
 		"test-citizen",
 		"http://mock-registry.test",
 		"test-key",
 		5*time.Second,
+		mockClient,
 	)
 
 	suite := &contract.ContractSuite{
@@ -56,17 +84,7 @@ func TestCitizenProviderContract(t *testing.T) {
 				Input:        map[string]string{"national_id": "123456789"},
 				ExpectedType: providers.ProviderTypeCitizen,
 				ValidateFunc: func(e *providers.Evidence) error {
-					// Validate all required fields are present
-					if _, ok := e.Data["full_name"].(string); !ok {
-						return assert.AnError
-					}
-					if _, ok := e.Data["date_of_birth"].(string); !ok {
-						return assert.AnError
-					}
-					if _, ok := e.Data["valid"].(bool); !ok {
-						return assert.AnError
-					}
-					return nil
+					return validateCitizenFields(e)
 				},
 			},
 			{
@@ -75,8 +93,12 @@ func TestCitizenProviderContract(t *testing.T) {
 				Input:        map[string]string{"national_id": "123456789"},
 				ExpectedType: providers.ProviderTypeCitizen,
 				ValidateFunc: func(e *providers.Evidence) error {
-					// Call again and verify same data
-					// This would need to be implemented with proper mock
+					if err := validateCitizenFields(e); err != nil {
+						return err
+					}
+					if e.Data["full_name"] != "Alice Johnson" {
+						return assert.AnError
+					}
 					return nil
 				},
 			},
@@ -145,11 +167,23 @@ func TestCitizenResponseParser(t *testing.T) {
 
 func TestCitizenProviderScenarios(t *testing.T) {
 	t.Run("respects context cancellation", func(t *testing.T) {
-		provider := NewCitizenProvider(
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockClient := adaptersmocks.NewMockHTTPDoer(ctrl)
+		mockClient.EXPECT().
+			Do(gomock.Any()).
+			DoAndReturn(func(req *http.Request) (*http.Response, error) {
+				<-req.Context().Done()
+				return nil, req.Context().Err()
+			})
+
+		provider := NewCitizenProviderWithClient(
 			"test-citizen",
 			"http://slow-registry.test",
 			"test-key",
 			1*time.Second,
+			mockClient,
 		)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
@@ -157,24 +191,46 @@ func TestCitizenProviderScenarios(t *testing.T) {
 
 		_, err := provider.Lookup(ctx, map[string]string{"national_id": "123"})
 		assert.Error(t, err)
-		// Should be a timeout error
 		assert.Equal(t, providers.ErrorTimeout, providers.GetCategory(err))
 	})
 
 	t.Run("handles empty national ID", func(t *testing.T) {
-		provider := NewCitizenProvider(
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockClient := adaptersmocks.NewMockHTTPDoer(ctrl)
+		mockClient.EXPECT().
+			Do(gomock.Any()).
+			Return(&http.Response{
+				StatusCode: http.StatusBadRequest,
+				Body:       io.NopCloser(strings.NewReader(`{}`)),
+				Header:     make(http.Header),
+			}, nil)
+
+		provider := NewCitizenProviderWithClient(
 			"test-citizen",
 			"http://mock-registry.test",
 			"test-key",
 			5*time.Second,
+			mockClient,
 		)
 
-		// This will fail at HTTP level - the provider will try to call the API
-		// In a real scenario with a mock server, we could verify the behavior
 		ctx := context.Background()
 		_, err := provider.Lookup(ctx, map[string]string{"national_id": ""})
 
-		// Expect some kind of error (provider outage since server doesn't exist)
 		assert.Error(t, err)
 	})
+}
+
+func validateCitizenFields(e *providers.Evidence) error {
+	if _, ok := e.Data["full_name"].(string); !ok {
+		return assert.AnError
+	}
+	if _, ok := e.Data["date_of_birth"].(string); !ok {
+		return assert.AnError
+	}
+	if _, ok := e.Data["valid"].(bool); !ok {
+		return assert.AnError
+	}
+	return nil
 }
