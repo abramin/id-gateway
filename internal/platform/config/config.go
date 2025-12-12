@@ -26,7 +26,7 @@ type Server struct {
 var RegistryCacheTTL = 5 * time.Minute
 var TokenTTL = 15 * time.Minute
 var ConsentTTL = 365 * 24 * time.Hour // 1 year
-var ConsentGrantWindow = 1 * time.Second
+var ConsentGrantWindow = 5 * time.Minute
 var SessionTTL = 24 * time.Hour
 var JWTIssuer = "credo"
 
