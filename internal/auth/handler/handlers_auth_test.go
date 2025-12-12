@@ -43,6 +43,39 @@ func (s *AuthHandlerSuite) TestHandler_Authorize() {
 		RedirectURI: "https://example.com/redirect",
 		State:       "test-state",
 	}
+	s.T().Run("scopes default to openid when omitted", func(t *testing.T) {
+		mockService, router := s.newHandler(t)
+		requestBody := `{"email":"user@example.com","client_id":"test-client-id","redirect_uri":"https://example.com/redirect"}`
+		expectedReq := &authModel.AuthorizationRequest{
+			Email:       "user@example.com",
+			ClientID:    "test-client-id",
+			Scopes:      []string{"openid"},
+			RedirectURI: "https://example.com/redirect",
+			State:       "",
+		}
+		expectedResp := &authModel.AuthorizationResult{Code: "authz_default_scope", RedirectURI: expectedReq.RedirectURI}
+		mockService.EXPECT().Authorize(gomock.Any(), expectedReq).Return(expectedResp, nil)
+
+		status, got, errBody := s.doAuthRequest(t, router, requestBody)
+
+		s.assertSuccessResponse(t, status, got, errBody)
+		assert.Equal(t, expectedResp.Code, got.Code)
+		assert.Equal(t, expectedResp.RedirectURI, got.RedirectURI)
+	})
+
+	s.T().Run("rejects insecure redirect URIs", func(t *testing.T) {
+		mockService, router := s.newHandler(t)
+		insecure := &authModel.AuthorizationRequest{
+			Email:       "user@example.com",
+			ClientID:    "test-client-id",
+			RedirectURI: "http://example.com/redirect",
+		}
+		mockService.EXPECT().Authorize(gomock.Any(), gomock.Any()).Times(0)
+
+		status, got, errBody := s.doAuthRequest(t, router, s.mustMarshal(insecure, t))
+
+		s.assertErrorResponse(t, status, got, errBody, http.StatusBadRequest, string(dErrors.CodeBadRequest))
+	})
 	s.T().Run("user is found and authorized - 200", func(t *testing.T) {
 		mockService, router := s.newHandler(t)
 		expectedResp := &authModel.AuthorizationResult{
@@ -184,6 +217,22 @@ func (s *AuthHandlerSuite) TestHandler_Token() {
 		assert.Equal(t, expectedResp.AccessToken, got.AccessToken)
 		assert.Equal(t, expectedResp.IDToken, got.IDToken)
 		assert.Equal(t, expectedResp.ExpiresIn, got.ExpiresIn)
+	})
+
+	s.T().Run("token response includes token_type", func(t *testing.T) {
+		mockService, router := s.newHandler(t)
+		expectedResp := &authModel.TokenResult{
+			AccessToken: "access-token-123",
+			IDToken:     "id-token-123",
+			ExpiresIn:   3600,
+		}
+		mockService.EXPECT().Token(gomock.Any(), gomock.Any()).Return(expectedResp, nil)
+
+		status, _, errBody, raw := s.doTokenRequestRaw(t, router, s.mustMarshal(validRequest, t))
+
+		s.assertSuccessResponse(t, status, raw, errBody)
+		require.Contains(t, raw, "token_type")
+		assert.Equal(t, "Bearer", raw["token_type"])
 	})
 
 	//- 400 Bad Request: Missing required fields (grant_type, code, redirect_uri, client_id)
@@ -437,6 +486,27 @@ func (s *AuthHandlerSuite) doTokenRequest(t *testing.T, router *chi.Mux, body st
 		require.NoError(t, json.Unmarshal(raw, &errBody))
 		return rr.Code, nil, errBody
 	}
+}
+
+func (s *AuthHandlerSuite) doTokenRequestRaw(t *testing.T, router *chi.Mux, body string) (int, *authModel.TokenResult, map[string]string, map[string]any) {
+	t.Helper()
+	httpReq := httptest.NewRequest(http.MethodPost, "/auth/token", strings.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	router.ServeHTTP(rr, httpReq)
+	raw, err := io.ReadAll(rr.Body)
+	require.NoError(t, err)
+
+	if rr.Code == http.StatusOK {
+		var res map[string]any
+		require.NoError(t, json.Unmarshal(raw, &res))
+		return rr.Code, nil, nil, res
+	}
+
+	var errBody map[string]string
+	require.NoError(t, json.Unmarshal(raw, &errBody))
+	return rr.Code, nil, errBody, nil
 }
 
 func (s *AuthHandlerSuite) mustMarshal(v any, t *testing.T) string {

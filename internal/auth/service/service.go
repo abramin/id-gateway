@@ -136,7 +136,7 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 	now := time.Now()
 	scopes := req.Scopes
 	if len(scopes) == 0 {
-		scopes = []string{"openid"}
+		scopes = []string{models.ScopeOpenID.String()}
 	}
 
 	// Generate OAuth 2.0 authorization code

@@ -181,6 +181,38 @@ func (s *ServiceSuite) TestToken() {
 		assert.Greater(s.T(), result.ExpiresIn, int64(0))
 	})
 
+	s.T().Run("id token placeholder is used without JWT generator", func(t *testing.T) {
+		s.mockSessStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(validSession, nil)
+		s.mockSessStore.EXPECT().Save(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, session *models.Session) error {
+				assert.True(s.T(), session.CodeUsed)
+				return nil
+			})
+		s.mockJWT.EXPECT().GenerateAccessToken(validSession.UserID, validSession.ID, validSession.ClientID).
+			Return("mock-access-token", nil)
+
+		result, err := s.service.Token(context.Background(), &req)
+		assert.Error(s.T(), err)
+		assert.Nil(s.T(), result)
+	})
+
+	s.T().Run("expires_in matches configured access token TTL", func(t *testing.T) {
+		s.mockSessStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(validSession, nil)
+		s.mockSessStore.EXPECT().Save(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, session *models.Session) error {
+				assert.True(s.T(), session.CodeUsed)
+				return nil
+			})
+		s.mockJWT.EXPECT().GenerateAccessToken(validSession.UserID, validSession.ID, validSession.ClientID).
+			Return("mock-access-token", nil)
+		s.mockJWT.EXPECT().GenerateIDToken(validSession.UserID, validSession.ID, validSession.ClientID).
+			Return("mock-id-token", nil)
+
+		result, err := s.service.Token(context.Background(), &req)
+		require.NoError(s.T(), err)
+		assert.Equal(s.T(), s.service.sessionTTL, result.ExpiresIn)
+	})
+
 	s.T().Run("session not found", func(t *testing.T) {
 		s.mockSessStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(nil, store.ErrNotFound)
 
@@ -267,6 +299,14 @@ func (s *ServiceSuite) TestUserInfo() {
 
 		result, err := s.service.UserInfo(context.Background(), uuid.New().String())
 		assert.ErrorIs(s.T(), err, dErrors.New(dErrors.CodeUnauthorized, "session not found"))
+		assert.Nil(s.T(), result)
+	})
+
+	s.T().Run("session lookup returns not found error", func(t *testing.T) {
+		s.mockSessStore.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(nil, store.ErrNotFound)
+
+		result, err := s.service.UserInfo(context.Background(), uuid.New().String())
+		assert.ErrorIs(s.T(), err, dErrors.New(dErrors.CodeNotFound, "session not found"))
 		assert.Nil(s.T(), result)
 	})
 

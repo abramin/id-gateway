@@ -69,6 +69,10 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Sanitize(req)
+	// default to "openid" scope if none provided
+	if len(req.Scopes) == 0 {
+		req.Scopes = []string{models.ScopeOpenID.String()}
+	}
 	if err := validation.Validate(req); err != nil {
 		h.logger.WarnContext(ctx, "invalid authorize request",
 			"error", err,
