@@ -80,11 +80,12 @@ func (s *InMemoryUserStore) FindOrCreateByEmail(_ context.Context, email string,
 	return user, nil
 }
 
-func (s *InMemoryUserStore) DeleteUser(ctx context.Context, id string) error {
+func (s *InMemoryUserStore) Delete(ctx context.Context, id uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.users[id]; ok {
-		delete(s.users, id)
+	key := id.String()
+	if _, ok := s.users[key]; ok {
+		delete(s.users, key)
 		return nil
 	}
 	return ErrNotFound

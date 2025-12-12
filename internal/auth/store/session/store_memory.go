@@ -57,3 +57,22 @@ func (s *InMemorySessionStore) FindByCode(_ context.Context, code string) (*mode
 	}
 	return nil, ErrNotFound
 }
+
+func (s *InMemorySessionStore) DeleteSessionsByUser(_ context.Context, userID uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	found := false
+	for id, session := range s.sessions {
+		if session.UserID == userID {
+			delete(s.sessions, id)
+			found = true
+		}
+	}
+
+	if !found {
+		return ErrNotFound
+	}
+
+	return nil
+}

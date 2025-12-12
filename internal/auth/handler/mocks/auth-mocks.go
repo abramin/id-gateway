@@ -14,6 +14,7 @@ import (
 	models "credo/internal/auth/models"
 	reflect "reflect"
 
+	uuid "github.com/google/uuid"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -84,4 +85,18 @@ func (m *MockAuthService) UserInfo(ctx context.Context, sessionID string) (*mode
 func (mr *MockAuthServiceMockRecorder) UserInfo(ctx, sessionID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UserInfo", reflect.TypeOf((*MockAuthService)(nil).UserInfo), ctx, sessionID)
+}
+
+// DeleteUser mocks base method.
+func (m *MockAuthService) DeleteUser(ctx context.Context, userID uuid.UUID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteUser", ctx, userID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteUser indicates an expected call of DeleteUser.
+func (mr *MockAuthServiceMockRecorder) DeleteUser(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUser", reflect.TypeOf((*MockAuthService)(nil).DeleteUser), ctx, userID)
 }

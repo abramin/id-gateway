@@ -391,6 +391,67 @@ func (s *AuthHandlerSuite) TestHandler_UserInfo() {
 	})
 }
 
+func (s *AuthHandlerSuite) TestHandler_AdminDeleteUser() {
+	userID := uuid.New()
+	validPath := "/admin/auth/users/" + userID.String()
+
+	s.T().Run("deletes user", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockService := mocks.NewMockAuthService(ctrl)
+		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+		handler := New(mockService, logger, []string{"http", "https"})
+
+		r := chi.NewRouter()
+		handler.RegisterAdmin(r)
+
+		mockService.EXPECT().DeleteUser(gomock.Any(), userID).Return(nil)
+
+		req := httptest.NewRequest(http.MethodDelete, validPath, nil)
+		req.Header.Set("X-Admin-Token", "demo-admin-token")
+		recorder := httptest.NewRecorder()
+
+		r.ServeHTTP(recorder, req)
+
+		assert.Equal(t, http.StatusNoContent, recorder.Code)
+	})
+
+	s.T().Run("invalid user id", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockService := mocks.NewMockAuthService(ctrl)
+		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+		handler := New(mockService, logger, []string{"http", "https"})
+
+		r := chi.NewRouter()
+		handler.RegisterAdmin(r)
+
+		req := httptest.NewRequest(http.MethodDelete, "/admin/auth/users/not-a-uuid", nil)
+		recorder := httptest.NewRecorder()
+
+		r.ServeHTTP(recorder, req)
+
+		assert.Equal(t, http.StatusBadRequest, recorder.Code)
+	})
+
+	s.T().Run("service error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockService := mocks.NewMockAuthService(ctrl)
+		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+		handler := New(mockService, logger, []string{"http", "https"})
+
+		r := chi.NewRouter()
+		handler.RegisterAdmin(r)
+
+		mockService.EXPECT().DeleteUser(gomock.Any(), userID).Return(errors.New("boom"))
+
+		req := httptest.NewRequest(http.MethodDelete, validPath, nil)
+		recorder := httptest.NewRecorder()
+
+		r.ServeHTTP(recorder, req)
+
+		assert.Equal(t, http.StatusInternalServerError, recorder.Code)
+	})
+}
+
 func TestAuthHandlerSuite(t *testing.T) {
 	suite.Run(t, new(AuthHandlerSuite))
 }

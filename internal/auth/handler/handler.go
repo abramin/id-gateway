@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"credo/internal/auth/models"
 	"credo/internal/platform/middleware"
@@ -25,6 +26,7 @@ type Service interface {
 	Authorize(ctx context.Context, req *models.AuthorizationRequest) (*models.AuthorizationResult, error)
 	Token(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error)
 	UserInfo(ctx context.Context, sessionID string) (*models.UserInfoResult, error)
+	DeleteUser(ctx context.Context, userID uuid.UUID) error
 }
 
 // Handler handles authentication endpoints including authorize, token, and userinfo.
@@ -51,6 +53,10 @@ func (h *Handler) Register(r chi.Router) {
 	r.Post("/auth/authorize", h.HandleAuthorize)
 	r.Post("/auth/token", h.HandleToken)
 	r.Get("/auth/userinfo", h.HandleUserInfo)
+}
+
+func (h *Handler) RegisterAdmin(r chi.Router) {
+	r.Delete("/admin/auth/users/{user_id}", h.HandleAdminDeleteUser)
 }
 
 // HandleAuthorize implements POST /auth/authorize per PRD-001 FR-1.
@@ -192,6 +198,38 @@ func (h *Handler) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
 	)
 
 	respond.WriteJSON(w, http.StatusOK, res)
+}
+
+func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	requestID := middleware.GetRequestID(ctx)
+	userIDParam := chi.URLParam(r, "user_id")
+	userID, err := uuid.Parse(userIDParam)
+	if err != nil {
+		h.logger.WarnContext(ctx, "invalid user_id in delete request",
+			"user_id", userIDParam,
+			"request_id", requestID,
+		)
+		shared.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid user_id"))
+		return
+	}
+
+	if err := h.auth.DeleteUser(ctx, userID); err != nil {
+		h.logger.ErrorContext(ctx, "failed to delete user",
+			"error", err,
+			"user_id", userID.String(),
+			"request_id", requestID,
+		)
+		shared.WriteError(w, err)
+		return
+	}
+
+	h.logger.InfoContext(ctx, "user deleted via admin API",
+		"user_id", userID.String(),
+		"request_id", requestID,
+	)
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) isRedirectSchemeAllowed(uri *url.URL) bool {

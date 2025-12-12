@@ -150,6 +150,13 @@ func registerRoutes(
 		r.Get("/auth/userinfo", authHandler.HandleUserInfo)
 		consentHTTPHandler.Register(r)
 	})
+
+	if cfg.AdminAPIToken != "" {
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireAdminToken(cfg.AdminAPIToken, log))
+			authHandler.RegisterAdmin(r)
+		})
+	}
 }
 
 // startServer starts the HTTP server in a goroutine

@@ -50,6 +50,24 @@ func (s *InMemoryUserStoreSuite) TestFindNotFound() {
 	assert.ErrorIs(s.T(), err, ErrNotFound)
 }
 
+func (s *InMemoryUserStoreSuite) TestDelete() {
+	user := &models.User{
+		ID:        uuid.New(),
+		Email:     "delete.me@example.com",
+		FirstName: "Delete",
+		LastName:  "Me",
+	}
+	require.NoError(s.T(), s.store.Save(context.Background(), user))
+
+	require.NoError(s.T(), s.store.Delete(context.Background(), user.ID))
+
+	_, err := s.store.FindByID(context.Background(), user.ID)
+	assert.ErrorIs(s.T(), err, ErrNotFound)
+
+	err = s.store.Delete(context.Background(), user.ID)
+	assert.ErrorIs(s.T(), err, ErrNotFound)
+}
+
 func TestInMemoryUserStoreSuite(t *testing.T) {
 	suite.Run(t, new(InMemoryUserStoreSuite))
 }

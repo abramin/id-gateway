@@ -27,6 +27,7 @@ type UserStore interface {
 	FindByID(ctx context.Context, id uuid.UUID) (*models.User, error)
 	FindByEmail(ctx context.Context, email string) (*models.User, error)
 	FindOrCreateByEmail(ctx context.Context, email string, user *models.User) (*models.User, error)
+	Delete(ctx context.Context, id uuid.UUID) error
 }
 
 // SessionStore defines the persistence interface for session data.
@@ -35,6 +36,7 @@ type SessionStore interface {
 	Save(ctx context.Context, session *models.Session) error
 	FindByID(ctx context.Context, id uuid.UUID) (*models.Session, error)
 	FindByCode(ctx context.Context, code string) (*models.Session, error)
+	DeleteSessionsByUser(ctx context.Context, userID uuid.UUID) error
 }
 
 type TokenGenerator interface {
@@ -381,6 +383,39 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 		ExpiresIn:   s.sessionTTL,
 		TokenType:   "Bearer",
 	}, nil
+}
+
+func (s *Service) DeleteUser(ctx context.Context, userID uuid.UUID) error {
+	user, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, userStore.ErrNotFound) {
+			return dErrors.New(dErrors.CodeNotFound, "user not found")
+		}
+		return dErrors.Wrap(dErrors.CodeInternal, "failed to lookup user", err)
+	}
+
+	if err := s.sessions.DeleteSessionsByUser(ctx, userID); err != nil {
+		if !errors.Is(err, sessionStore.ErrNotFound) {
+			return dErrors.Wrap(dErrors.CodeInternal, "failed to delete user sessions", err)
+		}
+	}
+	s.logAudit(ctx, string(audit.EventSessionsRevoked),
+		"user_id", userID.String(),
+	)
+
+	if err := s.users.Delete(ctx, userID); err != nil {
+		if errors.Is(err, userStore.ErrNotFound) {
+			return dErrors.New(dErrors.CodeNotFound, "user not found")
+		}
+		return dErrors.Wrap(dErrors.CodeInternal, "failed to delete user", err)
+	}
+
+	s.logAudit(ctx, string(audit.EventUserDeleted),
+		"user_id", userID.String(),
+		"email", user.Email,
+	)
+
+	return nil
 }
 
 func (s *Service) logAudit(ctx context.Context, event string, attributes ...any) {

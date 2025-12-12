@@ -102,6 +102,20 @@ func (mr *MockUserStoreMockRecorder) Save(ctx, user any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Save", reflect.TypeOf((*MockUserStore)(nil).Save), ctx, user)
 }
 
+// Delete mocks base method.
+func (m *MockUserStore) Delete(ctx context.Context, id uuid.UUID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Delete", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Delete indicates an expected call of Delete.
+func (mr *MockUserStoreMockRecorder) Delete(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockUserStore)(nil).Delete), ctx, id)
+}
+
 // MockSessionStore is a mock of SessionStore interface.
 type MockSessionStore struct {
 	ctrl     *gomock.Controller
@@ -139,6 +153,20 @@ func (m *MockSessionStore) FindByCode(ctx context.Context, code string) (*models
 func (mr *MockSessionStoreMockRecorder) FindByCode(ctx, code any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByCode", reflect.TypeOf((*MockSessionStore)(nil).FindByCode), ctx, code)
+}
+
+// DeleteSessionsByUser mocks base method.
+func (m *MockSessionStore) DeleteSessionsByUser(ctx context.Context, userID uuid.UUID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteSessionsByUser", ctx, userID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteSessionsByUser indicates an expected call of DeleteSessionsByUser.
+func (mr *MockSessionStoreMockRecorder) DeleteSessionsByUser(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSessionsByUser", reflect.TypeOf((*MockSessionStore)(nil).DeleteSessionsByUser), ctx, userID)
 }
 
 // FindByID mocks base method.

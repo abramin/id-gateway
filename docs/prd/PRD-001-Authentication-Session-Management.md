@@ -300,7 +300,6 @@ type UserStore interface {
     FindByID(ctx context.Context, id uuid.UUID) (*User, error)
     FindByEmail(ctx context.Context, email string) (*User, error)
     FindOrCreateByEmail(ctx context.Context, email string, user *models.User) (*models.User, error)
-    Delete(ctx, id uuid.UUID) with audit event `user_deleted` //  GDPR helper
 }
 ```
 
@@ -311,7 +310,6 @@ type SessionStore interface {
     Save(ctx context.Context, session *Session) error
     FindByCode(ctx context.Context, code string) (*Session, error) // For token exchange
     FindByID(ctx context.Context, id uuid.UUID) (*Session, error)
-    DeleteSessionsByUser(ctx, userID uuid.UUID) with audit event `sessions_revoked`     // GDPR helper
 }
 ```
 
@@ -437,9 +435,9 @@ All endpoints return errors in this format:
 - Session started: `session_created` (audit)
 - Token issued: `token_issued` (audit)
 - UserInfo accessed: `userinfo_accessed` (audit)
-- User deleted / GDPR erase: `user_deleted` (audit)
-- Sessions revoked in bulk (e.g., DeleteSessionsByUser): `sessions_revoked` (audit)
 - Authentication failures: `auth_failed` (standard log)
+
+Deletion-specific audit events are defined in PRD-001B.
 
 **Log Format:**
 
@@ -681,8 +679,7 @@ curl -X POST http://localhost:8080/auth/token \
 
    - **Recommendation:** Not for MVP. Consider refresh + revocation in a follow-up.
 
-3. **GDPR Deletes:** When implementing `Delete` or `DeleteSessionsByUser`, should we hard-delete or tombstone?
-   - **Recommendation:** Emit audit (`user_deleted`, `sessions_revoked`) and hard-delete for demo data; revisit retention if persistence is added.
+3. **GDPR Deletes:** See PRD-001B for admin-only delete scope, sequencing, and audit coverage.
 
 ---
 
@@ -709,3 +706,4 @@ curl -X POST http://localhost:8080/auth/token \
 |         |            |              | - Added FindByCode() to SessionStore interface                                                                   |
 |         |            |              | - Added FindOrCreateByEmail() to User Store interface                                                            |
 | 1.2     | 2025-12-11 | Engineering  | Documented JWT token format, token/session TTLs, audit events for deletes, and corrected store/service locations |
+| 1.3     | 2025-12-11 | Engineering  | Carved out admin-only deletes into PRD-001B and removed delete helper methods from PRD-001 scope |

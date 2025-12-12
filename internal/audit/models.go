@@ -23,4 +23,6 @@ const (
 	EventTokenIssued      AuditEvent = "token_issued"
 	EventUserInfoAccessed AuditEvent = "userinfo_accessed"
 	EventAuthFailed       AuditEvent = "auth_failed"
+	EventUserDeleted      AuditEvent = "user_deleted"
+	EventSessionsRevoked  AuditEvent = "sessions_revoked"
 )

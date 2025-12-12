@@ -20,6 +20,7 @@ type Server struct {
 	ConsentTTL             time.Duration
 	ConsentGrantWindow     time.Duration
 	SessionTTL             time.Duration
+	AdminAPIToken          string
 }
 
 // RegistryCacheTTL enforces retention for sensitive registry data.
@@ -71,6 +72,8 @@ func FromEnv() (Server, error) {
 		}
 	}
 
+	adminAPIToken := os.Getenv("ADMIN_API_TOKEN")
+
 	jwtSigningKey := os.Getenv("JWT_SIGNING_KEY")
 	if jwtSigningKey == "" {
 		// Use a default for development - should be overridden in production
@@ -97,6 +100,9 @@ func FromEnv() (Server, error) {
 		jwtSigningKey = "demo-signing-key-change-me-locally"
 		JWTIssuer = "credo-demo"
 		regulated = false
+		if adminAPIToken == "" {
+			adminAPIToken = "demo-admin-token"
+		}
 	}
 
 	return Server{
@@ -111,6 +117,7 @@ func FromEnv() (Server, error) {
 		ConsentTTL:             ConsentTTL,
 		ConsentGrantWindow:     ConsentGrantWindow,
 		SessionTTL:             SessionTTL,
+		AdminAPIToken:          adminAPIToken,
 	}, nil
 }
 
