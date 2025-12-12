@@ -64,4 +64,5 @@ type TokenResult struct {
 	AccessToken string        `json:"access_token" validate:"required"`
 	IDToken     string        `json:"id_token" validate:"required"`
 	ExpiresIn   time.Duration `json:"expires_in" validate:"required"`
+	TokenType   string        `json:"token_type" validate:"required,eq=Bearer"`
 }

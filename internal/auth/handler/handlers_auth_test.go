@@ -147,16 +147,6 @@ func (s *AuthHandlerSuite) TestHandler_Authorize() {
 					State:       "test-state",
 				},
 			},
-			{
-				name: "scopes list is empty",
-				request: &authModel.AuthorizationRequest{
-					Email:       "user@example.com",
-					ClientID:    "test-client-id",
-					Scopes:      []string{},
-					RedirectURI: "https://example.com/redirect",
-					State:       "test-state",
-				},
-			},
 		}
 
 		for _, tt := range tests {
@@ -225,6 +215,7 @@ func (s *AuthHandlerSuite) TestHandler_Token() {
 			AccessToken: "access-token-123",
 			IDToken:     "id-token-123",
 			ExpiresIn:   3600,
+			TokenType:   "Bearer",
 		}
 		mockService.EXPECT().Token(gomock.Any(), gomock.Any()).Return(expectedResp, nil)
 

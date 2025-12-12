@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/url"
 
 	"github.com/go-chi/chi/v5"
 
@@ -68,6 +69,18 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
 		return
 	}
+
+	// validate redirect_uri uses https
+	parsedURI, err := url.Parse(req.RedirectURI)
+	if err != nil || parsedURI.Scheme != "https" {
+		h.logger.WarnContext(ctx, "insecure redirect_uri in authorize request",
+			"redirect_uri", req.RedirectURI,
+			"request_id", requestID,
+		)
+		shared.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "redirect_uri must use https scheme"))
+		return
+	}
+
 	s.Sanitize(req)
 	// default to "openid" scope if none provided
 	if len(req.Scopes) == 0 {
