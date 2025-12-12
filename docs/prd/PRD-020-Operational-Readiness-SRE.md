@@ -1,0 +1,315 @@
+# PRD-020: Operational Readiness & SRE
+
+**Status:** Not Started
+**Priority:** P0 (Critical)
+**Owner:** Engineering Team
+**Dependencies:** PRD-006 (Audit), all core PRDs
+**Last Updated:** 2025-12-12
+
+---
+
+## 1. Overview
+
+### Problem Statement
+
+The system cannot be deployed to production without operational tooling:
+
+- No health check endpoints (Kubernetes liveness/readiness probes fail)
+- No backup/restore procedures
+- No disaster recovery plan
+- No incident response runbooks
+- No capacity planning guidelines
+- No performance SLAs
+
+### Goals
+
+- Health check endpoints (`/health`, `/ready`, `/live`)
+- Liveness vs readiness probes (Kubernetes-compatible)
+- Backup & restore procedures
+- Disaster recovery plan (RTO/RPO targets)
+- Incident response runbooks
+- On-call playbooks
+- Capacity planning guidelines
+- Performance SLAs
+
+### Non-Goals
+
+- Full SRE team hiring plan
+- Chaos engineering / fault injection
+- Cost optimization strategies
+
+---
+
+## 2. Functional Requirements
+
+### FR-1: Health Check Endpoints
+
+**Endpoint:** `GET /health/live`
+
+**Purpose:** Kubernetes liveness probe (is process alive?)
+
+**Response (200):**
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2025-12-12T10:00:00Z"
+}
+```
+
+**Logic:** Return 200 if server is running, 500 if panicking
+
+---
+
+**Endpoint:** `GET /health/ready`
+
+**Purpose:** Kubernetes readiness probe (can accept traffic?)
+
+**Response (200):**
+
+```json
+{
+  "status": "ready",
+  "checks": {
+    "database": "ok",
+    "redis": "ok",
+    "registry_api": "ok"
+  },
+  "timestamp": "2025-12-12T10:00:00Z"
+}
+```
+
+**Response (503 if not ready):**
+
+```json
+{
+  "status": "not_ready",
+  "checks": {
+    "database": "ok",
+    "redis": "failed",
+    "registry_api": "ok"
+  },
+  "timestamp": "2025-12-12T10:00:00Z"
+}
+```
+
+**Logic:**
+
+- Check database connection
+- Check Redis connection
+- Check external API reachability
+- Return 503 if any check fails
+
+---
+
+**Endpoint:** `GET /health`
+
+**Purpose:** General health status
+
+**Response:**
+
+```json
+{
+  "status": "healthy",
+  "version": "1.2.3",
+  "uptime_seconds": 86400,
+  "checks": {
+    "database": "ok",
+    "redis": "ok",
+    "registry": "ok"
+  }
+}
+```
+
+---
+
+### FR-2: Backup & Restore
+
+**Database Backup:**
+
+```bash
+# Daily automated backup
+pg_dump -h localhost -U credo credo_db > backup_$(date +%Y%m%d).sql
+
+# Upload to S3
+aws s3 cp backup_$(date +%Y%m%d).sql s3://credo-backups/
+```
+
+**Backup Schedule:**
+
+- **Daily:** Full database backup (retained 30 days)
+- **Hourly:** Incremental logs (retained 7 days)
+- **Weekly:** Full snapshot (retained 90 days)
+
+**Restore Procedure:**
+
+```bash
+# Download from S3
+aws s3 cp s3://credo-backups/backup_20251212.sql .
+
+# Restore
+psql -h localhost -U credo credo_db < backup_20251212.sql
+```
+
+**Encryption:** All backups encrypted at rest (AES-256)
+
+---
+
+### FR-3: Disaster Recovery Plan
+
+**Recovery Time Objective (RTO):** 4 hours
+**Recovery Point Objective (RPO):** 1 hour
+
+**DR Scenarios:**
+
+| Scenario             | Likelihood | Impact   | Recovery Steps                                |
+| -------------------- | ---------- | -------- | --------------------------------------------- |
+| **Database failure** | Medium     | High     | Restore from latest backup, replay logs       |
+| **Redis failure**    | Medium     | Medium   | Rebuild cache from database, gradual recovery |
+| **Region outage**    | Low        | Critical | Failover to DR region, DNS update             |
+| **Data corruption**  | Low        | High     | Point-in-time recovery from backup            |
+
+**DR Testing:** Quarterly DR drills
+
+---
+
+### FR-4: Incident Response Runbooks
+
+**Location:** `docs/runbooks/`
+
+**Runbooks:**
+
+1. **High Error Rate**
+
+   - Check `/metrics` for error codes
+   - Check logs for stack traces
+   - Scale up if CPU/memory constrained
+   - Rollback recent deployment if regression
+
+2. **Database Connection Pool Exhaustion**
+
+   - Check active connections: `SELECT count(*) FROM pg_stat_activity;`
+   - Kill long-running queries
+   - Increase pool size temporarily
+   - Investigate slow queries
+
+3. **Rate Limit Exceeded Alerts**
+
+   - Check top IPs from rate limit logs
+   - Confirm legitimate vs attack traffic
+   - Add attacker IPs to blocklist
+   - Scale rate limiter if needed
+
+4. **Registry API Down**
+   - Check registry API health
+   - Enable graceful degradation (cached responses)
+   - Notify users of degraded service
+   - Contact registry provider
+
+---
+
+### FR-5: Performance SLAs
+
+**Latency Targets:**
+
+| Endpoint Class | p50     | p95     | p99     | Timeout |
+| -------------- | ------- | ------- | ------- | ------- |
+| **Auth**       | < 50ms  | < 100ms | < 200ms | 5s      |
+| **Consent**    | < 30ms  | < 80ms  | < 150ms | 3s      |
+| **Registry**   | < 200ms | < 500ms | < 1s    | 10s     |
+| **Decision**   | < 100ms | < 300ms | < 800ms | 5s      |
+| **Audit**      | < 20ms  | < 50ms  | < 100ms | 2s      |
+
+**Availability Target:** 99.9% uptime (43 minutes downtime/month)
+
+**Error Budget:** 0.1% (allows ~260 req failures per 1M requests)
+
+---
+
+### FR-6: Capacity Planning
+
+**Current Capacity:**
+
+- 2 instances x 2 CPU x 4GB RAM
+- Database: 100GB storage
+- Redis: 8GB memory
+
+**Growth Projections:**
+
+| Metric            | Current | 6mo  | 12mo  |
+| ----------------- | ------- | ---- | ----- |
+| **Users**         | 10K     | 50K  | 200K  |
+| **Requests/day**  | 1M      | 5M   | 20M   |
+| **Database size** | 10GB    | 50GB | 200GB |
+| **Instances**     | 2       | 5    | 10    |
+
+**Scaling Triggers:**
+
+- CPU > 70% sustained → scale up
+- Memory > 80% sustained → scale up
+- Request latency p95 > 2x target → scale up
+
+---
+
+## 3. Implementation Steps
+
+### Phase 1: Health Checks (2-3 hours)
+
+1. Implement `/health/live` endpoint
+2. Implement `/health/ready` with dependency checks
+3. Configure Kubernetes probes
+
+### Phase 2: Backup & DR (3-4 hours)
+
+1. Create backup scripts
+2. Configure S3 bucket with lifecycle policies
+3. Test restore procedure
+4. Document DR plan
+
+### Phase 3: Runbooks (3-4 hours)
+
+1. Write incident response runbooks
+2. Create on-call rotation
+3. Set up PagerDuty/Opsgenie
+4. Conduct DR drill
+
+---
+
+## 4. Acceptance Criteria
+
+- [ ] `/health/live` returns 200 when server running
+- [ ] `/health/ready` returns 503 when database down
+- [ ] Kubernetes probes configured in deployment.yaml
+- [ ] Daily backups running and uploaded to S3
+- [ ] Restore tested successfully
+- [ ] DR plan documented with RTO/RPO
+- [ ] 5+ runbooks created
+- [ ] Performance SLAs documented
+- [ ] Capacity planning spreadsheet created
+- [ ] On-call rotation established
+
+---
+
+## 5. Monitoring Alerts
+
+**Critical Alerts (Page immediately):**
+
+- Service down (all instances)
+- Error rate > 5%
+- p99 latency > 5s
+- Database connection failures
+
+**Warning Alerts (Slack notification):**
+
+- Error rate > 1%
+- p95 latency > 2x target
+- CPU > 70%
+- Memory > 80%
+
+---
+
+## Revision History
+
+| Version | Date       | Author       | Changes     |
+| ------- | ---------- | ------------ | ----------- |
+| 1.0     | 2025-12-12 | Product Team | Initial PRD |
