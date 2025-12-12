@@ -143,10 +143,11 @@ func (s *Service) upsertGrant(ctx context.Context, userID string, purpose models
 			return existing, nil
 		}
 
-		existing.GrantedAt = now
-		existing.ExpiresAt = &expiry
-		existing.RevokedAt = nil
-		if err := s.store.Update(ctx, existing); err != nil {
+		updated := *existing
+		updated.GrantedAt = now
+		updated.ExpiresAt = &expiry
+		updated.RevokedAt = nil
+		if err := s.store.Update(ctx, &updated); err != nil {
 			return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to renew consent", err)
 		}
 		s.emitAudit(ctx, audit.Event{
@@ -161,7 +162,7 @@ func (s *Service) upsertGrant(ctx context.Context, userID string, purpose models
 		if !wasActive {
 			s.incrementActiveConsents(1)
 		}
-		return existing, nil
+		return &updated, nil
 	}
 
 	// First-time consent grant - create new record
@@ -214,6 +215,9 @@ func (s *Service) Revoke(ctx context.Context, userID string, purposes []models.P
 		revokedRecord, err := s.store.RevokeByUserAndPurpose(ctx, userID, record.Purpose, now)
 		if err != nil {
 			return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to revoke consent", err)
+		}
+		if revokedRecord.RevokedAt == nil {
+			revokedRecord.RevokedAt = &now
 		}
 		s.emitAudit(ctx, audit.Event{
 			UserID:    userID,
