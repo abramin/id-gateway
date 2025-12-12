@@ -73,6 +73,12 @@ func FromEnv() (Server, error) {
 	}
 
 	adminAPIToken := os.Getenv("ADMIN_API_TOKEN")
+	if adminAPIToken == "" {
+		switch strings.ToLower(env) {
+		case "local", "dev", "development", "testing", "test":
+			adminAPIToken = "demo-admin-token"
+		}
+	}
 
 	jwtSigningKey := os.Getenv("JWT_SIGNING_KEY")
 	if jwtSigningKey == "" {
