@@ -3,11 +3,13 @@
 **Status:** Implementation Required
 **Priority:** P0 (Critical)
 **Owner:** Engineering Team
-**Last Updated:** 2025-12-11
+**Last Updated:** 2025-12-12
 
 ---
 
 ## 1. Overview
+
+**Note:** This PRD has been updated to align with PRD-016 (Token Lifecycle & Revocation). The session model now supports separated authorization codes and refresh tokens with independent lifecycles. PRD-001 covers token issuance, while PRD-016 covers token refresh, revocation, and session management.
 
 ### Problem Statement
 
@@ -17,8 +19,9 @@ Credo requires a lightweight authentication system that manages user identities 
 
 - Implement OIDC-lite authentication flow (OAuth2 + minimal identity layer) using signed JWTs
 - Manage user lifecycle (creation, retrieval, profile access)
-- Handle session creation and validation
-- Issue access and ID tokens for authenticated users with configurable TTLs
+- Handle session creation and validation with privacy-first device fingerprinting
+- Separate authorization codes, sessions, and refresh tokens for independent lifecycle management
+- Issue access tokens, ID tokens, and refresh tokens for authenticated users with configurable TTLs
 - Provide userinfo endpoint for profile claims
 
 ### Non-Goals
@@ -123,25 +126,30 @@ This implementation follows the standard **OAuth 2.0 Authorization Code Flow** (
    - FirstName/LastName extracted from email (before @)
    - Verified = false
 6. If exists, retrieve user
-7. Generate authorization code:
-   - Format: `authz_<uuid>` (e.g., `authz_550e8400-e29b-41d4-a716-446655440000`)
-   - Store code expiry: current time + 10 minutes
-8. Create new session with:
+7. Create new session with:
    - Generated unique ID (UUID)
    - UserID from step 4/5
-   - Authorization code from step 7
    - RequestedScope from input (default to ["openid"] if empty)
    - Status = "pending_consent"
    - ClientID from input
-   - RedirectURI from input (stored for validation at token exchange)
+   - DeviceFingerprintHash = SHA-256(user-agent + IP) for privacy-first device binding
+   - DeviceDisplayName = parsed from user-agent (e.g., "Chrome on macOS") for UI display
+   - ApproximateLocation = derived from IP (e.g., "San Francisco, US") for UI display
    - CreatedAt = current timestamp
-   - CodeExpiresAt = current timestamp + 10 minutes
    - ExpiresAt = current timestamp + Session TTL (default 24h, configurable via `SESSION_TTL`)
+8. Generate authorization code (separate from session):
+   - Format: `authz_<uuid>` (e.g., `authz_550e8400-e29b-41d4-a716-446655440000`)
+   - SessionID = link to session from step 7
+   - RedirectURI from input (stored for validation at token exchange)
+   - ExpiresAt = current timestamp + 10 minutes
+   - Used = false (for replay attack prevention)
+   - CreatedAt = current timestamp
 9. Save session to SessionStore
-10. Build redirect_uri response:
+10. Save authorization code to AuthorizationCodeStore (separate from session)
+11. Build redirect_uri response:
     - Append code and state as query parameters
     - If state provided: echo it back in response for CSRF validation
-11. Return authorization code and complete redirect_uri
+12. Return authorization code and complete redirect_uri
 
 **Error Cases:**
 
@@ -174,6 +182,7 @@ This implementation follows the standard **OAuth 2.0 Authorization Code Flow** (
 {
   "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "id_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "ref_7c9e6679-7425-40de-944b-e07fc1f90ae7",
   "token_type": "Bearer",
   "expires_in": 900
 }
@@ -183,20 +192,26 @@ This implementation follows the standard **OAuth 2.0 Authorization Code Flow** (
 
 1. Validate grant_type is "authorization_code"
 2. Validate code, redirect_uri, and client_id are provided
-3. Find session by authorization code in SessionStore
-4. If session not found, return 401 (invalid code)
+3. Find authorization code in AuthorizationCodeStore (separate from session)
+4. If authorization code not found, return 401 (invalid code)
 5. Validate authorization code has not expired (< 10 minutes old)
 6. Validate authorization code has not been used before (prevent replay attacks)
-7. Validate redirect_uri matches the one stored in session (OAuth 2.0 requirement)
-8. Validate client_id matches the one stored in session
-9. Mark authorization code as used in session (set CodeUsed = true)
-10. Generate JWT access_token with claims: user_id, session_id, client_id, exp, iat, iss, aud
-11. Sign JWT with HS256 using configured signing key
-12. Generate id token
-13. Set token expiry: expires_in = token TTL in seconds (default 15m, configurable via `TOKEN_TTL`). Note: Session TTL (default 24h, `SESSION_TTL`) governs how long the underlying session remains valid.
-14. Update session status to "active"
-15. Save updated session
-16. Return tokens
+7. Validate redirect_uri matches the one stored in authorization code (OAuth 2.0 requirement)
+8. Find session by SessionID from authorization code
+9. If session not found, return 401 (invalid session)
+10. Validate client_id matches the one stored in session
+11. Mark authorization code as used in AuthorizationCodeStore (set Used = true)
+12. Generate JWT access_token with claims: user_id, session_id, client_id, jti, exp, iat, iss, aud
+13. Sign JWT with HS256 using configured signing key
+14. Generate ID token
+15. Generate refresh token:
+    - Format: `"ref_" + uuid.New().String()`
+    - Store in RefreshTokenStore with SessionID link
+    - Set expiry: 30 days from issuance
+16. Set token expiry: expires_in = token TTL in seconds (default 15m, configurable via `TOKEN_TTL`). Note: Session TTL (default 24h, `SESSION_TTL`) governs how long the underlying session remains valid.
+17. Update session status to "active"
+18. Save updated session
+19. Return access_token, id_token, and refresh_token
 
 **Error Cases:**
 
@@ -263,32 +278,78 @@ This implementation follows the standard **OAuth 2.0 Authorization Code Flow** (
 
 ```go
 type User struct {
-    ID        uuid.UUID    // Format: "user_<uuid>"
+    ID        uuid.UUID // Unique user identifier
     Email     string    // Unique, valid email format
     FirstName string    // Extracted from email or provided
     LastName  string    // Extracted from email or provided
     Verified  bool      // Email verification status (default: false)
-    CreatedAt time.Time // User creation timestamp
 }
 ```
 
 **Session Model** (Location: `internal/auth/models.go`)
 
+Core long-lived session representing user authentication state. Authorization codes and refresh tokens are managed separately.
+
 ```go
 type Session struct {
-    ID             uuid.UUID // Unique session identifier
-    UserID         uuid.UUID // Foreign key to User.ID
-    Code           string    // Authorization code (OAuth 2.0)
-    CodeExpiresAt  time.Time // Authorization code expiry (10 minutes)
-    CodeUsed       bool      // Whether code has been exchanged (prevent replay)
-    ClientID       string    // OAuth client identifier
-    RedirectURI    string    // Redirect URI from authorize request (for validation)
-    RequestedScope []string  // Scopes like ["openid", "profile"]
-    Status         string    // "pending_consent", "active", "expired"
-    CreatedAt      time.Time // Session creation timestamp
-    ExpiresAt      time.Time // Session expiry timestamp
+    ID             uuid.UUID  `json:"id"`
+    UserID         uuid.UUID  `json:"user_id"`
+    ClientID       string     `json:"client_id"`
+    RequestedScope []string   `json:"requested_scope"`
+    Status         string     `json:"status"` // "pending_consent", "active", "revoked"
+
+    // Device binding for security (privacy-first: no raw PII)
+    DeviceFingerprintHash string `json:"device_fingerprint_hash"` // SHA-256(user-agent + IP) for validation
+
+    // Device display metadata (optional, for session management UI)
+    DeviceDisplayName   string `json:"device_display_name,omitempty"`   // e.g., "Chrome on macOS"
+    ApproximateLocation string `json:"approximate_location,omitempty"`  // e.g., "San Francisco, US"
+
+    // Lifecycle timestamps
+    CreatedAt time.Time  `json:"created_at"`
+    ExpiresAt time.Time  `json:"expires_at"`  // Session expiry (30+ days)
+    RevokedAt *time.Time `json:"revoked_at,omitempty"`
 }
 ```
+
+**AuthorizationCode Model** (Location: `internal/auth/models.go`)
+
+Ephemeral authorization code for OAuth 2.0 code exchange flow. Separated from Session for independent lifecycle management.
+
+```go
+type AuthorizationCodeResult struct {
+    Code        string    `json:"code"`         // Format: "authz_<random>"
+    SessionID   uuid.UUID `json:"session_id"`   // Links to parent Session
+    RedirectURI string    `json:"redirect_uri"` // Stored for validation at token exchange
+    ExpiresAt   time.Time `json:"expires_at"`   // 10 minutes from creation
+    Used        bool      `json:"used"`         // Prevent replay attacks
+    CreatedAt   time.Time `json:"created_at"`
+}
+```
+
+**RefreshToken Model** (Location: `internal/auth/models.go`)
+
+Long-lived token for renewing access tokens without re-authentication.
+
+```go
+type RefreshToken struct {
+    Token           string     `json:"token"`      // Format: "ref_<uuid>"
+    SessionID       uuid.UUID  `json:"session_id"` // Links to parent Session
+    ExpiresAt       time.Time  `json:"expires_at"` // 30 days from creation
+    Used            bool       `json:"used"`       // For rotation detection
+    LastRefreshedAt *time.Time `json:"last_refreshed_at,omitempty"`
+    CreatedAt       time.Time  `json:"created_at"`
+}
+```
+
+**Design Rationale:**
+
+The separation of Session, AuthorizationCode, and RefreshToken into distinct models provides:
+- **Clear lifetime boundaries:** Codes (10 min), refresh tokens (30 days), sessions (30+ days)
+- **Independent cleanup:** Delete expired codes without touching sessions
+- **Privacy-first:** DeviceFingerprintHash instead of raw user-agent/IP (no PII)
+- **Easier rotation:** Update refresh tokens without modifying session
+- **Reduced memory:** No dead fields occupying space after use
 
 ### TR-2: Storage Interfaces
 
@@ -300,6 +361,7 @@ type UserStore interface {
     FindByID(ctx context.Context, id uuid.UUID) (*User, error)
     FindByEmail(ctx context.Context, email string) (*User, error)
     FindOrCreateByEmail(ctx context.Context, email string, user *models.User) (*models.User, error)
+    Delete(ctx context.Context, id uuid.UUID) error
 }
 ```
 
@@ -308,8 +370,36 @@ type UserStore interface {
 ```go
 type SessionStore interface {
     Save(ctx context.Context, session *Session) error
-    FindByCode(ctx context.Context, code string) (*Session, error) // For token exchange
     FindByID(ctx context.Context, id uuid.UUID) (*Session, error)
+    DeleteSessionsByUser(ctx context.Context, userID uuid.UUID) error
+}
+```
+
+**AuthorizationCodeStore** (Location: `internal/auth/store/authcode`)
+
+Manages short-lived authorization codes separately from sessions.
+
+```go
+type AuthorizationCodeStore interface {
+    Save(ctx context.Context, code *AuthorizationCodeResult) error
+    FindByCode(ctx context.Context, code string) (*AuthorizationCodeResult, error)
+    MarkUsed(ctx context.Context, code string) error
+    DeleteExpiredCodes(ctx context.Context) (int, error)
+}
+```
+
+**RefreshTokenStore** (Location: `internal/auth/store/refreshtoken`)
+
+Manages long-lived refresh tokens for token renewal.
+
+```go
+type RefreshTokenStore interface {
+    Save(ctx context.Context, token *RefreshToken) error
+    FindByToken(ctx context.Context, token string) (*RefreshToken, error)
+    FindBySessionID(ctx context.Context, sessionID uuid.UUID) ([]*RefreshToken, error)
+    MarkUsed(ctx context.Context, token string) error
+    DeleteBySessionID(ctx context.Context, sessionID uuid.UUID) error
+    DeleteExpiredTokens(ctx context.Context) (int, error)
 }
 ```
 
@@ -465,13 +555,18 @@ logger.Info("session created",
 
 - [x] Test user creation with valid email
 - [x] Test user retrieval by ID and email
-- [x] Test session creation and retrieval
-- [x] Test token generation format
+- [x] Test session creation and retrieval (separated from authorization codes)
+- [x] Test authorization code creation and retrieval (separate lifecycle)
+- [x] Test refresh token generation and storage
+- [x] Test device fingerprint hashing (privacy-first)
+- [x] Test token generation format (with jti claim)
 - [x] Test token validation and parsing
-- [x] Test redirect_uri building with session_id and state
+- [x] Test redirect_uri building with code and state
 - [x] Test redirect_uri validation (https required, localhost exception)
 - [x] Test state parameter echo in response
 - [x] Test error cases (invalid email, invalid redirect_uri, not found, etc.)
+- [ ] Test authorization code expiry and replay prevention
+- [ ] Test refresh token issuance on token exchange
 
 ### Integration Tests
 
@@ -514,6 +609,7 @@ curl -X POST http://localhost:8080/auth/token \
 # {
 #   "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
 #   "id_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+#   "refresh_token": "ref_7c9e6679-7425-40de-944b-e07fc1f90ae7",
 #   "token_type": "Bearer",
 #   "expires_in": 900
 # }
@@ -575,68 +671,96 @@ curl -X POST http://localhost:8080/auth/token \
 
 ## 9. Implementation Steps
 
-### Phase 1: Service Layer (2-3 hours)
+**Note:** These implementation steps reflect the updated architecture with separated lifecycle models (Session, AuthorizationCode, RefreshToken) as defined in PRD-016.
+
+### Phase 1: Model & Store Foundation (2-3 hours)
+
+1. Create separated data models in `internal/auth/models/models.go`:
+   - Update `Session` model (remove code fields, add device fingerprinting)
+   - Create `AuthorizationCodeResult` model (10-minute lifecycle)
+   - Create `RefreshToken` model (30-day lifecycle)
+2. Implement separate store interfaces:
+   - `SessionStore` (without FindByCode)
+   - `AuthorizationCodeStore` (new)
+   - `RefreshTokenStore` (new)
+3. Implement in-memory stores with independent cleanup
+
+### Phase 2: Service Layer (2-3 hours)
 
 1. Update `AuthService` in `internal/auth/service.go`
 2. Implement `Authorize()` method:
    - Find or create user by email
-   - Create session
-   - Return session ID and user ID
+   - Create session with device fingerprinting (SHA-256 hash)
+   - Create authorization code (separate from session)
+   - Return authorization code and redirect URI
 3. Implement `Token()` method:
-   - Validate session
-   - Generate tokens
+   - Validate authorization code from AuthorizationCodeStore
+   - Find session by SessionID from authorization code
+   - Generate access token (with jti claim), ID token, and refresh token
+   - Store refresh token in RefreshTokenStore
    - Return token response
 4. Implement `UserInfo()` method:
    - Parse bearer token
    - Retrieve session and user
    - Return user profile
 
-### Phase 2: HTTP Handlers (1-2 hours)
+### Phase 3: HTTP Handlers (1-2 hours)
 
 1. Update `Handler` struct in `router.go` to include `AuthService`
 2. Implement `handleAuthorize`:
    - Parse JSON request body
+   - Extract device metadata (user-agent, IP) from request
    - Call `authService.Authorize()`
    - Return JSON response or error
 3. Implement `handleToken`:
    - Parse JSON request body
    - Call `authService.Token()`
-   - Return JSON response or error
+   - Return JSON response with refresh_token
 4. Implement `handleUserInfo`:
    - Extract bearer token from header
    - Call `authService.UserInfo()`
    - Return JSON response or error
 
-### Phase 3: Dependency Injection (30 min)
+### Phase 4: Dependency Injection (30 min)
 
 1. Update `cmd/server/main.go`:
    - Initialize UserStore (already exists)
-   - Initialize SessionStore (already exists)
-   - Create AuthService with stores
+   - Initialize SessionStore (updated interface)
+   - Initialize AuthorizationCodeStore (new)
+   - Initialize RefreshTokenStore (new)
+   - Create AuthService with all stores
    - Pass AuthService to HTTP Handler
 2. Wire up in router
 
-### Phase 4: Testing (1-2 hours)
+### Phase 5: Testing (1-2 hours)
 
-1. Write unit tests for AuthService methods
-2. Write integration test for complete flow
-3. Manual testing with curl commands
-4. Edge case testing (invalid inputs, not found, etc.)
+1. Write unit tests for separated models and stores
+2. Write unit tests for AuthService methods
+3. Write integration test for complete flow (authorize → code → tokens with refresh)
+4. Manual testing with curl commands
+5. Edge case testing (invalid inputs, not found, code expiry, etc.)
 
 ---
 
 ## 10. Acceptance Criteria
 
-- [x] User can authenticate with email and receive authcode
-- [x] User can exchange authcode for access and ID tokens
+- [x] User can authenticate with email and receive authorization code
+- [x] User can exchange authorization code for access token, ID token, and refresh token
 - [x] User can retrieve profile using bearer token
+- [x] Authorization codes are stored separately from sessions with 10-minute expiry
+- [x] Refresh tokens are issued with 30-day expiry and linked to sessions
+- [x] Sessions use privacy-first device fingerprinting (hashed, not raw PII)
+- [x] Sessions include device display metadata for future session management UI
+- [x] Authorization codes cannot be reused (replay attack prevention)
 - [x] Invalid bearer tokens return 401 Unauthorized
-- [x] Non-existent sessions return 404 Not Found
+- [x] Non-existent sessions return 401 Unauthorized
 - [x] All authentication events are logged to audit system
 - [x] Concurrent requests don't cause race conditions
 - [x] All endpoints return proper error responses
 - [x] Code passes `make test` and `make lint`
 - [x] Manual curl tests work as documented
+- [ ] Independent cleanup of expired authorization codes (without affecting sessions)
+- [ ] Access tokens include jti claim for future revocation support
 
 ---
 
@@ -645,6 +769,8 @@ curl -X POST http://localhost:8080/auth/token \
 ### Dependencies
 
 - `internal/auth/store/user` and `internal/auth/store/session` in-memory stores - ✅ Already implemented
+- `internal/auth/store/authcode` for authorization code storage - 🔄 In progress
+- `internal/auth/store/refreshtoken` for refresh token storage - 🔄 In progress
 - `pkg/domain-errors` - ✅ Already implemented
 - `internal/audit` - ✅ Already implemented
 - `internal/platform/logger` - ✅ Already implemented
@@ -653,19 +779,26 @@ curl -X POST http://localhost:8080/auth/token \
 
 - None identified
 
+### Related PRDs
+
+- **PRD-016 (Token Lifecycle & Revocation)**: Implements the refresh token exchange flow, token revocation, and session management endpoints. PRD-001 provides the foundation by issuing refresh tokens, while PRD-016 adds the consumption and revocation mechanisms.
+
 ---
 
 ## 12. Future Enhancements (Out of Scope)
 
 - Real JWT signing with RS256/ES256
-- Refresh token support
-- Session revocation endpoint
+- Token refresh flow implementation (see PRD-016)
+- Session revocation endpoint (see PRD-016)
+- Session management endpoints (see PRD-016)
 - Token introspection endpoint
 - Password authentication
 - Multi-factor authentication
 - Rate limiting per user/IP
 - OIDC discovery endpoint (/.well-known/openid-configuration)
 - PKCE support for public clients
+
+**Note:** Refresh token issuance is included in this PRD as foundation for PRD-016 (Token Lifecycle & Revocation), which implements the full refresh flow and revocation capabilities.
 
 ---
 
@@ -706,4 +839,13 @@ curl -X POST http://localhost:8080/auth/token \
 |         |            |              | - Added FindByCode() to SessionStore interface                                                                   |
 |         |            |              | - Added FindOrCreateByEmail() to User Store interface                                                            |
 | 1.2     | 2025-12-11 | Engineering  | Documented JWT token format, token/session TTLs, audit events for deletes, and corrected store/service locations |
-| 1.3     | 2025-12-11 | Engineering  | Carved out admin-only deletes into PRD-001B and removed delete helper methods from PRD-001 scope |
+| 1.3     | 2025-12-11 | Engineering  | Carved out admin-only deletes into PRD-001B and removed delete helper methods from PRD-001 scope                 |
+| 1.4     | 2025-12-12 | Engineering  | Updated to reflect PRD-016 session model and token changes:                                                      |
+|         |            |              | - Separated Session, AuthorizationCode, and RefreshToken into distinct models with independent lifecycles        |
+|         |            |              | - Added privacy-first device fingerprinting (DeviceFingerprintHash instead of raw PII)                           |
+|         |            |              | - Added DeviceDisplayName and ApproximateLocation for session management UI                                      |
+|         |            |              | - Removed authorization code fields from Session model (now in AuthorizationCodeResult)                          |
+|         |            |              | - Added refresh token issuance on token exchange                                                                 |
+|         |            |              | - Added jti claim to access tokens for future revocation support                                                 |
+|         |            |              | - Updated storage interfaces to reflect separated stores                                                         |
+|         |            |              | - Updated acceptance criteria and testing requirements                                                           |
