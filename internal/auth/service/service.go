@@ -213,7 +213,7 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 				"session_id", parsedSessionID.String(),
 			)
 			s.incrementAuthFailure()
-			return nil, dErrors.New(dErrors.CodeUnauthorized, "session not found")
+			return nil, dErrors.New(dErrors.CodeNotFound, "session not found")
 		}
 		s.logAuthFailure(ctx, "session_lookup_failed", true,
 			"session_id", parsedSessionID.String(),
@@ -266,6 +266,11 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 }
 
 func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {
+	if s.jwt == nil {
+		s.logAuthFailure(ctx, "token_generator_missing", true)
+		return nil, dErrors.New(dErrors.CodeInternal, "token generator not configured")
+	}
+
 	// 1. Validate grant_type
 	if req.GrantType != "authorization_code" {
 		s.logAuthFailure(ctx, "invalid_grant_type", false,
@@ -357,6 +362,7 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 	if err != nil {
 		return nil, dErrors.New(dErrors.CodeInternal, "failed to generate ID token")
 	}
+
 	s.logAudit(ctx, string(audit.EventTokenIssued),
 		"user_id", session.UserID.String(),
 		"session_id", session.ID.String(),
@@ -367,7 +373,8 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 	return &models.TokenResult{
 		AccessToken: accessToken,
 		IDToken:     idToken,
-		ExpiresIn:   3600, // 1 hour
+		ExpiresIn:   s.sessionTTL,
+		TokenType:   "Bearer",
 	}, nil
 }
 

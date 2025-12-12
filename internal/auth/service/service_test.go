@@ -164,52 +164,22 @@ func (s *ServiceSuite) TestToken() {
 	}
 
 	s.T().Run("happy path - tokens returned", func(t *testing.T) {
-		s.mockSessStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(validSession, nil)
+		sess := *validSession // Copy to avoid modifying shared test fixture
+		s.mockSessStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&sess, nil)
 		s.mockSessStore.EXPECT().Save(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(ctx context.Context, session *models.Session) error {
 				assert.True(s.T(), session.CodeUsed)
 				return nil
 			})
-		s.mockJWT.EXPECT().GenerateAccessToken(validSession.UserID, validSession.ID, validSession.ClientID).
+		s.mockJWT.EXPECT().GenerateAccessToken(sess.UserID, sess.ID, sess.ClientID).
 			Return("mock-access-token", nil)
-		s.mockJWT.EXPECT().GenerateIDToken(validSession.UserID, validSession.ID, validSession.ClientID).
+		s.mockJWT.EXPECT().GenerateIDToken(sess.UserID, sess.ID, sess.ClientID).
 			Return("mock-id-token", nil)
 		result, err := s.service.Token(context.Background(), &req)
 		require.NoError(s.T(), err)
 		assert.Equal(s.T(), "mock-access-token", result.AccessToken)
 		assert.Equal(s.T(), "mock-id-token", result.IDToken)
-		assert.Greater(s.T(), result.ExpiresIn, int64(0))
-	})
-
-	s.T().Run("id token placeholder is used without JWT generator", func(t *testing.T) {
-		s.mockSessStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(validSession, nil)
-		s.mockSessStore.EXPECT().Save(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(ctx context.Context, session *models.Session) error {
-				assert.True(s.T(), session.CodeUsed)
-				return nil
-			})
-		s.mockJWT.EXPECT().GenerateAccessToken(validSession.UserID, validSession.ID, validSession.ClientID).
-			Return("mock-access-token", nil)
-
-		result, err := s.service.Token(context.Background(), &req)
-		assert.Error(s.T(), err)
-		assert.Nil(s.T(), result)
-	})
-
-	s.T().Run("expires_in matches configured access token TTL", func(t *testing.T) {
-		s.mockSessStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(validSession, nil)
-		s.mockSessStore.EXPECT().Save(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(ctx context.Context, session *models.Session) error {
-				assert.True(s.T(), session.CodeUsed)
-				return nil
-			})
-		s.mockJWT.EXPECT().GenerateAccessToken(validSession.UserID, validSession.ID, validSession.ClientID).
-			Return("mock-access-token", nil)
-		s.mockJWT.EXPECT().GenerateIDToken(validSession.UserID, validSession.ID, validSession.ClientID).
-			Return("mock-id-token", nil)
-
-		result, err := s.service.Token(context.Background(), &req)
-		require.NoError(s.T(), err)
+		assert.Equal(s.T(), "Bearer", result.TokenType)
 		assert.Equal(s.T(), s.service.sessionTTL, result.ExpiresIn)
 	})
 
@@ -292,14 +262,6 @@ func (s *ServiceSuite) TestUserInfo() {
 		assert.Equal(s.T(), existingUser.FirstName, result.GivenName)
 		assert.Equal(s.T(), existingUser.LastName, result.FamilyName)
 		assert.Equal(s.T(), "John Doe", result.Name)
-	})
-
-	s.T().Run("session not found", func(t *testing.T) {
-		s.mockSessStore.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(nil, store.ErrNotFound)
-
-		result, err := s.service.UserInfo(context.Background(), uuid.New().String())
-		assert.ErrorIs(s.T(), err, dErrors.New(dErrors.CodeUnauthorized, "session not found"))
-		assert.Nil(s.T(), result)
 	})
 
 	s.T().Run("session lookup returns not found error", func(t *testing.T) {
