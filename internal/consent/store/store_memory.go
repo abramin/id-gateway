@@ -6,7 +6,18 @@ import (
 	"time"
 
 	"credo/internal/consent/models"
+	dErrors "credo/pkg/domain-errors"
 )
+
+// ErrNotFound is returned when a requested record is not found in the store.
+// Services should check for this error using errors.Is(err, store.ErrNotFound).
+var ErrNotFound = dErrors.New(dErrors.CodeNotFound, "record not found")
+
+// Error Contract:
+// All store methods follow this error pattern:
+// - Return ErrNotFound when the requested entity does not exist
+// - Return nil for successful operations
+// - Return wrapped errors with context for infrastructure failures (future: DB errors, network issues, etc.)
 
 type InMemoryStore struct {
 	mu       sync.RWMutex
@@ -34,7 +45,7 @@ func (s *InMemoryStore) FindByUserAndPurpose(_ context.Context, userID string, p
 			return &copyRecord, nil
 		}
 	}
-	return nil, nil
+	return nil, ErrNotFound
 }
 
 func (s *InMemoryStore) ListByUser(_ context.Context, userID string, filter *models.RecordFilter) ([]*models.Record, error) {

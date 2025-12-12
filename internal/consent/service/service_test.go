@@ -17,6 +17,7 @@ import (
 	"credo/internal/audit"
 	"credo/internal/consent/models"
 	"credo/internal/consent/service/mocks"
+	"credo/internal/consent/store"
 	dErrors "credo/pkg/domain-errors"
 )
 
@@ -62,7 +63,7 @@ func (s *ServiceSuite) TestGrant() {
 
 		s.mockStore.EXPECT().
 			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeLogin).
-			Return(nil, nil)
+			Return(nil, store.ErrNotFound)
 
 		s.mockStore.EXPECT().
 			Save(gomock.Any(), gomock.Any()).
@@ -252,7 +253,7 @@ func (s *ServiceSuite) TestGrant() {
 
 		s.mockStore.EXPECT().
 			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeLogin).
-			Return(nil, nil)
+			Return(nil, store.ErrNotFound)
 
 		s.mockStore.EXPECT().
 			Save(gomock.Any(), gomock.Any()).
@@ -260,7 +261,7 @@ func (s *ServiceSuite) TestGrant() {
 
 		s.mockStore.EXPECT().
 			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeRegistryCheck).
-			Return(nil, nil)
+			Return(nil, store.ErrNotFound)
 
 		s.mockStore.EXPECT().
 			Save(gomock.Any(), gomock.Any()).
@@ -277,7 +278,7 @@ func (s *ServiceSuite) TestGrant() {
 
 		s.mockStore.EXPECT().
 			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeLogin).
-			Return(nil, nil)
+			Return(nil, store.ErrNotFound)
 
 		s.mockStore.EXPECT().
 			Save(gomock.Any(), gomock.Any()).
@@ -318,7 +319,7 @@ func (s *ServiceSuite) TestGrant() {
 	s.T().Run("store error on save", func(t *testing.T) {
 		s.mockStore.EXPECT().
 			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeLogin).
-			Return(nil, nil)
+			Return(nil, store.ErrNotFound)
 
 		s.mockStore.EXPECT().
 			Save(gomock.Any(), gomock.Any()).
@@ -416,7 +417,7 @@ func (s *ServiceSuite) TestRevoke() {
 	s.T().Run("skips non-existent consent", func(t *testing.T) {
 		s.mockStore.EXPECT().
 			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeLogin).
-			Return(nil, nil)
+			Return(nil, store.ErrNotFound)
 
 		revoked, err := s.service.Revoke(context.Background(), "user123", []models.Purpose{models.PurposeLogin})
 		assert.NoError(t, err)
@@ -501,7 +502,7 @@ func (s *ServiceSuite) TestRequire() {
 		s.auditStore.Clear()
 		s.mockStore.EXPECT().
 			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeVCIssuance).
-			Return(nil, nil)
+			Return(nil, store.ErrNotFound)
 
 		err := s.service.Require(context.Background(), "user123", models.PurposeVCIssuance)
 		assert.True(t, dErrors.Is(err, dErrors.CodeMissingConsent))

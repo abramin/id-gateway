@@ -3,8 +3,11 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -27,17 +30,18 @@ type Service interface {
 // Handler handles authentication endpoints including authorize, token, and userinfo.
 // Implements the OIDC-lite flow described in PRD-001.
 type Handler struct {
-	regulatedMode bool
-	auth          Service
-	logger        *slog.Logger
+	auth                   Service
+	logger                 *slog.Logger
+	allowedRedirectSchemes []string
 }
 
 // New creates a new auth Handler with the given service and logger.
-func New(auth Service, logger *slog.Logger, regulatedMode bool) *Handler {
+func New(auth Service, logger *slog.Logger, allowedRedirectSchemes []string) *Handler {
+
 	return &Handler{
-		regulatedMode: regulatedMode,
-		auth:          auth,
-		logger:        logger,
+		auth:                   auth,
+		logger:                 logger,
+		allowedRedirectSchemes: allowedRedirectSchemes,
 	}
 }
 
@@ -68,7 +72,32 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
 		return
 	}
+
+	parsedURI, err := url.Parse(req.RedirectURI)
+	if err != nil {
+		h.logger.WarnContext(ctx, "invalid redirect_uri in authorize request",
+			"redirect_uri", req.RedirectURI,
+			"request_id", requestID,
+		)
+		shared.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "redirect_uri is invalid"))
+		return
+	}
+	if !h.isRedirectSchemeAllowed(parsedURI) {
+		h.logger.WarnContext(ctx, "insecure redirect_uri in authorize request",
+			"redirect_uri", req.RedirectURI,
+			"request_id", requestID,
+			"allowed_schemes", h.allowedRedirectSchemes,
+		)
+		shared.WriteError(w, dErrors.New(dErrors.CodeBadRequest,
+			fmt.Sprintf("redirect_uri must use %s scheme", strings.Join(h.allowedRedirectSchemes, " or "))))
+		return
+	}
+
 	s.Sanitize(req)
+	// default to "openid" scope if none provided
+	if len(req.Scopes) == 0 {
+		req.Scopes = []string{models.ScopeOpenID.String()}
+	}
 	if err := validation.Validate(req); err != nil {
 		h.logger.WarnContext(ctx, "invalid authorize request",
 			"error", err,
@@ -163,4 +192,13 @@ func (h *Handler) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
 	)
 
 	respond.WriteJSON(w, http.StatusOK, res)
+}
+
+func (h *Handler) isRedirectSchemeAllowed(uri *url.URL) bool {
+	for _, scheme := range h.allowedRedirectSchemes {
+		if strings.ToLower(uri.Scheme) == strings.ToLower(scheme) {
+			return true
+		}
+	}
+	return false
 }

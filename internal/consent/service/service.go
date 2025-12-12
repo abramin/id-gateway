@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -10,10 +11,15 @@ import (
 
 	"credo/internal/audit"
 	"credo/internal/consent/models"
+	"credo/internal/consent/store"
 	"credo/internal/platform/metrics"
 	pkgerrors "credo/pkg/domain-errors"
 )
 
+// Store defines the persistence interface for consent records.
+// Error Contract:
+// - FindByUserAndPurpose returns store.ErrNotFound when no record exists
+// - Other methods return nil on success or wrapped errors on failure
 type Store interface {
 	Save(ctx context.Context, consent *models.Record) error
 	FindByUserAndPurpose(ctx context.Context, userID string, purpose models.Purpose) (*models.Record, error)
@@ -128,13 +134,13 @@ func (s *Service) upsertGrant(ctx context.Context, userID string, purpose models
 	now := time.Now()
 	expiry := now.Add(s.consentTTL)
 	existing, err := s.store.FindByUserAndPurpose(ctx, userID, purpose)
-	if err != nil {
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to read consent", err)
 	}
 
 	// Reuse existing consent record (active, expired, or revoked) to maintain clean DB
 	// History is tracked via audit log
-	if existing != nil {
+	if err == nil && existing != nil {
 		wasActive := existing.IsActive(now)
 
 		// Idempotent within configured window: skip update if recently granted
@@ -203,9 +209,13 @@ func (s *Service) Revoke(ctx context.Context, userID string, purposes []models.P
 	for _, purpose := range purposes {
 		record, err := s.store.FindByUserAndPurpose(ctx, userID, purpose)
 		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				// Can't revoke what doesn't exist - skip silently
+				continue
+			}
 			return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to read consent", err)
 		}
-		if record == nil || record.RevokedAt != nil {
+		if record.RevokedAt != nil {
 			continue
 		}
 		if record.ExpiresAt != nil && record.ExpiresAt.Before(time.Now()) {
@@ -276,22 +286,23 @@ func (s *Service) Require(ctx context.Context, userID string, purpose models.Pur
 	}
 
 	record, err := s.store.FindByUserAndPurpose(ctx, userID, purpose)
-	if err != nil {
-		return pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to read consent", err)
-	}
 	now := time.Now()
-	if record == nil {
-		s.emitAudit(ctx, audit.Event{
-			UserID:    userID,
-			Purpose:   string(purpose),
-			Action:    models.AuditActionConsentCheckFailed,
-			Decision:  models.AuditDecisionDenied,
-			Reason:    models.AuditReasonUserInitiated,
-			Timestamp: now,
-		})
-		s.logConsentCheck(ctx, slog.LevelWarn, "consent_check_failed", userID, purpose, "missing")
-		s.incrementConsentCheckFailed(purpose)
-		return pkgerrors.New(pkgerrors.CodeMissingConsent, "consent not granted for required purpose")
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			// Not found = missing consent
+			s.emitAudit(ctx, audit.Event{
+				UserID:    userID,
+				Purpose:   string(purpose),
+				Action:    models.AuditActionConsentCheckFailed,
+				Decision:  models.AuditDecisionDenied,
+				Reason:    models.AuditReasonUserInitiated,
+				Timestamp: now,
+			})
+			s.logConsentCheck(ctx, slog.LevelWarn, "consent_check_failed", userID, purpose, "missing")
+			s.incrementConsentCheckFailed(purpose)
+			return pkgerrors.New(pkgerrors.CodeMissingConsent, "consent not granted for required purpose")
+		}
+		return pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to read consent", err)
 	}
 	if record.RevokedAt != nil {
 		s.emitAudit(ctx, audit.Event{

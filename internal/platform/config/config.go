@@ -9,16 +9,17 @@ import (
 
 // Server captures HTTP server level configuration.
 type Server struct {
-	Addr               string
-	RegulatedMode      bool
-	DemoMode           bool
-	Environment        string
-	JWTSigningKey      string
-	JWTIssuer          string
-	TokenTTL           time.Duration
-	ConsentTTL         time.Duration
-	ConsentGrantWindow time.Duration
-	SessionTTL         time.Duration
+	Addr                   string
+	RegulatedMode          bool
+	DemoMode               bool
+	Environment            string
+	AllowedRedirectSchemes []string
+	JWTSigningKey          string
+	JWTIssuer              string
+	TokenTTL               time.Duration
+	ConsentTTL             time.Duration
+	ConsentGrantWindow     time.Duration
+	SessionTTL             time.Duration
 }
 
 // RegistryCacheTTL enforces retention for sensitive registry data.
@@ -41,6 +42,7 @@ func FromEnv() (Server, error) {
 		env = "local"
 	}
 	regulated := os.Getenv("REGULATED_MODE") == "true"
+	allowedRedirectSchemes := parseAllowedRedirectSchemes(os.Getenv("ALLOWED_REDIRECT_SCHEMES"), env)
 	tokenTTLStr := os.Getenv("TOKEN_TTL")
 	if tokenTTLStr != "" {
 		if duration, err := time.ParseDuration(tokenTTLStr); err == nil {
@@ -98,15 +100,39 @@ func FromEnv() (Server, error) {
 	}
 
 	return Server{
-		Addr:               addr,
-		RegulatedMode:      regulated,
-		DemoMode:           demoMode,
-		Environment:        env,
-		JWTSigningKey:      jwtSigningKey,
-		JWTIssuer:          JWTIssuer,
-		TokenTTL:           TokenTTL,
-		ConsentTTL:         ConsentTTL,
-		ConsentGrantWindow: ConsentGrantWindow,
-		SessionTTL:         SessionTTL,
+		Addr:                   addr,
+		RegulatedMode:          regulated,
+		DemoMode:               demoMode,
+		Environment:            env,
+		JWTSigningKey:          jwtSigningKey,
+		JWTIssuer:              JWTIssuer,
+		AllowedRedirectSchemes: allowedRedirectSchemes,
+		TokenTTL:               TokenTTL,
+		ConsentTTL:             ConsentTTL,
+		ConsentGrantWindow:     ConsentGrantWindow,
+		SessionTTL:             SessionTTL,
 	}, nil
+}
+
+func parseAllowedRedirectSchemes(raw, env string) []string {
+	if raw != "" {
+		parts := strings.Split(raw, ",")
+		normalized := make([]string, 0, len(parts))
+		for _, p := range parts {
+			scheme := strings.ToLower(strings.TrimSpace(p))
+			if scheme != "" {
+				normalized = append(normalized, scheme)
+			}
+		}
+		if len(normalized) > 0 {
+			return normalized
+		}
+	}
+
+	switch strings.ToLower(env) {
+	case "local", "dev", "development", "demo", "testing", "test":
+		return []string{"http", "https"}
+	default:
+		return []string{"https"}
+	}
 }

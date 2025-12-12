@@ -48,7 +48,7 @@ func SetupSuite(t *testing.T) (*chi.Mux, *store.InMemoryUserStore, *store.InMemo
 	)
 
 	router := chi.NewRouter()
-	authHandler := auth.New(authService, logger, false)
+	authHandler := auth.New(authService, logger, []string{"http", "https"})
 
 	// Public endpoints (no auth required) - mirrors production setup
 	router.Post("/auth/authorize", authHandler.HandleAuthorize)

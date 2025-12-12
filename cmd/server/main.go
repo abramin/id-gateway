@@ -38,6 +38,7 @@ func main() {
 		"addr", cfg.Addr,
 		"regulated_mode", cfg.RegulatedMode,
 		"env", cfg.Environment,
+		"allowed_redirect_schemes", cfg.AllowedRedirectSchemes,
 	)
 	if cfg.DemoMode {
 		log.Info("CRENE_ENV=demo — starting isolated demo environment",
@@ -116,7 +117,7 @@ func registerRoutes(
 	cfg *config.Server,
 	m *metrics.Metrics,
 ) {
-	authHandler := authHandler.New(authSvc, log, cfg.RegulatedMode)
+	authHandler := authHandler.New(authSvc, log, cfg.AllowedRedirectSchemes)
 	consentSvc := consentService.NewService(
 		consentStore.NewInMemoryStore(),
 		audit.NewPublisher(audit.NewInMemoryStore()),
