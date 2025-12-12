@@ -298,7 +298,8 @@ func (s *ServiceSuite) TestUserInfo() {
 		s.mockSessStore.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(nil, assert.AnError)
 
 		result, err := s.service.UserInfo(context.Background(), uuid.New().String())
-		assert.ErrorIs(s.T(), err, dErrors.New(dErrors.CodeInternal, "failed to find session"))
+		assert.Error(s.T(), err)
+		assert.True(s.T(), dErrors.Is(err, dErrors.CodeInternal))
 		assert.Nil(s.T(), result)
 	})
 
@@ -310,7 +311,8 @@ func (s *ServiceSuite) TestUserInfo() {
 		s.mockUserStore.EXPECT().FindByID(gomock.Any(), existingUser.ID).Return(nil, errors.New("db error"))
 
 		result, err := s.service.UserInfo(context.Background(), uuid.New().String())
-		assert.ErrorIs(s.T(), err, dErrors.New(dErrors.CodeInternal, "failed to find user"))
+		assert.Error(s.T(), err)
+		assert.True(s.T(), dErrors.Is(err, dErrors.CodeInternal))
 		assert.Nil(s.T(), result)
 	})
 

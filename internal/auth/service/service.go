@@ -19,6 +19,8 @@ import (
 	"credo/pkg/email"
 )
 
+// UserStore defines the persistence interface for user data.
+// Error Contract: All Find methods return store.ErrNotFound when the entity doesn't exist.
 type UserStore interface {
 	Save(ctx context.Context, user *models.User) error
 	FindByID(ctx context.Context, id uuid.UUID) (*models.User, error)
@@ -26,6 +28,8 @@ type UserStore interface {
 	FindOrCreateByEmail(ctx context.Context, email string, user *models.User) (*models.User, error)
 }
 
+// SessionStore defines the persistence interface for session data.
+// Error Contract: All Find methods return store.ErrNotFound when the entity doesn't exist.
 type SessionStore interface {
 	Save(ctx context.Context, session *models.Session) error
 	FindByID(ctx context.Context, id uuid.UUID) (*models.Session, error)
@@ -123,7 +127,7 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 	}
 	user, err := s.users.FindOrCreateByEmail(ctx, req.Email, newUser)
 	if err != nil {
-		return nil, dErrors.New(dErrors.CodeInternal, "failed to find or create user")
+		return nil, dErrors.Wrap(dErrors.CodeInternal, "failed to find or create user", err)
 	}
 	if user.ID == newUser.ID {
 		s.logAudit(ctx, string(audit.EventUserCreated),
@@ -158,7 +162,7 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 
 	err = s.sessions.Save(ctx, newSession)
 	if err != nil {
-		return nil, dErrors.New(dErrors.CodeInternal, "failed to save session")
+		return nil, dErrors.Wrap(dErrors.CodeInternal, "failed to save session", err)
 	}
 	s.logAudit(ctx, string(audit.EventSessionCreated),
 		"user_id", user.ID.String(),
@@ -219,7 +223,7 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 			"session_id", parsedSessionID.String(),
 			"error", err,
 		)
-		return nil, dErrors.New(dErrors.CodeInternal, "failed to find session")
+		return nil, dErrors.Wrap(dErrors.CodeInternal, "failed to find session", err)
 	}
 
 	if session.Status != StatusActive {
@@ -246,7 +250,7 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 			"user_id", session.UserID.String(),
 			"error", err,
 		)
-		return nil, dErrors.New(dErrors.CodeInternal, "failed to find user")
+		return nil, dErrors.Wrap(dErrors.CodeInternal, "failed to find user", err)
 	}
 
 	userInfo := &models.UserInfoResult{
@@ -293,7 +297,7 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 			"client_id", req.ClientID,
 			"error", err,
 		)
-		return nil, dErrors.New(dErrors.CodeInternal, "failed to find session")
+		return nil, dErrors.Wrap(dErrors.CodeInternal, "failed to find session", err)
 	}
 
 	// 3. Validate code not expired (OAuth 2.0 spec: codes expire quickly)
@@ -349,18 +353,18 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 			"client_id", session.ClientID,
 			"error", err,
 		)
-		return nil, dErrors.New(dErrors.CodeInternal, "failed to update session")
+		return nil, dErrors.Wrap(dErrors.CodeInternal, "failed to update session", err)
 	}
 
 	// 8. Generate tokens
 	accessToken, err := s.jwt.GenerateAccessToken(session.UserID, session.ID, session.ClientID)
 	if err != nil {
-		return nil, dErrors.New(dErrors.CodeInternal, "failed to generate access token")
+		return nil, dErrors.Wrap(dErrors.CodeInternal, "failed to generate access token", err)
 	}
 
 	idToken, err := s.jwt.GenerateIDToken(session.UserID, session.ID, session.ClientID)
 	if err != nil {
-		return nil, dErrors.New(dErrors.CodeInternal, "failed to generate ID token")
+		return nil, dErrors.Wrap(dErrors.CodeInternal, "failed to generate ID token", err)
 	}
 
 	s.logAudit(ctx, string(audit.EventTokenIssued),

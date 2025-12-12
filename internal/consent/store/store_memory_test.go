@@ -54,6 +54,6 @@ func TestInMemoryStoreOperations(t *testing.T) {
 	// Delete
 	require.NoError(t, store.DeleteByUser(ctx, "user1"))
 	fetched, err = store.FindByUserAndPurpose(ctx, "user1", models.PurposeLogin)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNotFound)
 	assert.Nil(t, fetched)
 }
