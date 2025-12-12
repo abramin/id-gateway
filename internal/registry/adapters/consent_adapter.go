@@ -32,7 +32,7 @@ func (a *ConsentAdapter) HasConsent(ctx context.Context, userID string, purpose 
 	}
 
 	// Find consent for this purpose and check if active
-	for _, c := range consents {
+	for _, c := range consents.Consents {
 		if string(c.Purpose) == purpose && c.Status == models.StatusActive {
 			return true, nil
 		}

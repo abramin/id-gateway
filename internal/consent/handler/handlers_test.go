@@ -47,11 +47,15 @@ func (s *ConsentHandlerSuite) TestHandleGrantConsent() {
 			gomock.Any(),
 			"user123",
 			[]consentModel.Purpose{consentModel.PurposeLogin},
-		).Return([]*consentModel.Record{{
-			Purpose:   consentModel.PurposeLogin,
-			GrantedAt: grantTime,
-			ExpiresAt: &expiry,
-		}}, nil)
+		).Return(&consentModel.GrantResponse{
+			Granted: []*consentModel.Grant{{
+				Purpose:   consentModel.PurposeLogin,
+				GrantedAt: grantTime,
+				ExpiresAt: &expiry,
+				Status:    consentModel.StatusActive,
+			}},
+			Message: "Consent granted for 1 purpose",
+		}, nil)
 
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent",
 			consentModel.GrantRequest{Purposes: []consentModel.Purpose{consentModel.PurposeLogin}},
@@ -137,9 +141,11 @@ func (s *ConsentHandlerSuite) TestHandleGetConsent_WithFilters() {
 			gomock.Any(),
 			"user123",
 			gomock.Any(),
-		).Return([]*consentModel.ConsentWithStatus{
-			newMockRecord(consentModel.PurposeLogin, consentModel.StatusActive, nil),
-			newMockRecord(consentModel.PurposeRegistryCheck, consentModel.StatusRevoked, ptrTime(time.Date(2025, 3, 1, 10, 0, 0, 0, time.UTC))),
+		).Return(&consentModel.ListResponse{
+			Consents: []*consentModel.ConsentWithStatus{
+				newMockRecord(consentModel.PurposeLogin, consentModel.StatusActive, nil),
+				newMockRecord(consentModel.PurposeRegistryCheck, consentModel.StatusRevoked, ptrTime(time.Date(2025, 3, 1, 10, 0, 0, 0, time.UTC))),
+			},
 		}, nil)
 
 		req, err := newRequestWithBody(http.MethodGet, "/auth/consent", nil, "user123")
@@ -169,8 +175,10 @@ func (s *ConsentHandlerSuite) TestHandleGetConsent_WithFilters() {
 				Purpose: string(consentModel.PurposeLogin),
 				Status:  string(consentModel.StatusActive),
 			},
-		).Return([]*consentModel.ConsentWithStatus{
-			newMockRecord(consentModel.PurposeLogin, consentModel.StatusActive, nil),
+		).Return(&consentModel.ListResponse{
+			Consents: []*consentModel.ConsentWithStatus{
+				newMockRecord(consentModel.PurposeLogin, consentModel.StatusActive, nil),
+			},
 		}, nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/auth/consent?purpose=login&status=active", nil)
@@ -232,16 +240,19 @@ func (s *ConsentHandlerSuite) TestHandleGetConsent_WithFilters() {
 func (s *ConsentHandlerSuite) TestHandleRevokeConsent() {
 	s.T().Run("200 - revoke consent", func(t *testing.T) {
 		handler, mockService := newTestHandler(t)
+		revokedAt := time.Now()
 		mockService.EXPECT().Revoke(
 			gomock.Any(),
 			"user123",
 			[]consentModel.Purpose{consentModel.PurposeLogin},
-		).Return([]*consentModel.Record{{
-			ID:        "consent_login",
-			Purpose:   consentModel.PurposeLogin,
-			GrantedAt: time.Now(),
-			RevokedAt: ptrTime(time.Now()),
-		}}, nil)
+		).Return(&consentModel.RevokeResponse{
+			Revoked: []*consentModel.Revoked{{
+				Purpose:   consentModel.PurposeLogin,
+				RevokedAt: revokedAt,
+				Status:    consentModel.StatusRevoked,
+			}},
+			Message: "Consent revoked for 1 purpose",
+		}, nil)
 
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent/revoke",
 			consentModel.RevokeRequest{Purposes: []consentModel.Purpose{consentModel.PurposeLogin}},
@@ -360,4 +371,9 @@ func newMockRecord(purpose consentModel.Purpose, status consentModel.Status, rev
 		},
 		Status: status,
 	}
+}
+
+// ptrTime returns a pointer to the given time value
+func ptrTime(t time.Time) *time.Time {
+	return &t
 }

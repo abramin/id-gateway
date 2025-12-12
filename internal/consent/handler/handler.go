@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -22,9 +21,9 @@ import (
 
 // Service defines the interface for consent operations.
 type Service interface {
-	Grant(ctx context.Context, userID string, purposes []models.Purpose) ([]*models.Record, error)
-	Revoke(ctx context.Context, userID string, purposes []models.Purpose) ([]*models.Record, error)
-	List(ctx context.Context, userID string, filter *models.RecordFilter) ([]*models.ConsentWithStatus, error)
+	Grant(ctx context.Context, userID string, purposes []models.Purpose) (*models.GrantResponse, error)
+	Revoke(ctx context.Context, userID string, purposes []models.Purpose) (*models.RevokeResponse, error)
+	List(ctx context.Context, userID string, filter *models.RecordFilter) (*models.ListResponse, error)
 }
 
 // Handler handles consent-related endpoints.
@@ -95,7 +94,7 @@ func (h *Handler) handleGrantConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	granted, err := h.consent.Grant(ctx, userID, grantReq.Purposes)
+	res, err := h.consent.Grant(ctx, userID, grantReq.Purposes)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to grant consent",
 			"request_id", requestID,
@@ -103,11 +102,6 @@ func (h *Handler) handleGrantConsent(w http.ResponseWriter, r *http.Request) {
 		)
 		shared.WriteError(w, err)
 		return
-	}
-
-	res := &models.GrantResponse{
-		Granted: formatGrantResponses(granted, time.Now()),
-		Message: formatActionMessage("Consent granted for %d purpose", len(granted)),
 	}
 
 	respond.WriteJSON(w, http.StatusOK, res)
@@ -145,7 +139,7 @@ func (h *Handler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	revoked, err := h.consent.Revoke(ctx, userID, revokeReq.Purposes)
+	res, err := h.consent.Revoke(ctx, userID, revokeReq.Purposes)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to revoke consent",
 			"request_id", requestID,
@@ -155,10 +149,7 @@ func (h *Handler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respond.WriteJSON(w, http.StatusOK, models.RevokeResponse{
-		Revoked: formatRevokeResponses(revoked),
-		Message: formatActionMessage("Consent revoked for %d purpose", len(revoked)),
-	})
+	respond.WriteJSON(w, http.StatusOK, res)
 }
 
 func (h *Handler) handleGetConsents(w http.ResponseWriter, r *http.Request) {
@@ -197,45 +188,5 @@ func (h *Handler) handleGetConsents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respond.WriteJSON(w, http.StatusOK, models.ListResponse{Consents: res})
-}
-
-func formatGrantResponses(records []*models.Record, now time.Time) []*models.Grant {
-	var resp []*models.Grant
-	for _, record := range records {
-		resp = append(resp, &models.Grant{
-			Purpose:   record.Purpose,
-			GrantedAt: record.GrantedAt,
-			ExpiresAt: record.ExpiresAt,
-			Status:    record.ComputeStatus(now),
-		})
-	}
-	return resp
-}
-
-func ptrTime(t time.Time) *time.Time {
-	return &t
-}
-
-func formatActionMessage(template string, count int) string {
-	return fmt.Sprintf(template+"%s", count, pluralSuffix(count))
-}
-
-func pluralSuffix(count int) string {
-	if count == 1 {
-		return ""
-	}
-	return "s"
-}
-
-func formatRevokeResponses(revoked []*models.Record) []*models.Revoked {
-	var resp []*models.Revoked
-	for _, record := range revoked {
-		resp = append(resp, &models.Revoked{
-			Purpose:   record.Purpose,
-			RevokedAt: *record.RevokedAt,
-			Status:    record.ComputeStatus(time.Now()),
-		})
-	}
-	return resp
+	respond.WriteJSON(w, http.StatusOK, res)
 }

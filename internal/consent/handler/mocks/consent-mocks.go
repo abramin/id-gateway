@@ -42,10 +42,10 @@ func (m *MockService) EXPECT() *MockServiceMockRecorder {
 }
 
 // Grant mocks base method.
-func (m *MockService) Grant(ctx context.Context, userID string, purposes []models.Purpose) ([]*models.Record, error) {
+func (m *MockService) Grant(ctx context.Context, userID string, purposes []models.Purpose) (*models.GrantResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Grant", ctx, userID, purposes)
-	ret0, _ := ret[0].([]*models.Record)
+	ret0, _ := ret[0].(*models.GrantResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -57,10 +57,10 @@ func (mr *MockServiceMockRecorder) Grant(ctx, userID, purposes any) *gomock.Call
 }
 
 // List mocks base method.
-func (m *MockService) List(ctx context.Context, userID string, filter *models.RecordFilter) ([]*models.ConsentWithStatus, error) {
+func (m *MockService) List(ctx context.Context, userID string, filter *models.RecordFilter) (*models.ListResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "List", ctx, userID, filter)
-	ret0, _ := ret[0].([]*models.ConsentWithStatus)
+	ret0, _ := ret[0].(*models.ListResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -72,10 +72,10 @@ func (mr *MockServiceMockRecorder) List(ctx, userID, filter any) *gomock.Call {
 }
 
 // Revoke mocks base method.
-func (m *MockService) Revoke(ctx context.Context, userID string, purposes []models.Purpose) ([]*models.Record, error) {
+func (m *MockService) Revoke(ctx context.Context, userID string, purposes []models.Purpose) (*models.RevokeResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Revoke", ctx, userID, purposes)
-	ret0, _ := ret[0].([]*models.Record)
+	ret0, _ := ret[0].(*models.RevokeResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

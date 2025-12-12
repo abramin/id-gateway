@@ -95,7 +95,7 @@ func WithGrantWindow(window time.Duration) Option {
 	}
 }
 
-func (s *Service) Grant(ctx context.Context, userID string, purposes []models.Purpose) ([]*models.Record, error) {
+func (s *Service) Grant(ctx context.Context, userID string, purposes []models.Purpose) (*models.GrantResponse, error) {
 	if userID == "" {
 		return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, "missing user context")
 	}
@@ -116,7 +116,12 @@ func (s *Service) Grant(ctx context.Context, userID string, purposes []models.Pu
 		}
 		granted = append(granted, record)
 	}
-	return granted, nil
+
+	now := time.Now()
+	return &models.GrantResponse{
+		Granted: s.formatGrantResponses(granted, now),
+		Message: formatActionMessage("Consent granted for %d purpose", len(granted)),
+	}, nil
 }
 
 func (s *Service) upsertGrant(ctx context.Context, userID string, purpose models.Purpose) (*models.Record, error) {
@@ -183,7 +188,7 @@ func (s *Service) upsertGrant(ctx context.Context, userID string, purpose models
 	return record, nil
 }
 
-func (s *Service) Revoke(ctx context.Context, userID string, purposes []models.Purpose) ([]*models.Record, error) {
+func (s *Service) Revoke(ctx context.Context, userID string, purposes []models.Purpose) (*models.RevokeResponse, error) {
 	if userID == "" {
 		return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, "missing user context")
 	}
@@ -222,10 +227,14 @@ func (s *Service) Revoke(ctx context.Context, userID string, purposes []models.P
 		s.decrementActiveConsents(1)
 		revoked = append(revoked, revokedRecord)
 	}
-	return revoked, nil
+
+	return &models.RevokeResponse{
+		Revoked: s.formatRevokeResponses(revoked),
+		Message: formatActionMessage("Consent revoked for %d purpose", len(revoked)),
+	}, nil
 }
 
-func (s *Service) List(ctx context.Context, userID string, filter *models.RecordFilter) ([]*models.ConsentWithStatus, error) {
+func (s *Service) List(ctx context.Context, userID string, filter *models.RecordFilter) (*models.ListResponse, error) {
 	if userID == "" {
 		return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, "missing user context")
 	}
@@ -251,7 +260,7 @@ func (s *Service) List(ctx context.Context, userID string, filter *models.Record
 		})
 	}
 
-	return result, nil
+	return &models.ListResponse{Consents: result}, nil
 }
 
 func (s *Service) Require(ctx context.Context, userID string, purpose models.Purpose) error {
@@ -377,4 +386,44 @@ func (s *Service) logConsentCheck(ctx context.Context, level slog.Level, msg str
 		"purpose", purpose,
 		"state", state,
 	)
+}
+
+// formatGrantResponses transforms domain records to Grant response DTOs
+func (s *Service) formatGrantResponses(records []*models.Record, now time.Time) []*models.Grant {
+	var resp []*models.Grant
+	for _, record := range records {
+		resp = append(resp, &models.Grant{
+			Purpose:   record.Purpose,
+			GrantedAt: record.GrantedAt,
+			ExpiresAt: record.ExpiresAt,
+			Status:    record.ComputeStatus(now),
+		})
+	}
+	return resp
+}
+
+// formatRevokeResponses transforms domain records to Revoked response DTOs
+func (s *Service) formatRevokeResponses(revoked []*models.Record) []*models.Revoked {
+	var resp []*models.Revoked
+	for _, record := range revoked {
+		resp = append(resp, &models.Revoked{
+			Purpose:   record.Purpose,
+			RevokedAt: *record.RevokedAt,
+			Status:    record.ComputeStatus(time.Now()),
+		})
+	}
+	return resp
+}
+
+// formatActionMessage creates user-facing messages with proper pluralization
+func formatActionMessage(template string, count int) string {
+	return fmt.Sprintf(template+"%s", count, pluralSuffix(count))
+}
+
+// pluralSuffix returns "s" for counts != 1, empty string otherwise
+func pluralSuffix(count int) string {
+	if count == 1 {
+		return ""
+	}
+	return "s"
 }
