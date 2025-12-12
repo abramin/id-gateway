@@ -454,31 +454,292 @@ func (h *Handler) handleConsentList(w http.ResponseWriter, r *http.Request)
 
 ### TR-6: CQRS Read Model & Projection Store
 
-**Objective:** Separate the high-volume "has consent?" reads from write-heavy grant/revoke flows using a dedicated read model ba
-cked by a low-latency NoSQL/TTL store.
+**Status:** Future Enhancement (Post-MVP)
+**Priority:** P2 (Performance Optimization)
+**When to Implement:** When read latency > 100ms p95 or write contention causes throughput issues
 
-**Projection Contents:**
+---
 
-- Key: `user_id:purpose`
-- Value: `{status: active|revoked|expired, expires_at, revoked_at, version}`
+#### Problem & Solution
 
-**Write Path Responsibilities:**
+**Problem:**
 
-- Consent service writes canonical records to `ConsentStore` (SQL/in-memory) and emits change events to the audit/event bus.
-- A projection worker consumes these events and updates the read model idempotently (version checks to avoid stale writes).
+- `Require()` is called on **every** registry lookup, VC issuance, decision evaluation
+- High read-to-write ratio (100:1+ in production)
+- Current implementation reads from same store as writes → contention
 
-**Read Path Responsibilities:**
+**Solution:**
 
-- `Require` calls and other services first read from the projection store (Redis/DynamoDB/Mongo) for sub-5ms lookups; cache
-  misses trigger fallback to `ConsentStore` and projection refresh.
-- Projection lag budget: ≤1s; on stale reads, downstream can re-validate via canonical store.
+- Separate optimized read model for fast `user_id:purpose` lookups
+- Async projection updates don't block write path
+- Sub-5ms read latency
 
-**Resilience & Ops:**
+---
 
-- Provide a replay tool to rebuild the projection from the append-only audit log.
-- Support in-memory projection implementation for local/dev while keeping interfaces identical to production NoSQL/Redis.
-- Prefer Redis Cluster for low-latency projections; document eviction policy (no random evictions) and TTL alignment with consent expiry plus a safety buffer.
-- Publish consent change events to Kafka/NATS topics with an outbox/inbox worker to guarantee delivery to projection consumers and the audit indexer.
+#### Architecture
+
+```
+WRITE PATH (Grant/Revoke):
+  Handler → Service → ConsentStore (primary)
+                   └→ EventBus → ProjectionWorker → ProjectionStore
+
+READ PATH (Require):
+  Service.Require() → ProjectionStore (fast, <5ms)
+                   └→ ConsentStore (fallback if cache miss)
+```
+
+---
+
+#### Components
+
+##### 1. Projection Data Structure
+
+**Location:** `internal/consent/projection/models.go`
+
+- `ConsentProjection` struct with fields:
+  - `UserID`, `Purpose`, `Status` (active/revoked/expired)
+  - `ExpiresAt`, `RevokedAt`, `Version` (for optimistic locking)
+- Key format: `consent:{userID}:{purpose}`
+- Method: `IsActive()` - fast status check
+
+##### 2. Projection Store Interface
+
+**Location:** `internal/consent/projection/store.go`
+
+```
+Interface: projection.Store
+├── Get(ctx, userID, purpose) → Projection | ErrNotFound
+├── Set(ctx, projection) → ErrVersionConflict if stale
+├── Delete(ctx, userID, purpose)
+├── DeleteByUser(ctx, userID) → for GDPR
+└── BatchSet(ctx, []projections) → atomic updates
+```
+
+**Implementations:**
+
+- `store_memory.go` - In-memory map (dev/testing)
+- `store_redis.go` - Redis Cluster (production)
+
+##### 3. Event Infrastructure
+
+**Location:** `internal/consent/events/`
+
+- `ConsentChanged` event:
+  - Fields: `UserID`, `Purpose`, `Action` (granted/revoked), `Status`, `Version`, `Timestamp`
+  - Topic: `"consent.changed"`
+
+**Location:** `internal/platform/eventbus/`
+
+- `EventPublisher` interface:
+  - `Publish(ctx, topic, event)`
+- Implementations:
+  - `memory.go` - In-process channels (MVP)
+  - `nats.go` - NATS/Kafka (production)
+
+##### 4. Projection Worker
+
+**Location:** `internal/consent/projection/worker.go`
+
+- `Worker` struct:
+  - Subscribes to `"consent.changed"` topic
+  - Calls `projectionStore.Set()` with version check
+  - Handles `ErrVersionConflict` gracefully (log, ignore)
+  - Retries on other errors
+
+##### 5. Service Integration
+
+**Changes to:** `internal/consent/service/service.go`
+
+Add to `Service` struct:
+
+- `projectionStore projection.Store` (optional, nil for MVP)
+- `eventPublisher EventPublisher` (optional, nil for MVP)
+
+Update methods:
+
+- `Grant()` / `Revoke()`: Publish `ConsentChanged` event after writing
+- `Require()`: Check `projectionStore` first, fallback to `store`
+
+---
+
+#### Directory Structure
+
+```
+internal/consent/
+├── service/service.go              # Updated with projection hooks
+├── projection/
+│   ├── models.go                   # ConsentProjection struct
+│   ├── store.go                    # Store interface + ErrVersionConflict
+│   ├── store_memory.go             # In-memory implementation
+│   ├── store_redis.go              # Redis implementation (future)
+│   ├── worker.go                   # Event consumer & projection updater
+│   └── *_test.go
+├── events/
+│   ├── events.go                   # ConsentChanged event definition
+│   └── publisher.go                # EventPublisher interface
+
+internal/platform/eventbus/
+├── memory.go                       # In-memory pub/sub
+├── nats.go                         # NATS integration (future)
+└── *_test.go
+
+cmd/server/main.go                  # Wire up worker: go worker.Start(ctx)
+```
+
+---
+
+#### Implementation Phases
+
+**Phase 1: Foundation** (2-3 hours)
+
+- Create `projection/` package with `Store` interface
+- Implement `InMemoryStore` with optimistic locking
+- Add tests for version conflicts
+
+**Phase 2: Events** (3-4 hours)
+
+- Create `events/` package with `ConsentChanged`
+- Implement in-memory `EventPublisher`
+- Update `Service.Grant/Revoke` to publish events
+- Integration tests
+
+**Phase 3: Worker** (2-3 hours)
+
+- Implement `projection.Worker`
+- Wire up in `main.go` as goroutine
+- Add lifecycle tests (start/stop)
+
+**Phase 4: Service Integration** (2 hours)
+
+- Update `Service.Require()` to read from projection first
+- Add fallback logic for projection failures
+- Performance benchmarks
+
+**Phase 5: Redis (Optional)** (4-6 hours)
+
+- Implement `RedisStore` with WATCH for optimistic locking
+- Add configuration for Redis connection
+- Deploy & performance testing
+
+**Total Effort:** 11-16 hours
+
+---
+
+#### Key Design Decisions
+
+##### Optimistic Locking
+
+- Use monotonic version (e.g., Unix timestamp nanos)
+- Projection worker rejects updates with `version <= existing.version`
+- Prevents stale writes when events arrive out-of-order
+
+##### Eventual Consistency
+
+- Projection lag budget: ≤ 1 second
+- On stale read, downstream can re-check canonical store
+- Monitor lag via metrics: `projection_lag_seconds`
+
+##### Fallback Strategy
+
+```
+Require() flow:
+1. Try projectionStore.Get() → fast path (<5ms)
+2. On ErrNotFound → fallback to store.FindByUserAndPurpose()
+3. On other error → log warning, use fallback
+4. Always correct because canonical store is source of truth
+```
+
+##### In-Memory First, Redis Later
+
+- Start with `InMemoryStore` (simple, testable)
+- Same interface as Redis → easy migration
+- Switch to Redis when scale requires it
+
+---
+
+#### Testing Strategy
+
+**Unit Tests:**
+
+- Projection store optimistic locking
+- Event serialization
+- Worker handles version conflicts
+
+**Integration Tests:**
+
+- End-to-end: Grant → Event → Worker → Projection → Require
+- Verify projection lag < 100ms
+- Test fallback when projection missing
+
+**Load Tests:**
+
+- Measure read latency improvement (projection vs canonical)
+- Verify projection handles 1000+ writes/sec
+
+---
+
+#### Operational Considerations
+
+**Metrics:**
+
+```
+projection_updates_total{purpose}
+projection_read_hits_total
+projection_read_misses_total
+projection_version_conflicts_total
+projection_lag_seconds
+```
+
+**Alerts:**
+
+- Projection lag > 5 seconds → P2
+- Projection read errors > 1% → P1
+
+**Tools:**
+
+- Replay command: Rebuild projections from audit log
+- Verify command: Check consistency between projection and canonical store
+
+---
+
+#### Configuration Example
+
+```yaml
+consent:
+  projection:
+    enabled: false # Enable projections
+    type: "memory" # "memory" | "redis"
+    ttl: "366h" # Projection expiry
+    fallback: true # Fall back to canonical on error
+
+  redis: # Only if type=redis
+    addr: "localhost:6379"
+    password: ""
+    db: 0
+```
+
+---
+
+#### When NOT to Implement
+
+- MVP/early stage: Current implementation is sufficient
+- Low traffic: < 100 req/sec for `Require()`
+- Simple architecture preferred over performance optimization
+
+**Trigger for Implementation:**
+
+- Read latency p95 > 100ms
+- Write contention causing throughput bottlenecks
+- Need to scale reads independently from writes
+
+#### Acceptance & Testing Expectations for TR-6
+
+- **Acceptance:** When projections are enabled, `Require()` performs primary lookups against the projection store and only falls back to the canonical store on cache miss/error, while preserving the same error codes and audit behavior as the canonical-only path.
+- **Integration Tests:**
+  - Enable projection store (memory/redis) and assert `Require()` reads from projection path and tolerates projection cache misses by falling back to the canonical store.
+  - Grant/Revoke flows publish projection updates and reflect in subsequent `Require()` calls without additional writes to the canonical store.
+  - Projection version conflicts are handled (retry or surfaced) without breaking the write path.
+- **Load Tests (non-blocking for MVP):** Demonstrate sub-5ms `Require()` latency for projection hits under 100:1 read/write ratios.
 
 ---
 
@@ -655,6 +916,13 @@ if err != nil {
 - [x] Test require consent before registry lookup
 - [x] Test handler fails with 403 when consent missing
 
+### Projection/Read Model (TR-6) Tests
+
+- [ ] With projection store enabled (memory/redis), `Require()` serves reads from projection path and falls back gracefully on cache miss.
+- [ ] Grant/Revoke emits projection updates and subsequent `Require()` reflects the change without extra canonical writes.
+- [ ] Projection version conflicts are detected and resolved (retry or surfaced) without corrupting projection state.
+- [ ] Metrics for projection hits/misses/lag are emitted.
+
 ### Manual Testing
 
 ```bash
@@ -768,6 +1036,7 @@ curl -X POST http://localhost:8080/registry/citizen \
 - [x] **NEW**: Rapid repeated grants (< 5 min) are idempotent (no audit noise)
 - [x] **NEW**: Session extension grants (≥ 5 min) update TTL and emit audit
 - [x] **NEW**: Consent IDs are always reused (no duplicate records per user+purpose)
+- [ ] **TR-6 (projection path):** When projections are enabled, `Require()` serves reads from the projection store with canonical fallback, maintains identical audit/error semantics, and exposes projection hit/miss/lag metrics.
 - [x] Code passes `make test` and `make lint`
 
 ---
@@ -840,3 +1109,4 @@ curl -X POST http://localhost:8080/registry/citizen \
 | 1.0     | 2025-12-03 | Product Team | Initial PRD                                      |
 | 1.1     | 2025-12-10 | Engineering  | Added 5-min idempotency window, ID reuse details |
 | 1.2     | 2025-12-10 | Engineering  | Add TR-6 CQRS Read Model & Projection Store      |
+| 1.23    | 2025-12-12 | Engineering  | Expand TR-6 with detail                          |
