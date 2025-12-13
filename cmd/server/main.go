@@ -59,18 +59,20 @@ func main() {
 	// Create stores
 	users := userStore.NewInMemoryUserStore()
 	sessions := sessionStore.NewInMemorySessionStore()
+	codes := authCodeStore.NewInMemoryAuthorizationCodeStore()
+	refreshTokens := refreshTokenStore.NewInMemoryRefreshTokenStore()
 	auditStore := audit.NewInMemoryStore()
 
 	// Seed demo data if in demo mode
 	if cfg.DemoMode {
-		seederSvc := seeder.New(users, sessions, auditStore, log)
+		seederSvc := seeder.New(users, sessions, codes, refreshTokens, auditStore, log)
 		if err := seederSvc.SeedAll(context.Background()); err != nil {
 			log.Warn("failed to seed demo data", "error", err)
 		}
 	}
 
 	// Initialize services
-	authSvc := initializeAuthServiceWithStores(m, log, jwtService, &cfg, users, sessions)
+	authSvc := initializeAuthService(m, log, jwtService, &cfg)
 	adminSvc := admin.NewService(users, sessions, auditStore)
 
 	// Setup main API router
@@ -83,7 +85,7 @@ func main() {
 
 	// Start admin server on separate port if admin token is configured
 	var adminSrv *http.Server
-	if cfg.AdminAPIToken != "" {
+	if cfg.Security.AdminAPIToken != "" {
 		adminRouter := setupAdminRouter(log, adminSvc, &cfg)
 		adminSrv = httpserver.New(":8081", adminRouter)
 		startServer(adminSrv, log, "admin")
@@ -204,7 +206,7 @@ func registerRoutes(
 	})
 
 	// Admin routes on main server (user deletion only)
-	if cfg.AdminAPIToken != "" {
+	if cfg.Security.AdminAPIToken != "" {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAdminToken(cfg.Security.AdminAPIToken, log))
 			authHandler.RegisterAdmin(r)
@@ -243,7 +245,7 @@ func setupAdminRouter(log *slog.Logger, adminSvc *admin.Service, cfg *config.Ser
 	// All admin routes require authentication
 	adminHandler := admin.New(adminSvc, log)
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.RequireAdminToken(cfg.AdminAPIToken, log))
+		r.Use(middleware.RequireAdminToken(cfg.Security.AdminAPIToken, log))
 		adminHandler.Register(r)
 	})
 

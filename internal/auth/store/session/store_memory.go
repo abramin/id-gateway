@@ -198,18 +198,3 @@ func (s *InMemorySessionStore) ListAll(_ context.Context) (map[string]*models.Se
 	}
 	return copy, nil
 }
-
-// ListByUser returns all sessions for a specific user
-func (s *InMemorySessionStore) ListByUser(_ context.Context, userID uuid.UUID) ([]*models.Session, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	var sessions []*models.Session
-	for _, session := range s.sessions {
-		if session.UserID == userID {
-			sessions = append(sessions, session)
-		}
-	}
-
-	return sessions, nil
-}
