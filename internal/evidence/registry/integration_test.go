@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/suite"
@@ -40,7 +41,7 @@ func (s *RegistryIntegrationSuite) SetupTest() {
 	s.auditStore = audit.NewInMemoryStore()
 
 	// Setup cache store
-	s.cacheStore = store.NewInMemoryCache()
+	s.cacheStore = store.NewInMemoryCache(5 * time.Minute)
 
 	// TODO: Initialize service when complete
 	// s.service = registry.NewService(

@@ -3,129 +3,175 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
 
-// Server captures HTTP server level configuration.
+// Server holds core HTTP server configuration (shared across all modules)
 type Server struct {
-	Addr                   string
-	RegulatedMode          bool
-	DemoMode               bool
-	Environment            string
-	AllowedRedirectSchemes []string
-	JWTSigningKey          string
-	JWTIssuer              string
-	TokenTTL               time.Duration
-	ConsentTTL             time.Duration
-	ConsentGrantWindow     time.Duration
-	SessionTTL             time.Duration
-	AdminAPIToken          string
+	Addr        string
+	Environment string
+	DemoMode    bool
+
+	// Module configs
+	Auth     AuthConfig
+	Consent  ConsentConfig
+	Registry RegistryConfig
+
+	// Security
+	Security SecurityConfig
 }
 
-// RegistryCacheTTL enforces retention for sensitive registry data.
-var RegistryCacheTTL = 5 * time.Minute
-var TokenTTL = 15 * time.Minute
-var ConsentTTL = 365 * 24 * time.Hour // 1 year
-var ConsentGrantWindow = 5 * time.Minute
-var SessionTTL = 24 * time.Hour
-var JWTIssuer = "credo"
+// AuthConfig holds authentication and session configuration
+type AuthConfig struct {
+	JWTSigningKey                  string
+	JWTIssuer                      string
+	TokenTTL                       time.Duration
+	SessionTTL                     time.Duration
+	TokenRevocationCleanupInterval time.Duration
+	AllowedRedirectSchemes         []string
+	DeviceBindingEnabled           bool
+	DeviceCookieName               string
+	DeviceCookieMaxAge             int
+}
 
-// FromEnv builds a Server config from environment variables so main stays lean.
+// ConsentConfig holds consent management configuration
+type ConsentConfig struct {
+	ConsentTTL         time.Duration
+	ConsentGrantWindow time.Duration
+}
+
+// RegistryConfig holds registry integration configuration
+type RegistryConfig struct {
+	CacheTTL time.Duration
+}
+
+// SecurityConfig holds security and compliance settings
+type SecurityConfig struct {
+	RegulatedMode bool
+	AdminAPIToken string
+}
+
+// Defaults
+var (
+	DefaultTokenTTL                       = 15 * time.Minute
+	DefaultSessionTTL                     = 24 * time.Hour
+	DefaultTokenRevocationCleanupInterval = 5 * time.Minute
+	DefaultConsentTTL                     = 365 * 24 * time.Hour
+	DefaultConsentGrantWindow             = 5 * time.Minute
+	DefaultRegistryCacheTTL               = 5 * time.Minute
+	DefaultJWTIssuer                      = "credo"
+	DefaultDeviceCookieName               = "__Secure-Device-ID"
+	DefaultDeviceCookieMaxAge             = 31536000 // 1 year
+)
+
+// FromEnv builds config from environment variables
 func FromEnv() (Server, error) {
-	addr := os.Getenv("ID_GATEWAY_ADDR")
-	if addr == "" {
-		addr = ":8080"
-	}
-	env := os.Getenv("CRENE_ENV")
+	env := getEnv("CRENE_ENV", "local")
 	demoMode := env == "demo"
-	if env == "" {
-		env = "local"
+
+	cfg := Server{
+		Addr:        getEnv("ID_GATEWAY_ADDR", ":8080"),
+		Environment: env,
+		DemoMode:    demoMode,
+		Auth:        loadAuthConfig(env, demoMode),
+		Consent:     loadConsentConfig(),
+		Registry:    loadRegistryConfig(),
+		Security:    loadSecurityConfig(env, demoMode),
 	}
-	regulated := os.Getenv("REGULATED_MODE") == "true"
-	allowedRedirectSchemes := parseAllowedRedirectSchemes(os.Getenv("ALLOWED_REDIRECT_SCHEMES"), env)
-	tokenTTLStr := os.Getenv("TOKEN_TTL")
-	if tokenTTLStr != "" {
-		if duration, err := time.ParseDuration(tokenTTLStr); err == nil {
-			TokenTTL = duration
+
+	if demoMode {
+		if err := validateDemoMode(); err != nil {
+			return Server{}, err
 		}
 	}
 
-	consentTTLStr := os.Getenv("CONSENT_TTL")
-	if consentTTLStr != "" {
-		if duration, err := time.ParseDuration(consentTTLStr); err == nil {
-			ConsentTTL = duration
-		}
-	}
+	return cfg, nil
+}
 
-	consentGrantWindowStr := os.Getenv("CONSENT_GRANT_WINDOW")
-	if consentGrantWindowStr != "" {
-		if duration, err := time.ParseDuration(consentGrantWindowStr); err == nil {
-			ConsentGrantWindow = duration
-		}
-	}
-
-	SessionTTLStr := os.Getenv("SESSION_TTL")
-	if SessionTTLStr != "" {
-		if duration, err := time.ParseDuration(SessionTTLStr); err == nil {
-			SessionTTL = duration
-		}
-	}
-
-	// TODO: revisit this as possible security issue
-	adminAPIToken := os.Getenv("ADMIN_API_TOKEN")
-	if adminAPIToken == "" {
-		switch strings.ToLower(env) {
-		case "local", "dev", "development", "testing", "test":
-			adminAPIToken = "demo-admin-token"
-		}
-	}
-
+func loadAuthConfig(env string, demoMode bool) AuthConfig {
 	jwtSigningKey := os.Getenv("JWT_SIGNING_KEY")
-	if jwtSigningKey == "" {
-		// Use a default for development - should be overridden in production
+	jwtIssuer := getEnv("JWT_ISSUER", DefaultJWTIssuer)
+
+	if demoMode {
+		jwtSigningKey = "demo-signing-key-change-me-locally"
+		jwtIssuer = "credo-demo"
+	} else if jwtSigningKey == "" {
 		jwtSigningKey = "dev-secret-key-change-in-production"
 	}
-	JWTIssuer = os.Getenv("JWT_ISSUER")
-	if JWTIssuer == "" {
-		JWTIssuer = "credo"
+
+	return AuthConfig{
+		JWTSigningKey:                  jwtSigningKey,
+		JWTIssuer:                      jwtIssuer,
+		TokenTTL:                       parseDuration("TOKEN_TTL", DefaultTokenTTL),
+		SessionTTL:                     parseDuration("SESSION_TTL", DefaultSessionTTL),
+		TokenRevocationCleanupInterval: parseDuration("TOKEN_REVOCATION_CLEANUP_INTERVAL", DefaultTokenRevocationCleanupInterval),
+		AllowedRedirectSchemes:         parseAllowedRedirectSchemes(os.Getenv("ALLOWED_REDIRECT_SCHEMES"), env),
+		DeviceBindingEnabled:           os.Getenv("DEVICE_BINDING_ENABLED") == "true",
+		DeviceCookieName:               getEnv("DEVICE_COOKIE_NAME", DefaultDeviceCookieName),
+		DeviceCookieMaxAge:             parseInt("DEVICE_COOKIE_MAX_AGE", DefaultDeviceCookieMaxAge),
 	}
+}
+
+func loadConsentConfig() ConsentConfig {
+	return ConsentConfig{
+		ConsentTTL:         parseDuration("CONSENT_TTL", DefaultConsentTTL),
+		ConsentGrantWindow: parseDuration("CONSENT_GRANT_WINDOW", DefaultConsentGrantWindow),
+	}
+}
+
+func loadRegistryConfig() RegistryConfig {
+	return RegistryConfig{
+		CacheTTL: parseDuration("REGISTRY_CACHE_TTL", DefaultRegistryCacheTTL),
+	}
+}
+
+func loadSecurityConfig(env string, demoMode bool) SecurityConfig {
+	regulated := os.Getenv("REGULATED_MODE") == "true"
 	if demoMode {
-		// Fail fast if any production-looking variables are present
-		prodVars := []string{"DB_URL", "JWT_SIGNING_KEY", "REDIS_URL"}
-		for _, key := range prodVars {
-			if val := os.Getenv(key); val != "" {
-				return Server{}, fmt.Errorf("refusing to start demo env with production variables: %s", key)
-			}
-		}
-		for _, kv := range os.Environ() {
-			parts := strings.SplitN(kv, "=", 2)
-			if len(parts) == 2 && strings.Contains(strings.ToLower(parts[0]), "prod") {
-				return Server{}, fmt.Errorf("refusing to start demo env with production variables: %s", parts[0])
-			}
-		}
-		jwtSigningKey = "demo-signing-key-change-me-locally"
-		JWTIssuer = "credo-demo"
 		regulated = false
-		if adminAPIToken == "" {
-			adminAPIToken = "demo-admin-token"
+	}
+
+	adminToken := os.Getenv("ADMIN_API_TOKEN")
+	if adminToken == "" {
+		switch strings.ToLower(env) {
+		case "local", "dev", "development", "testing", "test":
+			adminToken = "demo-admin-token"
 		}
 	}
 
-	return Server{
-		Addr:                   addr,
-		RegulatedMode:          regulated,
-		DemoMode:               demoMode,
-		Environment:            env,
-		JWTSigningKey:          jwtSigningKey,
-		JWTIssuer:              JWTIssuer,
-		AllowedRedirectSchemes: allowedRedirectSchemes,
-		TokenTTL:               TokenTTL,
-		ConsentTTL:             ConsentTTL,
-		ConsentGrantWindow:     ConsentGrantWindow,
-		SessionTTL:             SessionTTL,
-		AdminAPIToken:          adminAPIToken,
-	}, nil
+	return SecurityConfig{
+		RegulatedMode: regulated,
+		AdminAPIToken: adminToken,
+	}
+}
+
+// Helper functions
+
+func getEnv(key, defaultValue string) string {
+	if val := os.Getenv(key); val != "" {
+		return val
+	}
+	return defaultValue
+}
+
+func parseDuration(key string, defaultValue time.Duration) time.Duration {
+	if val := os.Getenv(key); val != "" {
+		if duration, err := time.ParseDuration(val); err == nil {
+			return duration
+		}
+	}
+	return defaultValue
+}
+
+func parseInt(key string, defaultValue int) int {
+	if val := os.Getenv(key); val != "" {
+		if parsed, err := strconv.Atoi(val); err == nil && parsed > 0 {
+			return parsed
+		}
+	}
+	return defaultValue
 }
 
 func parseAllowedRedirectSchemes(raw, env string) []string {
@@ -143,10 +189,29 @@ func parseAllowedRedirectSchemes(raw, env string) []string {
 		}
 	}
 
+	// Environment-based defaults
 	switch strings.ToLower(env) {
 	case "local", "dev", "development", "demo", "testing", "test":
 		return []string{"http", "https"}
 	default:
 		return []string{"https"}
 	}
+}
+
+func validateDemoMode() error {
+	prodVars := []string{"DB_URL", "JWT_SIGNING_KEY", "REDIS_URL"}
+	for _, key := range prodVars {
+		if val := os.Getenv(key); val != "" {
+			return fmt.Errorf("refusing to start demo env with production variables: %s", key)
+		}
+	}
+
+	for _, kv := range os.Environ() {
+		parts := strings.SplitN(kv, "=", 2)
+		if len(parts) == 2 && strings.Contains(strings.ToLower(parts[0]), "prod") {
+			return fmt.Errorf("refusing to start demo env with production variables: %s", parts[0])
+		}
+	}
+
+	return nil
 }

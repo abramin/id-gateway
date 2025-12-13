@@ -53,7 +53,10 @@ func (s *AuthHandlerSuite) TestHandler_Authorize() {
 			RedirectURI: "https://example.com/redirect",
 			State:       "",
 		}
-		expectedResp := &authModel.AuthorizationResult{Code: "authz_default_scope", RedirectURI: expectedReq.RedirectURI}
+		expectedResp := &authModel.AuthorizationResult{
+			Code:        "authz_code_123",
+			RedirectURI: expectedReq.RedirectURI,
+		}
 		mockService.EXPECT().Authorize(gomock.Any(), expectedReq).Return(expectedResp, nil)
 
 		status, got, errBody := s.doAuthRequest(t, router, requestBody)
@@ -63,23 +66,10 @@ func (s *AuthHandlerSuite) TestHandler_Authorize() {
 		assert.Equal(t, expectedResp.RedirectURI, got.RedirectURI)
 	})
 
-	s.T().Run("rejects insecure redirect URIs if http not allowed", func(t *testing.T) {
-		mockService, router := s.newHandler(t, &[]string{"https"})
-		insecure := &authModel.AuthorizationRequest{
-			Email:       "user@example.com",
-			ClientID:    "test-client-id",
-			RedirectURI: "http://example.com/redirect",
-		}
-		mockService.EXPECT().Authorize(gomock.Any(), gomock.Any()).Times(0)
-
-		status, got, errBody := s.doAuthRequest(t, router, s.mustMarshal(insecure, t))
-
-		s.assertErrorResponse(t, status, got, errBody, http.StatusBadRequest, string(dErrors.CodeBadRequest))
-	})
 	s.T().Run("user is found and authorized - 200", func(t *testing.T) {
 		mockService, router := s.newHandler(t, nil)
 		expectedResp := &authModel.AuthorizationResult{
-			Code:        "authz_" + uuid.New().String(),
+			Code:        "authz_code_123",
 			RedirectURI: validRequest.RedirectURI,
 		}
 		mockService.EXPECT().Authorize(gomock.Any(), validRequest).Return(expectedResp, nil)
@@ -133,16 +123,6 @@ func (s *AuthHandlerSuite) TestHandler_Authorize() {
 					Email:       "user@example.com",
 					ClientID:    "",
 					Scopes:      []string{"scope1", "scope2"},
-					RedirectURI: "https://example.com/redirect",
-					State:       "test-state",
-				},
-			},
-			{
-				name: "scopes contain empty value",
-				request: &authModel.AuthorizationRequest{
-					Email:       "user@example.com",
-					ClientID:    "test-client-id",
-					Scopes:      []string{"scope1", " "},
 					RedirectURI: "https://example.com/redirect",
 					State:       "test-state",
 				},
@@ -391,15 +371,70 @@ func (s *AuthHandlerSuite) TestHandler_UserInfo() {
 	})
 }
 
+func (s *AuthHandlerSuite) TestHandler_ListSessions() {
+	userID := uuid.New()
+	currentSessionID := uuid.New()
+
+	s.T().Run("happy path - lists sessions", func(t *testing.T) {
+		mockService, router := s.newHandler(t, nil)
+		expected := &authModel.SessionsResult{
+			Sessions: []authModel.SessionSummary{
+				{
+					SessionID: currentSessionID.String(),
+					Device:    "Chrome on macOS",
+					IsCurrent: true,
+				},
+			},
+		}
+
+		mockService.EXPECT().
+			ListSessions(gomock.Any(), userID, currentSessionID).
+			Return(expected, nil)
+
+		status, got, errBody := s.doListSessionsRequest(t, router, userID.String(), currentSessionID.String())
+		s.assertSuccessResponse(t, status, got, errBody)
+		require.NotNil(t, got)
+		require.Len(t, got.Sessions, 1)
+		assert.Equal(t, currentSessionID.String(), got.Sessions[0].SessionID)
+		assert.True(t, got.Sessions[0].IsCurrent)
+	})
+
+	s.T().Run("invalid user id in context - 401", func(t *testing.T) {
+		mockService, router := s.newHandler(t, nil)
+		mockService.EXPECT().ListSessions(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+		status, got, errBody := s.doListSessionsRequest(t, router, "not-a-uuid", currentSessionID.String())
+		s.assertErrorResponse(t, status, got, errBody, http.StatusUnauthorized, string(dErrors.CodeUnauthorized))
+	})
+
+	s.T().Run("invalid session id in context - 401", func(t *testing.T) {
+		mockService, router := s.newHandler(t, nil)
+		mockService.EXPECT().ListSessions(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+		status, got, errBody := s.doListSessionsRequest(t, router, userID.String(), "not-a-uuid")
+		s.assertErrorResponse(t, status, got, errBody, http.StatusUnauthorized, string(dErrors.CodeUnauthorized))
+	})
+
+	s.T().Run("service error - 500", func(t *testing.T) {
+		mockService, router := s.newHandler(t, nil)
+		mockService.EXPECT().
+			ListSessions(gomock.Any(), userID, currentSessionID).
+			Return(nil, errors.New("boom"))
+
+		status, got, errBody := s.doListSessionsRequest(t, router, userID.String(), currentSessionID.String())
+		s.assertErrorResponse(t, status, got, errBody, http.StatusInternalServerError, string(dErrors.CodeInternal))
+	})
+}
+
 func (s *AuthHandlerSuite) TestHandler_AdminDeleteUser() {
 	userID := uuid.New()
 	validPath := "/admin/auth/users/" + userID.String()
 
 	s.T().Run("deletes user", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockService := mocks.NewMockAuthService(ctrl)
+		mockService := mocks.NewMockService(ctrl)
 		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-		handler := New(mockService, logger, []string{"http", "https"})
+		handler := New(mockService, logger, "__Secure-Device-ID", 31536000)
 
 		r := chi.NewRouter()
 		handler.RegisterAdmin(r)
@@ -417,9 +452,9 @@ func (s *AuthHandlerSuite) TestHandler_AdminDeleteUser() {
 
 	s.T().Run("invalid user id", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockService := mocks.NewMockAuthService(ctrl)
+		mockService := mocks.NewMockService(ctrl)
 		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-		handler := New(mockService, logger, []string{"http", "https"})
+		handler := New(mockService, logger, "__Secure-Device-ID", 31536000)
 
 		r := chi.NewRouter()
 		handler.RegisterAdmin(r)
@@ -434,9 +469,9 @@ func (s *AuthHandlerSuite) TestHandler_AdminDeleteUser() {
 
 	s.T().Run("service error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockService := mocks.NewMockAuthService(ctrl)
+		mockService := mocks.NewMockService(ctrl)
 		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-		handler := New(mockService, logger, []string{"http", "https"})
+		handler := New(mockService, logger, "__Secure-Device-ID", 31536000)
 
 		r := chi.NewRouter()
 		handler.RegisterAdmin(r)
@@ -456,7 +491,7 @@ func TestAuthHandlerSuite(t *testing.T) {
 	suite.Run(t, new(AuthHandlerSuite))
 }
 
-func (s *AuthHandlerSuite) newHandler(t *testing.T, allowedSchemes *[]string) (*mocks.MockAuthService, *chi.Mux) {
+func (s *AuthHandlerSuite) newHandler(t *testing.T, allowedSchemes *[]string) (*mocks.MockService, *chi.Mux) {
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
@@ -466,8 +501,8 @@ func (s *AuthHandlerSuite) newHandler(t *testing.T, allowedSchemes *[]string) (*
 		allowedSchemes = &defaultSchemes
 	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	mockService := mocks.NewMockAuthService(ctrl)
-	handler := New(mockService, logger, *allowedSchemes)
+	mockService := mocks.NewMockService(ctrl)
+	handler := New(mockService, logger, "__Secure-Device-ID", 31536000)
 	r := chi.NewRouter()
 	handler.Register(r)
 	return mockService, r
@@ -499,6 +534,36 @@ func (s *AuthHandlerSuite) doUserInfoRequest(t *testing.T, router *chi.Mux, sess
 		require.NoError(t, json.Unmarshal(raw, &errBody))
 		return rr.Code, nil, errBody
 	}
+}
+
+func (s *AuthHandlerSuite) doListSessionsRequest(t *testing.T, router *chi.Mux, userID string, sessionID string) (int, *authModel.SessionsResult, map[string]string) {
+	t.Helper()
+	httpReq := httptest.NewRequest(http.MethodGet, "/auth/sessions", nil)
+
+	ctx := httpReq.Context()
+	if userID != "" {
+		ctx = context.WithValue(ctx, middleware.ContextKeyUserID, userID)
+	}
+	if sessionID != "" {
+		ctx = context.WithValue(ctx, middleware.ContextKeySessionID, sessionID)
+	}
+	httpReq = httpReq.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, httpReq)
+
+	raw, err := io.ReadAll(rr.Body)
+	require.NoError(t, err)
+
+	if rr.Code == http.StatusOK {
+		var res authModel.SessionsResult
+		require.NoError(t, json.Unmarshal(raw, &res))
+		return rr.Code, &res, nil
+	}
+
+	var errBody map[string]string
+	require.NoError(t, json.Unmarshal(raw, &errBody))
+	return rr.Code, nil, errBody
 }
 
 func (s *AuthHandlerSuite) doAuthRequest(t *testing.T, router *chi.Mux, body string) (int, *authModel.AuthorizationResult, map[string]string) {

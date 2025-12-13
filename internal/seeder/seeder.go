@@ -19,7 +19,17 @@ type UserStore interface {
 
 // SessionStore defines methods for seeding sessions
 type SessionStore interface {
-	Save(ctx context.Context, session *models.Session) error
+	Create(ctx context.Context, session *models.Session) error
+}
+
+// AuthorizationCodeStore defines methods for seeding auth codes
+type AuthorizationCodeStore interface {
+	Create(ctx context.Context, authCode *models.AuthorizationCodeRecord) error
+}
+
+// RefreshTokenStore defines methods for seeding refresh tokens
+type RefreshTokenStore interface {
+	Create(ctx context.Context, token *models.RefreshTokenRecord) error
 }
 
 // AuditStore defines methods for seeding audit events
@@ -29,19 +39,23 @@ type AuditStore interface {
 
 // Seeder populates in-memory stores with demo data
 type Seeder struct {
-	users    UserStore
-	sessions SessionStore
-	audit    AuditStore
-	logger   *slog.Logger
+	users         UserStore
+	sessions      SessionStore
+	authCodes     AuthorizationCodeStore
+	refreshTokens RefreshTokenStore
+	audit         AuditStore
+	logger        *slog.Logger
 }
 
 // New creates a new seeder
-func New(users UserStore, sessions SessionStore, auditStore AuditStore, logger *slog.Logger) *Seeder {
+func New(users UserStore, sessions SessionStore, authCodes AuthorizationCodeStore, refreshTokens RefreshTokenStore, auditStore AuditStore, logger *slog.Logger) *Seeder {
 	return &Seeder{
-		users:    users,
-		sessions: sessions,
-		audit:    auditStore,
-		logger:   logger,
+		users:         users,
+		sessions:      sessions,
+		authCodes:     authCodes,
+		refreshTokens: refreshTokens,
+		audit:         auditStore,
+		logger:        logger,
 	}
 }
 
@@ -119,13 +133,14 @@ func (s *Seeder) seedSessions(ctx context.Context, users []*models.User) error {
 		createdOffset time.Duration
 		expiryOffset  time.Duration
 		codeUsed      bool
+		tokenUsed     bool
 	}{
-		{0, "active", -10 * time.Minute, 50 * time.Minute, false},
-		{0, "active", -2 * time.Hour, -1 * time.Hour, true},
-		{1, "active", -30 * time.Minute, 30 * time.Minute, false},
-		{2, "active", -1 * time.Hour, 23 * time.Hour, false},
-		{3, "active", -5 * time.Hour, -4 * time.Hour, true},
-		{4, "active", -15 * time.Minute, 45 * time.Minute, false},
+		{0, "active", -10 * time.Minute, 50 * time.Minute, true, false},
+		{0, "revoked", -2 * time.Hour, -1 * time.Hour, true, true},
+		{1, "active", -30 * time.Minute, 30 * time.Minute, true, false},
+		{2, "active", -1 * time.Hour, 23 * time.Hour, true, false},
+		{3, "revoked", -5 * time.Hour, -4 * time.Hour, true, true},
+		{4, "pending_consent", -15 * time.Minute, 45 * time.Minute, false, false},
 	}
 
 	for _, sess := range sessions {
@@ -133,21 +148,63 @@ func (s *Seeder) seedSessions(ctx context.Context, users []*models.User) error {
 			continue
 		}
 
-		session := &models.Session{
-			ID:             uuid.New(),
-			UserID:         users[sess.userIdx].ID,
-			Code:           fmt.Sprintf("authz_%s", uuid.New().String()[:12]),
-			CodeExpiresAt:  now.Add(10 * time.Minute),
-			CodeUsed:       sess.codeUsed,
-			ClientID:       "demo-client",
-			RedirectURI:    "http://localhost:3000/demo/callback.html",
-			RequestedScope: []string{"openid", "profile"},
-			Status:         sess.status,
-			CreatedAt:      now.Add(sess.createdOffset),
-			ExpiresAt:      now.Add(sess.expiryOffset),
+		createdAt := now.Add(sess.createdOffset)
+		expiresAt := now.Add(sess.expiryOffset)
+		lastSeenAt := createdAt.Add(2 * time.Minute)
+		var revokedAt *time.Time
+		if sess.status == "revoked" {
+			revoked := lastSeenAt
+			revokedAt = &revoked
 		}
 
-		if err := s.sessions.Save(ctx, session); err != nil {
+		session := &models.Session{
+			ID:                  uuid.New(),
+			UserID:              users[sess.userIdx].ID,
+			ClientID:            "demo-client",
+			RequestedScope:      []string{"openid", "profile"},
+			Status:              sess.status,
+			DeviceID:            fmt.Sprintf("device_%s", uuid.New().String()),
+			DeviceDisplayName:   "Chrome on macOS",
+			ApproximateLocation: "San Francisco, US",
+			CreatedAt:           createdAt,
+			ExpiresAt:           expiresAt,
+			LastSeenAt:          lastSeenAt,
+			RevokedAt:           revokedAt,
+		}
+
+		if err := s.sessions.Create(ctx, session); err != nil {
+			return err
+		}
+
+		authCode := &models.AuthorizationCodeRecord{
+			ID:          uuid.New(),
+			Code:        fmt.Sprintf("authz_%s", uuid.New().String()[:12]),
+			SessionID:   session.ID,
+			RedirectURI: "http://localhost:3000/demo/callback.html",
+			ExpiresAt:   createdAt.Add(10 * time.Minute),
+			Used:        sess.codeUsed,
+			CreatedAt:   createdAt,
+		}
+		if err := s.authCodes.Create(ctx, authCode); err != nil {
+			return err
+		}
+
+		if sess.status == "pending_consent" {
+			continue
+		}
+
+		lastRefreshedAt := lastSeenAt.Add(1 * time.Minute)
+		session.LastRefreshedAt = &lastRefreshedAt
+		refreshToken := &models.RefreshTokenRecord{
+			ID:              uuid.New(),
+			Token:           fmt.Sprintf("ref_%s", uuid.New().String()),
+			SessionID:       session.ID,
+			ExpiresAt:       createdAt.Add(30 * 24 * time.Hour),
+			Used:            sess.tokenUsed,
+			LastRefreshedAt: &lastRefreshedAt,
+			CreatedAt:       createdAt,
+		}
+		if err := s.refreshTokens.Create(ctx, refreshToken); err != nil {
 			return err
 		}
 	}

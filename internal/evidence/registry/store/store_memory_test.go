@@ -2,6 +2,7 @@ package store
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 )
@@ -12,7 +13,7 @@ type InMemoryCacheSuite struct {
 }
 
 func (s *InMemoryCacheSuite) SetupTest() {
-	s.cache = NewInMemoryCache()
+	s.cache = NewInMemoryCache(5 * time.Minute)
 }
 
 func TestInMemoryCacheSuite(t *testing.T) {

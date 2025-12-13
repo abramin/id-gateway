@@ -13,6 +13,9 @@ import (
 	"credo/internal/audit"
 	authHandler "credo/internal/auth/handler"
 	authService "credo/internal/auth/service"
+	authCodeStore "credo/internal/auth/store/authorization-code"
+	refreshTokenStore "credo/internal/auth/store/refresh-token"
+	revocationStore "credo/internal/auth/store/revocation"
 	sessionStore "credo/internal/auth/store/session"
 	userStore "credo/internal/auth/store/user"
 	consentHandler "credo/internal/consent/handler"
@@ -39,14 +42,14 @@ func main() {
 
 	log.Info("initializing credo",
 		"addr", cfg.Addr,
-		"regulated_mode", cfg.RegulatedMode,
+		"regulated_mode", cfg.Security.RegulatedMode,
 		"env", cfg.Environment,
-		"allowed_redirect_schemes", cfg.AllowedRedirectSchemes,
+		"allowed_redirect_schemes", cfg.Auth.AllowedRedirectSchemes,
 	)
 	if cfg.DemoMode {
 		log.Info("CRENE_ENV=demo — starting isolated demo environment",
 			"stores", "in-memory",
-			"issuer", cfg.JWTIssuer,
+			"issuer", cfg.Auth.JWTIssuer,
 		)
 	}
 
@@ -56,18 +59,20 @@ func main() {
 	// Create stores
 	users := userStore.NewInMemoryUserStore()
 	sessions := sessionStore.NewInMemorySessionStore()
+	codes := authCodeStore.NewInMemoryAuthorizationCodeStore()
+	refreshTokens := refreshTokenStore.NewInMemoryRefreshTokenStore()
 	auditStore := audit.NewInMemoryStore()
 
 	// Seed demo data if in demo mode
 	if cfg.DemoMode {
-		seederSvc := seeder.New(users, sessions, auditStore, log)
+		seederSvc := seeder.New(users, sessions, codes, refreshTokens, auditStore, log)
 		if err := seederSvc.SeedAll(context.Background()); err != nil {
 			log.Warn("failed to seed demo data", "error", err)
 		}
 	}
 
 	// Initialize services
-	authSvc := initializeAuthServiceWithStores(m, log, jwtService, &cfg, users, sessions)
+	authSvc := initializeAuthService(m, log, jwtService, &cfg)
 	adminSvc := admin.NewService(users, sessions, auditStore)
 
 	// Setup main API router
@@ -80,7 +85,7 @@ func main() {
 
 	// Start admin server on separate port if admin token is configured
 	var adminSrv *http.Server
-	if cfg.AdminAPIToken != "" {
+	if cfg.Security.AdminAPIToken != "" {
 		adminRouter := setupAdminRouter(log, adminSvc, &cfg)
 		adminSrv = httpserver.New(":8081", adminRouter)
 		startServer(adminSrv, log, "admin")
@@ -90,32 +95,41 @@ func main() {
 	waitForShutdown([]*http.Server{mainSrv, adminSrv}, log)
 }
 
-// initializeAuthServiceWithStores creates and configures the authentication service with provided stores
-func initializeAuthServiceWithStores(
-	m *metrics.Metrics,
-	log *slog.Logger,
-	jwtService *jwttoken.JWTService,
-	cfg *config.Server,
-	users *userStore.InMemoryUserStore,
-	sessions *sessionStore.InMemorySessionStore,
-) *authService.Service {
-	return authService.NewService(
-		users,
-		sessions,
-		authService.WithSessionTTL(cfg.SessionTTL),
+// initializeAuthService creates and configures the authentication service
+func initializeAuthService(m *metrics.Metrics, log *slog.Logger, jwtService *jwttoken.JWTService, cfg *config.Server) *authService.Service {
+	authCfg := &authService.Config{
+		SessionTTL:             cfg.Auth.SessionTTL,
+		TokenTTL:               cfg.Auth.TokenTTL,
+		AllowedRedirectSchemes: cfg.Auth.AllowedRedirectSchemes,
+		DeviceBindingEnabled:   cfg.Auth.DeviceBindingEnabled,
+	}
+	trl := revocationStore.NewInMemoryTRL(revocationStore.WithCleanupInterval(cfg.Auth.TokenRevocationCleanupInterval))
+
+	authSvc, err := authService.New(
+		userStore.NewInMemoryUserStore(),
+		sessionStore.NewInMemorySessionStore(),
+		authCodeStore.NewInMemoryAuthorizationCodeStore(),
+		refreshTokenStore.NewInMemoryRefreshTokenStore(),
+		authCfg,
 		authService.WithMetrics(m),
 		authService.WithLogger(log),
 		authService.WithJWTService(jwtService),
+		authService.WithTRL(trl),
 	)
+	if err != nil {
+		log.Error("failed to initialize auth service", "error", err)
+		os.Exit(1)
+	}
+	return authSvc
 }
 
 // initializeJWTService creates and configures the JWT service and validator
 func initializeJWTService(cfg *config.Server) (*jwttoken.JWTService, *jwttoken.JWTServiceAdapter) {
 	jwtService := jwttoken.NewJWTService(
-		cfg.JWTSigningKey,
-		cfg.JWTIssuer,
+		cfg.Auth.JWTSigningKey,
+		cfg.Auth.JWTIssuer,
 		"credo-client",
-		cfg.TokenTTL,
+		cfg.Auth.TokenTTL,
 	)
 	if cfg.DemoMode {
 		jwtService.SetEnv("demo")
@@ -129,6 +143,7 @@ func setupRouter(log *slog.Logger, m *metrics.Metrics) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Common middleware for all routes (must be defined before routes)
+	r.Use(middleware.ClientMetadata)
 	r.Use(middleware.Recovery(log))
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger(log))
@@ -155,13 +170,13 @@ func registerRoutes(
 	cfg *config.Server,
 	m *metrics.Metrics,
 ) {
-	authHandler := authHandler.New(authSvc, log, cfg.AllowedRedirectSchemes)
+	authHandler := authHandler.New(authSvc, log, cfg.Auth.DeviceCookieName, cfg.Auth.DeviceCookieMaxAge)
 	consentSvc := consentService.NewService(
 		consentStore.NewInMemoryStore(),
 		audit.NewPublisher(audit.NewInMemoryStore()),
 		log,
-		consentService.WithConsentTTL(cfg.ConsentTTL),
-		consentService.WithGrantWindow(cfg.ConsentGrantWindow),
+		consentService.WithConsentTTL(cfg.Consent.ConsentTTL),
+		consentService.WithGrantWindow(cfg.Consent.ConsentGrantWindow),
 	)
 	consentHTTPHandler := consentHandler.New(consentSvc, log, m)
 	if cfg.DemoMode {
@@ -169,7 +184,7 @@ func registerRoutes(
 			resp := map[string]any{
 				"env":        "demo",
 				"users":      []string{"alice", "bob", "charlie"},
-				"jwt_issuer": cfg.JWTIssuer,
+				"jwt_issuer": cfg.Auth.JWTIssuer,
 				"data_store": "in-memory",
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -180,18 +195,20 @@ func registerRoutes(
 	// Public auth endpoints (no JWT required)
 	r.Post("/auth/authorize", authHandler.HandleAuthorize)
 	r.Post("/auth/token", authHandler.HandleToken)
+	r.Post("/auth/revoke", authHandler.HandleRevoke)
 
 	// Protected auth endpoints (JWT required)
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.RequireAuth(jwtValidator, log))
+		r.Use(middleware.RequireAuth(jwtValidator, authSvc, log))
 		r.Get("/auth/userinfo", authHandler.HandleUserInfo)
+		r.Get("/auth/sessions", authHandler.HandleListSessions)
 		consentHTTPHandler.Register(r)
 	})
 
 	// Admin routes on main server (user deletion only)
-	if cfg.AdminAPIToken != "" {
+	if cfg.Security.AdminAPIToken != "" {
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.RequireAdminToken(cfg.AdminAPIToken, log))
+			r.Use(middleware.RequireAdminToken(cfg.Security.AdminAPIToken, log))
 			authHandler.RegisterAdmin(r)
 		})
 	}
@@ -228,7 +245,7 @@ func setupAdminRouter(log *slog.Logger, adminSvc *admin.Service, cfg *config.Ser
 	// All admin routes require authentication
 	adminHandler := admin.New(adminSvc, log)
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.RequireAdminToken(cfg.AdminAPIToken, log))
+		r.Use(middleware.RequireAdminToken(cfg.Security.AdminAPIToken, log))
 		adminHandler.Register(r)
 	})
 

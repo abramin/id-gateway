@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -31,7 +32,7 @@ func NewInMemorySessionStore() *InMemorySessionStore {
 	return &InMemorySessionStore{sessions: make(map[string]*models.Session)}
 }
 
-func (s *InMemorySessionStore) Save(_ context.Context, session *models.Session) error {
+func (s *InMemorySessionStore) Create(_ context.Context, session *models.Session) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sessions[session.ID.String()] = session
@@ -47,11 +48,36 @@ func (s *InMemorySessionStore) FindByID(_ context.Context, id uuid.UUID) (*model
 	return nil, ErrNotFound
 }
 
+func (s *InMemorySessionStore) ListByUser(_ context.Context, userID uuid.UUID) ([]*models.Session, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	sessions := make([]*models.Session, 0)
+	for _, session := range s.sessions {
+		if session.UserID == userID {
+			sessions = append(sessions, session)
+		}
+	}
+
+	return sessions, nil
+}
+
+func (s *InMemorySessionStore) UpdateSession(_ context.Context, session *models.Session) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := session.ID.String()
+	if _, ok := s.sessions[key]; !ok {
+		return ErrNotFound
+	}
+	s.sessions[key] = session
+	return nil
+}
+
 func (s *InMemorySessionStore) FindByCode(_ context.Context, code string) (*models.Session, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, session := range s.sessions {
-		if session.Code == code {
+		if "session.Code" == code {
 			return session, nil
 		}
 	}
@@ -77,7 +103,90 @@ func (s *InMemorySessionStore) DeleteSessionsByUser(_ context.Context, userID uu
 	return nil
 }
 
-// ListAll returns all sessions in the store (admin-only operation)
+func (s *InMemorySessionStore) RevokeSession(_ context.Context, id uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := id.String()
+	if session, ok := s.sessions[key]; ok {
+		now := time.Now()
+		session.Status = "revoked"
+		session.RevokedAt = &now
+		s.sessions[key] = session
+		return nil
+	}
+	return ErrNotFound
+}
+
+// for use in token cleanup strategy
+func (s *InMemorySessionStore) DeleteExpiredSessions(ctx context.Context) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+	deletedCount := 0
+	for id, session := range s.sessions {
+		if session.ExpiresAt.Before(now) {
+			delete(s.sessions, id)
+			deletedCount++
+		}
+	}
+
+	return deletedCount, nil
+}
+
+// **1. Cleanup rules for MVP**
+
+// * One goroutine per store.
+// * One `time.Ticker`, coarse interval.
+// * Hold the lock once per sweep.
+// * Delete only on `ExpiresAt.Before(now)`.
+
+// No heap timers, no per-entry goroutines.
+
+// **2. Minimal pattern (in-memory store)**
+
+// High level structure:
+
+// * Store has:
+
+//   * `map[key]value`
+//   * `sync.RWMutex`
+//   * `stop chan struct{}`
+
+// * `StartCleanup()`:
+
+//   * `ticker := time.NewTicker(interval)`
+//   * `go func() { for { select { case <-ticker.C: sweep(); case <-stop: ticker.Stop(); return }}}`
+
+// * `sweep()`:
+
+//   * `now := time.Now()`
+//   * `Lock()`
+//   * `for k, v := range store { if v.ExpiresAt.Before(now) { delete(store, k) }}`
+//   * `Unlock()`
+
+// Call `StartCleanup()` when the app boots.
+// Call `Stop()` on shutdown.
+
+// **3. Interview-ready talking points**
+// If asked “why this design”:
+
+// * Coarse sweeper avoids timer explosion.
+// * Predictable CPU and memory.
+// * Easy to replace with DB TTL or Redis expiry later.
+// * Correct under concurrent access.
+
+// If asked “what about races”:
+
+// * Expiry is rechecked on read.
+// * Worst case: token lives slightly past expiry window.
+
+// **4. Per-store intervals**
+
+// * AuthorizationCodeStore: 30–60 seconds
+// * RefreshTokenStore: 1–5 minutes
+// * SessionStore: optional or longer
+
 func (s *InMemorySessionStore) ListAll(_ context.Context) (map[string]*models.Session, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -88,19 +197,4 @@ func (s *InMemorySessionStore) ListAll(_ context.Context) (map[string]*models.Se
 		copy[k] = v
 	}
 	return copy, nil
-}
-
-// ListByUser returns all sessions for a specific user
-func (s *InMemorySessionStore) ListByUser(_ context.Context, userID uuid.UUID) ([]*models.Session, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	var sessions []*models.Session
-	for _, session := range s.sessions {
-		if session.UserID == userID {
-			sessions = append(sessions, session)
-		}
-	}
-
-	return sessions, nil
 }

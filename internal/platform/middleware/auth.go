@@ -12,11 +12,17 @@ type JWTValidator interface {
 	ValidateToken(tokenString string) (*JWTClaims, error)
 }
 
+// TokenRevocationChecker defines the interface for checking if tokens are revoked
+type TokenRevocationChecker interface {
+	IsTokenRevoked(ctx context.Context, jti string) (bool, error)
+}
+
 // JWTClaims represents the claims we expect from the JWT validator
 type JWTClaims struct {
 	UserID    string
 	SessionID string
 	ClientID  string
+	JTI       string // JWT ID for revocation tracking
 }
 
 // Context keys for storing authenticated user information
@@ -57,7 +63,7 @@ func GetClientID(ctx context.Context) string {
 	return clientID
 }
 
-func RequireAuth(validator JWTValidator, logger *slog.Logger) func(http.Handler) http.Handler {
+func RequireAuth(validator JWTValidator, revocationChecker TokenRevocationChecker, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
@@ -85,6 +91,34 @@ func RequireAuth(validator JWTValidator, logger *slog.Logger) func(http.Handler)
 				}
 
 				ctx := r.Context()
+
+				// Check if token is revoked (PRD-016 FR-3)
+				if revocationChecker != nil && claims.JTI != "" {
+					revoked, err := revocationChecker.IsTokenRevoked(ctx, claims.JTI)
+					if err != nil {
+						requestID := GetRequestID(ctx)
+						logger.ErrorContext(ctx, "failed to check token revocation",
+							"error", err,
+							"request_id", requestID,
+						)
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusInternalServerError)
+						_, _ = w.Write([]byte(`{"error":"internal_error","error_description":"Failed to validate token"}`))
+						return
+					}
+					if revoked {
+						requestID := GetRequestID(ctx)
+						logger.WarnContext(ctx, "unauthorized access - token revoked",
+							"jti", claims.JTI,
+							"request_id", requestID,
+						)
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusUnauthorized)
+						_, _ = w.Write([]byte(`{"error":"unauthorized","error_description":"Token has been revoked"}`))
+						return
+					}
+				}
+
 				ctx = context.WithValue(ctx, ContextKeyUserID, claims.UserID)
 				ctx = context.WithValue(ctx, ContextKeySessionID, claims.SessionID)
 				ctx = context.WithValue(ctx, ContextKeyClientID, claims.ClientID)
