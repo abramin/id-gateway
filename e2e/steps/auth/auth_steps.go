@@ -37,6 +37,7 @@ type TestContext interface {
 	GetAdminToken() string
 	ResponseContains(text string) bool
 	GetLastResponseStatus() int
+	GetLastResponseBody() []byte
 }
 
 // RegisterSteps registers authentication-related step definitions
