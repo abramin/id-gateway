@@ -14,4 +14,6 @@ var (
 type Store interface {
 	Append(ctx context.Context, event Event) error
 	ListByUser(ctx context.Context, userID string) ([]Event, error)
+	ListAll(ctx context.Context) ([]Event, error)
+	ListRecent(ctx context.Context, limit int) ([]Event, error)
 }

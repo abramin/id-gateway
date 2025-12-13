@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"time"
 
+	"credo/internal/admin"
 	"credo/internal/audit"
 	authHandler "credo/internal/auth/handler"
 	authService "credo/internal/auth/service"
@@ -23,6 +24,7 @@ import (
 	"credo/internal/platform/logger"
 	"credo/internal/platform/metrics"
 	"credo/internal/platform/middleware"
+	"credo/internal/seeder"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -50,21 +52,44 @@ func main() {
 
 	m := metrics.New()
 	jwtService, jwtValidator := initializeJWTService(&cfg)
-	authSvc := initializeAuthService(m, log, jwtService, &cfg)
+
+	// Create stores
+	users := userStore.NewInMemoryUserStore()
+	sessions := sessionStore.NewInMemorySessionStore()
+	auditStore := audit.NewInMemoryStore()
+
+	// Seed demo data if in demo mode
+	if cfg.DemoMode {
+		seederSvc := seeder.New(users, sessions, auditStore, log)
+		if err := seederSvc.SeedAll(context.Background()); err != nil {
+			log.Warn("failed to seed demo data", "error", err)
+		}
+	}
+
+	// Initialize services
+	authSvc := initializeAuthServiceWithStores(m, log, jwtService, &cfg, users, sessions)
+	adminSvc := admin.NewService(users, sessions, auditStore)
 
 	r := setupRouter(log, m)
-	registerRoutes(r, authSvc, jwtValidator, log, &cfg, m)
+	registerRoutes(r, authSvc, adminSvc, jwtValidator, log, &cfg, m)
 
 	srv := httpserver.New(cfg.Addr, r)
 	startServer(srv, log)
 	waitForShutdown(srv, log)
 }
 
-// initializeAuthService creates and configures the authentication service
-func initializeAuthService(m *metrics.Metrics, log *slog.Logger, jwtService *jwttoken.JWTService, cfg *config.Server) *authService.Service {
+// initializeAuthServiceWithStores creates and configures the authentication service with provided stores
+func initializeAuthServiceWithStores(
+	m *metrics.Metrics,
+	log *slog.Logger,
+	jwtService *jwttoken.JWTService,
+	cfg *config.Server,
+	users *userStore.InMemoryUserStore,
+	sessions *sessionStore.InMemorySessionStore,
+) *authService.Service {
 	return authService.NewService(
-		userStore.NewInMemoryUserStore(),
-		sessionStore.NewInMemorySessionStore(),
+		users,
+		sessions,
 		authService.WithSessionTTL(cfg.SessionTTL),
 		authService.WithMetrics(m),
 		authService.WithLogger(log),
@@ -113,6 +138,7 @@ func setupRouter(log *slog.Logger, m *metrics.Metrics) *chi.Mux {
 func registerRoutes(
 	r *chi.Mux,
 	authSvc *authService.Service,
+	adminSvc *admin.Service,
 	jwtValidator *jwttoken.JWTServiceAdapter,
 	log *slog.Logger,
 	cfg *config.Server,
@@ -152,9 +178,11 @@ func registerRoutes(
 	})
 
 	if cfg.AdminAPIToken != "" {
+		adminHandler := admin.New(adminSvc, log)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAdminToken(cfg.AdminAPIToken, log))
 			authHandler.RegisterAdmin(r)
+			adminHandler.Register(r)
 		})
 	}
 }

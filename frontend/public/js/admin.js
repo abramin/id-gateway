@@ -1,10 +1,23 @@
 // Admin dashboard logic
-// Mock data for demonstration - will be replaced with real API calls
+// Uses real API calls to backend admin endpoints
+
+// Determine API base URL based on environment
+function getAPIBase() {
+    if (window.location.port === "3000") {
+        return "/api";
+    }
+    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+        return "http://localhost:8080";
+    }
+    return "";
+}
 
 document.addEventListener('alpine:init', () => {
     Alpine.data('adminApp', () => ({
         loading: false,
         regulatedMode: true,
+        adminToken: '',
+        showTokenInput: false,
 
         // Stats
         stats: {
@@ -14,13 +27,13 @@ document.addEventListener('alpine:init', () => {
             decisionsMade: 0,
         },
 
-        // Recent decisions
+        // Recent decisions (derived from audit events)
         recentDecisions: [],
 
         // Active users
         activeUsers: [],
 
-        // Consent statistics
+        // Consent statistics (not yet implemented in backend)
         consentStats: [
             {
                 purpose: 'registry_check',
@@ -51,13 +64,21 @@ document.addEventListener('alpine:init', () => {
         pollInterval: null,
 
         async init() {
-            // Load initial data
-            await this.loadMockData();
+            // Try to get admin token from localStorage
+            this.adminToken = localStorage.getItem('admin_token') || '';
 
-            // Start polling for updates every 5 seconds
-            this.pollInterval = setInterval(() => {
-                this.loadMockData();
-            }, 5000);
+            // If no token, show input
+            if (!this.adminToken) {
+                this.showTokenInput = true;
+            } else {
+                // Load initial data
+                await this.loadRealData();
+
+                // Start polling for updates every 10 seconds
+                this.pollInterval = setInterval(() => {
+                    this.loadRealData();
+                }, 10000);
+            }
 
             // Filter events initially
             this.filterAuditEvents();
@@ -70,124 +91,160 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        async loadMockData() {
-            // In a real implementation, these would be API calls
-            // For now, we'll generate mock data to demonstrate the UI
+        async loadRealData() {
+            if (!this.adminToken) {
+                return;
+            }
 
-            // Update stats
-            this.stats.totalUsers = Math.floor(Math.random() * 50) + 10;
-            this.stats.activeSessions = Math.floor(Math.random() * 20) + 5;
-            this.stats.vcsIssued = Math.floor(Math.random() * 100) + 20;
-            this.stats.decisionsMade = Math.floor(Math.random() * 200) + 50;
+            try {
+                // Load stats
+                await this.loadStats();
 
-            // Generate mock recent decisions
-            this.recentDecisions = this.generateMockDecisions(5);
+                // Load users
+                await this.loadUsers();
 
-            // Generate mock active users
-            this.activeUsers = this.generateMockUsers(3);
+                // Load audit events
+                await this.loadAuditEvents();
 
-            // Update consent stats
-            this.consentStats.forEach(stat => {
-                stat.total = this.stats.totalUsers;
-                stat.granted = Math.floor(Math.random() * stat.total);
-            });
+                this.filterAuditEvents();
+            } catch (err) {
+                console.error('Failed to load real data:', err);
+            }
+        },
 
-            // Generate mock audit events
-            if (this.auditEvents.length < 20) {
-                this.auditEvents = this.generateMockAuditEvents(20);
-            } else {
-                // Add new event occasionally
-                if (Math.random() > 0.7) {
-                    this.auditEvents.unshift(this.generateMockAuditEvents(1)[0]);
-                    if (this.auditEvents.length > 50) {
-                        this.auditEvents.pop();
+        async loadStats() {
+            const apiBase = getAPIBase();
+            try {
+                const res = await fetch(`${apiBase}/admin/stats`, {
+                    headers: {
+                        'X-Admin-Token': this.adminToken,
                     }
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    this.stats = {
+                        totalUsers: data.total_users || 0,
+                        activeSessions: data.active_sessions || 0,
+                        vcsIssued: data.vcs_issued || 0,
+                        decisionsMade: data.decisions_made || 0,
+                    };
+                } else if (res.status === 401 || res.status === 403) {
+                    console.warn('Admin token is invalid or expired');
+                    this.showTokenInput = true;
                 }
+            } catch (err) {
+                console.error('Failed to load stats:', err);
             }
-
-            this.filterAuditEvents();
         },
 
-        generateMockDecisions(count) {
-            const decisions = [];
-            const purposes = ['age_verification', 'sanctions_screening', 'high_value_transfer'];
-            const statuses = ['pass', 'fail', 'pass_with_conditions'];
-            const reasons = [
-                'all_checks_passed',
-                'sanctioned',
-                'underage',
-                'missing_credential',
-                'invalid_citizen',
-            ];
-
-            for (let i = 0; i < count; i++) {
-                const status = statuses[Math.floor(Math.random() * statuses.length)];
-                decisions.push({
-                    id: `dec_${Date.now()}_${i}`,
-                    purpose: purposes[Math.floor(Math.random() * purposes.length)],
-                    status,
-                    reason: reasons[Math.floor(Math.random() * reasons.length)],
-                    userId: `user_${Math.random().toString(36).substr(2, 9)}`,
-                    timestamp: this.formatTimestamp(new Date(Date.now() - Math.random() * 3600000)),
+        async loadUsers() {
+            const apiBase = getAPIBase();
+            try {
+                const res = await fetch(`${apiBase}/admin/users`, {
+                    headers: {
+                        'X-Admin-Token': this.adminToken,
+                    }
                 });
-            }
 
-            return decisions;
+                if (res.ok) {
+                    const data = await res.json();
+                    this.activeUsers = (data.users || []).map(user => ({
+                        id: user.id,
+                        email: user.email,
+                        sessionCount: user.session_count || 0,
+                        lastActive: user.last_active ? this.formatTimestamp(new Date(user.last_active)) : 'Never',
+                    }));
+
+                    // Update consent stats total based on user count
+                    this.consentStats.forEach(stat => {
+                        stat.total = data.total || 0;
+                        // For now, set granted to 0 since we don't have this data yet
+                        stat.granted = 0;
+                    });
+                }
+            } catch (err) {
+                console.error('Failed to load users:', err);
+            }
         },
 
-        generateMockUsers(count) {
-            const users = [];
-            const emails = ['alice@example.com', 'ahmed@example.com', 'diego@example.com', 'diana@example.com'];
-
-            for (let i = 0; i < count; i++) {
-                users.push({
-                    id: `user_${Math.random().toString(36).substr(2, 9)}`,
-                    email: emails[i % emails.length],
-                    sessionCount: Math.floor(Math.random() * 3) + 1,
-                    lastActive: this.formatTimestamp(new Date(Date.now() - Math.random() * 600000)),
+        async loadAuditEvents() {
+            const apiBase = getAPIBase();
+            try {
+                const res = await fetch(`${apiBase}/admin/audit/recent?limit=50`, {
+                    headers: {
+                        'X-Admin-Token': this.adminToken,
+                    }
                 });
-            }
 
-            return users;
+                if (res.ok) {
+                    const data = await res.json();
+                    this.auditEvents = (data.events || []).map(event => ({
+                        id: (event.user_id || 'unknown') + '_' + (event.timestamp || Date.now()),
+                        timestamp: event.timestamp ? this.formatTimestamp(new Date(event.timestamp)) : 'Unknown',
+                        action: event.action || 'unknown',
+                        purpose: event.purpose || 'N/A',
+                        decision: event.decision || 'N/A',
+                        userId: event.user_id || 'unknown',
+                        reason: this.getReasonForAction(event.action),
+                    }));
+
+                    // Extract recent decisions from audit events
+                    this.extractRecentDecisions();
+                }
+            } catch (err) {
+                console.error('Failed to load audit events:', err);
+            }
         },
 
-        generateMockAuditEvents(count) {
-            const events = [];
-            const actions = [
-                'decision_made',
-                'consent_granted',
-                'consent_revoked',
-                'vc_issued',
-                'registry_checked',
-                'session_created',
-                'token_issued',
-            ];
-            const purposes = [
-                'age_verification',
-                'sanctions_screening',
-                'registry_check',
-                'vc_issuance',
-                'decision_evaluation',
-            ];
-            const decisions = ['granted', 'revoked', 'pass', 'fail', 'checked', 'issued'];
+        extractRecentDecisions() {
+            // Filter audit events for decision_made actions
+            this.recentDecisions = this.auditEvents
+                .filter(event => event.action === 'decision_made')
+                .slice(0, 5)
+                .map(event => ({
+                    id: event.id,
+                    purpose: event.purpose,
+                    status: event.decision === 'pass' ? 'pass' : (event.decision === 'fail' ? 'fail' : 'pass_with_conditions'),
+                    reason: event.reason,
+                    userId: event.userId,
+                    timestamp: event.timestamp,
+                }));
+        },
 
-            for (let i = 0; i < count; i++) {
-                const action = actions[Math.floor(Math.random() * actions.length)];
-                events.push({
-                    id: `evt_${Date.now()}_${i}`,
-                    timestamp: this.formatTimestamp(new Date(Date.now() - Math.random() * 7200000)),
-                    action,
-                    purpose: purposes[Math.floor(Math.random() * purposes.length)],
-                    decision: decisions[Math.floor(Math.random() * decisions.length)],
-                    userId: `user_${Math.random().toString(36).substr(2, 6)}`,
-                    reason: this.getReasonForAction(action),
-                });
+        filterAuditEvents() {
+            if (this.auditFilter === 'all') {
+                this.filteredAuditEvents = this.auditEvents;
+            } else {
+                this.filteredAuditEvents = this.auditEvents.filter(
+                    event => event.action === this.auditFilter
+                );
+            }
+        },
+
+        formatTimestamp(date) {
+            if (!date || isNaN(date.getTime())) {
+                return 'Unknown';
             }
 
-            // Sort by timestamp (newest first)
-            events.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            const now = new Date();
+            const diff = now - date;
+            const seconds = Math.floor(diff / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
 
-            return events;
+            if (seconds < 0) {
+                // Future date, just show it
+                return date.toLocaleString();
+            } else if (seconds < 60) {
+                return `${seconds}s ago`;
+            } else if (minutes < 60) {
+                return `${minutes}m ago`;
+            } else if (hours < 24) {
+                return `${hours}h ago`;
+            } else {
+                return date.toLocaleString();
+            }
         },
 
         getReasonForAction(action) {
@@ -203,46 +260,53 @@ document.addEventListener('alpine:init', () => {
             return reasons[action] || 'system';
         },
 
-        filterAuditEvents() {
-            if (this.auditFilter === 'all') {
-                this.filteredAuditEvents = this.auditEvents;
-            } else {
-                this.filteredAuditEvents = this.auditEvents.filter(
-                    event => event.action === this.auditFilter
-                );
-            }
-        },
-
-        formatTimestamp(date) {
-            const now = new Date();
-            const diff = now - date;
-            const seconds = Math.floor(diff / 1000);
-            const minutes = Math.floor(seconds / 60);
-            const hours = Math.floor(minutes / 60);
-
-            if (seconds < 60) {
-                return `${seconds}s ago`;
-            } else if (minutes < 60) {
-                return `${minutes}m ago`;
-            } else if (hours < 24) {
-                return `${hours}h ago`;
-            } else {
-                return date.toLocaleString();
-            }
-        },
-
         toggleRegulatedMode() {
             this.regulatedMode = !this.regulatedMode;
-            // In a real implementation, this would call an API to change the backend mode
             console.log('Regulated mode:', this.regulatedMode);
         },
 
         async refreshData() {
             this.loading = true;
-            await this.loadMockData();
+            await this.loadRealData();
             setTimeout(() => {
                 this.loading = false;
             }, 500);
+        },
+
+        saveAdminToken() {
+            if (this.adminToken) {
+                localStorage.setItem('admin_token', this.adminToken);
+                this.showTokenInput = false;
+                this.refreshData();
+                // Start polling
+                if (!this.pollInterval) {
+                    this.pollInterval = setInterval(() => {
+                        this.loadRealData();
+                    }, 10000);
+                }
+            }
+        },
+
+        clearAdminToken() {
+            this.adminToken = '';
+            localStorage.removeItem('admin_token');
+            this.showTokenInput = true;
+            // Stop polling
+            if (this.pollInterval) {
+                clearInterval(this.pollInterval);
+                this.pollInterval = null;
+            }
+            // Reset all data
+            this.stats = {
+                totalUsers: 0,
+                activeSessions: 0,
+                vcsIssued: 0,
+                decisionsMade: 0,
+            };
+            this.activeUsers = [];
+            this.auditEvents = [];
+            this.recentDecisions = [];
+            this.filterAuditEvents();
         },
     }));
 });

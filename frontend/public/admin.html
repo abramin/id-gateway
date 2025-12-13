@@ -48,11 +48,18 @@
           </div>
           <div class="flex items-center space-x-4">
             <button
-              @click="toggleRegulatedMode"
-              class="text-sm px-3 py-1 rounded border"
-              :class="regulatedMode ? 'border-green-600 text-green-600' : 'border-gray-400 text-gray-600'"
+              @click="showTokenInput = true"
+              class="text-sm px-3 py-1 rounded border border-purple-600 text-purple-600"
+              title="Change admin token"
             >
-              Toggle Mode
+              🔑 Token
+            </button>
+            <button
+              @click="clearAdminToken"
+              class="text-sm px-3 py-1 rounded border border-red-600 text-red-600"
+              title="Clear token and logout"
+            >
+              Logout
             </button>
             <button
               @click="refreshData"
@@ -88,6 +95,44 @@
     </nav>
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <!-- Admin Token Input Modal -->
+      <div
+        x-show="showTokenInput"
+        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+        x-transition
+      >
+        <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+          <h3 class="text-lg font-bold text-gray-900 mb-4">
+            🔒 Admin Authentication Required
+          </h3>
+          <p class="text-sm text-gray-600 mb-4">
+            Enter your admin API token to access the dashboard. This token is set via the <code class="bg-gray-100 px-1">ADMIN_API_TOKEN</code> environment variable.
+          </p>
+          <input
+            type="password"
+            x-model="adminToken"
+            placeholder="Enter admin token"
+            @keyup.enter="saveAdminToken"
+            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+          />
+          <div class="flex gap-2">
+            <button
+              @click="saveAdminToken"
+              :disabled="!adminToken"
+              class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+            >
+              Authenticate
+            </button>
+            <button
+              @click="showTokenInput = false"
+              class="px-4 py-2 text-gray-600 hover:text-gray-900"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Stats Overview -->
       <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div class="bg-white rounded-lg shadow-md p-6">
