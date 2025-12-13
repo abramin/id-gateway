@@ -65,6 +65,7 @@ services:
     container_name: credo-backend
     ports:
       - "8080:8080"
+      - "8090:8090"  # Admin server port
     environment:
       - ADDR=:8080
       - REGULATED_MODE=true

@@ -2,14 +2,18 @@
 // Uses real API calls to backend admin endpoints
 
 // Determine API base URL based on environment
+// Admin endpoints are on port 8090 (separate admin server)
 function getAPIBase() {
     if (window.location.port === "3000") {
-        return "/api";
+        // Docker: nginx will proxy /api/admin to backend:8090
+        return "/api/admin";
     }
     if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
-        return "http://localhost:8080";
+        // Local dev: admin server runs on port 8090
+        return "http://localhost:8090";
     }
-    return "";
+    // Production: admin server on same host, different port
+    return window.location.protocol + "//" + window.location.hostname + ":8090";
 }
 
 document.addEventListener('alpine:init', () => {
