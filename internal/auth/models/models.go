@@ -91,10 +91,11 @@ type UserInfoResult struct {
 }
 
 type TokenRequest struct {
-	GrantType   string `json:"grant_type" validate:"required,oneof=authorization_code"`
-	Code        string `json:"code" validate:"required"`
-	RedirectURI string `json:"redirect_uri" validate:"required,url"`
-	ClientID    string `json:"client_id" validate:"required"`
+	GrantType    string `json:"grant_type" validate:"required,oneof=authorization_code refresh_token"`
+	ClientID     string `json:"client_id" validate:"required"`
+	Code         string `json:"code,omitempty"`
+	RedirectURI  string `json:"redirect_uri,omitempty" validate:"omitempty,url"`
+	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
 type TokenResult struct {

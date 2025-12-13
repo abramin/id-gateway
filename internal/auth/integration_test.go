@@ -60,7 +60,7 @@ func SetupSuite(t *testing.T) (
 		DeviceBindingEnabled:   true,
 	}
 	authService, _ := service.New(userStore, sessionStore, authCodeStore, refreshTokenStore,
-		cfg,
+		&cfg,
 		service.WithLogger(logger),
 		service.WithJWTService(jwtService),
 		service.WithAuditPublisher(audit.NewPublisher(auditStore)),

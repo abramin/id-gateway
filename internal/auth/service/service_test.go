@@ -45,9 +45,10 @@ func (s *ServiceSuite) SetupTest() {
 	s.mockJWT = mocks.NewMockTokenGenerator(s.ctrl)
 	s.mockAuditPublisher = mocks.NewMockAuditPublisher(s.ctrl)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	cfg := Config{
+	cfg := &Config{
 		SessionTTL:             2 * time.Hour,
 		TokenTTL:               30 * time.Minute,
+		RefreshTokenTTL:        1 * time.Hour,
 		AllowedRedirectSchemes: []string{"https", "http"},
 		DeviceBindingEnabled:   true,
 	}
@@ -266,7 +267,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		assert.Equal(s.T(), "mock-id-token", result.IDToken)
 		assert.Equal(s.T(), "ref_mock-refresh-token", result.RefreshToken)
 		assert.Equal(s.T(), "Bearer", result.TokenType)
-		assert.Equal(s.T(), s.service.tokenTTL, result.ExpiresIn)
+		assert.Equal(s.T(), s.service.TokenTTL, result.ExpiresIn)
 	})
 
 	s.T().Run("session already active - idempotency", func(t *testing.T) {
@@ -312,6 +313,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 			modifyReq     func(*models.TokenRequest)
 			expectedCode  dErrors.Code
 			expectLogAuth bool // Should this increment auth failure metrics?
+			expectedMsg   string
 		}{
 			{
 				name: "unsupported grant_type",
@@ -320,6 +322,37 @@ func (s *ServiceSuite) TestToken_Exchange() {
 				},
 				expectedCode:  dErrors.CodeBadRequest,
 				expectLogAuth: false, // Client error, not security failure
+				expectedMsg:   "unsupported grant_type",
+			},
+			{
+				name: "authorization_code missing code",
+				modifyReq: func(r *models.TokenRequest) {
+					r.Code = ""
+				},
+				expectedCode:  dErrors.CodeValidation,
+				expectLogAuth: false,
+				expectedMsg:   "code is required",
+			},
+			{
+				name: "authorization_code missing redirect_uri",
+				modifyReq: func(r *models.TokenRequest) {
+					r.RedirectURI = ""
+				},
+				expectedCode:  dErrors.CodeValidation,
+				expectLogAuth: false,
+				expectedMsg:   "redirect_uri is required",
+			},
+			{
+				name: "refresh_token missing refresh_token",
+				modifyReq: func(r *models.TokenRequest) {
+					r.GrantType = "refresh_token"
+					r.RefreshToken = ""
+					r.Code = ""
+					r.RedirectURI = ""
+				},
+				expectedCode:  dErrors.CodeValidation,
+				expectLogAuth: false,
+				expectedMsg:   "refresh_token is required",
 			},
 		}
 
@@ -332,6 +365,9 @@ func (s *ServiceSuite) TestToken_Exchange() {
 				assert.Error(t, err)
 				assert.Nil(t, result)
 				assert.True(t, dErrors.Is(err, tt.expectedCode))
+				if tt.expectedMsg != "" {
+					assert.Contains(t, err.Error(), tt.expectedMsg)
+				}
 			})
 		}
 	})
@@ -758,47 +794,184 @@ func (s *ServiceSuite) TestDeleteUser() {
 	})
 }
 
-func (s *ServiceSuite) TestToken_Refresh() {
-		s.T().Run("refresh_token happy path (TODO PRD-016 FR-2)", func(t *testing.T) {
-// 			1. Validate `grant_type` is `"refresh_token"`
-// 2. Validate `refresh_token` and `client_id` are provided
-// 3. Find session by refresh token in SessionStore
-// 4. If session not found → 401 Invalid refresh token
-// 5. Validate refresh token has not expired (< 30 days old)
-// 6. Validate refresh token has not been revoked (session status != "revoked")
-// 7. Validate device binding (see [DEVICE_BINDING.md](../DEVICE_BINDING.md) for validation logic)
-// 8. **Refresh Token Rotation:**
-//    - Revoke old refresh token (mark as used)
-//    - Generate new refresh token
-//    - Update session with new refresh token
-// 9. Generate new access token (new expiry, same session_id)
-// 10. Generate new ID token
-// 11. Update session `LastRefreshedAt` timestamp
-// 12. Emit audit event: `token_refreshed`
-// 13. Return new tokens
-		t.Skip("TODO(PRD-016): implement refresh_token grant flow (steps 1-13); requires extending TokenRequest with refresh_token and adding service logic + tests.")
+func (s *ServiceSuite) TestToken_RefreshToken() {
+	sessionID := uuid.New()
+	userID := uuid.New()
+	clientID := "client-123"
+	refreshTokenString := "ref_abc123xyz"
+
+	validRefreshToken := &models.RefreshTokenRecord{
+		Token:           refreshTokenString,
+		SessionID:       sessionID,
+		CreatedAt:       time.Now().Add(-1 * time.Hour),
+		LastRefreshedAt: nil,
+		ExpiresAt:       time.Now().Add(29 * 24 * time.Hour), // 29 days remaining
+		Used:            false,
+	}
+
+	validSession := &models.Session{
+		ID:             sessionID,
+		UserID:         userID,
+		ClientID:       clientID,
+		RequestedScope: []string{"openid", "profile"},
+		DeviceID:       "device-123",
+		Status:         StatusActive,
+		CreatedAt:      time.Now().Add(-1 * time.Hour),
+		ExpiresAt:      time.Now().Add(23 * time.Hour),
+	}
+
+	s.T().Run("happy path - successful token refresh", func(t *testing.T) {
+		req := models.TokenRequest{
+			GrantType:    "refresh_token",
+			RefreshToken: refreshTokenString,
+			ClientID:     clientID,
+		}
+		refreshRec := *validRefreshToken
+		sess := *validSession
+		ctx := middleware.WithDeviceID(middleware.WithClientMetadata(context.Background(), "192.168.1.1", "Mozilla/5.0"), sess.DeviceID)
+
+		// Expected flow:
+		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(&refreshRec, nil)
+		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
+		s.mockJWT.EXPECT().GenerateAccessToken(userID, sessionID, clientID).Return("new-access-token", nil)
+		s.mockJWT.EXPECT().GenerateIDToken(userID, sessionID, clientID).Return("new-id-token", nil)
+		s.mockJWT.EXPECT().CreateRefreshToken().Return("ref_new_token", nil)
+		// Inside RunInTx: UpdateSession, mark old token used, create new token
+		s.mockSessionStore.EXPECT().UpdateSession(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, session *models.Session) error {
+				assert.Equal(s.T(), sess.ID, session.ID)
+				assert.NotNil(s.T(), session.LastSeenAt)
+				return nil
+			})
+		s.mockRefreshStore.EXPECT().UpdateLastRefreshed(gomock.Any(), refreshTokenString, gomock.Any()).Return(nil)
+		s.mockRefreshStore.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, token *models.RefreshTokenRecord) error {
+				assert.Equal(s.T(), "ref_new_token", token.Token)
+				assert.Equal(s.T(), sessionID, token.SessionID)
+				assert.False(s.T(), token.Used)
+				return nil
+			})
+		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
+
+		result, err := s.service.Token(ctx, &req)
+		require.NoError(s.T(), err)
+		assert.Equal(s.T(), "new-access-token", result.AccessToken)
+		assert.Equal(s.T(), "new-id-token", result.IDToken)
+		assert.Equal(s.T(), "ref_new_token", result.RefreshToken)
+		assert.Equal(s.T(), "Bearer", result.TokenType)
+		assert.Equal(s.T(), s.service.TokenTTL, result.ExpiresIn)
 	})
+
+	s.T().Run("refresh token not found", func(t *testing.T) {
+		req := models.TokenRequest{
+			GrantType:    "refresh_token",
+			RefreshToken: "invalid_token",
+			ClientID:     clientID,
+		}
+
+		s.mockRefreshStore.EXPECT().Find(gomock.Any(), "invalid_token").Return(nil, sessionStore.ErrNotFound)
+
+		result, err := s.service.Token(context.Background(), &req)
+		assert.Error(s.T(), err)
+		assert.Nil(s.T(), result)
+		assert.True(s.T(), dErrors.Is(err, dErrors.CodeUnauthorized))
+		assert.Contains(s.T(), err.Error(), "invalid refresh token")
+	})
+
+	s.T().Run("refresh token expired", func(t *testing.T) {
+		req := models.TokenRequest{
+			GrantType:    "refresh_token",
+			RefreshToken: refreshTokenString,
+			ClientID:     clientID,
+		}
+		refreshRec := *validRefreshToken
+		refreshRec.ExpiresAt = time.Now().Add(-1 * time.Hour) // Expired
+
+		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(&refreshRec, nil)
+
+		result, err := s.service.Token(context.Background(), &req)
+		assert.Error(s.T(), err)
+		assert.Nil(s.T(), result)
+		assert.True(s.T(), dErrors.Is(err, dErrors.CodeUnauthorized))
+		assert.Contains(s.T(), err.Error(), "expired")
+	})
+
+	s.T().Run("session not found for refresh token", func(t *testing.T) {
+		req := models.TokenRequest{
+			GrantType:    "refresh_token",
+			RefreshToken: refreshTokenString,
+			ClientID:     clientID,
+		}
+		refreshRec := *validRefreshToken
+
+		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(&refreshRec, nil)
+		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(nil, sessionStore.ErrNotFound)
+
+		result, err := s.service.Token(context.Background(), &req)
+		assert.Error(s.T(), err)
+		assert.Nil(s.T(), result)
+		assert.True(s.T(), dErrors.Is(err, dErrors.CodeUnauthorized))
+	})
+
+	s.T().Run("session revoked", func(t *testing.T) {
+		req := models.TokenRequest{
+			GrantType:    "refresh_token",
+			RefreshToken: refreshTokenString,
+			ClientID:     clientID,
+		}
+		refreshRec := *validRefreshToken
+		sess := *validSession
+		sess.Status = "revoked"
+
+		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(&refreshRec, nil)
+		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
+
+		result, err := s.service.Token(context.Background(), &req)
+		assert.Error(s.T(), err)
+		assert.Nil(s.T(), result)
+		assert.True(s.T(), dErrors.Is(err, dErrors.CodeUnauthorized))
+		assert.Contains(s.T(), err.Error(), "revoked")
+	})
+
+	s.T().Run("client_id mismatch", func(t *testing.T) {
+		req := models.TokenRequest{
+			GrantType:    "refresh_token",
+			RefreshToken: refreshTokenString,
+			ClientID:     "evil-client",
+		}
+		refreshRec := *validRefreshToken
+		sess := *validSession
+
+		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(&refreshRec, nil)
+		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
+
+		result, err := s.service.Token(context.Background(), &req)
+		assert.Error(s.T(), err)
+		assert.Nil(s.T(), result)
+		assert.True(s.T(), dErrors.Is(err, dErrors.CodeUnauthorized))
+		assert.Contains(s.T(), err.Error(), "client_id mismatch")
+	})
+}
 
 func (s *ServiceSuite) TestNewService_RequiresDepsAndConfig() {
 	s.T().Run("missing stores fails", func(t *testing.T) {
-		_, err := New(nil, nil, nil, nil, Config{})
+		_, err := New(nil, nil, nil, nil, &Config{})
 		require.Error(t, err)
 	})
 
 	s.T().Run("sets defaults and applies jwt", func(t *testing.T) {
-
 		svc, err := New(
 			s.mockUserStore,
 			s.mockSessionStore,
 			s.mockCodeStore,
 			s.mockRefreshStore,
-			Config{}, // empty config
+			&Config{}, // empty config
 			WithJWTService(s.mockJWT),
 		)
 		require.NoError(t, err)
-		assert.Equal(t, defaultSessionTTL, svc.sessionTTL)
-		assert.Equal(t, defaultTokenTTL, svc.tokenTTL)
-		assert.Equal(t, []string{"https"}, svc.allowedRedirectSchemes)
+		assert.Equal(t, defaultSessionTTL, svc.SessionTTL)
+		assert.Equal(t, defaultTokenTTL, svc.TokenTTL)
+		assert.Equal(t, []string{"https"}, svc.AllowedRedirectSchemes)
 		assert.Equal(t, s.mockJWT, svc.jwt)
 	})
 }

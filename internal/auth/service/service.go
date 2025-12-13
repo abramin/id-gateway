@@ -67,32 +67,31 @@ type TokenGenerator interface {
 }
 
 type Service struct {
-	users                  UserStore
-	sessions               SessionStore
-	codes                  AuthCodeStore
-	refreshTokens          RefreshTokenStore
-	tx                     AuthStoreTx
-	sessionTTL             time.Duration
-	tokenTTL               time.Duration
-	deviceBindingEnabled   bool
-	deviceService          *device.Service
-	logger                 *slog.Logger
-	auditPublisher         AuditPublisher
-	jwt                    TokenGenerator
-	metrics                *metrics.Metrics
-	allowedRedirectSchemes []string
+	users          UserStore
+	sessions       SessionStore
+	codes          AuthCodeStore
+	refreshTokens  RefreshTokenStore
+	tx             AuthStoreTx
+	deviceService  *device.Service
+	logger         *slog.Logger
+	auditPublisher AuditPublisher
+	jwt            TokenGenerator
+	metrics        *metrics.Metrics
+	*Config
 }
 
 const (
-	StatusPendingConsent = "pending_consent"
-	StatusActive         = "active"
-	defaultSessionTTL    = 24 * time.Hour
-	defaultTokenTTL      = 15 * time.Minute
+	StatusPendingConsent   = "pending_consent"
+	StatusActive           = "active"
+	defaultSessionTTL      = 24 * time.Hour
+	defaultTokenTTL        = 15 * time.Minute
+	defaultRefreshTokenTTL = 30 * 24 * time.Hour
 )
 
 type Config struct {
 	SessionTTL             time.Duration
 	TokenTTL               time.Duration
+	RefreshTokenTTL        time.Duration
 	AllowedRedirectSchemes []string
 	DeviceBindingEnabled   bool
 }
@@ -159,7 +158,7 @@ func WithAuthStoreTx(tx AuthStoreTx) Option {
 
 func WithDeviceBindingEnabled(enabled bool) Option {
 	return func(s *Service) {
-		s.deviceBindingEnabled = enabled
+		s.DeviceBindingEnabled = enabled
 	}
 }
 
@@ -168,11 +167,14 @@ func New(
 	sessions SessionStore,
 	codes AuthCodeStore,
 	refreshTokens RefreshTokenStore,
-	cfg Config,
+	cfg *Config,
 	opts ...Option,
 ) (*Service, error) {
 	if users == nil || sessions == nil || codes == nil || refreshTokens == nil {
 		return nil, fmt.Errorf("users, sessions, codes, and refreshTokens stores are required")
+	}
+	if cfg == nil {
+		cfg = &Config{}
 	}
 	// Defaults for required config
 	if cfg.SessionTTL <= 0 {
@@ -181,20 +183,20 @@ func New(
 	if cfg.TokenTTL <= 0 {
 		cfg.TokenTTL = defaultTokenTTL
 	}
+	if cfg.RefreshTokenTTL <= 0 {
+		cfg.RefreshTokenTTL = defaultRefreshTokenTTL
+	}
 	if len(cfg.AllowedRedirectSchemes) == 0 {
 		cfg.AllowedRedirectSchemes = []string{"https"}
 	}
 
 	svc := &Service{
-		users:                  users,
-		sessions:               sessions,
-		codes:                  codes,
-		refreshTokens:          refreshTokens,
-		tx:                     &mutexAuthTx{mu: &sync.Mutex{}, stores: TxAuthStores{Codes: codes, Sessions: sessions, RefreshTokens: refreshTokens}},
-		sessionTTL:             cfg.SessionTTL,
-		tokenTTL:               cfg.TokenTTL,
-		deviceBindingEnabled:   cfg.DeviceBindingEnabled,
-		allowedRedirectSchemes: cfg.AllowedRedirectSchemes,
+		users:         users,
+		sessions:      sessions,
+		codes:         codes,
+		refreshTokens: refreshTokens,
+		tx:            &mutexAuthTx{mu: &sync.Mutex{}, stores: TxAuthStores{Codes: codes, Sessions: sessions, RefreshTokens: refreshTokens}},
+		Config:        cfg,
 	}
 
 	for _, opt := range opts {
@@ -206,7 +208,7 @@ func New(
 	}
 
 	if svc.deviceService == nil {
-		svc.deviceService = device.NewService(svc.deviceBindingEnabled)
+		svc.deviceService = device.NewService(svc.DeviceBindingEnabled)
 	}
 
 	return svc, nil
@@ -266,7 +268,7 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 
 	deviceID := ""
 	deviceIDToSet := ""
-	if s.deviceBindingEnabled {
+	if s.DeviceBindingEnabled {
 		deviceID = middleware.GetDeviceID(ctx)
 		if deviceID == "" {
 			deviceID = s.deviceService.GenerateDeviceID()
@@ -287,7 +289,7 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 		ApproximateLocation:   "",
 		Status:                StatusPendingConsent,
 		CreatedAt:             now,
-		ExpiresAt:             now.Add(s.sessionTTL),
+		ExpiresAt:             now.Add(s.SessionTTL),
 		LastSeenAt:            now,
 	}
 
@@ -390,77 +392,142 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 }
 
 func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {
-	// Validate grant_type (OAuth 2.0 requirement)
-	// Note: This is a client implementation error, not a security attack
-	if req.GrantType != "authorization_code" {
+	if err := s.validateTokenRequest(req); err != nil {
+		return nil, err
+	}
+
+	switch req.GrantType {
+	case "authorization_code":
+		return s.exchangeAuthorizationCode(ctx, req)
+	case "refresh_token":
+		return s.refreshWithRefreshToken(ctx, req)
+	default:
 		return nil, dErrors.New(dErrors.CodeBadRequest, "unsupported grant_type")
 	}
+}
 
-	// Step 1: Retrieve authorization code
-	codeRecord, err := s.codes.FindByCode(ctx, req.Code)
+type tokenArtifacts struct {
+	accessToken   string
+	idToken       string
+	refreshToken  string
+	refreshRecord *models.RefreshTokenRecord
+}
+
+func (s *Service) validateTokenRequest(req *models.TokenRequest) error {
+	if req == nil {
+		return dErrors.New(dErrors.CodeBadRequest, "invalid request")
+	}
+	if strings.TrimSpace(req.GrantType) == "" {
+		return dErrors.New(dErrors.CodeValidation, "grant_type is required")
+	}
+	if strings.TrimSpace(req.ClientID) == "" {
+		return dErrors.New(dErrors.CodeValidation, "client_id is required")
+	}
+
+	switch req.GrantType {
+	case "authorization_code":
+		if strings.TrimSpace(req.Code) == "" {
+			return dErrors.New(dErrors.CodeValidation, "code is required")
+		}
+		if strings.TrimSpace(req.RedirectURI) == "" {
+			return dErrors.New(dErrors.CodeValidation, "redirect_uri is required")
+		}
+	case "refresh_token":
+		if strings.TrimSpace(req.RefreshToken) == "" {
+			return dErrors.New(dErrors.CodeValidation, "refresh_token is required")
+		}
+	default:
+		// OAuth 2.0: unsupported_grant_type
+		return dErrors.New(dErrors.CodeBadRequest, "unsupported grant_type")
+	}
+
+	return nil
+}
+
+func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {
+	codeRecord, err := s.findAuthorizationCode(ctx, req)
 	if err != nil {
-		if errors.Is(err, sessionStore.ErrNotFound) {
-			s.authFailure(ctx, "code_not_found", false,
+		return nil, err
+	}
+	if err := s.validateAuthorizationCode(ctx, req, codeRecord); err != nil {
+		return nil, err
+	}
+
+	session, err := s.findSessionForCode(ctx, req, codeRecord)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.validateSessionForTokenExchange(ctx, req, session); err != nil {
+		return nil, err
+	}
+
+	mutableSession := *session
+	s.applyDeviceBinding(ctx, &mutableSession)
+	// Used for session management UI / risk signals.
+	mutableSession.LastSeenAt = time.Now()
+
+	// Transition from pending_consent to active on first successful exchange.
+	if mutableSession.Status == StatusPendingConsent {
+		mutableSession.Status = StatusActive
+	}
+
+	artifacts, err := s.generateTokenArtifacts(&mutableSession)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.persistTokenExchange(ctx, &mutableSession, codeRecord, artifacts.refreshRecord); err != nil {
+		return nil, err
+	}
+
+	s.logAudit(ctx,
+		string(audit.EventTokenIssued),
+		"session_id", mutableSession.ID.String(),
+		"user_id", mutableSession.UserID.String(),
+		"client_id", mutableSession.ClientID,
+	)
+	s.incrementTokenRequests()
+
+	return &models.TokenResult{
+		AccessToken:  artifacts.accessToken,
+		IDToken:      artifacts.idToken,
+		RefreshToken: artifacts.refreshToken,
+		TokenType:    "Bearer",
+		ExpiresIn:    s.TokenTTL, // Access token TTL
+	}, nil
+}
+
+func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {
+	refreshRecord, err := s.refreshTokens.Find(ctx, req.RefreshToken)
+	if err != nil {
+		if dErrors.Is(err, dErrors.CodeNotFound) {
+			s.authFailure(ctx, "refresh_token_not_found", false,
 				"client_id", req.ClientID,
 			)
-			return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid authorization code")
+			return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid refresh token")
 		}
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to find code")
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to find refresh token")
 	}
 
-	// Step 2: Validate authorization code constraints
-	if time.Now().After(codeRecord.ExpiresAt) {
-		s.authFailure(ctx, "authorization_code_expired", false,
+	if time.Now().After(refreshRecord.ExpiresAt) {
+		s.authFailure(ctx, "refresh_token_expired", false,
 			"client_id", req.ClientID,
-			"code", req.Code,
+			"session_id", refreshRecord.SessionID.String(),
 		)
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "authorization code expired")
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "refresh token expired")
 	}
 
-	if codeRecord.Used {
-		// Security: Code reuse indicates replay attack - revoke the session
-		err = s.sessions.RevokeSession(ctx, codeRecord.SessionID)
-		if err != nil {
-			return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to revoke compromised session")
-		}
-		s.authFailure(ctx, "authorization_code_reused", false,
-			"client_id", req.ClientID,
-			"session_id", codeRecord.SessionID.String(),
-		)
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "authorization code already used")
-	}
-
-	if codeRecord.RedirectURI != req.RedirectURI {
-		s.authFailure(ctx, "redirect_uri_mismatch", false,
-			"client_id", req.ClientID,
-		)
-		return nil, dErrors.New(dErrors.CodeBadRequest, "redirect_uri mismatch")
-	}
-
-	// Step 3: Retrieve session
-	session, err := s.sessions.FindByID(ctx, codeRecord.SessionID)
+	session, err := s.sessions.FindByID(ctx, refreshRecord.SessionID)
 	if err != nil {
-		if errors.Is(err, sessionStore.ErrNotFound) {
-			s.authFailure(ctx, "session_not_found", false,
+		if dErrors.Is(err, dErrors.CodeNotFound) {
+			s.authFailure(ctx, "session_not_found_for_refresh_token", false,
 				"client_id", req.ClientID,
+				"session_id", refreshRecord.SessionID.String(),
 			)
-			return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid authorization code")
+			return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid refresh token")
 		}
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to find session")
 	}
 
-	// Step 4: Validate session and client_id match
-	if req.ClientID != session.ClientID {
-		s.authFailure(ctx, "client_id_mismatch", false,
-			"session_id", session.ID.String(),
-			"user_id", session.UserID.String(),
-			"expected_client_id", session.ClientID,
-			"provided_client_id", req.ClientID,
-		)
-		return nil, dErrors.New(dErrors.CodeBadRequest, "client_id mismatch")
-	}
-
-	// Step 5: Validate session status and expiry
 	if session.Status == "revoked" {
 		s.authFailure(ctx, "session_revoked", false,
 			"session_id", session.ID.String(),
@@ -470,15 +537,14 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 		return nil, dErrors.New(dErrors.CodeUnauthorized, "session has been revoked")
 	}
 
-	// Accept both pending_consent and active (for idempotency if code is exchanged twice)
-	if session.Status != StatusPendingConsent && session.Status != StatusActive {
-		s.authFailure(ctx, "invalid_session_status", false,
+	if req.ClientID != session.ClientID {
+		s.authFailure(ctx, "client_id_mismatch", false,
 			"session_id", session.ID.String(),
 			"user_id", session.UserID.String(),
-			"client_id", session.ClientID,
-			"status", session.Status,
+			"expected_client_id", session.ClientID,
+			"provided_client_id", req.ClientID,
 		)
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "session in invalid state")
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "client_id mismatch")
 	}
 
 	if time.Now().After(session.ExpiresAt) {
@@ -491,65 +557,207 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 	}
 
 	mutableSession := *session
-
-	// Device binding (Phase 1: soft launch — log results, do not enforce).
-	if s.deviceBindingEnabled {
-		cookieDeviceID := middleware.GetDeviceID(ctx)
-		if mutableSession.DeviceID == "" && cookieDeviceID != "" {
-			mutableSession.DeviceID = cookieDeviceID
-			if s.logger != nil {
-				s.logger.InfoContext(ctx, "device_id_attached",
-					"session_id", mutableSession.ID.String(),
-					"user_id", mutableSession.UserID.String(),
-				)
-			}
-		}
-		if mutableSession.DeviceID != "" && cookieDeviceID == "" {
-			if s.logger != nil {
-				s.logger.WarnContext(ctx, "device_id_missing",
-					"session_id", mutableSession.ID.String(),
-					"user_id", mutableSession.UserID.String(),
-				)
-			}
-		} else if mutableSession.DeviceID != "" && cookieDeviceID != "" && mutableSession.DeviceID != cookieDeviceID {
-			if s.logger != nil {
-				s.logger.WarnContext(ctx, "device_id_mismatch",
-					"session_id", mutableSession.ID.String(),
-					"user_id", mutableSession.UserID.String(),
-				)
-			}
-		}
-
-		userAgent := middleware.GetUserAgent(ctx)
-		currentFingerprint := s.deviceService.ComputeFingerprint(userAgent)
-		_, driftDetected := s.deviceService.CompareFingerprints(mutableSession.DeviceFingerprintHash, currentFingerprint)
-		if mutableSession.DeviceFingerprintHash == "" && currentFingerprint != "" {
-			mutableSession.DeviceFingerprintHash = currentFingerprint
-		} else if driftDetected {
-			if s.logger != nil {
-				s.logger.InfoContext(ctx, "fingerprint_drift_detected",
-					"session_id", mutableSession.ID.String(),
-					"user_id", mutableSession.UserID.String(),
-				)
-			}
-			mutableSession.DeviceFingerprintHash = currentFingerprint
-		}
-	}
-
-	// Session activity marker (used for session management UI / risk signals).
+	s.applyDeviceBinding(ctx, &mutableSession)
+	// Used for session management UI / risk signals.
 	mutableSession.LastSeenAt = time.Now()
 
-	if mutableSession.Status == StatusPendingConsent {
-		mutableSession.Status = StatusActive
+	artifacts, err := s.generateTokenArtifacts(&mutableSession)
+	if err != nil {
+		return nil, err
 	}
 
+	now := time.Now()
+	writeErr := s.tx.RunInTx(ctx, func(stores TxAuthStores) error {
+		if err := stores.Sessions.UpdateSession(ctx, &mutableSession); err != nil {
+			return err
+		}
+		if err := stores.RefreshTokens.UpdateLastRefreshed(ctx, req.RefreshToken, &now); err != nil {
+			return err
+		}
+		if err := stores.RefreshTokens.Create(ctx, artifacts.refreshRecord); err != nil {
+			return err
+		}
+		return nil
+	})
+	if writeErr != nil {
+		return nil, dErrors.Wrap(writeErr, dErrors.CodeInternal, "failed to persist token refresh")
+	}
+
+	s.logAudit(ctx,
+		string(audit.EventTokenRefreshed),
+		"session_id", mutableSession.ID.String(),
+		"user_id", mutableSession.UserID.String(),
+		"client_id", mutableSession.ClientID,
+	)
+	s.incrementTokenRequests()
+
+	return &models.TokenResult{
+		AccessToken:  artifacts.accessToken,
+		IDToken:      artifacts.idToken,
+		RefreshToken: artifacts.refreshToken,
+		TokenType:    "Bearer",
+		ExpiresIn:    s.TokenTTL,
+	}, nil
+}
+
+func (s *Service) findAuthorizationCode(ctx context.Context, req *models.TokenRequest) (*models.AuthorizationCodeRecord, error) {
+	codeRecord, err := s.codes.FindByCode(ctx, req.Code)
+	if err != nil {
+		if errors.Is(err, sessionStore.ErrNotFound) {
+			s.authFailure(ctx, "code_not_found", false,
+				"client_id", req.ClientID,
+			)
+			return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid authorization code")
+		}
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to find code")
+	}
+	return codeRecord, nil
+}
+
+func (s *Service) validateAuthorizationCode(ctx context.Context, req *models.TokenRequest, codeRecord *models.AuthorizationCodeRecord) error {
+	if time.Now().After(codeRecord.ExpiresAt) {
+		s.authFailure(ctx, "authorization_code_expired", false,
+			"client_id", req.ClientID,
+			"code", req.Code,
+		)
+		return dErrors.New(dErrors.CodeUnauthorized, "authorization code expired")
+	}
+
+	if codeRecord.Used {
+		// Security: Code reuse indicates replay attack - revoke the session.
+		if err := s.sessions.RevokeSession(ctx, codeRecord.SessionID); err != nil {
+			return dErrors.Wrap(err, dErrors.CodeInternal, "failed to revoke compromised session")
+		}
+		s.authFailure(ctx, "authorization_code_reused", false,
+			"client_id", req.ClientID,
+			"session_id", codeRecord.SessionID.String(),
+		)
+		return dErrors.New(dErrors.CodeUnauthorized, "authorization code already used")
+	}
+
+	if codeRecord.RedirectURI != req.RedirectURI {
+		s.authFailure(ctx, "redirect_uri_mismatch", false,
+			"client_id", req.ClientID,
+		)
+		return dErrors.New(dErrors.CodeBadRequest, "redirect_uri mismatch")
+	}
+
+	return nil
+}
+
+func (s *Service) findSessionForCode(ctx context.Context, req *models.TokenRequest, codeRecord *models.AuthorizationCodeRecord) (*models.Session, error) {
+	session, err := s.sessions.FindByID(ctx, codeRecord.SessionID)
+	if err != nil {
+		if errors.Is(err, sessionStore.ErrNotFound) {
+			s.authFailure(ctx, "session_not_found", false,
+				"client_id", req.ClientID,
+			)
+			return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid authorization code")
+		}
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to find session")
+	}
+	return session, nil
+}
+
+func (s *Service) validateSessionForTokenExchange(ctx context.Context, req *models.TokenRequest, session *models.Session) error {
+	if req.ClientID != session.ClientID {
+		s.authFailure(ctx, "client_id_mismatch", false,
+			"session_id", session.ID.String(),
+			"user_id", session.UserID.String(),
+			"expected_client_id", session.ClientID,
+			"provided_client_id", req.ClientID,
+		)
+		return dErrors.New(dErrors.CodeBadRequest, "client_id mismatch")
+	}
+
+	if session.Status == "revoked" {
+		s.authFailure(ctx, "session_revoked", false,
+			"session_id", session.ID.String(),
+			"user_id", session.UserID.String(),
+			"client_id", session.ClientID,
+		)
+		return dErrors.New(dErrors.CodeUnauthorized, "session has been revoked")
+	}
+
+	// Accept both pending_consent and active (for idempotency if code is exchanged twice).
+	if session.Status != StatusPendingConsent && session.Status != StatusActive {
+		s.authFailure(ctx, "invalid_session_status", false,
+			"session_id", session.ID.String(),
+			"user_id", session.UserID.String(),
+			"client_id", session.ClientID,
+			"status", session.Status,
+		)
+		return dErrors.New(dErrors.CodeUnauthorized, "session in invalid state")
+	}
+
+	if time.Now().After(session.ExpiresAt) {
+		s.authFailure(ctx, "session_expired", false,
+			"session_id", session.ID.String(),
+			"user_id", session.UserID.String(),
+			"client_id", session.ClientID,
+		)
+		return dErrors.New(dErrors.CodeUnauthorized, "session expired")
+	}
+
+	return nil
+}
+
+func (s *Service) applyDeviceBinding(ctx context.Context, session *models.Session) {
+	// Phase 1: soft launch — log signals, do not enforce.
+	if !s.DeviceBindingEnabled {
+		return
+	}
+
+	cookieDeviceID := middleware.GetDeviceID(ctx)
+	if session.DeviceID == "" && cookieDeviceID != "" {
+		session.DeviceID = cookieDeviceID
+		if s.logger != nil {
+			s.logger.InfoContext(ctx, "device_id_attached",
+				"session_id", session.ID.String(),
+				"user_id", session.UserID.String(),
+			)
+		}
+	}
+	if session.DeviceID != "" && cookieDeviceID == "" {
+		if s.logger != nil {
+			s.logger.WarnContext(ctx, "device_id_missing",
+				"session_id", session.ID.String(),
+				"user_id", session.UserID.String(),
+			)
+		}
+	} else if session.DeviceID != "" && cookieDeviceID != "" && session.DeviceID != cookieDeviceID {
+		if s.logger != nil {
+			s.logger.WarnContext(ctx, "device_id_mismatch",
+				"session_id", session.ID.String(),
+				"user_id", session.UserID.String(),
+			)
+		}
+	}
+
+	userAgent := middleware.GetUserAgent(ctx)
+	currentFingerprint := s.deviceService.ComputeFingerprint(userAgent)
+	_, driftDetected := s.deviceService.CompareFingerprints(session.DeviceFingerprintHash, currentFingerprint)
+	if session.DeviceFingerprintHash == "" && currentFingerprint != "" {
+		session.DeviceFingerprintHash = currentFingerprint
+	} else if driftDetected {
+		if s.logger != nil {
+			s.logger.InfoContext(ctx, "fingerprint_drift_detected",
+				"session_id", session.ID.String(),
+				"user_id", session.UserID.String(),
+			)
+		}
+		session.DeviceFingerprintHash = currentFingerprint
+	}
+}
+
+func (s *Service) generateTokenArtifacts(session *models.Session) (*tokenArtifacts, error) {
 	// Generate tokens before mutating persistence state so failures do not leave partial writes.
-	accessToken, err := s.jwt.GenerateAccessToken(mutableSession.UserID, mutableSession.ID, mutableSession.ClientID)
+	accessToken, err := s.jwt.GenerateAccessToken(session.UserID, session.ID, session.ClientID)
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate access token")
 	}
 
-	idToken, err := s.jwt.GenerateIDToken(mutableSession.UserID, mutableSession.ID, mutableSession.ClientID)
+	idToken, err := s.jwt.GenerateIDToken(session.UserID, session.ID, session.ClientID)
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate ID token")
 	}
@@ -559,20 +767,35 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to create refresh token")
 	}
 
+	now := time.Now()
 	tokenRecord := &models.RefreshTokenRecord{
 		Token:           refreshToken,
-		SessionID:       mutableSession.ID,
-		CreatedAt:       time.Now(),
+		SessionID:       session.ID,
+		CreatedAt:       now,
 		LastRefreshedAt: nil,
-		ExpiresAt:       time.Now().Add(30 * 24 * time.Hour), // 30 days
+		ExpiresAt:       now.Add(s.RefreshTokenTTL), // 30 days
 		Used:            false,
 	}
 
+	return &tokenArtifacts{
+		accessToken:   accessToken,
+		idToken:       idToken,
+		refreshToken:  refreshToken,
+		refreshRecord: tokenRecord,
+	}, nil
+}
+
+func (s *Service) persistTokenExchange(
+	ctx context.Context,
+	session *models.Session,
+	codeRecord *models.AuthorizationCodeRecord,
+	refreshRecord *models.RefreshTokenRecord,
+) error {
 	writeErr := s.tx.RunInTx(ctx, func(stores TxAuthStores) error {
-		if err := stores.Sessions.UpdateSession(ctx, &mutableSession); err != nil {
+		if err := stores.Sessions.UpdateSession(ctx, session); err != nil {
 			return err
 		}
-		if err := stores.RefreshTokens.Create(ctx, tokenRecord); err != nil {
+		if err := stores.RefreshTokens.Create(ctx, refreshRecord); err != nil {
 			return err
 		}
 		if err := stores.Codes.MarkUsed(ctx, codeRecord.Code); err != nil {
@@ -581,24 +804,9 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 		return nil
 	})
 	if writeErr != nil {
-		return nil, dErrors.Wrap(writeErr, dErrors.CodeInternal, "failed to persist token exchange")
+		return dErrors.Wrap(writeErr, dErrors.CodeInternal, "failed to persist token exchange")
 	}
-
-	s.logAudit(ctx,
-		string(audit.EventTokenIssued),
-		"session_id", mutableSession.ID.String(),
-		"user_id", mutableSession.UserID.String(),
-		"client_id", mutableSession.ClientID,
-	)
-	s.incrementTokenRequests()
-
-	return &models.TokenResult{
-		AccessToken:  accessToken,
-		IDToken:      idToken,
-		RefreshToken: refreshToken,
-		TokenType:    "Bearer",
-		ExpiresIn:    s.tokenTTL, // Access token TTL
-	}, nil
+	return nil
 }
 
 func (s *Service) DeleteUser(ctx context.Context, userID uuid.UUID) error {
@@ -698,7 +906,7 @@ func (s *Service) incrementTokenRequests() {
 }
 
 func (s *Service) isRedirectSchemeAllowed(uri *url.URL) bool {
-	for _, scheme := range s.allowedRedirectSchemes {
+	for _, scheme := range s.AllowedRedirectSchemes {
 		if strings.EqualFold(uri.Scheme, scheme) {
 			return true
 		}

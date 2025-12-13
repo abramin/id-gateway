@@ -37,7 +37,11 @@ func ErrorMessage(err error) string {
 	}
 
 	fe := validationErrs[0]
-	field := s.ToSnakeCase(fe.Field())
+	fieldName := fe.Field()
+	if fieldName == "" {
+		fieldName = fe.StructField()
+	}
+	field := s.ToSnakeCase(fieldName)
 
 	switch fe.ActualTag() {
 	case "required":
@@ -46,6 +50,8 @@ func ErrorMessage(err error) string {
 		return fmt.Sprintf("%s must be a valid email", field)
 	case "url":
 		return fmt.Sprintf("%s must be a valid url", field)
+	case "uuid":
+		return fmt.Sprintf("%s must be a valid uuid", field)
 	case "min":
 		return fmt.Sprintf("%s must be at least %s", field, fe.Param())
 	case "max":
@@ -55,6 +61,9 @@ func ErrorMessage(err error) string {
 	case "notblank":
 		return fmt.Sprintf("%s must not be blank", field)
 	default:
+		if field == "" {
+			return "invalid request body"
+		}
 		return fmt.Sprintf("%s is invalid", field)
 	}
 }
