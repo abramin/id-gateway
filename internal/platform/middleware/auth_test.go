@@ -92,6 +92,7 @@ func (s *AuthMiddlewareTestSuite) TestValidToken() {
 		UserID:    "user-123",
 		SessionID: "session-456",
 		ClientID:  "client-789",
+		JTI:       "jti-123",
 	}
 	s.validator.On("ValidateToken", "valid-token").Return(expectedClaims, nil)
 
@@ -126,6 +127,52 @@ func (s *AuthMiddlewareTestSuite) TestRevokedToken() {
 	assert.Equal(s.T(), http.StatusUnauthorized, w.Code)
 	assert.JSONEq(s.T(),
 		`{"error":"unauthorized","error_description":"Token has been revoked"}`,
+		w.Body.String(),
+	)
+}
+
+func (s *AuthMiddlewareTestSuite) TestRevocationCheckMissingJTI() {
+	expectedClaims := &JWTClaims{
+		UserID:    "user-123",
+		SessionID: "session-456",
+		ClientID:  "client-789",
+	}
+	s.validator.On("ValidateToken", "valid-token").Return(expectedClaims, nil)
+
+	handler := RequireAuth(s.validator, s.revoker, s.logger)(s.nextHandler)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer valid-token")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.False(s.T(), s.nextHandler.called, "next handler should not be called")
+	assert.Equal(s.T(), http.StatusUnauthorized, w.Code)
+	assert.JSONEq(s.T(),
+		`{"error":"unauthorized","error_description":"Invalid or expired token"}`,
+		w.Body.String(),
+	)
+}
+
+func (s *AuthMiddlewareTestSuite) TestRevocationCheckError() {
+	expectedClaims := &JWTClaims{
+		UserID:    "user-123",
+		SessionID: "session-456",
+		ClientID:  "client-789",
+		JTI:       "jti-123",
+	}
+	s.validator.On("ValidateToken", "valid-token").Return(expectedClaims, nil)
+	s.revoker.On("IsTokenRevoked", mock.Anything, "jti-123").Return(false, errors.New("db down"))
+
+	handler := RequireAuth(s.validator, s.revoker, s.logger)(s.nextHandler)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer valid-token")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.False(s.T(), s.nextHandler.called, "next handler should not be called")
+	assert.Equal(s.T(), http.StatusInternalServerError, w.Code)
+	assert.JSONEq(s.T(),
+		`{"error":"internal_error","error_description":"Failed to validate token"}`,
 		w.Body.String(),
 	)
 }

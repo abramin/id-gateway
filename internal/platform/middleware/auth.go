@@ -92,8 +92,19 @@ func RequireAuth(validator JWTValidator, revocationChecker TokenRevocationChecke
 
 				ctx := r.Context()
 
-				// Check if token is revoked (PRD-016 FR-3)
-				if revocationChecker != nil && claims.JTI != "" {
+				// TR-4: Middleware revocation check (PRD-016).
+				if revocationChecker != nil {
+					if claims.JTI == "" {
+						requestID := GetRequestID(ctx)
+						logger.WarnContext(ctx, "unauthorized access - missing token jti",
+							"request_id", requestID,
+						)
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusUnauthorized)
+						_, _ = w.Write([]byte(`{"error":"unauthorized","error_description":"Invalid or expired token"}`))
+						return
+					}
+
 					revoked, err := revocationChecker.IsTokenRevoked(ctx, claims.JTI)
 					if err != nil {
 						requestID := GetRequestID(ctx)
