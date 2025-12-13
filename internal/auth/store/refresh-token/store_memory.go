@@ -76,18 +76,6 @@ func (s *InMemoryRefreshTokenStore) FindBySessionID(_ context.Context, id uuid.U
 	return best, nil
 }
 
-func (s *InMemoryRefreshTokenStore) Delete(ctx context.Context, id uuid.UUID) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for key, token := range s.tokens {
-		if token.ID == id {
-			delete(s.tokens, key)
-			return nil
-		}
-	}
-	return ErrNotFound
-}
-
 func (s *InMemoryRefreshTokenStore) DeleteBySessionID(ctx context.Context, sessionID uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -102,11 +90,6 @@ func (s *InMemoryRefreshTokenStore) DeleteBySessionID(ctx context.Context, sessi
 		return ErrNotFound
 	}
 	return nil
-}
-
-func (s *InMemoryRefreshTokenStore) Consume(ctx context.Context, tokenString string, timestamp time.Time) error {
-	_, err := s.ConsumeRefreshToken(ctx, tokenString, timestamp)
-	return err
 }
 
 func (s *InMemoryRefreshTokenStore) ConsumeRefreshToken(_ context.Context, token string, now time.Time) (*models.RefreshTokenRecord, error) {

@@ -324,20 +324,6 @@ func (mr *MockAuthCodeStoreMockRecorder) Create(ctx, authCode any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockAuthCodeStore)(nil).Create), ctx, authCode)
 }
 
-// Delete mocks base method.
-func (m *MockAuthCodeStore) Delete(ctx context.Context, code string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", ctx, code)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Delete indicates an expected call of Delete.
-func (mr *MockAuthCodeStoreMockRecorder) Delete(ctx, code any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockAuthCodeStore)(nil).Delete), ctx, code)
-}
-
 // DeleteExpiredCodes mocks base method.
 func (m *MockAuthCodeStore) DeleteExpiredCodes(ctx context.Context) (int, error) {
 	m.ctrl.T.Helper()
@@ -404,20 +390,6 @@ func NewMockRefreshTokenStore(ctrl *gomock.Controller) *MockRefreshTokenStore {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockRefreshTokenStore) EXPECT() *MockRefreshTokenStoreMockRecorder {
 	return m.recorder
-}
-
-// Consume mocks base method.
-func (m *MockRefreshTokenStore) Consume(ctx context.Context, token string, timestamp time.Time) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Consume", ctx, token, timestamp)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Consume indicates an expected call of Consume.
-func (mr *MockRefreshTokenStoreMockRecorder) Consume(ctx, token, timestamp any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Consume", reflect.TypeOf((*MockRefreshTokenStore)(nil).Consume), ctx, token, timestamp)
 }
 
 // ConsumeRefreshToken mocks base method.

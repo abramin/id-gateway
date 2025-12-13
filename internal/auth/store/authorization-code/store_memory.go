@@ -7,8 +7,6 @@ import (
 
 	"credo/internal/auth/models"
 	dErrors "credo/pkg/domain-errors"
-
-	"github.com/google/uuid"
 )
 
 // ErrNotFound is returned when a requested record is not found in the store.
@@ -51,25 +49,6 @@ func (s *InMemoryAuthorizationCodeStore) FindByCode(_ context.Context, code stri
 		return authCode, nil
 	}
 	return nil, ErrNotFound
-}
-
-func (s *InMemoryAuthorizationCodeStore) FindByID(_ context.Context, id uuid.UUID) (*models.AuthorizationCodeRecord, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if authCode, ok := s.authCodes[id.String()]; ok {
-		return authCode, nil
-	}
-	return nil, ErrNotFound
-}
-
-func (s *InMemoryAuthorizationCodeStore) Delete(_ context.Context, code string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.authCodes[code]; ok {
-		delete(s.authCodes, code)
-		return nil
-	}
-	return ErrNotFound
 }
 
 func (s *InMemoryAuthorizationCodeStore) MarkUsed(_ context.Context, code string) error {

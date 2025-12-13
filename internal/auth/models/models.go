@@ -1,16 +1,8 @@
 package models
 
 import (
-	"time"
-
 	"github.com/google/uuid"
-)
-
-type contextKey string
-
-const (
-	ContextKeyUserAgent contextKey = "user_agent"
-	ContextKeyIPAddress contextKey = "ip_address"
+	"time"
 )
 
 // User captures the primary identity tracked by the gateway. Storage of the

@@ -44,32 +44,6 @@ func (s *InMemoryAuthorizationCodeStoreSuite) TestFindNotFound() {
 	assert.ErrorIs(s.T(), err, ErrNotFound)
 }
 
-func (s *InMemoryAuthorizationCodeStoreSuite) TestDelete() {
-	sessionID := uuid.New()
-	otherSessionID := uuid.New()
-	matching := &models.AuthorizationCodeRecord{Code: "authz_match", SessionID: sessionID}
-	other := &models.AuthorizationCodeRecord{Code: "authz_other", SessionID: otherSessionID}
-
-	require.NoError(s.T(), s.store.Create(context.Background(), matching))
-	require.NoError(s.T(), s.store.Create(context.Background(), other))
-
-	err := s.store.Delete(context.Background(), matching.Code)
-	require.NoError(s.T(), err)
-
-	_, err = s.store.FindByCode(context.Background(), matching.Code)
-	assert.ErrorIs(s.T(), err, ErrNotFound)
-
-	fetchedOther, err := s.store.FindByCode(context.Background(), other.Code)
-	require.NoError(s.T(), err)
-	assert.Equal(s.T(), other, fetchedOther)
-
-	err = s.store.Delete(context.Background(), other.Code)
-	require.NoError(s.T(), err)
-
-	err = s.store.Delete(context.Background(), other.Code)
-	assert.ErrorIs(s.T(), err, ErrNotFound)
-}
-
 func TestInMemoryAuthorizationCodeStoreSuite(t *testing.T) {
 	suite.Run(t, new(InMemoryAuthorizationCodeStoreSuite))
 }

@@ -39,7 +39,6 @@ type AuthCodeStore interface {
 	FindByCode(ctx context.Context, code string) (*models.AuthorizationCodeRecord, error)
 	MarkUsed(ctx context.Context, code string) error
 	ConsumeAuthCode(ctx context.Context, code string, redirectURI string, now time.Time) (*models.AuthorizationCodeRecord, error)
-	Delete(ctx context.Context, code string) error
 	DeleteExpiredCodes(ctx context.Context) (int, error)
 }
 
@@ -47,7 +46,6 @@ type RefreshTokenStore interface {
 	Create(ctx context.Context, token *models.RefreshTokenRecord) error
 	FindBySessionID(ctx context.Context, id uuid.UUID) (*models.RefreshTokenRecord, error)
 	Find(ctx context.Context, tokenString string) (*models.RefreshTokenRecord, error)
-	Consume(ctx context.Context, token string, timestamp time.Time) error
 	ConsumeRefreshToken(ctx context.Context, token string, now time.Time) (*models.RefreshTokenRecord, error)
 	DeleteBySessionID(ctx context.Context, sessionID uuid.UUID) error
 }
