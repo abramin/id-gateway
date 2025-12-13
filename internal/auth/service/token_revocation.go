@@ -80,11 +80,14 @@ func (s *Service) RevokeToken(ctx context.Context, token string, tokenTypeHint s
 func (s *Service) extractSessionFromAccessToken(ctx context.Context, token string) (string, *models.Session, error) {
 	// Parse JWT without full validation to extract claims
 	// We only need to extract session_id and jti, token might be expired
-	parser := jwt.NewParser(jwt.WithoutClaimsValidation())
 	claims := &jwttoken.Claims{}
-	_, _, err := parser.ParseUnverified(token, claims)
-	if err != nil {
-		return "", nil, fmt.Errorf("invalid jwt format: %w", err)
+	// Parse with signature verification, but skip claims (e.g., exp) validation
+	tokenObj, err := jwt.ParseWithClaims(token, claims, func(token *jwt.Token) (interface{}, error) {
+		// Use your key lookup logic; replace s.jwtKey or s.jwtSigningKey with your actual key.
+		return s.jwtSigningKey, nil
+	}, jwt.WithoutClaimsValidation())
+	if err != nil || !tokenObj.Valid {
+		return "", nil, fmt.Errorf("invalid jwt signature or format: %w", err)
 	}
 
 	// Get session
