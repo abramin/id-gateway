@@ -34,10 +34,69 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+type infraBundle struct {
+	Cfg          *config.Server
+	Log          *slog.Logger
+	Metrics      *metrics.Metrics
+	JWTService   *jwttoken.JWTService
+	JWTValidator *jwttoken.JWTServiceAdapter
+}
+
+type authModule struct {
+	Service       *authService.Service
+	Handler       *authHandler.Handler
+	AdminSvc      *admin.Service
+	Cleanup       *cleanupWorker.CleanupService
+	Users         *userStore.InMemoryUserStore
+	Sessions      *sessionStore.InMemorySessionStore
+	Codes         *authCodeStore.InMemoryAuthorizationCodeStore
+	RefreshTokens *refreshTokenStore.InMemoryRefreshTokenStore
+	AuditStore    *audit.InMemoryStore
+}
+
+type consentModule struct {
+	Service *consentService.Service
+	Handler *consentHandler.Handler
+}
+
 func main() {
-	cfg, err := config.FromEnv()
+	infra, err := buildInfra()
 	if err != nil {
 		panic(err)
+	}
+
+	appCtx, cancelApp := context.WithCancel(context.Background())
+	defer cancelApp()
+
+	authMod, err := buildAuthModule(appCtx, infra)
+	if err != nil {
+		infra.Log.Error("failed to initialize auth module", "error", err)
+		os.Exit(1)
+	}
+	consentMod := buildConsentModule(infra)
+
+	startCleanupWorker(appCtx, infra.Log, authMod.Cleanup)
+
+	r := setupRouter(infra.Log, infra.Metrics)
+	registerRoutes(r, infra, authMod, consentMod)
+
+	mainSrv := httpserver.New(infra.Cfg.Addr, r)
+	startServer(mainSrv, infra.Log, "main API")
+
+	var adminSrv *http.Server
+	if infra.Cfg.Security.AdminAPIToken != "" {
+		adminRouter := setupAdminRouter(infra.Log, authMod.AdminSvc, infra.Cfg)
+		adminSrv = httpserver.New(":8081", adminRouter)
+		startServer(adminSrv, infra.Log, "admin")
+	}
+
+	waitForShutdown([]*http.Server{mainSrv, adminSrv}, infra.Log, cancelApp)
+}
+
+func buildInfra() (*infraBundle, error) {
+	cfg, err := config.FromEnv()
+	if err != nil {
+		return nil, err
 	}
 	log := logger.New()
 
@@ -57,83 +116,38 @@ func main() {
 	m := metrics.New()
 	jwtService, jwtValidator := initializeJWTService(&cfg)
 
-	// Create stores
+	return &infraBundle{
+		Cfg:          &cfg,
+		Log:          log,
+		Metrics:      m,
+		JWTService:   jwtService,
+		JWTValidator: jwtValidator,
+	}, nil
+}
+
+func buildAuthModule(ctx context.Context, infra *infraBundle) (*authModule, error) {
 	users := userStore.NewInMemoryUserStore()
 	sessions := sessionStore.NewInMemorySessionStore()
 	codes := authCodeStore.NewInMemoryAuthorizationCodeStore()
 	refreshTokens := refreshTokenStore.NewInMemoryRefreshTokenStore()
 	auditStore := audit.NewInMemoryStore()
 
-	appCtx, cancelApp := context.WithCancel(context.Background())
-	defer cancelApp()
-
-	// Seed demo data if in demo mode
-	if cfg.DemoMode {
-		seederSvc := seeder.New(users, sessions, codes, refreshTokens, auditStore, log)
-		if err := seederSvc.SeedAll(context.Background()); err != nil {
-			log.Warn("failed to seed demo data", "error", err)
+	if infra.Cfg.DemoMode {
+		seederSvc := seeder.New(users, sessions, codes, refreshTokens, auditStore, infra.Log)
+		if err := seederSvc.SeedAll(ctx); err != nil {
+			infra.Log.Warn("failed to seed demo data", "error", err)
 		}
 	}
 
-	// Initialize services
-	authSvc := initializeAuthService(m, log, jwtService, &cfg, users, sessions, codes, refreshTokens)
-	adminSvc := admin.NewService(users, sessions, auditStore)
-
-	cleanupSvc, err := cleanupWorker.New(
-		sessions,
-		codes,
-		refreshTokens,
-		cleanupWorker.WithCleanupLogger(log),
-		cleanupWorker.WithCleanupInterval(cfg.Auth.AuthCleanupInterval),
-	)
-	if err != nil {
-		log.Error("failed to initialize auth cleanup service", "error", err)
-		os.Exit(1)
-	}
-	go func() {
-		if err := cleanupSvc.Start(appCtx); err != nil && err != context.Canceled {
-			log.Error("auth cleanup service stopped", "error", err)
-		}
-	}()
-
-	// Setup main API router
-	r := setupRouter(log, m)
-	registerRoutes(r, authSvc, jwtValidator, log, &cfg, m)
-
-	// Start main API server
-	mainSrv := httpserver.New(cfg.Addr, r)
-	startServer(mainSrv, log, "main API")
-
-	// Start admin server on separate port if admin token is configured
-	var adminSrv *http.Server
-	if cfg.Security.AdminAPIToken != "" {
-		adminRouter := setupAdminRouter(log, adminSvc, &cfg)
-		adminSrv = httpserver.New(":8081", adminRouter)
-		startServer(adminSrv, log, "admin")
-	}
-
-	// Wait for shutdown signal and gracefully shut down both servers
-	waitForShutdown([]*http.Server{mainSrv, adminSrv}, log, cancelApp)
-}
-
-// initializeAuthService creates and configures the authentication service
-func initializeAuthService(
-	m *metrics.Metrics,
-	log *slog.Logger,
-	jwtService *jwttoken.JWTService,
-	cfg *config.Server,
-	users *userStore.InMemoryUserStore,
-	sessions *sessionStore.InMemorySessionStore,
-	codes *authCodeStore.InMemoryAuthorizationCodeStore,
-	refreshTokens *refreshTokenStore.InMemoryRefreshTokenStore,
-) *authService.Service {
 	authCfg := &authService.Config{
-		SessionTTL:             cfg.Auth.SessionTTL,
-		TokenTTL:               cfg.Auth.TokenTTL,
-		AllowedRedirectSchemes: cfg.Auth.AllowedRedirectSchemes,
-		DeviceBindingEnabled:   cfg.Auth.DeviceBindingEnabled,
+		SessionTTL:             infra.Cfg.Auth.SessionTTL,
+		TokenTTL:               infra.Cfg.Auth.TokenTTL,
+		AllowedRedirectSchemes: infra.Cfg.Auth.AllowedRedirectSchemes,
+		DeviceBindingEnabled:   infra.Cfg.Auth.DeviceBindingEnabled,
 	}
-	trl := revocationStore.NewInMemoryTRL(revocationStore.WithCleanupInterval(cfg.Auth.TokenRevocationCleanupInterval))
+	trl := revocationStore.NewInMemoryTRL(
+		revocationStore.WithCleanupInterval(infra.Cfg.Auth.TokenRevocationCleanupInterval),
+	)
 
 	authSvc, err := authService.New(
 		users,
@@ -141,16 +155,60 @@ func initializeAuthService(
 		codes,
 		refreshTokens,
 		authCfg,
-		authService.WithMetrics(m),
-		authService.WithLogger(log),
-		authService.WithJWTService(jwtService),
+		authService.WithMetrics(infra.Metrics),
+		authService.WithLogger(infra.Log),
+		authService.WithJWTService(infra.JWTService),
 		authService.WithTRL(trl),
 	)
 	if err != nil {
-		log.Error("failed to initialize auth service", "error", err)
-		os.Exit(1)
+		return nil, err
 	}
-	return authSvc
+
+	cleanupSvc, err := cleanupWorker.New(
+		sessions,
+		codes,
+		refreshTokens,
+		cleanupWorker.WithCleanupLogger(infra.Log),
+		cleanupWorker.WithCleanupInterval(infra.Cfg.Auth.AuthCleanupInterval),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &authModule{
+		Service:       authSvc,
+		Handler:       authHandler.New(authSvc, infra.Log, infra.Cfg.Auth.DeviceCookieName, infra.Cfg.Auth.DeviceCookieMaxAge),
+		AdminSvc:      admin.NewService(users, sessions, auditStore),
+		Cleanup:       cleanupSvc,
+		Users:         users,
+		Sessions:      sessions,
+		Codes:         codes,
+		RefreshTokens: refreshTokens,
+		AuditStore:    auditStore,
+	}, nil
+}
+
+func buildConsentModule(infra *infraBundle) *consentModule {
+	consentSvc := consentService.NewService(
+		consentStore.NewInMemoryStore(),
+		audit.NewPublisher(audit.NewInMemoryStore()),
+		infra.Log,
+		consentService.WithConsentTTL(infra.Cfg.Consent.ConsentTTL),
+		consentService.WithGrantWindow(infra.Cfg.Consent.ConsentGrantWindow),
+	)
+
+	return &consentModule{
+		Service: consentSvc,
+		Handler: consentHandler.New(consentSvc, infra.Log, infra.Metrics),
+	}
+}
+
+func startCleanupWorker(ctx context.Context, log *slog.Logger, cleanupSvc *cleanupWorker.CleanupService) {
+	go func() {
+		if err := cleanupSvc.Start(ctx); err != nil && err != context.Canceled {
+			log.Error("auth cleanup service stopped", "error", err)
+		}
+	}()
 }
 
 // initializeJWTService creates and configures the JWT service and validator
@@ -191,30 +249,14 @@ func setupRouter(log *slog.Logger, m *metrics.Metrics) *chi.Mux {
 	return r
 }
 
-// registerRoutes registers all application routes and handlers
-func registerRoutes(
-	r *chi.Mux,
-	authSvc *authService.Service,
-	jwtValidator *jwttoken.JWTServiceAdapter,
-	log *slog.Logger,
-	cfg *config.Server,
-	m *metrics.Metrics,
-) {
-	authHandler := authHandler.New(authSvc, log, cfg.Auth.DeviceCookieName, cfg.Auth.DeviceCookieMaxAge)
-	consentSvc := consentService.NewService(
-		consentStore.NewInMemoryStore(),
-		audit.NewPublisher(audit.NewInMemoryStore()),
-		log,
-		consentService.WithConsentTTL(cfg.Consent.ConsentTTL),
-		consentService.WithGrantWindow(cfg.Consent.ConsentGrantWindow),
-	)
-	consentHTTPHandler := consentHandler.New(consentSvc, log, m)
-	if cfg.DemoMode {
+// registerRoutes wires HTTP handlers to the shared router
+func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consentMod *consentModule) {
+	if infra.Cfg.DemoMode {
 		r.Get("/demo/info", func(w http.ResponseWriter, _ *http.Request) {
 			resp := map[string]any{
 				"env":        "demo",
 				"users":      []string{"alice", "bob", "charlie"},
-				"jwt_issuer": cfg.Auth.JWTIssuer,
+				"jwt_issuer": infra.Cfg.Auth.JWTIssuer,
 				"data_store": "in-memory",
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -222,25 +264,22 @@ func registerRoutes(
 		})
 	}
 
-	// Public auth endpoints (no JWT required)
-	r.Post("/auth/authorize", authHandler.HandleAuthorize)
-	r.Post("/auth/token", authHandler.HandleToken)
-	r.Post("/auth/revoke", authHandler.HandleRevoke)
+	r.Post("/auth/authorize", authMod.Handler.HandleAuthorize)
+	r.Post("/auth/token", authMod.Handler.HandleToken)
+	r.Post("/auth/revoke", authMod.Handler.HandleRevoke)
 
-	// Protected auth endpoints (JWT required)
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.RequireAuth(jwtValidator, authSvc, log))
-		r.Get("/auth/userinfo", authHandler.HandleUserInfo)
-		r.Get("/auth/sessions", authHandler.HandleListSessions)
-		r.Delete("/auth/sessions/{session_id}", authHandler.HandleRevokeSession)
-		consentHTTPHandler.Register(r)
+		r.Use(middleware.RequireAuth(infra.JWTValidator, authMod.Service, infra.Log))
+		r.Get("/auth/userinfo", authMod.Handler.HandleUserInfo)
+		r.Get("/auth/sessions", authMod.Handler.HandleListSessions)
+		r.Delete("/auth/sessions/{session_id}", authMod.Handler.HandleRevokeSession)
+		consentMod.Handler.Register(r)
 	})
 
-	// Admin routes on main server (user deletion only)
-	if cfg.Security.AdminAPIToken != "" {
+	if infra.Cfg.Security.AdminAPIToken != "" {
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.RequireAdminToken(cfg.Security.AdminAPIToken, log))
-			authHandler.RegisterAdmin(r)
+			r.Use(middleware.RequireAdminToken(infra.Cfg.Security.AdminAPIToken, infra.Log))
+			authMod.Handler.RegisterAdmin(r)
 		})
 	}
 }
