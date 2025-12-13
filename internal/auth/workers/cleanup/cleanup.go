@@ -67,7 +67,7 @@ func New(
 		sessionStore:      sessionStore,
 		codeStore:         codeStore,
 		refreshTokenStore: refreshTokenStore,
-		interval:          5 * time.Minute, //TODO: make configurable using platform config
+		interval:          5 * time.Minute,
 		logger:            slog.Default(),
 	}
 	for _, opt := range opts {

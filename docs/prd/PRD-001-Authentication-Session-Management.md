@@ -566,8 +566,8 @@ logger.Info("session created",
 - [x] Test redirect_uri validation (https required, localhost exception)
 - [x] Test state parameter echo in response
 - [x] Test error cases (invalid email, invalid redirect_uri, not found, etc.)
-- [ ] Test authorization code expiry and replay prevention
-- [ ] Test refresh token issuance on token exchange
+- [x] Test authorization code expiry and replay prevention
+- [x] Test refresh token issuance on token exchange
 
 ### Integration Tests
 
@@ -760,8 +760,8 @@ curl -X POST http://localhost:8080/auth/token \
 - [x] All endpoints return proper error responses
 - [x] Code passes `make test` and `make lint`
 - [x] Manual curl tests work as documented
-- [ ] Independent cleanup of expired authorization codes (without affecting sessions)
-- [ ] Access tokens include jti claim for future revocation support
+- [x] Independent cleanup of expired authorization codes (without affecting sessions)
+- [x] Access tokens include jti claim for future revocation support
 
 ---
 
