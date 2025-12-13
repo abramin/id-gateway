@@ -297,31 +297,28 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 
 func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserInfoResult, error) {
 	if sessionID == "" {
-		s.logAuthFailure(ctx, "missing_session_id", false)
-		s.incrementAuthFailure()
+		s.authFailure(ctx, "missing_session_id", false)
 		return nil, dErrors.New(dErrors.CodeUnauthorized, "missing or invalid session")
 	}
 
 	parsedSessionID, err := uuid.Parse(sessionID)
 	if err != nil {
-		s.logAuthFailure(ctx, "invalid_session_id_format", false,
+		s.authFailure(ctx, "invalid_session_id_format", false,
 			"session_id", sessionID,
 			"error", err,
 		)
-		s.incrementAuthFailure()
 		return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid session ID")
 	}
 
 	session, err := s.sessions.FindByID(ctx, parsedSessionID)
 	if err != nil {
 		if errors.Is(err, sessionStore.ErrNotFound) {
-			s.logAuthFailure(ctx, "session_not_found", false,
+			s.authFailure(ctx, "session_not_found", false,
 				"session_id", parsedSessionID.String(),
 			)
-			s.incrementAuthFailure()
 			return nil, dErrors.New(dErrors.CodeUnauthorized, "session not found")
 		}
-		s.logAuthFailure(ctx, "session_lookup_failed", true,
+		s.authFailure(ctx, "session_lookup_failed", true,
 			"session_id", parsedSessionID.String(),
 			"error", err,
 		)
@@ -329,25 +326,23 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 	}
 
 	if session.Status != StatusActive {
-		s.logAuthFailure(ctx, "session_not_active", false,
+		s.authFailure(ctx, "session_not_active", false,
 			"session_id", parsedSessionID.String(),
 			"status", session.Status,
 		)
-		s.incrementAuthFailure()
 		return nil, dErrors.New(dErrors.CodeUnauthorized, "session not active")
 	}
 
 	user, err := s.users.FindByID(ctx, session.UserID)
 	if err != nil {
 		if errors.Is(err, userStore.ErrNotFound) {
-			s.logAuthFailure(ctx, "user_not_found", false,
+			s.authFailure(ctx, "user_not_found", false,
 				"session_id", parsedSessionID.String(),
 				"user_id", session.UserID.String(),
 			)
-			s.incrementAuthFailure()
 			return nil, dErrors.New(dErrors.CodeUnauthorized, "user not found")
 		}
-		s.logAuthFailure(ctx, "user_lookup_failed", true,
+		s.authFailure(ctx, "user_lookup_failed", true,
 			"session_id", parsedSessionID.String(),
 			"user_id", session.UserID.String(),
 			"error", err,
@@ -382,10 +377,9 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 	codeRecord, err := s.codes.FindByCode(ctx, req.Code)
 	if err != nil {
 		if errors.Is(err, sessionStore.ErrNotFound) {
-			s.logAuthFailure(ctx, "code_not_found", false,
+			s.authFailure(ctx, "code_not_found", false,
 				"client_id", req.ClientID,
 			)
-			s.incrementAuthFailure()
 			return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid authorization code")
 		}
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to find code")
@@ -393,11 +387,10 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 
 	// Step 2: Validate authorization code constraints
 	if time.Now().After(codeRecord.ExpiresAt) {
-		s.logAuthFailure(ctx, "authorization_code_expired", false,
+		s.authFailure(ctx, "authorization_code_expired", false,
 			"client_id", req.ClientID,
 			"code", req.Code,
 		)
-		s.incrementAuthFailure()
 		return nil, dErrors.New(dErrors.CodeUnauthorized, "authorization code expired")
 	}
 
@@ -407,19 +400,17 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 		if err != nil {
 			return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to revoke compromised session")
 		}
-		s.logAuthFailure(ctx, "authorization_code_reused", false,
+		s.authFailure(ctx, "authorization_code_reused", false,
 			"client_id", req.ClientID,
 			"session_id", codeRecord.SessionID.String(),
 		)
-		s.incrementAuthFailure()
 		return nil, dErrors.New(dErrors.CodeUnauthorized, "authorization code already used")
 	}
 
 	if codeRecord.RedirectURI != req.RedirectURI {
-		s.logAuthFailure(ctx, "redirect_uri_mismatch", false,
+		s.authFailure(ctx, "redirect_uri_mismatch", false,
 			"client_id", req.ClientID,
 		)
-		s.incrementAuthFailure()
 		return nil, dErrors.New(dErrors.CodeBadRequest, "redirect_uri mismatch")
 	}
 
@@ -427,10 +418,9 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 	session, err := s.sessions.FindByID(ctx, codeRecord.SessionID)
 	if err != nil {
 		if errors.Is(err, sessionStore.ErrNotFound) {
-			s.logAuthFailure(ctx, "session_not_found", false,
+			s.authFailure(ctx, "session_not_found", false,
 				"client_id", req.ClientID,
 			)
-			s.incrementAuthFailure()
 			return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid authorization code")
 		}
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to find session")
@@ -438,46 +428,42 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 
 	// Step 4: Validate session and client_id match
 	if req.ClientID != session.ClientID {
-		s.logAuthFailure(ctx, "client_id_mismatch", false,
+		s.authFailure(ctx, "client_id_mismatch", false,
 			"session_id", session.ID.String(),
 			"user_id", session.UserID.String(),
 			"expected_client_id", session.ClientID,
 			"provided_client_id", req.ClientID,
 		)
-		s.incrementAuthFailure()
 		return nil, dErrors.New(dErrors.CodeBadRequest, "client_id mismatch")
 	}
 
 	// Step 5: Validate session status and expiry
 	if session.Status == "revoked" {
-		s.logAuthFailure(ctx, "session_revoked", false,
+		s.authFailure(ctx, "session_revoked", false,
 			"session_id", session.ID.String(),
 			"user_id", session.UserID.String(),
 			"client_id", session.ClientID,
 		)
-		s.incrementAuthFailure()
 		return nil, dErrors.New(dErrors.CodeUnauthorized, "session has been revoked")
 	}
 
 	// Accept both pending_consent and active (for idempotency if code is exchanged twice)
 	if session.Status != StatusPendingConsent && session.Status != StatusActive {
-		s.logAuthFailure(ctx, "invalid_session_status", false,
+		s.authFailure(ctx, "invalid_session_status", false,
 			"session_id", session.ID.String(),
 			"user_id", session.UserID.String(),
 			"client_id", session.ClientID,
 			"status", session.Status,
 		)
-		s.incrementAuthFailure()
 		return nil, dErrors.New(dErrors.CodeUnauthorized, "session in invalid state")
 	}
 
 	if time.Now().After(session.ExpiresAt) {
-		s.logAuthFailure(ctx, "session_expired", false,
+		s.authFailure(ctx, "session_expired", false,
 			"session_id", session.ID.String(),
 			"user_id", session.UserID.String(),
 			"client_id", session.ClientID,
 		)
-		s.incrementAuthFailure()
 		return nil, dErrors.New(dErrors.CodeUnauthorized, "session expired")
 	}
 
@@ -589,6 +575,11 @@ func (s *Service) logAudit(ctx context.Context, event string, attributes ...any)
 		Subject: userID,
 		Action:  event,
 	})
+}
+
+func (s *Service) authFailure(ctx context.Context, reason string, isError bool, attributes ...any) {
+	s.logAuthFailure(ctx, reason, isError, attributes...)
+	s.incrementAuthFailure()
 }
 
 func (s *Service) logAuthFailure(ctx context.Context, reason string, isError bool, attributes ...any) {
