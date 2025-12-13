@@ -128,11 +128,11 @@ func FromEnv() (Server, error) {
 		}
 	}
 
-		return Server{
-			Addr:                   addr,
-			RegulatedMode:          regulated,
-			DemoMode:               demoMode,
-			Environment:            env,
+	return Server{
+		Addr:                   addr,
+		RegulatedMode:          regulated,
+		DemoMode:               demoMode,
+		Environment:            env,
 		JWTSigningKey:          jwtSigningKey,
 		JWTIssuer:              JWTIssuer,
 		AllowedRedirectSchemes: allowedRedirectSchemes,
