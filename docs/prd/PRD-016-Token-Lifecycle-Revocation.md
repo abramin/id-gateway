@@ -112,7 +112,7 @@ This is a **critical blocker** for production deployment.
 - **Long-lived:** 30 days (configurable)
 - **Single-use:** Consumed on refresh, new refresh token issued (rotation)
 - **Revocable:** Can be explicitly revoked via logout
-- **Device-bound:** (Optional) Tied to device fingerprint
+- **Device-bound:** (Optional) Bound via device ID cookie + browser fingerprint drift detection (soft) — see `docs/DEVICE_BINDING.md`
 
 ---
 

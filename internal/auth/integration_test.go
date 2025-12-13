@@ -68,7 +68,7 @@ func SetupSuite(t *testing.T) (
 
 	router := chi.NewRouter()
 	router.Use(middleware.ClientMetadata)
-	authHandler := auth.New(authService, logger)
+	authHandler := auth.New(authService, logger, "__Secure-Device-ID", 31536000)
 
 	// Public endpoints (no auth required) - mirrors production setup
 	router.Post("/auth/authorize", authHandler.HandleAuthorize)
@@ -91,6 +91,7 @@ func SetupSuite(t *testing.T) (
 
 func TestCompleteAuthFlow(t *testing.T) {
 	r, userStore, sessionStore, codeStore, _, auditStore := SetupSuite(t)
+	uaString := "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 	reqBody := models.AuthorizationRequest{
 		Email:       "jane.doe@example.com",
 		ClientID:    "client-123",
@@ -103,7 +104,7 @@ func TestCompleteAuthFlow(t *testing.T) {
 	t.Log("Step 1: Authorization Request")
 	req := httptest.NewRequest(http.MethodPost, "/auth/authorize", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "Mozilla/5.0")
+	req.Header.Set("User-Agent", uaString)
 	req.Header.Set("X-Real-IP", "192.168.1.1")
 	rec := httptest.NewRecorder()
 
@@ -122,6 +123,16 @@ func TestCompleteAuthFlow(t *testing.T) {
 	assert.Contains(t, redirectURI, "code="+code)
 	assert.Contains(t, redirectURI, "state=state-xyz")
 
+	var deviceCookie *http.Cookie
+	for _, c := range res.Cookies() {
+		if c.Name == "__Secure-Device-ID" {
+			deviceCookie = c
+			break
+		}
+	}
+	require.NotNil(t, deviceCookie)
+	require.NotEmpty(t, deviceCookie.Value)
+
 	t.Log("Verifying session created with pending consent status")
 	codeRecord, err := codeStore.FindByCode(context.Background(), code)
 	require.NoError(t, err)
@@ -129,7 +140,8 @@ func TestCompleteAuthFlow(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, service.StatusPendingConsent, session.Status)
 	assert.Equal(t, reqBody.Scopes, session.RequestedScope)
-	assert.Equal(t, device.ComputeDeviceFingerprint("Mozilla/5.0", "192.168.1.1"), session.DeviceFingerprintHash)
+	assert.Equal(t, deviceCookie.Value, session.DeviceID)
+	assert.Equal(t, device.NewService(true).ComputeFingerprint(uaString), session.DeviceFingerprintHash)
 
 	user, err := userStore.FindByEmail(context.Background(), reqBody.Email)
 	require.NoError(t, err)
@@ -148,6 +160,9 @@ func TestCompleteAuthFlow(t *testing.T) {
 
 	tokenReq := httptest.NewRequest(http.MethodPost, "/auth/token", bytes.NewReader(tokenPayload))
 	tokenReq.Header.Set("Content-Type", "application/json")
+	tokenReq.Header.Set("User-Agent", uaString)
+	tokenReq.Header.Set("X-Real-IP", "192.168.1.1")
+	tokenReq.AddCookie(deviceCookie)
 	tokenRec := httptest.NewRecorder()
 
 	r.ServeHTTP(tokenRec, tokenReq)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -29,16 +30,26 @@ type Service interface {
 // Handler handles authentication endpoints including authorize, token, and userinfo.
 // Implements the OIDC-lite flow described in PRD-001.
 type Handler struct {
-	auth   Service
-	logger *slog.Logger
+	auth             Service
+	logger           *slog.Logger
+	deviceCookieName string
+	deviceCookieAge  int
 }
 
 // New creates a new auth Handler with the given service and logger.
-func New(auth Service, logger *slog.Logger) *Handler {
+func New(auth Service, logger *slog.Logger, deviceCookieName string, deviceCookieMaxAge int) *Handler {
+	if deviceCookieName == "" {
+		deviceCookieName = "__Secure-Device-ID"
+	}
+	if deviceCookieMaxAge <= 0 {
+		deviceCookieMaxAge = 31536000
+	}
 
 	return &Handler{
-		auth:   auth,
-		logger: logger,
+		auth:             auth,
+		logger:           logger,
+		deviceCookieName: deviceCookieName,
+		deviceCookieAge:  deviceCookieMaxAge,
 	}
 }
 
@@ -88,6 +99,11 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Extract device ID cookie (if present) for device binding.
+	if cookie, err := r.Cookie(h.deviceCookieName); err == nil && cookie != nil {
+		ctx = middleware.WithDeviceID(ctx, cookie.Value)
+	}
+
 	res, err := h.auth.Authorize(ctx, req)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "authorize failed",
@@ -104,6 +120,19 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		"client_id", req.ClientID,
 	)
 
+	// Set device ID cookie (Phase 1: soft launch — generate cookie, no enforcement).
+	if res.DeviceID != "" {
+		http.SetCookie(w, &http.Cookie{
+			Name:     h.deviceCookieName,
+			Value:    res.DeviceID,
+			Path:     "/",
+			MaxAge:   h.deviceCookieAge,
+			HttpOnly: true,
+			Secure:   isHTTPS(r),
+			SameSite: http.SameSiteStrictMode,
+		})
+	}
+
 	respond.WriteJSON(w, http.StatusOK, res)
 }
 
@@ -111,6 +140,11 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
+
+	// Extract device ID from cookie for device binding validation.
+	if cookie, err := r.Cookie(h.deviceCookieName); err == nil && cookie != nil {
+		ctx = middleware.WithDeviceID(ctx, cookie.Value)
+	}
 
 	var req models.TokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -205,4 +239,11 @@ func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) 
 	)
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func isHTTPS(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }

@@ -78,6 +78,7 @@ type AuthorizationRequest struct {
 type AuthorizationResult struct {
 	Code        string `json:"code" validate:"required"`
 	RedirectURI string `json:"redirect_uri" validate:"required,url,max=2048"`
+	DeviceID    string `json:"-"`
 }
 
 type UserInfoResult struct {

@@ -138,6 +138,7 @@ func LatencyMiddleware(m *metrics.Metrics) func(http.Handler) http.Handler {
 // Context keys for client metadata
 type contextKeyClientIP struct{}
 type contextKeyUserAgent struct{}
+type contextKeyDeviceID struct{}
 
 // ClientMetadata extracts client IP address and User-Agent from the request
 // and adds them to the context for use by handlers and services.
@@ -171,12 +172,26 @@ func GetUserAgent(ctx context.Context) string {
 	return ""
 }
 
+// GetDeviceID retrieves the device identifier (cookie value) from the context.
+func GetDeviceID(ctx context.Context) string {
+	if deviceID, ok := ctx.Value(contextKeyDeviceID{}).(string); ok {
+		return deviceID
+	}
+	return ""
+}
+
 // WithClientMetadata injects client IP and User-Agent into a context.
 // Useful for service unit tests that don't run the full HTTP middleware chain.
 func WithClientMetadata(ctx context.Context, clientIP, userAgent string) context.Context {
 	ctx = context.WithValue(ctx, contextKeyClientIP{}, clientIP)
 	ctx = context.WithValue(ctx, contextKeyUserAgent{}, userAgent)
 	return ctx
+}
+
+// WithDeviceID injects a device identifier into a context.
+// Useful for service unit tests that don't run the full HTTP middleware chain.
+func WithDeviceID(ctx context.Context, deviceID string) context.Context {
+	return context.WithValue(ctx, contextKeyDeviceID{}, deviceID)
 }
 
 // getClientIP extracts the real client IP from the request, handling proxies and load balancers.

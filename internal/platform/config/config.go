@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -22,6 +23,8 @@ type Server struct {
 	SessionTTL             time.Duration
 	AdminAPIToken          string
 	DeviceBindingEnabled   bool
+	DeviceCookieName       string
+	DeviceCookieMaxAge     int
 }
 
 // RegistryCacheTTL enforces retention for sensitive registry data.
@@ -83,6 +86,16 @@ func FromEnv() (Server, error) {
 	}
 
 	deviceBindingEnabled := os.Getenv("DEVICE_BINDING_ENABLED") == "true"
+	deviceCookieName := os.Getenv("DEVICE_COOKIE_NAME")
+	if deviceCookieName == "" {
+		deviceCookieName = "__Secure-Device-ID"
+	}
+	deviceCookieMaxAge := 31536000 // 1 year
+	if raw := os.Getenv("DEVICE_COOKIE_MAX_AGE"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			deviceCookieMaxAge = parsed
+		}
+	}
 
 	jwtSigningKey := os.Getenv("JWT_SIGNING_KEY")
 	if jwtSigningKey == "" {
@@ -129,6 +142,8 @@ func FromEnv() (Server, error) {
 		SessionTTL:             SessionTTL,
 		AdminAPIToken:          adminAPIToken,
 		DeviceBindingEnabled:   deviceBindingEnabled,
+		DeviceCookieName:       deviceCookieName,
+		DeviceCookieMaxAge:     deviceCookieMaxAge,
 	}, nil
 }
 
