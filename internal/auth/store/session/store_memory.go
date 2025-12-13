@@ -81,7 +81,13 @@ func (s *InMemorySessionStore) DeleteSessionsByUser(_ context.Context, userID uu
 func (s *InMemorySessionStore) ListAll(_ context.Context) (map[string]*models.Session, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.sessions, nil
+
+	// Return a copy to avoid concurrent map iteration/write panics
+	copy := make(map[string]*models.Session, len(s.sessions))
+	for k, v := range s.sessions {
+		copy[k] = v
+	}
+	return copy, nil
 }
 
 // ListByUser returns all sessions for a specific user

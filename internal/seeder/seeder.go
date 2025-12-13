@@ -128,23 +128,23 @@ func (s *Seeder) seedSessions(ctx context.Context, users []*models.User) error {
 		{4, "active", -15 * time.Minute, 45 * time.Minute, false},
 	}
 
-	for _, s := range sessions {
-		if s.userIdx >= len(users) {
+	for _, sess := range sessions {
+		if sess.userIdx >= len(users) {
 			continue
 		}
 
 		session := &models.Session{
 			ID:             uuid.New(),
-			UserID:         users[s.userIdx].ID,
+			UserID:         users[sess.userIdx].ID,
 			Code:           fmt.Sprintf("authz_%s", uuid.New().String()[:12]),
 			CodeExpiresAt:  now.Add(10 * time.Minute),
-			CodeUsed:       s.codeUsed,
+			CodeUsed:       sess.codeUsed,
 			ClientID:       "demo-client",
 			RedirectURI:    "http://localhost:3000/demo/callback.html",
 			RequestedScope: []string{"openid", "profile"},
-			Status:         s.status,
-			CreatedAt:      now.Add(s.createdOffset),
-			ExpiresAt:      now.Add(s.expiryOffset),
+			Status:         sess.status,
+			CreatedAt:      now.Add(sess.createdOffset),
+			ExpiresAt:      now.Add(sess.expiryOffset),
 		}
 
 		if err := s.sessions.Save(ctx, session); err != nil {
