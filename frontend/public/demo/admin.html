@@ -321,26 +321,26 @@ Response 404 Not Found (user not found)</pre
             this.success = null;
 
             try {
-              // Try to make an admin API call to test auth
-              // We'll try to get a non-existent user as a test
+              // Use a non-destructive GET request to test auth
+              // GET /admin/stats is safe and requires admin auth
               const apiBase = getAPIBase();
               const res = await fetch(
-                `${apiBase}/admin/auth/users/00000000-0000-0000-0000-000000000000`,
+                `${apiBase}/admin/stats`,
                 {
-                  method: "DELETE",
+                  method: "GET",
                   headers: {
                     "X-Admin-Token": this.adminToken,
                   },
                 }
               );
 
-              // 401 = bad auth, 404 = good auth but user not found
+              // 401/403 = invalid token, 200 = valid token
               if (res.status === 401 || res.status === 403) {
                 this.error = "Invalid admin token";
-              } else if (res.status === 404) {
+              } else if (res.ok) {
                 this.success = "Admin token is valid";
               } else {
-                this.success = "Admin authentication test completed";
+                this.error = `Authentication test failed with status ${res.status}`;
               }
             } catch (err) {
               this.error = "Network error: " + err.message;
