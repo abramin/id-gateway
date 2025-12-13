@@ -9,6 +9,7 @@ func ToMiddlewareClaims(claims *Claims) *middleware.JWTClaims {
 		UserID:    claims.UserID,
 		SessionID: claims.SessionID,
 		ClientID:  claims.ClientID,
+		JTI:       claims.ID, // JWT ID for revocation tracking
 	}
 }
 

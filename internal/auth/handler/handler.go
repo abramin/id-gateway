@@ -13,7 +13,7 @@ import (
 	"credo/internal/auth/models"
 	"credo/internal/platform/middleware"
 	httpError "credo/internal/transport/http/error"
-	respond "credo/internal/transport/http/json"
+	jsonResponse "credo/internal/transport/http/json"
 	dErrors "credo/pkg/domain-errors"
 	s "credo/pkg/string"
 	"credo/pkg/validation"
@@ -25,6 +25,7 @@ type Service interface {
 	Token(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error)
 	UserInfo(ctx context.Context, sessionID string) (*models.UserInfoResult, error)
 	DeleteUser(ctx context.Context, userID uuid.UUID) error
+	RevokeToken(ctx context.Context, token string, tokenTypeHint string) error
 }
 
 // Handler handles authentication endpoints including authorize, token, and userinfo.
@@ -59,6 +60,7 @@ func (h *Handler) Register(r chi.Router) {
 	r.Post("/auth/authorize", h.HandleAuthorize)
 	r.Post("/auth/token", h.HandleToken)
 	r.Get("/auth/userinfo", h.HandleUserInfo)
+	r.Post("/auth/revoke", h.HandleRevoke)
 }
 
 func (h *Handler) RegisterAdmin(r chi.Router) {
@@ -133,7 +135,7 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	respond.WriteJSON(w, http.StatusOK, res)
+	jsonResponse.WriteJSON(w, http.StatusOK, res)
 }
 
 // HandleToken exchanges authorization code for tokens
@@ -181,7 +183,7 @@ func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 		"client_id", req.ClientID,
 	)
 
-	respond.WriteJSON(w, http.StatusOK, res)
+	jsonResponse.WriteJSON(w, http.StatusOK, res)
 }
 
 // HandleUserInfo returns authenticated user information
@@ -206,7 +208,7 @@ func (h *Handler) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
 		"session_id", sessionIDStr,
 	)
 
-	respond.WriteJSON(w, http.StatusOK, res)
+	jsonResponse.WriteJSON(w, http.StatusOK, res)
 }
 
 func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
@@ -246,4 +248,65 @@ func isHTTPS(r *http.Request) bool {
 		return true
 	}
 	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
+// HandleRevoke implements POST /auth/revoke per PRD-016 FR-3.
+// Revokes access tokens and refresh tokens, effectively logging out the user.
+// Follows RFC 7009 token revocation spec.
+//
+// Input: { "token": "ref_...", "token_type_hint": "refresh_token" }
+// Output: { "revoked": true, "message": "Token revoked successfully" }
+func (h *Handler) HandleRevoke(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	requestID := middleware.GetRequestID(ctx)
+
+	// Parse request body
+	var req struct {
+		Token         string `json:"token"`
+		TokenTypeHint string `json:"token_type_hint,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.WarnContext(ctx, "failed to decode revoke request",
+			"error", err,
+			"request_id", requestID,
+		)
+		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
+		return
+	}
+
+	// Validate required field
+	if strings.TrimSpace(req.Token) == "" {
+		httpError.WriteError(w, dErrors.New(dErrors.CodeValidation, "token is required"))
+		return
+	}
+
+	// Validate token_type_hint if provided
+	if req.TokenTypeHint != "" {
+		if req.TokenTypeHint != "access_token" && req.TokenTypeHint != "refresh_token" {
+			httpError.WriteError(w, dErrors.New(dErrors.CodeValidation, "token_type_hint must be 'access_token' or 'refresh_token'"))
+			return
+		}
+	}
+
+	// Call service to revoke the token
+	if err := h.auth.RevokeToken(ctx, req.Token, req.TokenTypeHint); err != nil {
+		h.logger.ErrorContext(ctx, "failed to revoke token",
+			"error", err,
+			"request_id", requestID,
+		)
+		httpError.WriteError(w, err)
+		return
+	}
+
+	h.logger.InfoContext(ctx, "token revoked successfully",
+		"token_type_hint", req.TokenTypeHint,
+		"request_id", requestID,
+	)
+
+	// RFC 7009 Section 2.2: Return 200 even if token was already revoked (idempotent)
+	jsonResponse.WriteJSON(w, http.StatusOK, map[string]any{
+		"revoked": true,
+		"message": "Token revoked successfully",
+	})
 }

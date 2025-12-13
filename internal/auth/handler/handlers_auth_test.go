@@ -377,7 +377,7 @@ func (s *AuthHandlerSuite) TestHandler_AdminDeleteUser() {
 
 	s.T().Run("deletes user", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockService := mocks.NewMockAuthService(ctrl)
+		mockService := mocks.NewMockService(ctrl)
 		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 		handler := New(mockService, logger, "__Secure-Device-ID", 31536000)
 
@@ -397,7 +397,7 @@ func (s *AuthHandlerSuite) TestHandler_AdminDeleteUser() {
 
 	s.T().Run("invalid user id", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockService := mocks.NewMockAuthService(ctrl)
+		mockService := mocks.NewMockService(ctrl)
 		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 		handler := New(mockService, logger, "__Secure-Device-ID", 31536000)
 
@@ -414,7 +414,7 @@ func (s *AuthHandlerSuite) TestHandler_AdminDeleteUser() {
 
 	s.T().Run("service error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockService := mocks.NewMockAuthService(ctrl)
+		mockService := mocks.NewMockService(ctrl)
 		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 		handler := New(mockService, logger, "__Secure-Device-ID", 31536000)
 
@@ -436,7 +436,7 @@ func TestAuthHandlerSuite(t *testing.T) {
 	suite.Run(t, new(AuthHandlerSuite))
 }
 
-func (s *AuthHandlerSuite) newHandler(t *testing.T, allowedSchemes *[]string) (*mocks.MockAuthService, *chi.Mux) {
+func (s *AuthHandlerSuite) newHandler(t *testing.T, allowedSchemes *[]string) (*mocks.MockService, *chi.Mux) {
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
@@ -446,7 +446,7 @@ func (s *AuthHandlerSuite) newHandler(t *testing.T, allowedSchemes *[]string) (*
 		allowedSchemes = &defaultSchemes
 	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	mockService := mocks.NewMockAuthService(ctrl)
+	mockService := mocks.NewMockService(ctrl)
 	handler := New(mockService, logger, "__Secure-Device-ID", 31536000)
 	r := chi.NewRouter()
 	handler.Register(r)

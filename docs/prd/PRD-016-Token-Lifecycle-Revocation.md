@@ -289,7 +289,7 @@ This is a **critical blocker** for production deployment.
 
 With privacy-first design (hashed fingerprints), we need to capture device metadata separately for display:
 
-**Option A (Recommended):** Store display-safe metadata on Session:
+**Store display-safe metadata on Session:**
 
 ```go
 type Session struct {
@@ -299,13 +299,6 @@ type Session struct {
     ApproximateLocation   string   // For UI display: "San Francisco, US" (from IP at creation)
 }
 ```
-
-**Option B:** Parse from current request:
-
-- Display current session device from request headers
-- Other sessions show as "Unknown Device" or generic names
-
-**Recommendation:** Use Option A for better UX while maintaining privacy (no raw UA/IP stored)
 
 ---
 
@@ -543,6 +536,7 @@ The device binding implementation uses a layered security model:
 - Graceful degradation: Works with legacy sessions
 
 Refer to [DEVICE_BINDING.md](../DEVICE_BINDING.md) for:
+
 - Security rationale (why IP binding fails in production)
 - Complete code implementation
 - Testing strategies
@@ -939,6 +933,7 @@ func (s *CleanupService) performCleanup(ctx context.Context) {
 See [DEVICE_BINDING.md](../DEVICE_BINDING.md) for complete security model and implementation.
 
 **Summary:**
+
 - Device ID cookie (primary binding) + fingerprint (soft signal) + IP risk scoring
 - Production-ready: Handles VPN, mobile, CGNAT without false positives
 - Privacy-first: No raw PII stored
@@ -1053,7 +1048,7 @@ curl -X POST http://localhost:8080/auth/logout-all?except_current=true \
 
 ## Revision History
 
-| Version | Date       | Author       | Changes     |
-| ------- | ---------- | ------------ | ----------- |
+| Version | Date       | Author       | Changes                                                                                                                           |
+| ------- | ---------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------- |
 | 1.1     | 2025-12-13 | Engineering  | Updated device binding to reference DEVICE_BINDING.md; changed to layered security model (device ID + fingerprint, no IP binding) |
-| 1.0     | 2025-12-12 | Product Team | Initial PRD |
+| 1.0     | 2025-12-12 | Product Team | Initial PRD                                                                                                                       |

@@ -111,6 +111,31 @@ func (s *InMemorySessionStoreSuite) TestDeleteSessionsByUser() {
 	assert.ErrorIs(s.T(), err, ErrNotFound)
 }
 
+func (s *InMemorySessionStoreSuite) TestRevokeSessionMarksRevoked() {
+	session := &models.Session{
+		ID:        uuid.New(),
+		UserID:    uuid.New(),
+		Status:    "active",
+		CreatedAt: time.Now(),
+		ExpiresAt: time.Now().Add(time.Hour),
+	}
+
+	require.NoError(s.T(), s.store.Create(context.Background(), session))
+
+	err := s.store.RevokeSession(context.Background(), session.ID)
+	require.NoError(s.T(), err)
+
+	found, err := s.store.FindByID(context.Background(), session.ID)
+	require.NoError(s.T(), err)
+	assert.Equal(s.T(), "revoked", found.Status)
+	require.NotNil(s.T(), found.RevokedAt)
+}
+
+func (s *InMemorySessionStoreSuite) TestRevokeSessionNotFound() {
+	err := s.store.RevokeSession(context.Background(), uuid.New())
+	assert.ErrorIs(s.T(), err, ErrNotFound)
+}
+
 func TestInMemorySessionStoreSuite(t *testing.T) {
 	suite.Run(t, new(InMemorySessionStoreSuite))
 }

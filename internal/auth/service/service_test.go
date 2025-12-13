@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"credo/internal/auth/device"
 	"credo/internal/auth/models"
 	"credo/internal/auth/service/mocks"
 	sessionStore "credo/internal/auth/store/session"
@@ -50,7 +51,7 @@ func (s *ServiceSuite) SetupTest() {
 		TokenTTL:               30 * time.Minute,
 		RefreshTokenTTL:        1 * time.Hour,
 		AllowedRedirectSchemes: []string{"https", "http"},
-		DeviceBindingEnabled:   true,
+		DeviceBindingEnabled:   false, // default tests don't require device metadata
 	}
 	s.service, _ = New(
 		s.mockUserStore,
@@ -89,7 +90,7 @@ func (s *ServiceSuite) TestAuthorize() {
 		req := baseReq
 		req.State = "xyz"
 
-		ctx := middleware.WithClientMetadata(context.Background(), "192.168.1.1", "Mozilla/5.0")
+		ctx := context.Background()
 
 		s.mockUserStore.EXPECT().FindOrCreateByEmail(gomock.Any(), req.Email, gomock.Any()).DoAndReturn(
 			func(ctx context.Context, email string, user *models.User) (*models.User, error) {
@@ -118,8 +119,7 @@ func (s *ServiceSuite) TestAuthorize() {
 				assert.True(s.T(), session.ExpiresAt.After(time.Now()))
 				assert.Equal(s.T(), StatusPendingConsent, session.Status)
 				assert.NotNil(s.T(), session.ID)
-				assert.NotEmpty(s.T(), session.DeviceID)
-				assert.NotEmpty(s.T(), session.DeviceFingerprintHash)
+				// Device binding disabled by default; device metadata optional
 				return nil
 			})
 
@@ -132,12 +132,12 @@ func (s *ServiceSuite) TestAuthorize() {
 		assert.Contains(s.T(), result.RedirectURI, "https://client.app/callback")
 		assert.Contains(s.T(), result.RedirectURI, "code="+result.Code)
 		assert.Contains(s.T(), result.RedirectURI, "state=xyz")
-		assert.NotEmpty(s.T(), result.DeviceID)
+		// DeviceID may be empty when device binding is disabled
 	})
 
 	s.T().Run("happy path - user exists", func(t *testing.T) {
 		req := baseReq
-		ctx := middleware.WithClientMetadata(context.Background(), "192.168.1.1", "Mozilla/5.0")
+		ctx := context.Background()
 
 		s.mockUserStore.EXPECT().FindOrCreateByEmail(gomock.Any(), req.Email, gomock.Any()).Return(existingUser, nil)
 		s.mockCodeStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
@@ -147,7 +147,6 @@ func (s *ServiceSuite) TestAuthorize() {
 				assert.True(s.T(), session.ExpiresAt.After(time.Now()))
 				assert.Equal(s.T(), StatusPendingConsent, session.Status)
 				assert.NotNil(s.T(), session.ID)
-				assert.NotEmpty(s.T(), session.DeviceID)
 				return nil
 			})
 		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
@@ -158,7 +157,64 @@ func (s *ServiceSuite) TestAuthorize() {
 		assert.Contains(s.T(), result.Code, "authz_")
 		assert.Contains(s.T(), result.RedirectURI, "https://client.app/callback")
 		assert.Contains(s.T(), result.RedirectURI, "code="+result.Code)
-		assert.NotEmpty(s.T(), result.DeviceID)
+	})
+
+	s.T().Run("device binding enabled attaches device metadata", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockUserStore := mocks.NewMockUserStore(ctrl)
+		mockSessionStore := mocks.NewMockSessionStore(ctrl)
+		mockCodeStore := mocks.NewMockAuthCodeStore(ctrl)
+		mockRefreshStore := mocks.NewMockRefreshTokenStore(ctrl)
+		mockJWT := mocks.NewMockTokenGenerator(ctrl)
+		mockAuditPublisher := mocks.NewMockAuditPublisher(ctrl)
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		cfg := &Config{
+			SessionTTL:             2 * time.Hour,
+			TokenTTL:               30 * time.Minute,
+			RefreshTokenTTL:        1 * time.Hour,
+			AllowedRedirectSchemes: []string{"https", "http"},
+			DeviceBindingEnabled:   true,
+		}
+
+		serviceWithDevice, _ := New(
+			mockUserStore,
+			mockSessionStore,
+			mockCodeStore,
+			mockRefreshStore,
+			cfg,
+			WithLogger(logger),
+			WithJWTService(mockJWT),
+			WithAuditPublisher(mockAuditPublisher),
+			WithDeviceBindingEnabled(true),
+		)
+
+		req := baseReq
+		req.State = "xyz"
+		ctx := middleware.WithClientMetadata(context.Background(), "192.168.1.1", "Mozilla/5.0")
+
+		mockUserStore.EXPECT().FindOrCreateByEmail(gomock.Any(), req.Email, gomock.Any()).DoAndReturn(
+			func(ctx context.Context, email string, user *models.User) (*models.User, error) {
+				return user, nil
+			})
+
+		mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
+
+		mockCodeStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+
+		mockSessionStore.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, session *models.Session) error {
+				assert.NotEmpty(t, session.DeviceID)
+				assert.NotEmpty(t, session.DeviceFingerprintHash)
+				return nil
+			})
+
+		mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
+
+		result, err := serviceWithDevice.Authorize(ctx, &req)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, result.DeviceID)
 	})
 
 	s.T().Run("invalid redirect_uri scheme rejected", func(t *testing.T) {
@@ -174,7 +230,7 @@ func (s *ServiceSuite) TestAuthorize() {
 
 	s.T().Run("user store error", func(t *testing.T) {
 		req := baseReq
-		ctx := middleware.WithClientMetadata(context.Background(), "192.168.1.1", "Mozilla/5.0")
+		ctx := context.Background()
 
 		s.mockUserStore.EXPECT().FindOrCreateByEmail(gomock.Any(), req.Email, gomock.Any()).Return(nil, assert.AnError)
 
@@ -185,7 +241,7 @@ func (s *ServiceSuite) TestAuthorize() {
 
 	s.T().Run("session store error", func(t *testing.T) {
 		req := baseReq
-		ctx := middleware.WithClientMetadata(context.Background(), "192.168.1.1", "Mozilla/5.0")
+		ctx := context.Background()
 
 		s.mockUserStore.EXPECT().FindOrCreateByEmail(gomock.Any(), req.Email, gomock.Any()).Return(existingUser, nil)
 		s.mockCodeStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
@@ -236,7 +292,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		req := baseReq
 		codeRec := *validCodeRecord
 		sess := *validSession
-		ctx := middleware.WithDeviceID(middleware.WithClientMetadata(context.Background(), "192.168.1.1", "Mozilla/5.0"), sess.DeviceID)
+		ctx := context.Background()
 
 		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
@@ -275,7 +331,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		codeRec := *validCodeRecord
 		sess := *validSession
 		sess.Status = StatusActive // Already active
-		ctx := middleware.WithDeviceID(middleware.WithClientMetadata(context.Background(), "192.168.1.1", "Mozilla/5.0"), sess.DeviceID)
+		ctx := context.Background()
 
 		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
@@ -829,7 +885,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		}
 		refreshRec := *validRefreshToken
 		sess := *validSession
-		ctx := middleware.WithDeviceID(middleware.WithClientMetadata(context.Background(), "192.168.1.1", "Mozilla/5.0"), sess.DeviceID)
+		ctx := context.Background()
 
 		// Expected flow:
 		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(&refreshRec, nil)
@@ -977,7 +1033,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		assert.Contains(s.T(), err.Error(), "client_id mismatch")
 	})
 
-	s.T().Run("device binding attaches cookie device_id when missing on session (soft launch)", func(t *testing.T) {
+	s.T().Run("device binding enabled ignores mismatched cookie device_id", func(t *testing.T) {
 		req := models.TokenRequest{
 			GrantType:    "refresh_token",
 			RefreshToken: refreshTokenString,
@@ -985,8 +1041,18 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		}
 		refreshRec := *validRefreshToken
 		sess := *validSession
-		sess.DeviceID = ""
-		ctx := middleware.WithDeviceID(middleware.WithClientMetadata(context.Background(), "192.168.1.1", "Mozilla/5.0"), "cookie-device-1")
+		sess.DeviceID = "session-device"
+		ctx := middleware.WithDeviceID(context.Background(), "cookie-device-1")
+
+		// Enable device binding for this specific scenario
+		prevBinding := s.service.DeviceBindingEnabled
+		prevDeviceSvc := s.service.deviceService
+		s.service.DeviceBindingEnabled = true
+		s.service.deviceService = device.NewService(true)
+		t.Cleanup(func() {
+			s.service.DeviceBindingEnabled = prevBinding
+			s.service.deviceService = prevDeviceSvc
+		})
 
 		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(&refreshRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
@@ -995,7 +1061,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		s.mockJWT.EXPECT().CreateRefreshToken().Return("ref_new_token", nil)
 		s.mockSessionStore.EXPECT().UpdateSession(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(ctx context.Context, session *models.Session) error {
-				assert.Equal(s.T(), "cookie-device-1", session.DeviceID)
+				assert.Equal(s.T(), sess.DeviceID, session.DeviceID)
 				return nil
 			})
 		s.mockRefreshStore.EXPECT().Consume(gomock.Any(), refreshTokenString, gomock.Any()).Return(nil)
@@ -1005,6 +1071,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		result, err := s.service.Token(ctx, &req)
 		require.NoError(s.T(), err)
 		assert.NotNil(s.T(), result)
+		assert.Equal(s.T(), "session-device", sess.DeviceID)
 	})
 }
 

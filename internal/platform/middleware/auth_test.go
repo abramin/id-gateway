@@ -27,6 +27,15 @@ func (m *MockJWTValidator) ValidateToken(tokenString string) (*JWTClaims, error)
 	return nil, args.Error(1)
 }
 
+type MockTokenRevocationChecker struct {
+	mock.Mock
+}
+
+func (m *MockTokenRevocationChecker) IsTokenRevoked(ctx context.Context, jti string) (bool, error) {
+	args := m.Called(ctx, jti)
+	return args.Bool(0), args.Error(1)
+}
+
 // mockHandler is a test handler that captures if it was called and the context
 type mockHandler struct {
 	called  bool
@@ -48,6 +57,7 @@ func (m *mockHandler) reset() {
 type AuthMiddlewareTestSuite struct {
 	suite.Suite
 	validator   *MockJWTValidator
+	revoker     *MockTokenRevocationChecker
 	logger      *slog.Logger
 	nextHandler *mockHandler
 	middleware  func(http.Handler) http.Handler
@@ -55,13 +65,15 @@ type AuthMiddlewareTestSuite struct {
 
 func (s *AuthMiddlewareTestSuite) SetupTest() {
 	s.validator = new(MockJWTValidator)
+	s.revoker = new(MockTokenRevocationChecker)
 	s.logger = slog.Default()
 	s.nextHandler = &mockHandler{}
-	s.middleware = RequireAuth(s.validator, s.logger)
+	s.middleware = RequireAuth(s.validator, nil, s.logger) // nil for revocation checker in tests
 }
 
 func (s *AuthMiddlewareTestSuite) TearDownTest() {
 	s.validator.AssertExpectations(s.T())
+	s.revoker.AssertExpectations(s.T())
 }
 
 func (s *AuthMiddlewareTestSuite) makeRequest(authHeader string) *httptest.ResponseRecorder {
@@ -92,6 +104,30 @@ func (s *AuthMiddlewareTestSuite) TestValidToken() {
 	assert.Equal(s.T(), "user-123", GetUserID(s.nextHandler.context))
 	assert.Equal(s.T(), "session-456", GetSessionID(s.nextHandler.context))
 	assert.Equal(s.T(), "client-789", GetClientID(s.nextHandler.context))
+}
+
+func (s *AuthMiddlewareTestSuite) TestRevokedToken() {
+	expectedClaims := &JWTClaims{
+		UserID:    "user-123",
+		SessionID: "session-456",
+		ClientID:  "client-789",
+		JTI:       "jti-123",
+	}
+	s.validator.On("ValidateToken", "valid-token").Return(expectedClaims, nil)
+	s.revoker.On("IsTokenRevoked", mock.Anything, "jti-123").Return(true, nil)
+
+	handler := RequireAuth(s.validator, s.revoker, s.logger)(s.nextHandler)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer valid-token")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.False(s.T(), s.nextHandler.called, "next handler should not be called")
+	assert.Equal(s.T(), http.StatusUnauthorized, w.Code)
+	assert.JSONEq(s.T(),
+		`{"error":"unauthorized","error_description":"Token has been revoked"}`,
+		w.Body.String(),
+	)
 }
 
 func (s *AuthMiddlewareTestSuite) TestInvalidToken() {
@@ -134,7 +170,7 @@ func (s *AuthMiddlewareTestSuite) TestInvalidAuthorizationFormats() {
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			nextHandler := &mockHandler{}
-			middleware := RequireAuth(s.validator, s.logger)
+			middleware := RequireAuth(s.validator, nil, s.logger) // nil for revocation checker
 			handler := middleware(nextHandler)
 
 			req := httptest.NewRequest(http.MethodGet, "/test", nil)

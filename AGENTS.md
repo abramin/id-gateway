@@ -66,6 +66,13 @@ Then(...)
 
 Helpers may be used for repeated setup inside a module.
 
+### 4. Test suite layout
+
+- Group tests by function: one suite targets one exported method/function.
+- Use subtests to cover behaviours and edge cases instead of separate top-level tests.
+- Default test contexts should stay minimal; only enable feature flags (e.g., device binding) inside the subtests that exercise them.
+- Table tests are preferred for pure validation branches; name cases clearly.
+
 ---
 
 ## General Principles
@@ -76,3 +83,13 @@ Helpers may be used for repeated setup inside a module.
 - Prefer explicit wiring (constructors) over hidden globals.
 - Maintain small, focused files; avoid god objects.
 - Refer to docs/architecture.md and the prd folder for details of implementation
+
+## Other Guidelines
+
+- Config + options: constructors accept required config plus functional options (e.g., inject logger, JWT service, feature flags) instead of globals.
+
+- Domain errors: wrap failures with domain-errors codes; prefer dErrors.Wrap/dErrors.New to keep client-safe messages and telemetry alignment.
+
+- Middleware data flow: rely on middleware helpers to attach request metadata (client IP, user agent, device ID) into context.Context; services read from context rather than parameters.
+
+- Transactions: group multi-store writes with RunInTx to avoid partial persistence on failure.

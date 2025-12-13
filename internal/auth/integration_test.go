@@ -73,10 +73,11 @@ func SetupSuite(t *testing.T) (
 	// Public endpoints (no auth required) - mirrors production setup
 	router.Post("/auth/authorize", authHandler.HandleAuthorize)
 	router.Post("/auth/token", authHandler.HandleToken)
+	router.Post("/auth/revoke", authHandler.HandleRevoke)
 
 	// Protected endpoints (auth required)
 	router.Group(func(r chi.Router) {
-		r.Use(middleware.RequireAuth(jwtValidator, logger))
+		r.Use(middleware.RequireAuth(jwtValidator, authService, logger)) // authService implements TokenRevocationChecker
 		r.Get("/auth/userinfo", authHandler.HandleUserInfo)
 	})
 
@@ -176,6 +177,8 @@ func TestCompleteAuthFlow(t *testing.T) {
 
 	accessToken := tokenBody["access_token"]
 	assert.NotEmpty(t, accessToken)
+	refreshToken := tokenBody["refresh_token"]
+	assert.NotEmpty(t, refreshToken)
 
 	t.Log("Step 3: UserInfo Request")
 	userInfoReq := httptest.NewRequest(http.MethodGet, "/auth/userinfo", nil)
@@ -226,6 +229,202 @@ func TestCompleteAuthFlow(t *testing.T) {
 		"token_issued",
 		"userinfo_accessed",
 	}, actions)
+}
+
+func TestTokenRevocation_AccessToken(t *testing.T) {
+	r, _, sessionStore, codeStore, _, _ := SetupSuite(t)
+	uaString := "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+	t.Log("Step 1: Authorization Request")
+	reqBody := models.AuthorizationRequest{
+		Email:       "revoke.access@example.com",
+		ClientID:    "client-123",
+		Scopes:      []string{"openid", "profile"},
+		RedirectURI: "https://client.app/callback",
+		State:       "state-xyz",
+	}
+	payload, err := json.Marshal(reqBody)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/authorize", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", uaString)
+	req.Header.Set("X-Real-IP", "192.168.1.1")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	res := rec.Result()
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+
+	var authBody map[string]string
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&authBody))
+	code := authBody["code"]
+	require.NotEmpty(t, code)
+
+	var deviceCookie *http.Cookie
+	for _, c := range res.Cookies() {
+		if c.Name == "__Secure-Device-ID" {
+			deviceCookie = c
+			break
+		}
+	}
+	require.NotNil(t, deviceCookie)
+
+	t.Log("Step 2: Token Request")
+	tokenRequest := &models.TokenRequest{
+		GrantType:    "authorization_code",
+		Code:         code,
+		ClientID:     reqBody.ClientID,
+		RedirectURI:  reqBody.RedirectURI,
+		RefreshToken: "",
+	}
+	tokenPayload, err := json.Marshal(tokenRequest)
+	require.NoError(t, err)
+
+	tokenReq := httptest.NewRequest(http.MethodPost, "/auth/token", bytes.NewReader(tokenPayload))
+	tokenReq.Header.Set("Content-Type", "application/json")
+	tokenReq.Header.Set("User-Agent", uaString)
+	tokenReq.Header.Set("X-Real-IP", "192.168.1.1")
+	tokenReq.AddCookie(deviceCookie)
+	tokenRec := httptest.NewRecorder()
+	r.ServeHTTP(tokenRec, tokenReq)
+	tokenRes := tokenRec.Result()
+	defer tokenRes.Body.Close()
+	require.Equal(t, http.StatusOK, tokenRes.StatusCode)
+
+	var tokenBody map[string]any
+	require.NoError(t, json.NewDecoder(tokenRes.Body).Decode(&tokenBody))
+	accessToken := tokenBody["access_token"].(string)
+	require.NotEmpty(t, accessToken)
+
+	codeRecord, err := codeStore.FindByCode(context.Background(), code)
+	require.NoError(t, err)
+	session, err := sessionStore.FindByID(context.Background(), codeRecord.SessionID)
+	require.NoError(t, err)
+	require.Equal(t, service.StatusActive, session.Status)
+
+	t.Log("Step 3: Revoke Access Token")
+	revokePayload, err := json.Marshal(map[string]any{
+		"token":           accessToken,
+		"token_type_hint": "access_token",
+	})
+	require.NoError(t, err)
+	revokeReq := httptest.NewRequest(http.MethodPost, "/auth/revoke", bytes.NewReader(revokePayload))
+	revokeReq.Header.Set("Content-Type", "application/json")
+	revokeRec := httptest.NewRecorder()
+	r.ServeHTTP(revokeRec, revokeReq)
+	revokeRes := revokeRec.Result()
+	defer revokeRes.Body.Close()
+	require.Equal(t, http.StatusOK, revokeRes.StatusCode)
+
+	t.Log("Step 4: Accessing UserInfo with revoked Access Token should fail")
+	userInfoReq := httptest.NewRequest(http.MethodGet, "/auth/userinfo", nil)
+	userInfoReq.Header.Set("Authorization", "Bearer "+accessToken)
+	userInfoRec := httptest.NewRecorder()
+	r.ServeHTTP(userInfoRec, userInfoReq)
+	require.Equal(t, http.StatusUnauthorized, userInfoRec.Result().StatusCode)
+	assert.Contains(t, userInfoRec.Body.String(), "Token has been revoked")
+
+	t.Log("Verifying session is updated to revoked status")
+	session, err = sessionStore.FindByID(context.Background(), codeRecord.SessionID)
+	require.NoError(t, err)
+	assert.Equal(t, service.StatusRevoked, session.Status)
+	require.NotNil(t, session.RevokedAt)
+}
+
+func TestTokenRevocation_RefreshToken(t *testing.T) {
+	r, _, _, _, _, _ := SetupSuite(t)
+	uaString := "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+	// Authorize
+	reqBody := models.AuthorizationRequest{
+		Email:       "revoke.refresh@example.com",
+		ClientID:    "client-123",
+		Scopes:      []string{"openid"},
+		RedirectURI: "https://client.app/callback",
+		State:       "state-xyz",
+	}
+	payload, err := json.Marshal(reqBody)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/authorize", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", uaString)
+	req.Header.Set("X-Real-IP", "192.168.1.1")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	res := rec.Result()
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+
+	var authBody map[string]string
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&authBody))
+	code := authBody["code"]
+	require.NotEmpty(t, code)
+
+	var deviceCookie *http.Cookie
+	for _, c := range res.Cookies() {
+		if c.Name == "__Secure-Device-ID" {
+			deviceCookie = c
+			break
+		}
+	}
+	require.NotNil(t, deviceCookie)
+
+	// Token exchange
+	tokenRequest := &models.TokenRequest{
+		GrantType:   "authorization_code",
+		Code:        code,
+		ClientID:    reqBody.ClientID,
+		RedirectURI: reqBody.RedirectURI,
+	}
+	tokenPayload, err := json.Marshal(tokenRequest)
+	require.NoError(t, err)
+
+	tokenReq := httptest.NewRequest(http.MethodPost, "/auth/token", bytes.NewReader(tokenPayload))
+	tokenReq.Header.Set("Content-Type", "application/json")
+	tokenReq.Header.Set("User-Agent", uaString)
+	tokenReq.Header.Set("X-Real-IP", "192.168.1.1")
+	tokenReq.AddCookie(deviceCookie)
+	tokenRec := httptest.NewRecorder()
+	r.ServeHTTP(tokenRec, tokenReq)
+	tokenRes := tokenRec.Result()
+	defer tokenRes.Body.Close()
+	require.Equal(t, http.StatusOK, tokenRes.StatusCode)
+
+	var tokenBody map[string]any
+	require.NoError(t, json.NewDecoder(tokenRes.Body).Decode(&tokenBody))
+	refreshToken := tokenBody["refresh_token"].(string)
+	require.NotEmpty(t, refreshToken)
+
+	// Revoke refresh token
+	revokePayload, err := json.Marshal(map[string]any{
+		"token":           refreshToken,
+		"token_type_hint": "refresh_token",
+	})
+	require.NoError(t, err)
+	revokeReq := httptest.NewRequest(http.MethodPost, "/auth/revoke", bytes.NewReader(revokePayload))
+	revokeReq.Header.Set("Content-Type", "application/json")
+	revokeRec := httptest.NewRecorder()
+	r.ServeHTTP(revokeRec, revokeReq)
+	revokeRes := revokeRec.Result()
+	defer revokeRes.Body.Close()
+	require.Equal(t, http.StatusOK, revokeRes.StatusCode)
+
+	// Attempt refresh with the revoked refresh token should now fail (refresh tokens deleted)
+	refreshReqBody := &models.TokenRequest{
+		GrantType:    "refresh_token",
+		RefreshToken: refreshToken,
+		ClientID:     reqBody.ClientID,
+	}
+	refreshPayload, err := json.Marshal(refreshReqBody)
+	require.NoError(t, err)
+	refreshReq := httptest.NewRequest(http.MethodPost, "/auth/token", bytes.NewReader(refreshPayload))
+	refreshReq.Header.Set("Content-Type", "application/json")
+	refreshRec := httptest.NewRecorder()
+	r.ServeHTTP(refreshRec, refreshReq)
+	require.Equal(t, http.StatusUnauthorized, refreshRec.Result().StatusCode)
+	assert.Contains(t, refreshRec.Body.String(), "unauthorized")
 }
 
 func TestConcurrentUserCreation(t *testing.T) {

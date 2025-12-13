@@ -160,10 +160,11 @@ func registerRoutes(
 	// Public auth endpoints (no JWT required)
 	r.Post("/auth/authorize", authHandler.HandleAuthorize)
 	r.Post("/auth/token", authHandler.HandleToken)
+	r.Post("/auth/revoke", authHandler.HandleRevoke)
 
 	// Protected auth endpoints (JWT required)
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.RequireAuth(jwtValidator, log))
+		r.Use(middleware.RequireAuth(jwtValidator, authSvc, log))
 		r.Get("/auth/userinfo", authHandler.HandleUserInfo)
 		consentHTTPHandler.Register(r)
 	})

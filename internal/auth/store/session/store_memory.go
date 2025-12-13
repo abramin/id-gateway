@@ -93,8 +93,11 @@ func (s *InMemorySessionStore) RevokeSession(_ context.Context, id uuid.UUID) er
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	key := id.String()
-	if _, ok := s.sessions[key]; ok {
-		delete(s.sessions, key)
+	if session, ok := s.sessions[key]; ok {
+		now := time.Now()
+		session.Status = "revoked"
+		session.RevokedAt = &now
+		s.sessions[key] = session
 		return nil
 	}
 	return ErrNotFound
