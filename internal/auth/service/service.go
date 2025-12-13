@@ -73,6 +73,7 @@ type Service struct {
 	sessionTTL             time.Duration
 	tokenTTL               time.Duration
 	deviceBindingEnabled   bool
+	deviceService          *device.Service
 	logger                 *slog.Logger
 	auditPublisher         AuditPublisher
 	jwt                    TokenGenerator
@@ -124,32 +125,6 @@ func WithJWTService(jwtService TokenGenerator) Option {
 	}
 }
 
-// WithSessionTTL configures the time-to-live duration for sessions.
-// If not set or set to zero/negative, defaults to 24 hours.
-func WithSessionTTL(ttl time.Duration) Option {
-	return func(s *Service) {
-		if ttl > 0 {
-			s.sessionTTL = ttl
-		}
-	}
-}
-
-func WithAllowedRedirectSchemes(schemes []string) Option {
-	return func(s *Service) {
-		if len(schemes) > 0 {
-			s.allowedRedirectSchemes = schemes
-		}
-	}
-}
-
-func WithTokenTTL(ttl time.Duration) Option {
-	return func(s *Service) {
-		if ttl > 0 {
-			s.tokenTTL = ttl
-		}
-	}
-}
-
 func WithDeviceBindingEnabled(enabled bool) Option {
 	return func(s *Service) {
 		s.deviceBindingEnabled = enabled
@@ -195,6 +170,10 @@ func New(
 
 	if svc.jwt == nil {
 		return nil, fmt.Errorf("token generator (jwt) is required")
+	}
+
+	if svc.deviceService == nil {
+		svc.deviceService = device.NewService(svc.deviceBindingEnabled)
 	}
 
 	return svc, nil
@@ -250,24 +229,33 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 	}
 
 	userAgent := middleware.GetUserAgent(ctx)
-	ipAddress := middleware.GetClientIP(ctx)
 	deviceDisplayName := device.ParseUserAgent(userAgent)
-	deviceFingerprint := ""
-	if s.deviceBindingEnabled && userAgent != "" && ipAddress != "" && ipAddress != "unknown" {
-		deviceFingerprint = device.ComputeDeviceFingerprint(userAgent, ipAddress)
+
+	deviceID := ""
+	deviceIDToSet := ""
+	if s.deviceBindingEnabled {
+		deviceID = middleware.GetDeviceID(ctx)
+		if deviceID == "" {
+			deviceID = s.deviceService.GenerateDeviceID()
+			deviceIDToSet = deviceID
+		}
 	}
+
+	deviceFingerprint := s.deviceService.ComputeFingerprint(userAgent)
 
 	newSession := &models.Session{
 		ID:                    authCode.SessionID,
 		UserID:                user.ID,
 		ClientID:              req.ClientID,
 		RequestedScope:        scopes,
+		DeviceID:              deviceID,
 		DeviceFingerprintHash: deviceFingerprint,
 		DeviceDisplayName:     deviceDisplayName,
 		ApproximateLocation:   "",
 		Status:                StatusPendingConsent,
 		CreatedAt:             now,
 		ExpiresAt:             now.Add(s.sessionTTL),
+		LastSeenAt:            now,
 	}
 
 	err = s.sessions.Create(ctx, newSession)
@@ -291,6 +279,7 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 	res := &models.AuthorizationResult{
 		Code:        authCode.Code,
 		RedirectURI: redirectURI,
+		DeviceID:    deviceIDToSet,
 	}
 
 	return res, nil
@@ -468,6 +457,53 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 		return nil, dErrors.New(dErrors.CodeUnauthorized, "session expired")
 	}
 
+	// Device binding (Phase 1: soft launch — log results, do not enforce).
+	if s.deviceBindingEnabled {
+		cookieDeviceID := middleware.GetDeviceID(ctx)
+		if session.DeviceID == "" && cookieDeviceID != "" {
+			session.DeviceID = cookieDeviceID
+			if s.logger != nil {
+				s.logger.InfoContext(ctx, "device_id_attached",
+					"session_id", session.ID.String(),
+					"user_id", session.UserID.String(),
+				)
+			}
+		}
+		if session.DeviceID != "" && cookieDeviceID == "" {
+			if s.logger != nil {
+				s.logger.WarnContext(ctx, "device_id_missing",
+					"session_id", session.ID.String(),
+					"user_id", session.UserID.String(),
+				)
+			}
+		} else if session.DeviceID != "" && cookieDeviceID != "" && session.DeviceID != cookieDeviceID {
+			if s.logger != nil {
+				s.logger.WarnContext(ctx, "device_id_mismatch",
+					"session_id", session.ID.String(),
+					"user_id", session.UserID.String(),
+				)
+			}
+		}
+
+		userAgent := middleware.GetUserAgent(ctx)
+		currentFingerprint := s.deviceService.ComputeFingerprint(userAgent)
+		_, driftDetected := s.deviceService.CompareFingerprints(session.DeviceFingerprintHash, currentFingerprint)
+		if session.DeviceFingerprintHash == "" && currentFingerprint != "" {
+			session.DeviceFingerprintHash = currentFingerprint
+		} else if driftDetected {
+			if s.logger != nil {
+				s.logger.InfoContext(ctx, "fingerprint_drift_detected",
+					"session_id", session.ID.String(),
+					"user_id", session.UserID.String(),
+				)
+			}
+			session.DeviceFingerprintHash = currentFingerprint
+		}
+	}
+
+	// Session activity marker (used for session management UI / risk signals).
+	session.LastSeenAt = time.Now()
+
 	// Step 6: Mark code as used (prevent replay attacks)
 	if err := s.codes.MarkUsed(ctx, codeRecord.Code); err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to mark code as used")
@@ -581,7 +617,9 @@ func (s *Service) logAudit(ctx context.Context, event string, attributes ...any)
 
 func (s *Service) authFailure(ctx context.Context, reason string, isError bool, attributes ...any) {
 	s.logAuthFailure(ctx, reason, isError, attributes...)
-	s.incrementAuthFailure()
+	if s.metrics != nil {
+		s.metrics.IncrementAuthFailures()
+	}
 }
 
 func (s *Service) logAuthFailure(ctx context.Context, reason string, isError bool, attributes ...any) {
@@ -611,13 +649,6 @@ func (s *Service) incrementUserCreated() {
 func (s *Service) incrementActiveSession() {
 	if s.metrics != nil {
 		s.metrics.IncrementActiveSessions(1)
-	}
-}
-
-// incrementAuthFailure increments the auth failures metric if metrics are enabled
-func (s *Service) incrementAuthFailure() {
-	if s.metrics != nil {
-		s.metrics.IncrementAuthFailures()
 	}
 }
 

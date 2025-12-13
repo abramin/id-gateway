@@ -117,6 +117,7 @@ func (s *ServiceSuite) TestAuthorize() {
 				assert.True(s.T(), session.ExpiresAt.After(time.Now()))
 				assert.Equal(s.T(), StatusPendingConsent, session.Status)
 				assert.NotNil(s.T(), session.ID)
+				assert.NotEmpty(s.T(), session.DeviceID)
 				assert.NotEmpty(s.T(), session.DeviceFingerprintHash)
 				return nil
 			})
@@ -130,6 +131,7 @@ func (s *ServiceSuite) TestAuthorize() {
 		assert.Contains(s.T(), result.RedirectURI, "https://client.app/callback")
 		assert.Contains(s.T(), result.RedirectURI, "code="+result.Code)
 		assert.Contains(s.T(), result.RedirectURI, "state=xyz")
+		assert.NotEmpty(s.T(), result.DeviceID)
 	})
 
 	s.T().Run("happy path - user exists", func(t *testing.T) {
@@ -144,6 +146,7 @@ func (s *ServiceSuite) TestAuthorize() {
 				assert.True(s.T(), session.ExpiresAt.After(time.Now()))
 				assert.Equal(s.T(), StatusPendingConsent, session.Status)
 				assert.NotNil(s.T(), session.ID)
+				assert.NotEmpty(s.T(), session.DeviceID)
 				return nil
 			})
 		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
@@ -154,6 +157,7 @@ func (s *ServiceSuite) TestAuthorize() {
 		assert.Contains(s.T(), result.Code, "authz_")
 		assert.Contains(s.T(), result.RedirectURI, "https://client.app/callback")
 		assert.Contains(s.T(), result.RedirectURI, "code="+result.Code)
+		assert.NotEmpty(s.T(), result.DeviceID)
 	})
 
 	s.T().Run("invalid redirect_uri scheme rejected", func(t *testing.T) {
@@ -221,6 +225,7 @@ func (s *ServiceSuite) TestToken() {
 		UserID:         userID,
 		ClientID:       clientID,
 		RequestedScope: []string{"openid", "profile"},
+		DeviceID:       "device-123",
 		Status:         StatusPendingConsent, // Should be pending_consent before token exchange
 		CreatedAt:      time.Now().Add(-5 * time.Minute),
 		ExpiresAt:      time.Now().Add(24 * time.Hour),
@@ -230,6 +235,7 @@ func (s *ServiceSuite) TestToken() {
 		req := baseReq
 		codeRec := *validCodeRecord
 		sess := *validSession
+		ctx := middleware.WithDeviceID(middleware.WithClientMetadata(context.Background(), "192.168.1.1", "Mozilla/5.0"), sess.DeviceID)
 
 		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
@@ -247,7 +253,7 @@ func (s *ServiceSuite) TestToken() {
 			})
 		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
 
-		result, err := s.service.Token(context.Background(), &req)
+		result, err := s.service.Token(ctx, &req)
 		require.NoError(s.T(), err)
 		assert.Equal(s.T(), "mock-access-token", result.AccessToken)
 		assert.Equal(s.T(), "mock-id-token", result.IDToken)
@@ -264,6 +270,7 @@ func (s *ServiceSuite) TestToken() {
 		codeRec := *validCodeRecord
 		sess := *validSession
 		sess.Status = StatusActive // Already active
+		ctx := middleware.WithDeviceID(middleware.WithClientMetadata(context.Background(), "192.168.1.1", "Mozilla/5.0"), sess.DeviceID)
 
 		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
@@ -274,7 +281,7 @@ func (s *ServiceSuite) TestToken() {
 		s.mockRefreshStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
 
-		result, err := s.service.Token(context.Background(), &req)
+		result, err := s.service.Token(ctx, &req)
 		require.NoError(s.T(), err)
 		assert.NotNil(s.T(), result)
 		assert.Equal(s.T(), StatusActive, sess.Status) // Should remain active

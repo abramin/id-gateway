@@ -607,6 +607,12 @@ func TestToken_StolenToken_Denied(t *testing.T) {
 - Log all validation results, **don't enforce**
 - Monitor false positive rate
 
+**Operational notes (Phase 1):**
+
+- Enable in an environment with `DEVICE_BINDING_ENABLED=true`.
+- Cookie settings are configurable via `DEVICE_COOKIE_NAME` (default `__Secure-Device-ID`) and `DEVICE_COOKIE_MAX_AGE` (default `31536000` seconds).
+- Current implementation logs `device_id_missing`, `device_id_mismatch`, and `fingerprint_drift_detected` during `/auth/token`, but does not deny requests.
+
 ### Phase 2: Enforcement (Week 3+)
 
 - Enable device ID validation (deny on mismatch)

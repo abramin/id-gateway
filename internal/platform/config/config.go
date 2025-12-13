@@ -91,8 +91,8 @@ func FromEnv() (Server, error) {
 		deviceCookieName = "__Secure-Device-ID"
 	}
 	deviceCookieMaxAge := 31536000 // 1 year
-	if v := os.Getenv("DEVICE_COOKIE_MAX_AGE"); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+	if raw := os.Getenv("DEVICE_COOKIE_MAX_AGE"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
 			deviceCookieMaxAge = parsed
 		}
 	}
@@ -139,13 +139,13 @@ func FromEnv() (Server, error) {
 		TokenTTL:               TokenTTL,
 		ConsentTTL:             ConsentTTL,
 		ConsentGrantWindow:     ConsentGrantWindow,
-			SessionTTL:             SessionTTL,
-			AdminAPIToken:          adminAPIToken,
-			DeviceBindingEnabled:   deviceBindingEnabled,
-			DeviceCookieName:       deviceCookieName,
-			DeviceCookieMaxAge:     deviceCookieMaxAge,
-		}, nil
-	}
+		SessionTTL:             SessionTTL,
+		AdminAPIToken:          adminAPIToken,
+		DeviceBindingEnabled:   deviceBindingEnabled,
+		DeviceCookieName:       deviceCookieName,
+		DeviceCookieMaxAge:     deviceCookieMaxAge,
+	}, nil
+}
 
 func parseAllowedRedirectSchemes(raw, env string) []string {
 	if raw != "" {
