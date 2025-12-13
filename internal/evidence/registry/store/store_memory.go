@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"credo/internal/evidence/registry/models"
-	"credo/internal/platform/config"
 )
 
 type cachedCitizen struct {
@@ -24,14 +23,16 @@ type InMemoryCache struct {
 	mu        sync.RWMutex
 	citizens  map[string]cachedCitizen
 	sanctions map[string]cachedSanction
+	cacheTTL  time.Duration
 }
 
 var ErrNotFound = errors.New("not found") // TODO: move to a more appropriate package
 
-func NewInMemoryCache() *InMemoryCache {
+func NewInMemoryCache(cacheTTL time.Duration) *InMemoryCache {
 	return &InMemoryCache{
 		citizens:  make(map[string]cachedCitizen),
 		sanctions: make(map[string]cachedSanction),
+		cacheTTL:  cacheTTL,
 	}
 }
 
@@ -46,7 +47,7 @@ func (c *InMemoryCache) FindCitizen(_ context.Context, nationalID string) (model
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if cached, ok := c.citizens[nationalID]; ok {
-		if time.Since(cached.storedAt) < config.RegistryCacheTTL {
+		if time.Since(cached.storedAt) < c.cacheTTL {
 			return cached.record, nil
 		}
 	}
@@ -64,7 +65,7 @@ func (c *InMemoryCache) FindSanction(_ context.Context, nationalID string) (mode
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if cached, ok := c.sanctions[nationalID]; ok {
-		if time.Since(cached.storedAt) < config.RegistryCacheTTL {
+		if time.Since(cached.storedAt) < c.cacheTTL {
 			return cached.record, nil
 		}
 	}

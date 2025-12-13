@@ -39,14 +39,14 @@ func main() {
 
 	log.Info("initializing credo",
 		"addr", cfg.Addr,
-		"regulated_mode", cfg.RegulatedMode,
+		"regulated_mode", cfg.Security.RegulatedMode,
 		"env", cfg.Environment,
-		"allowed_redirect_schemes", cfg.AllowedRedirectSchemes,
+		"allowed_redirect_schemes", cfg.Auth.AllowedRedirectSchemes,
 	)
 	if cfg.DemoMode {
 		log.Info("CRENE_ENV=demo — starting isolated demo environment",
 			"stores", "in-memory",
-			"issuer", cfg.JWTIssuer,
+			"issuer", cfg.Auth.JWTIssuer,
 		)
 	}
 
@@ -64,11 +64,11 @@ func main() {
 
 // initializeAuthService creates and configures the authentication service
 func initializeAuthService(m *metrics.Metrics, log *slog.Logger, jwtService *jwttoken.JWTService, cfg *config.Server) *authService.Service {
-	authCfg := authService.Config{
-		SessionTTL:             cfg.SessionTTL,
-		TokenTTL:               cfg.TokenTTL,
-		AllowedRedirectSchemes: cfg.AllowedRedirectSchemes,
-		DeviceBindingEnabled:   cfg.DeviceBindingEnabled,
+	authCfg := &authService.Config{
+		SessionTTL:             cfg.Auth.SessionTTL,
+		TokenTTL:               cfg.Auth.TokenTTL,
+		AllowedRedirectSchemes: cfg.Auth.AllowedRedirectSchemes,
+		DeviceBindingEnabled:   cfg.Auth.DeviceBindingEnabled,
 	}
 
 	authSvc, err := authService.New(
@@ -91,10 +91,10 @@ func initializeAuthService(m *metrics.Metrics, log *slog.Logger, jwtService *jwt
 // initializeJWTService creates and configures the JWT service and validator
 func initializeJWTService(cfg *config.Server) (*jwttoken.JWTService, *jwttoken.JWTServiceAdapter) {
 	jwtService := jwttoken.NewJWTService(
-		cfg.JWTSigningKey,
-		cfg.JWTIssuer,
+		cfg.Auth.JWTSigningKey,
+		cfg.Auth.JWTIssuer,
 		"credo-client",
-		cfg.TokenTTL,
+		cfg.Auth.TokenTTL,
 	)
 	if cfg.DemoMode {
 		jwtService.SetEnv("demo")
@@ -135,13 +135,13 @@ func registerRoutes(
 	cfg *config.Server,
 	m *metrics.Metrics,
 ) {
-	authHandler := authHandler.New(authSvc, log, cfg.DeviceCookieName, cfg.DeviceCookieMaxAge)
+	authHandler := authHandler.New(authSvc, log, cfg.Auth.DeviceCookieName, cfg.Auth.DeviceCookieMaxAge)
 	consentSvc := consentService.NewService(
 		consentStore.NewInMemoryStore(),
 		audit.NewPublisher(audit.NewInMemoryStore()),
 		log,
-		consentService.WithConsentTTL(cfg.ConsentTTL),
-		consentService.WithGrantWindow(cfg.ConsentGrantWindow),
+		consentService.WithConsentTTL(cfg.Consent.ConsentTTL),
+		consentService.WithGrantWindow(cfg.Consent.ConsentGrantWindow),
 	)
 	consentHTTPHandler := consentHandler.New(consentSvc, log, m)
 	if cfg.DemoMode {
@@ -149,7 +149,7 @@ func registerRoutes(
 			resp := map[string]any{
 				"env":        "demo",
 				"users":      []string{"alice", "bob", "charlie"},
-				"jwt_issuer": cfg.JWTIssuer,
+				"jwt_issuer": cfg.Auth.JWTIssuer,
 				"data_store": "in-memory",
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -168,9 +168,9 @@ func registerRoutes(
 		consentHTTPHandler.Register(r)
 	})
 
-	if cfg.AdminAPIToken != "" {
+	if cfg.Security.AdminAPIToken != "" {
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.RequireAdminToken(cfg.AdminAPIToken, log))
+			r.Use(middleware.RequireAdminToken(cfg.Security.AdminAPIToken, log))
 			authHandler.RegisterAdmin(r)
 		})
 	}
