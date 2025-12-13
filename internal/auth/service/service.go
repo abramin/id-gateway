@@ -83,7 +83,15 @@ const (
 	StatusPendingConsent = "pending_consent"
 	StatusActive         = "active"
 	defaultSessionTTL    = 24 * time.Hour
+	defaultTokenTTL      = 15 * time.Minute
 )
+
+type Config struct {
+	SessionTTL             time.Duration
+	TokenTTL               time.Duration
+	AllowedRedirectSchemes []string
+	DeviceBindingEnabled   bool
+}
 
 type AuditPublisher interface {
 	Emit(ctx context.Context, base audit.Event) error
@@ -147,17 +155,48 @@ func WithDeviceBindingEnabled(enabled bool) Option {
 	}
 }
 
-func NewService(users UserStore, sessions SessionStore, codes AuthCodeStore, refreshTokens RefreshTokenStore, opts ...Option) *Service {
-	svc := &Service{
-		users:         users,
-		sessions:      sessions,
-		codes:         codes,
-		refreshTokens: refreshTokens,
+func New(
+	users UserStore,
+	sessions SessionStore,
+	codes AuthCodeStore,
+	refreshTokens RefreshTokenStore,
+	cfg Config,
+	opts ...Option,
+) (*Service, error) {
+	if users == nil || sessions == nil || codes == nil || refreshTokens == nil {
+		return nil, fmt.Errorf("users, sessions, codes, and refreshTokens stores are required")
 	}
+	// Defaults for required config
+	if cfg.SessionTTL <= 0 {
+		cfg.SessionTTL = defaultSessionTTL
+	}
+	if cfg.TokenTTL <= 0 {
+		cfg.TokenTTL = defaultTokenTTL
+	}
+	if len(cfg.AllowedRedirectSchemes) == 0 {
+		cfg.AllowedRedirectSchemes = []string{"https"}
+	}
+
+	svc := &Service{
+		users:                  users,
+		sessions:               sessions,
+		codes:                  codes,
+		refreshTokens:          refreshTokens,
+		sessionTTL:             cfg.SessionTTL,
+		tokenTTL:               cfg.TokenTTL,
+		deviceBindingEnabled:   cfg.DeviceBindingEnabled,
+		allowedRedirectSchemes: cfg.AllowedRedirectSchemes,
+	}
+
 	for _, opt := range opts {
 		opt(svc)
 	}
-	return svc
+
+	if svc.jwt == nil {
+		return nil, fmt.Errorf("token generator (jwt) is required")
+	}
+
+	return svc, nil
 }
 
 func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationRequest) (*models.AuthorizationResult, error) {
@@ -333,10 +372,6 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 }
 
 func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {
-	if s.jwt == nil {
-		return nil, dErrors.New(dErrors.CodeInternal, "token generator not configured")
-	}
-
 	// Validate grant_type (OAuth 2.0 requirement)
 	// Note: This is a client implementation error, not a security attack
 	if req.GrantType != "authorization_code" {

@@ -64,18 +64,28 @@ func main() {
 
 // initializeAuthService creates and configures the authentication service
 func initializeAuthService(m *metrics.Metrics, log *slog.Logger, jwtService *jwttoken.JWTService, cfg *config.Server) *authService.Service {
-	return authService.NewService(
+	authCfg := authService.Config{
+		SessionTTL:             cfg.SessionTTL,
+		TokenTTL:               cfg.TokenTTL,
+		AllowedRedirectSchemes: cfg.AllowedRedirectSchemes,
+		DeviceBindingEnabled:   cfg.DeviceBindingEnabled,
+	}
+
+	authSvc, err := authService.New(
 		userStore.NewInMemoryUserStore(),
 		sessionStore.NewInMemorySessionStore(),
 		authCodeStore.NewInMemoryAuthorizationCodeStore(),
 		refreshTokenStore.NewInMemoryRefreshTokenStore(),
-		authService.WithSessionTTL(cfg.SessionTTL),
+		authCfg,
 		authService.WithMetrics(m),
 		authService.WithLogger(log),
 		authService.WithJWTService(jwtService),
-		authService.WithAllowedRedirectSchemes(cfg.AllowedRedirectSchemes),
-		authService.WithDeviceBindingEnabled(cfg.DeviceBindingEnabled),
 	)
+	if err != nil {
+		log.Error("failed to initialize auth service", "error", err)
+		os.Exit(1)
+	}
+	return authSvc
 }
 
 // initializeJWTService creates and configures the JWT service and validator

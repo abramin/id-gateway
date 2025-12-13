@@ -45,19 +45,21 @@ func (s *ServiceSuite) SetupTest() {
 	s.mockJWT = mocks.NewMockTokenGenerator(s.ctrl)
 	s.mockAuditPublisher = mocks.NewMockAuditPublisher(s.ctrl)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
-	s.service = NewService(
+	cfg := Config{
+		SessionTTL:             2 * time.Hour,
+		TokenTTL:               30 * time.Minute,
+		AllowedRedirectSchemes: []string{"https", "http"},
+		DeviceBindingEnabled:   true,
+	}
+	s.service, _ = New(
 		s.mockUserStore,
 		s.mockSessionStore,
 		s.mockCodeStore,
 		s.mockRefreshStore,
-		WithSessionTTL(24*time.Hour),
-		WithTokenTTL(15*time.Minute),
+		cfg,
 		WithLogger(logger),
 		WithJWTService(s.mockJWT),
 		WithAuditPublisher(s.mockAuditPublisher),
-		WithAllowedRedirectSchemes([]string{"http", "https"}),
-		WithDeviceBindingEnabled(true),
 	)
 }
 
@@ -557,24 +559,6 @@ func (s *ServiceSuite) TestToken() {
 		assert.Nil(s.T(), result)
 		assert.True(s.T(), dErrors.Is(err, dErrors.CodeInternal))
 	})
-
-	s.T().Run("JWT service not configured", func(t *testing.T) {
-		req := baseReq
-
-		// Create service without JWT
-		svc := NewService(
-			s.mockUserStore,
-			s.mockSessionStore,
-			s.mockCodeStore,
-			s.mockRefreshStore,
-		)
-
-		result, err := svc.Token(context.Background(), &req)
-		assert.Error(s.T(), err)
-		assert.Nil(s.T(), result)
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeInternal))
-		assert.Contains(s.T(), err.Error(), "token generator not configured")
-	})
 }
 
 // TestUserInfo tests the OIDC userinfo endpoint (PRD-001 FR-3)
@@ -740,6 +724,30 @@ func (s *ServiceSuite) TestDeleteUser() {
 		err := s.service.DeleteUser(ctx, userID)
 		require.Error(t, err)
 		assert.True(t, dErrors.Is(err, dErrors.CodeInternal))
+	})
+}
+
+func (s *ServiceSuite) TestNewService_RequiresDepsAndConfig() {
+	s.T().Run("missing stores fails", func(t *testing.T) {
+		_, err := New(nil, nil, nil, nil, Config{})
+		require.Error(t, err)
+	})
+
+	s.T().Run("sets defaults and applies jwt", func(t *testing.T) {
+
+		svc, err := New(
+			s.mockUserStore,
+			s.mockSessionStore,
+			s.mockCodeStore,
+			s.mockRefreshStore,
+			Config{}, // empty config
+			WithJWTService(s.mockJWT),
+		)
+		require.NoError(t, err)
+		assert.Equal(t, defaultSessionTTL, svc.sessionTTL)
+		assert.Equal(t, defaultTokenTTL, svc.tokenTTL)
+		assert.Equal(t, []string{"https"}, svc.allowedRedirectSchemes)
+		assert.Equal(t, s.mockJWT, svc.jwt)
 	})
 }
 

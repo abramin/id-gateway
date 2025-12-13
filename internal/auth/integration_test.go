@@ -53,10 +53,14 @@ func SetupSuite(t *testing.T) (
 	)
 	auditStore := audit.NewInMemoryStore()
 	jwtValidator := jwttoken.NewJWTServiceAdapter(jwtService)
-	authService := service.NewService(userStore, sessionStore, authCodeStore, refreshTokenStore,
-		service.WithSessionTTL(5*time.Minute),
-		service.WithDeviceBindingEnabled(true),
-		service.WithAllowedRedirectSchemes([]string{"http", "https"}),
+	cfg := service.Config{
+		SessionTTL:             24 * time.Hour,
+		TokenTTL:               15 * time.Minute,
+		AllowedRedirectSchemes: []string{"https", "http"},
+		DeviceBindingEnabled:   true,
+	}
+	authService, _ := service.New(userStore, sessionStore, authCodeStore, refreshTokenStore,
+		cfg,
 		service.WithLogger(logger),
 		service.WithJWTService(jwtService),
 		service.WithAuditPublisher(audit.NewPublisher(auditStore)),
