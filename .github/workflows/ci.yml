@@ -30,6 +30,8 @@ jobs:
 
   e2e:
     name: E2E Tests
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
