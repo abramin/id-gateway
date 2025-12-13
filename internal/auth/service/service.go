@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -70,6 +71,7 @@ type Service struct {
 	sessions               SessionStore
 	codes                  AuthCodeStore
 	refreshTokens          RefreshTokenStore
+	tx                     AuthStoreTx
 	sessionTTL             time.Duration
 	tokenTTL               time.Duration
 	deviceBindingEnabled   bool
@@ -101,6 +103,30 @@ type AuditPublisher interface {
 
 type Option func(*Service)
 
+// AuthStoreTx provides a transactional boundary for auth-related store mutations.
+// Implementations may wrap a database transaction or, in-memory, a coarse lock.
+type AuthStoreTx interface {
+	RunInTx(ctx context.Context, fn func(stores TxAuthStores) error) error
+}
+
+// TxAuthStores groups the stores used inside a transaction.
+type TxAuthStores struct {
+	Codes         AuthCodeStore
+	Sessions      SessionStore
+	RefreshTokens RefreshTokenStore
+}
+
+type mutexAuthTx struct {
+	mu     *sync.Mutex
+	stores TxAuthStores
+}
+
+func (t *mutexAuthTx) RunInTx(ctx context.Context, fn func(stores TxAuthStores) error) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return fn(t.stores)
+}
+
 func WithLogger(logger *slog.Logger) Option {
 	return func(s *Service) {
 		s.logger = logger
@@ -122,6 +148,12 @@ func WithMetrics(m *metrics.Metrics) Option {
 func WithJWTService(jwtService TokenGenerator) Option {
 	return func(s *Service) {
 		s.jwt = jwtService
+	}
+}
+
+func WithAuthStoreTx(tx AuthStoreTx) Option {
+	return func(s *Service) {
+		s.tx = tx
 	}
 }
 
@@ -158,6 +190,7 @@ func New(
 		sessions:               sessions,
 		codes:                  codes,
 		refreshTokens:          refreshTokens,
+		tx:                     &mutexAuthTx{mu: &sync.Mutex{}, stores: TxAuthStores{Codes: codes, Sessions: sessions, RefreshTokens: refreshTokens}},
 		sessionTTL:             cfg.SessionTTL,
 		tokenTTL:               cfg.TokenTTL,
 		deviceBindingEnabled:   cfg.DeviceBindingEnabled,
@@ -457,73 +490,66 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 		return nil, dErrors.New(dErrors.CodeUnauthorized, "session expired")
 	}
 
+	mutableSession := *session
+
 	// Device binding (Phase 1: soft launch — log results, do not enforce).
 	if s.deviceBindingEnabled {
 		cookieDeviceID := middleware.GetDeviceID(ctx)
-		if session.DeviceID == "" && cookieDeviceID != "" {
-			session.DeviceID = cookieDeviceID
+		if mutableSession.DeviceID == "" && cookieDeviceID != "" {
+			mutableSession.DeviceID = cookieDeviceID
 			if s.logger != nil {
 				s.logger.InfoContext(ctx, "device_id_attached",
-					"session_id", session.ID.String(),
-					"user_id", session.UserID.String(),
+					"session_id", mutableSession.ID.String(),
+					"user_id", mutableSession.UserID.String(),
 				)
 			}
 		}
-		if session.DeviceID != "" && cookieDeviceID == "" {
+		if mutableSession.DeviceID != "" && cookieDeviceID == "" {
 			if s.logger != nil {
 				s.logger.WarnContext(ctx, "device_id_missing",
-					"session_id", session.ID.String(),
-					"user_id", session.UserID.String(),
+					"session_id", mutableSession.ID.String(),
+					"user_id", mutableSession.UserID.String(),
 				)
 			}
-		} else if session.DeviceID != "" && cookieDeviceID != "" && session.DeviceID != cookieDeviceID {
+		} else if mutableSession.DeviceID != "" && cookieDeviceID != "" && mutableSession.DeviceID != cookieDeviceID {
 			if s.logger != nil {
 				s.logger.WarnContext(ctx, "device_id_mismatch",
-					"session_id", session.ID.String(),
-					"user_id", session.UserID.String(),
+					"session_id", mutableSession.ID.String(),
+					"user_id", mutableSession.UserID.String(),
 				)
 			}
 		}
 
 		userAgent := middleware.GetUserAgent(ctx)
 		currentFingerprint := s.deviceService.ComputeFingerprint(userAgent)
-		_, driftDetected := s.deviceService.CompareFingerprints(session.DeviceFingerprintHash, currentFingerprint)
-		if session.DeviceFingerprintHash == "" && currentFingerprint != "" {
-			session.DeviceFingerprintHash = currentFingerprint
+		_, driftDetected := s.deviceService.CompareFingerprints(mutableSession.DeviceFingerprintHash, currentFingerprint)
+		if mutableSession.DeviceFingerprintHash == "" && currentFingerprint != "" {
+			mutableSession.DeviceFingerprintHash = currentFingerprint
 		} else if driftDetected {
 			if s.logger != nil {
 				s.logger.InfoContext(ctx, "fingerprint_drift_detected",
-					"session_id", session.ID.String(),
-					"user_id", session.UserID.String(),
+					"session_id", mutableSession.ID.String(),
+					"user_id", mutableSession.UserID.String(),
 				)
 			}
-			session.DeviceFingerprintHash = currentFingerprint
+			mutableSession.DeviceFingerprintHash = currentFingerprint
 		}
 	}
 
 	// Session activity marker (used for session management UI / risk signals).
-	session.LastSeenAt = time.Now()
+	mutableSession.LastSeenAt = time.Now()
 
-	// Step 6: Mark code as used (prevent replay attacks)
-	if err := s.codes.MarkUsed(ctx, codeRecord.Code); err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to mark code as used")
+	if mutableSession.Status == StatusPendingConsent {
+		mutableSession.Status = StatusActive
 	}
 
-	// Step 7: Activate session (transition from pending_consent to active)
-	if session.Status == StatusPendingConsent {
-		session.Status = StatusActive
-		if err := s.sessions.UpdateSession(ctx, session); err != nil {
-			return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to update session status")
-		}
-	}
-
-	// Step 8: Generate tokens
-	accessToken, err := s.jwt.GenerateAccessToken(session.UserID, session.ID, session.ClientID)
+	// Generate tokens before mutating persistence state so failures do not leave partial writes.
+	accessToken, err := s.jwt.GenerateAccessToken(mutableSession.UserID, mutableSession.ID, mutableSession.ClientID)
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate access token")
 	}
 
-	idToken, err := s.jwt.GenerateIDToken(session.UserID, session.ID, session.ClientID)
+	idToken, err := s.jwt.GenerateIDToken(mutableSession.UserID, mutableSession.ID, mutableSession.ClientID)
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate ID token")
 	}
@@ -535,22 +561,34 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 
 	tokenRecord := &models.RefreshTokenRecord{
 		Token:           refreshToken,
-		SessionID:       session.ID,
+		SessionID:       mutableSession.ID,
 		CreatedAt:       time.Now(),
 		LastRefreshedAt: nil,
 		ExpiresAt:       time.Now().Add(30 * 24 * time.Hour), // 30 days
 		Used:            false,
 	}
 
-	if err := s.refreshTokens.Create(ctx, tokenRecord); err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to create refresh token record")
+	writeErr := s.tx.RunInTx(ctx, func(stores TxAuthStores) error {
+		if err := stores.Sessions.UpdateSession(ctx, &mutableSession); err != nil {
+			return err
+		}
+		if err := stores.RefreshTokens.Create(ctx, tokenRecord); err != nil {
+			return err
+		}
+		if err := stores.Codes.MarkUsed(ctx, codeRecord.Code); err != nil {
+			return err
+		}
+		return nil
+	})
+	if writeErr != nil {
+		return nil, dErrors.Wrap(writeErr, dErrors.CodeInternal, "failed to persist token exchange")
 	}
 
 	s.logAudit(ctx,
 		string(audit.EventTokenIssued),
-		"session_id", session.ID.String(),
-		"user_id", session.UserID.String(),
-		"client_id", session.ClientID,
+		"session_id", mutableSession.ID.String(),
+		"user_id", mutableSession.UserID.String(),
+		"client_id", mutableSession.ClientID,
 	)
 	s.incrementTokenRequests()
 

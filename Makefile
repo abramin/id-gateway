@@ -19,7 +19,12 @@ run:
 
 # === TESTING ===
 test:
-	go test $(PKG)
+	@if command -v gotestsum >/dev/null 2>&1; then \
+		FORCE_COLOR=1 TERM=xterm-256color gotestsum --format testname --no-color=false -- -v $(PKG); \
+	else \
+		echo "gotestsum not installed, falling back to go test"; \
+		go test -v $(PKG); \
+	fi
 
 test-cover:
 	go test -cover $(PKG)
