@@ -3,13 +3,16 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"credo/internal/audit"
+	"credo/internal/auth/device"
 	"credo/internal/auth/models"
 	sessionStore "credo/internal/auth/store/session"
 	userStore "credo/internal/auth/store/user"
@@ -33,25 +36,46 @@ type UserStore interface {
 // SessionStore defines the persistence interface for session data.
 // Error Contract: All Find methods return store.ErrNotFound when the entity doesn't exist.
 type SessionStore interface {
-	Save(ctx context.Context, session *models.Session) error
+	Create(ctx context.Context, session *models.Session) error
 	FindByID(ctx context.Context, id uuid.UUID) (*models.Session, error)
-	FindByCode(ctx context.Context, code string) (*models.Session, error)
 	DeleteSessionsByUser(ctx context.Context, userID uuid.UUID) error
+	RevokeSession(ctx context.Context, id uuid.UUID) error
+}
+
+type AuthCodeStore interface {
+	Create(ctx context.Context, authCode *models.AuthorizationCodeRecord) error
+	FindByCode(ctx context.Context, code string) (*models.AuthorizationCodeRecord, error)
+	MarkUsed(ctx context.Context, code string) error
+	Delete(ctx context.Context, code string) error
+	DeleteExpiredCodes(ctx context.Context) (int, error)
+}
+
+type RefreshTokenStore interface {
+	Create(ctx context.Context, token *models.RefreshTokenRecord) error
+	FindBySessionID(ctx context.Context, id uuid.UUID) (*models.RefreshTokenRecord, error)
+	Find(ctx context.Context, tokenString string) (*models.RefreshTokenRecord, error)
+	UpdateLastRefreshed(ctx context.Context, token string, timestamp *time.Time) error
+	DeleteBySessionID(ctx context.Context, sessionID uuid.UUID) error
 }
 
 type TokenGenerator interface {
 	GenerateAccessToken(userID uuid.UUID, sessionID uuid.UUID, clientID string) (string, error)
 	GenerateIDToken(userID uuid.UUID, sessionID uuid.UUID, clientID string) (string, error)
+	CreateRefreshToken() (string, error)
 }
 
 type Service struct {
-	users          UserStore
-	sessions       SessionStore
-	sessionTTL     time.Duration
-	logger         *slog.Logger
-	auditPublisher AuditPublisher
-	jwt            TokenGenerator
-	metrics        *metrics.Metrics
+	users                  UserStore
+	sessions               SessionStore
+	codes                  AuthCodeStore
+	refreshTokens          RefreshTokenStore
+	sessionTTL             time.Duration
+	tokenTTL               time.Duration
+	logger                 *slog.Logger
+	auditPublisher         AuditPublisher
+	jwt                    TokenGenerator
+	metrics                *metrics.Metrics
+	allowedRedirectSchemes []string
 }
 
 const (
@@ -100,26 +124,44 @@ func WithSessionTTL(ttl time.Duration) Option {
 	}
 }
 
-func NewService(users UserStore, sessions SessionStore, opts ...Option) *Service {
+func WithAllowedRedirectSchemes(schemes []string) Option {
+	return func(s *Service) {
+		if len(schemes) > 0 {
+			s.allowedRedirectSchemes = schemes
+		}
+	}
+}
+
+func WithTokenTTL(ttl time.Duration) Option {
+	return func(s *Service) {
+		if ttl > 0 {
+			s.tokenTTL = ttl
+		}
+	}
+}
+
+func NewService(users UserStore, sessions SessionStore, codes AuthCodeStore, refreshTokens RefreshTokenStore, opts ...Option) *Service {
 	svc := &Service{
-		users:      users,
-		sessions:   sessions,
-		sessionTTL: defaultSessionTTL,
+		users:         users,
+		sessions:      sessions,
+		codes:         codes,
+		refreshTokens: refreshTokens,
 	}
 	for _, opt := range opts {
 		opt(svc)
-	}
-	if svc.logger == nil {
-		svc.logger = slog.Default()
-	}
-	// Validate and apply default if needed
-	if svc.sessionTTL <= 0 {
-		svc.sessionTTL = defaultSessionTTL
 	}
 	return svc
 }
 
 func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationRequest) (*models.AuthorizationResult, error) {
+	parsedURI, err := url.Parse(req.RedirectURI)
+	if err != nil {
+		return nil, dErrors.New(dErrors.CodeBadRequest, "invalid redirect_uri")
+	}
+	if !s.isRedirectSchemeAllowed(parsedURI) {
+		return nil, dErrors.New(dErrors.CodeBadRequest, fmt.Sprintf("redirect_uri scheme '%s' not allowed", parsedURI.Scheme))
+	}
+
 	firstName, lastName := email.DeriveNameFromEmail(req.Email)
 	newUser := &models.User{
 		ID:        uuid.New(),
@@ -130,7 +172,7 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 	}
 	user, err := s.users.FindOrCreateByEmail(ctx, req.Email, newUser)
 	if err != nil {
-		return nil, dErrors.Wrap(dErrors.CodeInternal, "failed to find or create user", err)
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to find or create user")
 	}
 	if user.ID == newUser.ID {
 		s.logAudit(ctx, string(audit.EventUserCreated),
@@ -147,25 +189,41 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 	}
 
 	// Generate OAuth 2.0 authorization code
-	authCode := "authz_" + uuid.New().String()
-
-	newSession := &models.Session{
-		ID:             uuid.New(),
-		UserID:         user.ID,
-		Code:           authCode,
-		CodeExpiresAt:  now.Add(10 * time.Minute), // OAuth 2.0 spec: short-lived codes
-		CodeUsed:       false,
-		ClientID:       req.ClientID,
-		RedirectURI:    req.RedirectURI,
-		RequestedScope: scopes,
-		Status:         StatusPendingConsent,
-		CreatedAt:      now,
-		ExpiresAt:      now.Add(s.sessionTTL),
+	authCode := &models.AuthorizationCodeRecord{
+		Code:        "authz_" + uuid.New().String(),
+		SessionID:   uuid.New(),
+		RedirectURI: req.RedirectURI,
+		ExpiresAt:   now.Add(10 * time.Minute),
+		Used:        false,
+		CreatedAt:   now,
 	}
 
-	err = s.sessions.Save(ctx, newSession)
+	if err := s.codes.Create(ctx, authCode); err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to save authorization code")
+	}
+
+	userAgent := ctx.Value(models.ContextKeyUserAgent).(string)
+	deviceDisplayName := device.ParseUserAgent(userAgent)
+
+	newSession := &models.Session{
+		ID:             authCode.SessionID,
+		UserID:         user.ID,
+		ClientID:       req.ClientID,
+		RequestedScope: scopes,
+		DeviceFingerprintHash: device.ComputeDeviceFingerprint(
+			userAgent,
+			ctx.Value(models.ContextKeyIPAddress).(string),
+		),
+		DeviceDisplayName:   deviceDisplayName,
+		ApproximateLocation: "", // TODO: implement approximate location
+		Status:              StatusPendingConsent,
+		CreatedAt:           now,
+		ExpiresAt:           now.Add(s.sessionTTL),
+	}
+
+	err = s.sessions.Create(ctx, newSession)
 	if err != nil {
-		return nil, dErrors.Wrap(dErrors.CodeInternal, "failed to save session", err)
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to save session")
 	}
 	s.logAudit(ctx, string(audit.EventSessionCreated),
 		"user_id", user.ID.String(),
@@ -174,22 +232,15 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 	)
 	s.incrementActiveSession()
 
-	redirectURI := req.RedirectURI
-	if redirectURI != "" {
-		u, parseErr := url.Parse(redirectURI)
-		if parseErr != nil {
-			return nil, dErrors.New(dErrors.CodeValidation, "invalid redirect_uri")
-		}
-		query := u.Query()
-		query.Set("code", authCode) // OAuth 2.0: return authorization code, not session_id
-		if req.State != "" {
-			query.Set("state", req.State)
-		}
-		u.RawQuery = query.Encode()
-		redirectURI = u.String()
+	query := parsedURI.Query()
+	query.Set("code", authCode.Code) // OAuth 2.0: return authorization code, not session_id
+	if req.State != "" {
+		query.Set("state", req.State)
 	}
+	parsedURI.RawQuery = query.Encode()
+	redirectURI := parsedURI.String()
 	res := &models.AuthorizationResult{
-		Code:        authCode,
+		Code:        authCode.Code,
 		RedirectURI: redirectURI,
 	}
 
@@ -226,7 +277,7 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 			"session_id", parsedSessionID.String(),
 			"error", err,
 		)
-		return nil, dErrors.Wrap(dErrors.CodeInternal, "failed to find session", err)
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to find session")
 	}
 
 	if session.Status != StatusActive {
@@ -253,7 +304,7 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 			"user_id", session.UserID.String(),
 			"error", err,
 		)
-		return nil, dErrors.Wrap(dErrors.CodeInternal, "failed to find user", err)
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to find user")
 	}
 
 	userInfo := &models.UserInfoResult{
@@ -274,37 +325,45 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 
 func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {
 	if s.jwt == nil {
-		s.logAuthFailure(ctx, "token_generator_missing", true)
 		return nil, dErrors.New(dErrors.CodeInternal, "token generator not configured")
 	}
 
-	// 1. Validate grant_type
 	if req.GrantType != "authorization_code" {
 		s.logAuthFailure(ctx, "invalid_grant_type", false,
 			"client_id", req.ClientID,
+			"grant_type", req.GrantType,
 		)
-		return nil, dErrors.New(dErrors.CodeInvalidInput, "unsupported grant_type")
+		s.incrementAuthFailure()
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "unsupported grant_type")
 	}
 
-	// 2. Find session by authorization code
-	session, err := s.sessions.FindByCode(ctx, req.Code)
+	// Step 1: Retrieve and validate auth code
+	codeRecord, err := s.codes.FindByCode(ctx, req.Code)
 	if err != nil {
 		if errors.Is(err, sessionStore.ErrNotFound) {
-			s.logAuthFailure(ctx, "session_not_found", false,
+			s.logAuthFailure(ctx, "code_not_found", false,
 				"client_id", req.ClientID,
 			)
 			s.incrementAuthFailure()
 			return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid authorization code")
 		}
-		s.logAuthFailure(ctx, "session_lookup_failed", true,
-			"client_id", req.ClientID,
-			"error", err,
-		)
-		return nil, dErrors.Wrap(dErrors.CodeInternal, "failed to find session", err)
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to find code")
+	}
+	// Step 3: Retrieve and validate session
+	session, err := s.sessions.FindByID(ctx, codeRecord.SessionID)
+	if err != nil {
+		if errors.Is(err, sessionStore.ErrNotFound) {
+			s.logAuthFailure(ctx, "session not found", false,
+				"client_id", session.ClientID,
+			)
+			s.incrementAuthFailure()
+			return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid authorization code")
+		}
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to find session")
 	}
 
 	// 3. Validate code not expired (OAuth 2.0 spec: codes expire quickly)
-	if time.Now().After(session.CodeExpiresAt) {
+	if time.Now().After(codeRecord.ExpiresAt) {
 		s.logAuthFailure(ctx, "authorization_code_expired", false,
 			"session_id", session.ID.String(),
 			"user_id", session.UserID.String(),
@@ -314,8 +373,23 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 		return nil, dErrors.New(dErrors.CodeUnauthorized, "authorization code expired")
 	}
 
-	// 4. Validate code not already used (prevent replay attacks)
-	if session.CodeUsed {
+	if codeRecord.RedirectURI != req.RedirectURI {
+		s.logAuthFailure(ctx, "redirect_uri mismatch", false,
+			"session_id", session.ID.String(),
+			"user_id", session.UserID.String(),
+			"client_id", session.ClientID,
+		)
+		s.incrementAuthFailure()
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "redirect_uri mismatch")
+	}
+	//4. Validate code not already used (prevent replay attacks)
+	// Step 2: Validate code constraints
+	if codeRecord.Used {
+		// Security: Mark session as compromised and revoke
+		err = s.sessions.RevokeSession(ctx, codeRecord.SessionID)
+		if err != nil {
+			return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to revoke compromised session")
+		}
 		s.logAuthFailure(ctx, "authorization_code_reused", false,
 			"session_id", session.ID.String(),
 			"user_id", session.UserID.String(),
@@ -325,16 +399,6 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 		return nil, dErrors.New(dErrors.CodeUnauthorized, "authorization code already used")
 	}
 
-	// 5. Validate redirect_uri matches (OAuth 2.0 security requirement)
-	if req.RedirectURI != session.RedirectURI {
-		s.logAuthFailure(ctx, "redirect_uri_mismatch", false,
-			"session_id", session.ID.String(),
-			"user_id", session.UserID.String(),
-			"client_id", session.ClientID,
-		)
-		return nil, dErrors.New(dErrors.CodeInvalidInput, "redirect_uri mismatch")
-	}
-
 	// 6. Validate client_id matches
 	if req.ClientID != session.ClientID {
 		s.logAuthFailure(ctx, "client_id_mismatch", false,
@@ -342,61 +406,86 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 			"user_id", session.UserID.String(),
 			"client_id", session.ClientID,
 		)
-		return nil, dErrors.New(dErrors.CodeInvalidInput, "client_id mismatch")
+		s.incrementAuthFailure()
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "client_id mismatch")
 	}
 
-	// 7. Mark code as used and update session status
-	session.CodeUsed = true
-	session.Status = StatusActive
-	err = s.sessions.Save(ctx, session)
-	if err != nil {
-		s.logAuthFailure(ctx, "session_update_failed", true,
+	if session.Status != "active" {
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "session revoked or expired")
+	}
+	if time.Now().After(session.ExpiresAt) {
+		s.logAuthFailure(ctx, "session_expired", false,
 			"session_id", session.ID.String(),
 			"user_id", session.UserID.String(),
 			"client_id", session.ClientID,
-			"error", err,
 		)
-		return nil, dErrors.Wrap(dErrors.CodeInternal, "failed to update session", err)
+		s.incrementAuthFailure()
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "session expired")
 	}
 
-	// 8. Generate tokens
+	// Step 4: Mark code as used (prevent replay)
+	if err := s.codes.MarkUsed(ctx, codeRecord.Code); err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to mark code as used")
+	}
+
+	// Step 5: Generate tokens
 	accessToken, err := s.jwt.GenerateAccessToken(session.UserID, session.ID, session.ClientID)
 	if err != nil {
-		return nil, dErrors.Wrap(dErrors.CodeInternal, "failed to generate access token", err)
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate access token")
 	}
 
 	idToken, err := s.jwt.GenerateIDToken(session.UserID, session.ID, session.ClientID)
 	if err != nil {
-		return nil, dErrors.Wrap(dErrors.CodeInternal, "failed to generate ID token", err)
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate ID token")
 	}
 
-	s.logAudit(ctx, string(audit.EventTokenIssued),
-		"user_id", session.UserID.String(),
+	refreshToken, err := s.jwt.CreateRefreshToken()
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to create refresh token")
+	}
+
+	tokenRecord := &models.RefreshTokenRecord{
+		Token:           refreshToken,
+		SessionID:       session.ID,
+		CreatedAt:       time.Now(),
+		LastRefreshedAt: nil,
+		ExpiresAt:       time.Now().Add(30 * 24 * time.Hour), // 30 days
+		Used:            false,
+	}
+
+	if err := s.refreshTokens.Create(ctx, tokenRecord); err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to create refresh token record")
+	}
+
+	s.logAudit(ctx,
+		string(audit.EventTokenIssued),
 		"session_id", session.ID.String(),
+		"user_id", session.UserID.String(),
 		"client_id", session.ClientID,
 	)
 	s.incrementTokenRequests()
 
 	return &models.TokenResult{
-		AccessToken: accessToken,
-		IDToken:     idToken,
-		ExpiresIn:   s.sessionTTL,
-		TokenType:   "Bearer",
+		AccessToken:  accessToken,
+		IDToken:      idToken,
+		RefreshToken: refreshToken,
+		TokenType:    "Bearer",
+		ExpiresIn:    s.tokenTTL, // Access token TTL
 	}, nil
 }
 
 func (s *Service) DeleteUser(ctx context.Context, userID uuid.UUID) error {
-	user, err := s.users.FindByID(ctx, userID)
+	_, err := s.users.FindByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, userStore.ErrNotFound) {
 			return dErrors.New(dErrors.CodeNotFound, "user not found")
 		}
-		return dErrors.Wrap(dErrors.CodeInternal, "failed to lookup user", err)
+		return dErrors.Wrap(err, dErrors.CodeInternal, "failed to lookup user")
 	}
 
 	if err := s.sessions.DeleteSessionsByUser(ctx, userID); err != nil {
 		if !errors.Is(err, sessionStore.ErrNotFound) {
-			return dErrors.Wrap(dErrors.CodeInternal, "failed to delete user sessions", err)
+			return dErrors.Wrap(err, dErrors.CodeInternal, "failed to delete user sessions")
 		}
 	}
 	s.logAudit(ctx, string(audit.EventSessionsRevoked),
@@ -407,12 +496,11 @@ func (s *Service) DeleteUser(ctx context.Context, userID uuid.UUID) error {
 		if errors.Is(err, userStore.ErrNotFound) {
 			return dErrors.New(dErrors.CodeNotFound, "user not found")
 		}
-		return dErrors.Wrap(dErrors.CodeInternal, "failed to delete user", err)
+		return dErrors.Wrap(err, dErrors.CodeInternal, "failed to delete user")
 	}
 
 	s.logAudit(ctx, string(audit.EventUserDeleted),
 		"user_id", userID.String(),
-		"email", user.Email,
 	)
 
 	return nil
@@ -480,4 +568,13 @@ func (s *Service) incrementTokenRequests() {
 	if s.metrics != nil {
 		s.metrics.IncrementTokenRequests()
 	}
+}
+
+func (s *Service) isRedirectSchemeAllowed(uri *url.URL) bool {
+	for _, scheme := range s.allowedRedirectSchemes {
+		if strings.EqualFold(uri.Scheme, scheme) {
+			return true
+		}
+	}
+	return false
 }

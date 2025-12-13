@@ -317,7 +317,7 @@ type Session struct {
 Ephemeral authorization code for OAuth 2.0 code exchange flow. Separated from Session for independent lifecycle management.
 
 ```go
-type AuthorizationCodeResult struct {
+type AuthorizationCodeRecord struct {
     Code        string    `json:"code"`         // Format: "authz_<random>"
     SessionID   uuid.UUID `json:"session_id"`   // Links to parent Session
     RedirectURI string    `json:"redirect_uri"` // Stored for validation at token exchange
@@ -345,6 +345,7 @@ type RefreshToken struct {
 **Design Rationale:**
 
 The separation of Session, AuthorizationCode, and RefreshToken into distinct models provides:
+
 - **Clear lifetime boundaries:** Codes (10 min), refresh tokens (30 days), sessions (30+ days)
 - **Independent cleanup:** Delete expired codes without touching sessions
 - **Privacy-first:** DeviceFingerprintHash instead of raw user-agent/IP (no PII)
@@ -381,8 +382,8 @@ Manages short-lived authorization codes separately from sessions.
 
 ```go
 type AuthorizationCodeStore interface {
-    Save(ctx context.Context, code *AuthorizationCodeResult) error
-    FindByCode(ctx context.Context, code string) (*AuthorizationCodeResult, error)
+    Save(ctx context.Context, code *AuthorizationCodeRecord) error
+    FindByCode(ctx context.Context, code string) (*AuthorizationCodeRecord, error)
     MarkUsed(ctx context.Context, code string) error
     DeleteExpiredCodes(ctx context.Context) (int, error)
 }
@@ -677,7 +678,7 @@ curl -X POST http://localhost:8080/auth/token \
 
 1. Create separated data models in `internal/auth/models/models.go`:
    - Update `Session` model (remove code fields, add device fingerprinting)
-   - Create `AuthorizationCodeResult` model (10-minute lifecycle)
+   - Create `AuthorizationCodeRecord` model (10-minute lifecycle)
    - Create `RefreshToken` model (30-day lifecycle)
 2. Implement separate store interfaces:
    - `SessionStore` (without FindByCode)
@@ -844,7 +845,7 @@ curl -X POST http://localhost:8080/auth/token \
 |         |            |              | - Separated Session, AuthorizationCode, and RefreshToken into distinct models with independent lifecycles        |
 |         |            |              | - Added privacy-first device fingerprinting (DeviceFingerprintHash instead of raw PII)                           |
 |         |            |              | - Added DeviceDisplayName and ApproximateLocation for session management UI                                      |
-|         |            |              | - Removed authorization code fields from Session model (now in AuthorizationCodeResult)                          |
+|         |            |              | - Removed authorization code fields from Session model (now in AuthorizationCodeRecord)                          |
 |         |            |              | - Added refresh token issuance on token exchange                                                                 |
 |         |            |              | - Added jti claim to access tokens for future revocation support                                                 |
 |         |            |              | - Updated storage interfaces to reflect separated stores                                                         |

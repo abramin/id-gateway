@@ -290,6 +290,7 @@ This is a **critical blocker** for production deployment.
 With privacy-first design (hashed fingerprints), we need to capture device metadata separately for display:
 
 **Option A (Recommended):** Store display-safe metadata on Session:
+
 ```go
 type Session struct {
     // ... other fields
@@ -300,6 +301,7 @@ type Session struct {
 ```
 
 **Option B:** Parse from current request:
+
 - Display current session device from request headers
 - Other sessions show as "Unknown Device" or generic names
 
@@ -387,13 +389,14 @@ type Session struct {
 
 **Context:** The initial design proposed a single `Session` struct containing authorization codes, refresh tokens, and session metadata. However, these have fundamentally different lifetimes:
 
-| Artifact | Lifetime | Purpose |
-|----------|----------|---------|
-| Authorization Code | 10 minutes | Exchange for initial tokens |
-| Refresh Token | 30 days | Renew access tokens |
-| Session | 30+ days | Track user authentication state |
+| Artifact           | Lifetime   | Purpose                         |
+| ------------------ | ---------- | ------------------------------- |
+| Authorization Code | 10 minutes | Exchange for initial tokens     |
+| Refresh Token      | 30 days    | Renew access tokens             |
+| Session            | 30+ days   | Track user authentication state |
 
 **Problem:** Mixing lifetimes in one struct causes:
+
 - **Memory waste:** Dead fields occupy space for 30+ days (e.g., `Code` field unused after 10 minutes)
 - **Unclear ownership:** Which expiry matters? `CodeExpiresAt` or `SessionExpiresAt`?
 - **Privacy risks:** Storing raw `UserAgent` and `IPAddress` increases PII exposure
@@ -403,6 +406,7 @@ type Session struct {
 **Decision:** Separate into three focused models with single responsibility.
 
 **Benefits:**
+
 1. Each model has one clear lifetime and expiry concept
 2. Independent cleanup (delete expired codes without touching sessions)
 3. Privacy-first design (hash device fingerprints, no raw PII)
@@ -415,6 +419,7 @@ type Session struct {
 ### TR-1: Separated Lifecycle Models
 
 **Rationale:** Authorization codes (10 min), refresh tokens (30 days), and sessions (30+ days) have distinct lifetimes. Mixing them in one struct causes:
+
 - Dead fields occupying memory for extended periods
 - Ambiguous cleanup logic (which expiry matters?)
 - Privacy risks from storing raw user-agent/IP data
@@ -453,6 +458,7 @@ type Session struct {
 ```
 
 **Design Notes:**
+
 - No authorization code or refresh token fields (separated below)
 - `DeviceFingerprintHash` stored instead of raw `UserAgent` and `IPAddress` (privacy-first)
 - Optional `DeviceDisplayName` and `ApproximateLocation` for UI display (parsed at creation, no PII)
@@ -469,6 +475,7 @@ Ephemeral authorization code for OAuth 2.0 code exchange flow.
 // AuthorizationCode represents a short-lived OAuth 2.0 authorization code.
 // Lifetime: 10 minutes
 type AuthorizationCode struct {
+    ID          uuid.UUID `json:"id"`
     Code        string    `json:"code"`           // Format: "authz_<random>"
     SessionID   uuid.UUID `json:"session_id"`     // Links to parent Session
     RedirectURI string    `json:"redirect_uri"`   // Stored for validation at token exchange
@@ -479,6 +486,7 @@ type AuthorizationCode struct {
 ```
 
 **Design Notes:**
+
 - Single purpose: exchange for tokens
 - Self-contained expiry (10 minutes)
 - Links to Session via `SessionID`
@@ -495,6 +503,7 @@ Long-lived token for renewing access tokens without re-authentication.
 // RefreshToken represents a long-lived token for access token renewal.
 // Lifetime: 30 days (configurable)
 type RefreshToken struct {
+    ID          uuid.UUID `json:"id"`
     Token           string     `json:"token"`             // Format: "ref_<uuid>"
     SessionID       uuid.UUID  `json:"session_id"`        // Links to parent Session
     ExpiresAt       time.Time  `json:"expires_at"`        // 30 days from creation
@@ -505,6 +514,7 @@ type RefreshToken struct {
 ```
 
 **Design Notes:**
+
 - Single purpose: renew access tokens
 - Self-contained expiry (30 days)
 - Links to Session via `SessionID`
@@ -543,6 +553,7 @@ func ValidateDeviceFingerprint(session *Session, userAgent, ipAddress string) bo
 ```
 
 **Privacy Benefits:**
+
 - No raw user-agent or IP address stored in memory/database
 - Cannot be reverse-engineered to extract PII
 - Safe to log, export, or persist without privacy concerns
@@ -598,6 +609,7 @@ type RefreshTokenStore interface {
 ```
 
 **Store Design Notes:**
+
 - Separate stores with independent cleanup methods
 - Clean expired auth codes without touching sessions
 - Revoke refresh tokens independently or cascade from session
@@ -727,6 +739,7 @@ func (s *CleanupService) performCleanup(ctx context.Context) {
 ```
 
 **Cleanup Strategy:**
+
 - Run every 5 minutes (configurable)
 - Authorization codes: Delete after 10 minutes + grace period
 - Refresh tokens: Delete after marked as used OR after expiry
@@ -742,31 +755,37 @@ func (s *CleanupService) performCleanup(ctx context.Context) {
 **Goal:** Separate lifetimes and establish privacy-first foundations.
 
 1. **Create new models** in `internal/auth/models/models.go`:
+
    - `Session` (core long-lived session)
    - `AuthorizationCode` (ephemeral 10-min codes)
    - `RefreshToken` (30-day renewal tokens)
 
 2. **Implement device fingerprinting** in `internal/auth/fingerprint.go`:
+
    - `ComputeDeviceFingerprint()` using SHA-256
    - `ValidateDeviceFingerprint()` for token binding
 
 3. **Create store interfaces** in `internal/auth/store.go`:
+
    - `SessionStore` interface
    - `AuthorizationCodeStore` interface
    - `RefreshTokenStore` interface
 
 4. **Implement in-memory stores**:
+
    - `InMemorySessionStore`
    - `InMemoryAuthorizationCodeStore`
    - `InMemoryRefreshTokenStore`
 
 5. **Update existing code** to use separated models:
+
    - Migrate existing `Session` usage to `AuthorizationCode` for OAuth flow
    - Update authorization endpoint to create both `Session` and `AuthorizationCode`
 
 6. **Add tests** for new models and stores
 
 **Benefits of This Foundation:**
+
 - Clear separation prevents future technical debt
 - Privacy-first design (no PII stored)
 - Easy to add persistence layer later
@@ -779,17 +798,20 @@ func (s *CleanupService) performCleanup(ctx context.Context) {
 **Goal:** Implement long-lived sessions with token rotation.
 
 1. **Update token exchange endpoint** (`POST /auth/token`):
+
    - Issue `RefreshToken` alongside access tokens
    - Store refresh token with 30-day expiry
    - Compute and store device fingerprint hash
 
 2. **Implement refresh grant type** (`grant_type=refresh_token`):
+
    - Validate refresh token from `RefreshTokenStore`
    - Check device fingerprint (if enabled)
    - Implement token rotation (mark old token used, create new one)
    - Generate new access token with same session
 
 3. **Add rotation detection**:
+
    - Detect reused refresh tokens (possible replay attack)
    - Revoke entire session on rotation violation
 
@@ -806,14 +828,17 @@ func (s *CleanupService) performCleanup(ctx context.Context) {
 **Goal:** Enable logout and session invalidation.
 
 1. **Implement TokenRevocationList** in `internal/auth/revocation.go`:
+
    - `InMemoryTRL` with expiry tracking
    - `RevokeToken()`, `IsRevoked()` methods
 
 2. **Add JTI to access tokens**:
+
    - Update `AccessTokenClaims` struct
    - Generate unique JTI on token creation
 
 3. **Create revocation endpoint** (`POST /auth/revoke`):
+
    - Parse token (JWT or opaque refresh token)
    - Extract session ID
    - Mark session as revoked
@@ -821,6 +846,7 @@ func (s *CleanupService) performCleanup(ctx context.Context) {
    - Delete refresh tokens for session
 
 4. **Update authentication middleware**:
+
    - Check TRL on every request
    - Return 401 for revoked tokens
 
@@ -833,18 +859,21 @@ func (s *CleanupService) performCleanup(ctx context.Context) {
 **Goal:** Multi-device session visibility and control.
 
 1. **Implement session listing** (`GET /auth/sessions`):
+
    - Query all active sessions for user
    - Parse device info from fingerprint context (store separately if needed)
    - Mark current session
    - Return session metadata
 
 2. **Implement session revocation** (`DELETE /auth/sessions/{id}`):
+
    - Validate session ownership
    - Mark session as revoked
    - Delete associated refresh tokens
    - Add access tokens to TRL
 
 3. **Implement global logout** (`POST /auth/logout-all`):
+
    - Query all user sessions
    - Revoke all (except current if `except_current=true`)
    - Cascade delete refresh tokens
@@ -859,15 +888,18 @@ func (s *CleanupService) performCleanup(ctx context.Context) {
 **Goal:** Automatic cleanup and monitoring.
 
 1. **Implement CleanupService** in `internal/auth/cleanup.go`:
+
    - Periodic deletion of expired codes (10+ min old)
    - Periodic deletion of used/expired refresh tokens
    - Periodic deletion of expired sessions
 
 2. **Add cleanup configuration**:
+
    - Configurable cleanup interval (default: 5 minutes)
    - Grace periods for each artifact type
 
 3. **Add monitoring/metrics**:
+
    - Count of active sessions
    - Count of expired artifacts cleaned
    - Token revocation rate

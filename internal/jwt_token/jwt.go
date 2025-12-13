@@ -1,6 +1,8 @@
 package jwttoken
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"time"
 
@@ -155,4 +157,15 @@ func (s *JWTService) ValidateIDToken(tokenString string) (*IDTokenClaims, error)
 	}
 
 	return claims, nil
+}
+
+func (s *JWTService) CreateRefreshToken() (string, error) {
+	randomBytes := make([]byte, 32)
+	_, err := rand.Read(randomBytes)
+	if err != nil {
+		return "", dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate refresh token")
+	}
+
+	base64Token := base64.RawURLEncoding.EncodeToString(randomBytes)
+	return base64Token, nil
 }

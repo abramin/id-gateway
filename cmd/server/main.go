@@ -12,6 +12,8 @@ import (
 	"credo/internal/audit"
 	authHandler "credo/internal/auth/handler"
 	authService "credo/internal/auth/service"
+	authCodeStore "credo/internal/auth/store/authorization-code"
+	refreshTokenStore "credo/internal/auth/store/refresh-token"
 	sessionStore "credo/internal/auth/store/session"
 	userStore "credo/internal/auth/store/user"
 	consentHandler "credo/internal/consent/handler"
@@ -65,10 +67,13 @@ func initializeAuthService(m *metrics.Metrics, log *slog.Logger, jwtService *jwt
 	return authService.NewService(
 		userStore.NewInMemoryUserStore(),
 		sessionStore.NewInMemorySessionStore(),
+		authCodeStore.NewInMemoryAuthorizationCodeStore(),
+		refreshTokenStore.NewInMemoryRefreshTokenStore(),
 		authService.WithSessionTTL(cfg.SessionTTL),
 		authService.WithMetrics(m),
 		authService.WithLogger(log),
 		authService.WithJWTService(jwtService),
+		authService.WithAllowedRedirectSchemes(cfg.AllowedRedirectSchemes),
 	)
 }
 
@@ -92,6 +97,7 @@ func setupRouter(log *slog.Logger, m *metrics.Metrics) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Common middleware for all routes (must be defined before routes)
+	r.Use(middleware.ClientMetadata)
 	r.Use(middleware.Recovery(log))
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger(log))
@@ -118,7 +124,7 @@ func registerRoutes(
 	cfg *config.Server,
 	m *metrics.Metrics,
 ) {
-	authHandler := authHandler.New(authSvc, log, cfg.AllowedRedirectSchemes)
+	authHandler := authHandler.New(authSvc, log)
 	consentSvc := consentService.NewService(
 		consentStore.NewInMemoryStore(),
 		audit.NewPublisher(audit.NewInMemoryStore()),

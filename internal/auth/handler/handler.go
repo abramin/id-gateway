@@ -3,10 +3,9 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -14,8 +13,8 @@ import (
 
 	"credo/internal/auth/models"
 	"credo/internal/platform/middleware"
-	"credo/internal/transport/http/shared"
-	respond "credo/internal/transport/http/shared/json"
+	httpError "credo/internal/transport/http/error"
+	respond "credo/internal/transport/http/json"
 	dErrors "credo/pkg/domain-errors"
 	s "credo/pkg/string"
 	"credo/pkg/validation"
@@ -32,18 +31,16 @@ type Service interface {
 // Handler handles authentication endpoints including authorize, token, and userinfo.
 // Implements the OIDC-lite flow described in PRD-001.
 type Handler struct {
-	auth                   Service
-	logger                 *slog.Logger
-	allowedRedirectSchemes []string
+	auth   Service
+	logger *slog.Logger
 }
 
 // New creates a new auth Handler with the given service and logger.
-func New(auth Service, logger *slog.Logger, allowedRedirectSchemes []string) *Handler {
+func New(auth Service, logger *slog.Logger) *Handler {
 
 	return &Handler{
-		auth:                   auth,
-		logger:                 logger,
-		allowedRedirectSchemes: allowedRedirectSchemes,
+		auth:   auth,
+		logger: logger,
 	}
 }
 
@@ -75,27 +72,7 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 			"error", err,
 			"request_id", requestID,
 		)
-		shared.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
-		return
-	}
-
-	parsedURI, err := url.Parse(req.RedirectURI)
-	if err != nil {
-		h.logger.WarnContext(ctx, "invalid redirect_uri in authorize request",
-			"redirect_uri", req.RedirectURI,
-			"request_id", requestID,
-		)
-		shared.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "redirect_uri is invalid"))
-		return
-	}
-	if !h.isRedirectSchemeAllowed(parsedURI) {
-		h.logger.WarnContext(ctx, "insecure redirect_uri in authorize request",
-			"redirect_uri", req.RedirectURI,
-			"request_id", requestID,
-			"allowed_schemes", h.allowedRedirectSchemes,
-		)
-		shared.WriteError(w, dErrors.New(dErrors.CodeBadRequest,
-			fmt.Sprintf("redirect_uri must use %s scheme", strings.Join(h.allowedRedirectSchemes, " or "))))
+		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
 		return
 	}
 
@@ -109,9 +86,15 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 			"error", err,
 			"request_id", requestID,
 		)
-		shared.WriteError(w, err)
+		httpError.WriteError(w, err)
 		return
 	}
+
+	// Extract metadata from request
+	userAgent := r.Header.Get("User-Agent")
+	ipAddress := getClientIP(r)
+	ctx = context.WithValue(ctx, models.ContextKeyUserAgent, userAgent)
+	ctx = context.WithValue(ctx, models.ContextKeyIPAddress, ipAddress)
 
 	res, err := h.auth.Authorize(ctx, req)
 	if err != nil {
@@ -120,7 +103,7 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 			"request_id", requestID,
 			"client_id", req.ClientID,
 		)
-		shared.WriteError(w, err)
+		httpError.WriteError(w, err)
 		return
 	}
 
@@ -143,7 +126,7 @@ func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 			"error", err,
 			"request_id", requestID,
 		)
-		shared.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
+		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
 		return
 	}
 	s.Sanitize(&req)
@@ -152,7 +135,7 @@ func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 			"error", err,
 			"request_id", requestID,
 		)
-		shared.WriteError(w, err)
+		httpError.WriteError(w, err)
 		return
 	}
 
@@ -163,7 +146,7 @@ func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 			"request_id", requestID,
 			"client_id", req.ClientID,
 		)
-		shared.WriteError(w, err)
+		httpError.WriteError(w, err)
 		return
 	}
 
@@ -188,7 +171,7 @@ func (h *Handler) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
 			"request_id", requestID,
 			"session_id", sessionIDStr,
 		)
-		shared.WriteError(w, err)
+		httpError.WriteError(w, err)
 		return
 	}
 
@@ -210,7 +193,7 @@ func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) 
 			"user_id", userIDParam,
 			"request_id", requestID,
 		)
-		shared.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid user_id"))
+		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid user_id"))
 		return
 	}
 
@@ -220,7 +203,7 @@ func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) 
 			"user_id", userID.String(),
 			"request_id", requestID,
 		)
-		shared.WriteError(w, err)
+		httpError.WriteError(w, err)
 		return
 	}
 
@@ -232,11 +215,26 @@ func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handler) isRedirectSchemeAllowed(uri *url.URL) bool {
-	for _, scheme := range h.allowedRedirectSchemes {
-		if strings.EqualFold(uri.Scheme, scheme) {
-			return true
+// getClientIP extracts the client IP from the request
+func getClientIP(r *http.Request) string {
+	// Check X-Forwarded-For header first (for proxied requests)
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// Take the first IP in the list
+		if idx := strings.Index(xff, ","); idx != -1 {
+			return strings.TrimSpace(xff[:idx])
 		}
+		return strings.TrimSpace(xff)
 	}
-	return false
+
+	// Check X-Real-IP header
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return strings.TrimSpace(xri)
+	}
+
+	// Fall back to RemoteAddr
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+
+	return r.RemoteAddr
 }

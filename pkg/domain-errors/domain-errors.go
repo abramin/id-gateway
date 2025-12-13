@@ -45,7 +45,7 @@ func New(code Code, msg string) DomainError {
 }
 
 // Wrap creates a new DomainError wrapping an existing error.
-func Wrap(code Code, msg string, err error) DomainError {
+func Wrap(err error, code Code, msg string) DomainError {
 	return DomainError{Code: code, Message: msg, Err: err}
 }
 

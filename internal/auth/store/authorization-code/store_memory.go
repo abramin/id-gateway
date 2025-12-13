@@ -1,14 +1,14 @@
-package session
+package authorizationcode
 
 import (
 	"context"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-
 	"credo/internal/auth/models"
 	dErrors "credo/pkg/domain-errors"
+
+	"github.com/google/uuid"
 )
 
 // ErrNotFound is returned when a requested record is not found in the store.
@@ -23,88 +23,77 @@ var ErrNotFound = dErrors.New(dErrors.CodeNotFound, "record not found")
 //
 // In-memory stores keep the initial implementation lightweight and testable.
 // They intentionally favor clarity over performance.
-type InMemorySessionStore struct {
-	mu       sync.RWMutex
-	sessions map[string]*models.Session
+
+type InMemoryAuthorizationCodeStore struct {
+	mu        sync.RWMutex
+	authCodes map[string]*models.AuthorizationCodeRecord
 }
 
-func NewInMemorySessionStore() *InMemorySessionStore {
-	return &InMemorySessionStore{sessions: make(map[string]*models.Session)}
+func NewInMemoryAuthorizationCodeStore() *InMemoryAuthorizationCodeStore {
+	return &InMemoryAuthorizationCodeStore{
+		authCodes: make(map[string]*models.AuthorizationCodeRecord),
+	}
 }
 
-func (s *InMemorySessionStore) Create(_ context.Context, session *models.Session) error {
+func (s *InMemoryAuthorizationCodeStore) Create(_ context.Context, authCode *models.AuthorizationCodeRecord) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.sessions[session.ID.String()] = session
+	s.authCodes[authCode.Code] = authCode
 	return nil
 }
 
-func (s *InMemorySessionStore) FindByID(_ context.Context, id uuid.UUID) (*models.Session, error) {
+func (s *InMemoryAuthorizationCodeStore) FindByCode(_ context.Context, code string) (*models.AuthorizationCodeRecord, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if session, ok := s.sessions[id.String()]; ok {
-		return session, nil
+	if authCode, ok := s.authCodes[code]; ok {
+		return authCode, nil
 	}
 	return nil, ErrNotFound
 }
 
-func (s *InMemorySessionStore) FindByCode(_ context.Context, code string) (*models.Session, error) {
+func (s *InMemoryAuthorizationCodeStore) FindByID(_ context.Context, id uuid.UUID) (*models.AuthorizationCodeRecord, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	for _, session := range s.sessions {
-		if "session.Code" == code {
-			return session, nil
-		}
+	if authCode, ok := s.authCodes[id.String()]; ok {
+		return authCode, nil
 	}
 	return nil, ErrNotFound
 }
 
-func (s *InMemorySessionStore) DeleteSessionsByUser(_ context.Context, userID uuid.UUID) error {
+func (s *InMemoryAuthorizationCodeStore) Delete(_ context.Context, code string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	found := false
-	for id, session := range s.sessions {
-		if session.UserID == userID {
-			delete(s.sessions, id)
-			found = true
-		}
-	}
-
-	if !found {
-		return ErrNotFound
-	}
-
-	return nil
-}
-
-func (s *InMemorySessionStore) RevokeSession(_ context.Context, id uuid.UUID) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	key := id.String()
-	if _, ok := s.sessions[key]; ok {
-		delete(s.sessions, key)
+	if _, ok := s.authCodes[code]; ok {
+		delete(s.authCodes, code)
 		return nil
 	}
 	return ErrNotFound
 }
 
-// for use in token cleanup strategy
-func (s *InMemorySessionStore) DeleteExpiredSessions(ctx context.Context) (int, error) {
+func (s *InMemoryAuthorizationCodeStore) MarkUsed(_ context.Context, code string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if record, ok := s.authCodes[code]; ok {
+		record.Used = true
+	}
+	return ErrNotFound
+}
 
+func (s *InMemoryAuthorizationCodeStore) DeleteExpiredCodes(_ context.Context) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	now := time.Now()
 	deletedCount := 0
-	for id, session := range s.sessions {
-		if session.ExpiresAt.Before(now) {
-			delete(s.sessions, id)
+	for code, record := range s.authCodes {
+		if record.ExpiresAt.Before(now) {
+			delete(s.authCodes, code)
 			deletedCount++
 		}
 	}
-
 	return deletedCount, nil
 }
+
+// Token Cleanup Strategy
 
 // **1. Cleanup rules for MVP**
 

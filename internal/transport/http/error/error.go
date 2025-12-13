@@ -1,10 +1,10 @@
-package shared
+package httpError
 
 import (
 	"errors"
 	"net/http"
 
-	"credo/internal/transport/http/shared/json"
+	"credo/internal/transport/http/json"
 	dErrors "credo/pkg/domain-errors"
 )
 

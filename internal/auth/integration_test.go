@@ -16,6 +16,8 @@ import (
 	auth "credo/internal/auth/handler"
 	"credo/internal/auth/models"
 	"credo/internal/auth/service"
+	authCodeStore "credo/internal/auth/store/authorization-code"
+	refreshTokenStore "credo/internal/auth/store/refresh-token"
 	sessionStore "credo/internal/auth/store/session"
 	userStore "credo/internal/auth/store/user"
 	jwttoken "credo/internal/jwt_token"
@@ -28,11 +30,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func SetupSuite(t *testing.T) (*chi.Mux, *userStore.InMemoryUserStore, *sessionStore.InMemorySessionStore, *jwttoken.JWTService, *audit.InMemoryStore) {
+func SetupSuite(t *testing.T) (
+	*chi.Mux,
+	*userStore.InMemoryUserStore,
+	*sessionStore.InMemorySessionStore,
+	*jwttoken.JWTService,
+	*audit.InMemoryStore,
+) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	userStore := userStore.NewInMemoryUserStore()
 	sessionStore := sessionStore.NewInMemorySessionStore()
+	authCodeStore := authCodeStore.NewInMemoryAuthorizationCodeStore()
+	refreshTokenStore := refreshTokenStore.NewInMemoryRefreshTokenStore()
 	jwtService := jwttoken.NewJWTService(
 		"test-secret-key",
 		"credo",
@@ -41,7 +51,7 @@ func SetupSuite(t *testing.T) (*chi.Mux, *userStore.InMemoryUserStore, *sessionS
 	)
 	auditStore := audit.NewInMemoryStore()
 	jwtValidator := jwttoken.NewJWTServiceAdapter(jwtService)
-	authService := service.NewService(userStore, sessionStore,
+	authService := service.NewService(userStore, sessionStore, authCodeStore, refreshTokenStore,
 		service.WithSessionTTL(5*time.Minute),
 		service.WithLogger(logger),
 		service.WithJWTService(jwtService),
@@ -49,7 +59,7 @@ func SetupSuite(t *testing.T) (*chi.Mux, *userStore.InMemoryUserStore, *sessionS
 	)
 
 	router := chi.NewRouter()
-	authHandler := auth.New(authService, logger, []string{"http", "https"})
+	authHandler := auth.New(authService, logger)
 
 	// Public endpoints (no auth required) - mirrors production setup
 	router.Post("/auth/authorize", authHandler.HandleAuthorize)
@@ -113,10 +123,10 @@ func TestCompleteAuthFlow(t *testing.T) {
 
 	t.Log("Step 2: Token Request")
 	tokenRequest := &models.TokenRequest{
-		GrantType:   "authorization_code",
-		Code:        session.Code,
-		RedirectURI: session.RedirectURI,
-		ClientID:    session.ClientID,
+		GrantType: "authorization_code",
+		// Code:        session.Code,
+		// RedirectURI: session.RedirectURI,
+		ClientID: session.ClientID,
 	}
 	tokenPayload, err := json.Marshal(tokenRequest)
 	require.NoError(t, err)
@@ -238,15 +248,15 @@ func TestConcurrentUserCreation(t *testing.T) {
 func TestSessionExpiryHandling(t *testing.T) {
 	r, _, sessionStore, _, _ := SetupSuite(t)
 	session := &models.Session{
-		ID:            uuid.New(),
-		UserID:        uuid.New(),
-		ClientID:      "client-123",
-		RedirectURI:   "https://client.app/callback",
-		Code:          "auth-code-xyz",
-		CodeExpiresAt: time.Now().Add(1 * time.Second),
-		Status:        service.StatusPendingConsent,
+		ID:       uuid.New(),
+		UserID:   uuid.New(),
+		ClientID: "client-123",
+		// RedirectURI:   "https://client.app/callback",
+		// Code:          "auth-code-xyz",
+		// CodeExpiresAt: time.Now().Add(1 * time.Second),
+		Status: service.StatusPendingConsent,
 	}
-	err := sessionStore.Save(context.Background(), session)
+	err := sessionStore.Create(context.Background(), session)
 	require.NoError(t, err)
 
 	// Wait for session to expire
@@ -254,10 +264,10 @@ func TestSessionExpiryHandling(t *testing.T) {
 
 	// Attempt to exchange code for token
 	tokenRequest := &models.TokenRequest{
-		GrantType:   "authorization_code",
-		Code:        session.Code,
-		RedirectURI: session.RedirectURI,
-		ClientID:    session.ClientID,
+		GrantType: "authorization_code",
+		// Code:        session.Code,
+		// RedirectURI: session.RedirectURI,
+		ClientID: session.ClientID,
 	}
 	tokenPayload, err := json.Marshal(tokenRequest)
 	require.NoError(t, err)

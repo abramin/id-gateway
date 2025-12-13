@@ -135,7 +135,7 @@ func (s *Service) upsertGrant(ctx context.Context, userID string, purpose models
 	expiry := now.Add(s.consentTTL)
 	existing, err := s.store.FindByUserAndPurpose(ctx, userID, purpose)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to read consent", err)
+		return nil, pkgerrors.Wrap(err, pkgerrors.CodeInternal, "failed to read consent")
 	}
 
 	// Reuse existing consent record (active, expired, or revoked) to maintain clean DB
@@ -154,7 +154,7 @@ func (s *Service) upsertGrant(ctx context.Context, userID string, purpose models
 		updated.ExpiresAt = &expiry
 		updated.RevokedAt = nil
 		if err := s.store.Update(ctx, &updated); err != nil {
-			return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to renew consent", err)
+			return nil, pkgerrors.Wrap(err, pkgerrors.CodeInternal, "failed to renew consent")
 		}
 		s.emitAudit(ctx, audit.Event{
 			UserID:    userID,
@@ -180,7 +180,7 @@ func (s *Service) upsertGrant(ctx context.Context, userID string, purpose models
 		ExpiresAt: &expiry,
 	}
 	if err := s.store.Save(ctx, record); err != nil {
-		return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to save consent", err)
+		return nil, pkgerrors.Wrap(err, pkgerrors.CodeInternal, "failed to save consent")
 	}
 	s.emitAudit(ctx, audit.Event{
 		UserID:    userID,
@@ -213,7 +213,7 @@ func (s *Service) Revoke(ctx context.Context, userID string, purposes []models.P
 				// Can't revoke what doesn't exist - skip silently
 				continue
 			}
-			return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to read consent", err)
+			return nil, pkgerrors.Wrap(err, pkgerrors.CodeInternal, "failed to read consent")
 		}
 		if record.RevokedAt != nil {
 			continue
@@ -224,7 +224,7 @@ func (s *Service) Revoke(ctx context.Context, userID string, purposes []models.P
 		now := time.Now()
 		revokedRecord, err := s.store.RevokeByUserAndPurpose(ctx, userID, record.Purpose, now)
 		if err != nil {
-			return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to revoke consent", err)
+			return nil, pkgerrors.Wrap(err, pkgerrors.CodeInternal, "failed to revoke consent")
 		}
 		if revokedRecord.RevokedAt == nil {
 			revokedRecord.RevokedAt = &now
@@ -255,7 +255,7 @@ func (s *Service) List(ctx context.Context, userID string, filter *models.Record
 
 	records, err := s.store.ListByUser(ctx, userID, filter)
 	if err != nil {
-		return nil, pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to list consents", err)
+		return nil, pkgerrors.Wrap(err, pkgerrors.CodeInternal, "failed to list consents")
 	}
 
 	now := time.Now()
@@ -302,7 +302,7 @@ func (s *Service) Require(ctx context.Context, userID string, purpose models.Pur
 			s.incrementConsentCheckFailed(purpose)
 			return pkgerrors.New(pkgerrors.CodeMissingConsent, "consent not granted for required purpose")
 		}
-		return pkgerrors.Wrap(pkgerrors.CodeInternal, "failed to read consent", err)
+		return pkgerrors.Wrap(err, pkgerrors.CodeInternal, "failed to read consent")
 	}
 	if record.RevokedAt != nil {
 		s.emitAudit(ctx, audit.Event{

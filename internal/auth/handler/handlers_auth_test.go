@@ -53,7 +53,10 @@ func (s *AuthHandlerSuite) TestHandler_Authorize() {
 			RedirectURI: "https://example.com/redirect",
 			State:       "",
 		}
-		expectedResp := &authModel.AuthorizationResult{Code: "authz_default_scope", RedirectURI: expectedReq.RedirectURI}
+		expectedResp := &authModel.AuthorizationResult{
+			Code:        "authz_code_123",
+			RedirectURI: expectedReq.RedirectURI,
+		}
 		mockService.EXPECT().Authorize(gomock.Any(), expectedReq).Return(expectedResp, nil)
 
 		status, got, errBody := s.doAuthRequest(t, router, requestBody)
@@ -63,23 +66,10 @@ func (s *AuthHandlerSuite) TestHandler_Authorize() {
 		assert.Equal(t, expectedResp.RedirectURI, got.RedirectURI)
 	})
 
-	s.T().Run("rejects insecure redirect URIs if http not allowed", func(t *testing.T) {
-		mockService, router := s.newHandler(t, &[]string{"https"})
-		insecure := &authModel.AuthorizationRequest{
-			Email:       "user@example.com",
-			ClientID:    "test-client-id",
-			RedirectURI: "http://example.com/redirect",
-		}
-		mockService.EXPECT().Authorize(gomock.Any(), gomock.Any()).Times(0)
-
-		status, got, errBody := s.doAuthRequest(t, router, s.mustMarshal(insecure, t))
-
-		s.assertErrorResponse(t, status, got, errBody, http.StatusBadRequest, string(dErrors.CodeBadRequest))
-	})
 	s.T().Run("user is found and authorized - 200", func(t *testing.T) {
 		mockService, router := s.newHandler(t, nil)
 		expectedResp := &authModel.AuthorizationResult{
-			Code:        "authz_" + uuid.New().String(),
+			Code:        "authz_code_123",
 			RedirectURI: validRequest.RedirectURI,
 		}
 		mockService.EXPECT().Authorize(gomock.Any(), validRequest).Return(expectedResp, nil)
@@ -399,7 +389,7 @@ func (s *AuthHandlerSuite) TestHandler_AdminDeleteUser() {
 		ctrl := gomock.NewController(t)
 		mockService := mocks.NewMockAuthService(ctrl)
 		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-		handler := New(mockService, logger, []string{"http", "https"})
+		handler := New(mockService, logger)
 
 		r := chi.NewRouter()
 		handler.RegisterAdmin(r)
@@ -419,7 +409,7 @@ func (s *AuthHandlerSuite) TestHandler_AdminDeleteUser() {
 		ctrl := gomock.NewController(t)
 		mockService := mocks.NewMockAuthService(ctrl)
 		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-		handler := New(mockService, logger, []string{"http", "https"})
+		handler := New(mockService, logger)
 
 		r := chi.NewRouter()
 		handler.RegisterAdmin(r)
@@ -436,7 +426,7 @@ func (s *AuthHandlerSuite) TestHandler_AdminDeleteUser() {
 		ctrl := gomock.NewController(t)
 		mockService := mocks.NewMockAuthService(ctrl)
 		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-		handler := New(mockService, logger, []string{"http", "https"})
+		handler := New(mockService, logger)
 
 		r := chi.NewRouter()
 		handler.RegisterAdmin(r)
@@ -467,7 +457,7 @@ func (s *AuthHandlerSuite) newHandler(t *testing.T, allowedSchemes *[]string) (*
 	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	mockService := mocks.NewMockAuthService(ctrl)
-	handler := New(mockService, logger, *allowedSchemes)
+	handler := New(mockService, logger)
 	r := chi.NewRouter()
 	handler.Register(r)
 	return mockService, r
