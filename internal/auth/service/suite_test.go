@@ -1,6 +1,7 @@
 package service
 
 //go:generate mockgen -source=interfaces.go -destination=mocks/mocks.go -package=mocks UserStore,SessionStore,AuthCodeStore,RefreshTokenStore,TokenGenerator,AuditPublisher
+//go:generate mockgen -source=../store/revocation/revocation.go -destination=mocks/trl_mock.go -package=mocks TokenRevocationList
 
 import (
 	"io"
@@ -23,6 +24,7 @@ type ServiceSuite struct {
 	mockRefreshStore   *mocks.MockRefreshTokenStore
 	mockJWT            *mocks.MockTokenGenerator
 	mockAuditPublisher *mocks.MockAuditPublisher
+	mockTRL            *mocks.MockTokenRevocationList
 	service            *Service
 }
 
@@ -34,6 +36,7 @@ func (s *ServiceSuite) SetupTest() {
 	s.mockRefreshStore = mocks.NewMockRefreshTokenStore(s.ctrl)
 	s.mockJWT = mocks.NewMockTokenGenerator(s.ctrl)
 	s.mockAuditPublisher = mocks.NewMockAuditPublisher(s.ctrl)
+	s.mockTRL = mocks.NewMockTokenRevocationList(s.ctrl)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cfg := &Config{
 		SessionTTL:             2 * time.Hour,
@@ -51,6 +54,7 @@ func (s *ServiceSuite) SetupTest() {
 		WithLogger(logger),
 		WithJWTService(s.mockJWT),
 		WithAuditPublisher(s.mockAuditPublisher),
+		WithTRL(s.mockTRL),
 	)
 }
 

@@ -68,7 +68,9 @@ func (s *ServiceSuite) TestService_RevokeSession() {
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(session, nil)
 		s.mockSessionStore.EXPECT().RevokeSessionIfActive(gomock.Any(), sessionID, gomock.Any()).Return(nil)
 		s.mockRefreshStore.EXPECT().DeleteBySessionID(gomock.Any(), sessionID).Return(nil)
+		s.mockTRL.EXPECT().RevokeToken(gomock.Any(), jti, s.service.TokenTTL).Return(nil)
 		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
+		s.mockTRL.EXPECT().IsRevoked(gomock.Any(), jti).Return(true, nil)
 
 		err := s.service.RevokeSession(ctx, userID, sessionID)
 		assert.NoError(t, err)

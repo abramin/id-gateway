@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"time"
 
 	dErrors "credo/pkg/domain-errors"
@@ -107,6 +108,32 @@ func (s *JWTService) GenerateAccessToken(
 		return "", err
 	}
 	return signedToken, nil
+}
+
+func (s *JWTService) ParseTokenSkipClaimsValidation(tokenString string) (*Claims, error) {
+	if tokenString == "" {
+		return nil, errors.New("empty token")
+	}
+
+	claims := new(Claims)
+
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (any, error) {
+		if t.Method.Alg() != jwt.SigningMethodHS256.Alg() {
+			return nil, fmt.Errorf("unexpected signing algorithm: %s", t.Method.Alg())
+		}
+		return s.signingKey, nil
+	},
+		jwt.WithoutClaimsValidation(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("jwt parse failed: %w", err)
+	}
+
+	if !token.Valid {
+		return nil, errors.New("invalid jwt signature")
+	}
+
+	return claims, nil
 }
 
 func (s *JWTService) GenerateIDToken(

@@ -13,6 +13,7 @@ import (
 	context "context"
 	audit "credo/internal/audit"
 	models "credo/internal/auth/models"
+	jwttoken "credo/internal/jwt_token"
 	reflect "reflect"
 	time "time"
 
@@ -548,6 +549,21 @@ func (m *MockTokenGenerator) GenerateIDToken(userID, sessionID uuid.UUID, client
 func (mr *MockTokenGeneratorMockRecorder) GenerateIDToken(userID, sessionID, clientID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateIDToken", reflect.TypeOf((*MockTokenGenerator)(nil).GenerateIDToken), userID, sessionID, clientID)
+}
+
+// ParseTokenSkipClaimsValidation mocks base method.
+func (m *MockTokenGenerator) ParseTokenSkipClaimsValidation(token string) (*jwttoken.Claims, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ParseTokenSkipClaimsValidation", token)
+	ret0, _ := ret[0].(*jwttoken.Claims)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ParseTokenSkipClaimsValidation indicates an expected call of ParseTokenSkipClaimsValidation.
+func (mr *MockTokenGeneratorMockRecorder) ParseTokenSkipClaimsValidation(token any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ParseTokenSkipClaimsValidation", reflect.TypeOf((*MockTokenGenerator)(nil).ParseTokenSkipClaimsValidation), token)
 }
 
 // MockAuditPublisher is a mock of AuditPublisher interface.
