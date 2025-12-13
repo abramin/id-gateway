@@ -11,6 +11,11 @@ import (
 	jwttoken "credo/internal/jwt_token"
 )
 
+const (
+	TokenHintRefreshToken = "refresh_token"
+	TokenHintAccessToken  = "access_token"
+)
+
 // RevokeToken revokes an access token or refresh token, effectively logging out the user.
 // Implements FR-3: Token Revocation (Logout) from PRD-016.
 func (s *Service) RevokeToken(ctx context.Context, token string, tokenTypeHint string) error {
@@ -20,7 +25,7 @@ func (s *Service) RevokeToken(ctx context.Context, token string, tokenTypeHint s
 	var err error
 
 	// Try to parse as JWT (access token)
-	if tokenTypeHint == "access_token" || tokenTypeHint == "" {
+	if tokenTypeHint == TokenHintAccessToken || tokenTypeHint == "" {
 		jti, session, err = s.extractSessionFromAccessToken(ctx, token)
 		if err == nil {
 			outcome, err := s.revokeSessionInternal(ctx, session, jti)
@@ -42,7 +47,7 @@ func (s *Service) RevokeToken(ctx context.Context, token string, tokenTypeHint s
 	}
 
 	// Try as refresh token (opaque)
-	if tokenTypeHint == "refresh_token" || tokenTypeHint == "" {
+	if tokenTypeHint == TokenHintRefreshToken || tokenTypeHint == "" {
 		session, err = s.findSessionByRefreshToken(ctx, token)
 		if err == nil {
 			outcome, err := s.revokeSessionInternal(ctx, session, "")

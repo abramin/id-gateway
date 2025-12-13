@@ -29,7 +29,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 
 	newReq := func() models.TokenRequest {
 		return models.TokenRequest{
-			GrantType:    "refresh_token",
+			GrantType:    GrantTypeRefreshToken,
 			RefreshToken: refreshTokenString,
 			ClientID:     clientID,
 		}
@@ -122,7 +122,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 
 	s.T().Run("refresh token not found", func(t *testing.T) {
 		req := models.TokenRequest{
-			GrantType:    "refresh_token",
+			GrantType:    GrantTypeRefreshToken,
 			RefreshToken: "invalid_token",
 			ClientID:     clientID,
 		}
@@ -181,7 +181,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 
 	s.T().Run("client_id mismatch", func(t *testing.T) {
 		req := models.TokenRequest{
-			GrantType:    "refresh_token",
+			GrantType:    GrantTypeRefreshToken,
 			RefreshToken: refreshTokenString,
 			ClientID:     "evil-client",
 		}

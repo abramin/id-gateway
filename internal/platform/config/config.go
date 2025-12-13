@@ -30,6 +30,7 @@ type AuthConfig struct {
 	TokenTTL                       time.Duration
 	SessionTTL                     time.Duration
 	TokenRevocationCleanupInterval time.Duration
+	AuthCleanupInterval            time.Duration
 	AllowedRedirectSchemes         []string
 	DeviceBindingEnabled           bool
 	DeviceCookieName               string
@@ -58,6 +59,7 @@ var (
 	DefaultTokenTTL                       = 15 * time.Minute
 	DefaultSessionTTL                     = 24 * time.Hour
 	DefaultTokenRevocationCleanupInterval = 5 * time.Minute
+	DefaultAuthCleanupInterval            = 5 * time.Minute
 	DefaultConsentTTL                     = 365 * 24 * time.Hour
 	DefaultConsentGrantWindow             = 5 * time.Minute
 	DefaultRegistryCacheTTL               = 5 * time.Minute
@@ -107,6 +109,7 @@ func loadAuthConfig(env string, demoMode bool) AuthConfig {
 		TokenTTL:                       parseDuration("TOKEN_TTL", DefaultTokenTTL),
 		SessionTTL:                     parseDuration("SESSION_TTL", DefaultSessionTTL),
 		TokenRevocationCleanupInterval: parseDuration("TOKEN_REVOCATION_CLEANUP_INTERVAL", DefaultTokenRevocationCleanupInterval),
+		AuthCleanupInterval:            parseDuration("AUTH_CLEANUP_INTERVAL", DefaultAuthCleanupInterval),
 		AllowedRedirectSchemes:         parseAllowedRedirectSchemes(os.Getenv("ALLOWED_REDIRECT_SCHEMES"), env),
 		DeviceBindingEnabled:           os.Getenv("DEVICE_BINDING_ENABLED") == "true",
 		DeviceCookieName:               getEnv("DEVICE_COOKIE_NAME", DefaultDeviceCookieName),

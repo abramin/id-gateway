@@ -153,7 +153,7 @@ func TestOAuthFlow(t *testing.T) {
 
 	t.Log("Step 2: Token Request")
 	tokenRequest := &models.TokenRequest{
-		GrantType: "authorization_code",
+		GrantType: service.GrantTypeAuthorizationCode,
 		Code:      code,
 		ClientID:  session.ClientID,
 		// RedirectURI must match what was used at /auth/authorize
@@ -279,7 +279,7 @@ func TestTokenRevocation(t *testing.T) {
 
 		t.Log("Step 2: Token Request")
 		tokenRequest := &models.TokenRequest{
-			GrantType:    "authorization_code",
+			GrantType:    service.GrantTypeAuthorizationCode,
 			Code:         code,
 			ClientID:     reqBody.ClientID,
 			RedirectURI:  reqBody.RedirectURI,
@@ -377,7 +377,7 @@ func TestTokenRevocation(t *testing.T) {
 
 		t.Log("Step 2: Token Request")
 		tokenRequest := &models.TokenRequest{
-			GrantType:   "authorization_code",
+			GrantType:   service.GrantTypeAuthorizationCode,
 			Code:        code,
 			ClientID:    reqBody.ClientID,
 			RedirectURI: reqBody.RedirectURI,
@@ -474,7 +474,7 @@ func TestRevokeSpecificSession(t *testing.T) {
 		require.NotNil(t, deviceCookie)
 
 		tokenRequest := &models.TokenRequest{
-			GrantType:   "authorization_code",
+			GrantType:   service.GrantTypeAuthorizationCode,
 			Code:        code,
 			ClientID:    reqBody.ClientID,
 			RedirectURI: reqBody.RedirectURI,

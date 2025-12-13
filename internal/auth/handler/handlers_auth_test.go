@@ -21,6 +21,7 @@ import (
 
 	"credo/internal/auth/handler/mocks"
 	authModel "credo/internal/auth/models"
+	"credo/internal/auth/service"
 	"credo/internal/platform/middleware"
 	dErrors "credo/pkg/domain-errors"
 )
@@ -160,7 +161,7 @@ func (s *AuthHandlerSuite) TestHandler_Authorize() {
 
 func (s *AuthHandlerSuite) TestHandler_Token() {
 	validRequest := &authModel.TokenRequest{
-		GrantType:   "authorization_code",
+		GrantType:   service.GrantTypeAuthorizationCode,
 		Code:        "authz_code_123",
 		RedirectURI: "https://example.com/callback",
 		ClientID:    "some-client-id",

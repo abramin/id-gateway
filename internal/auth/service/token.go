@@ -35,14 +35,14 @@ func (s *Service) validateTokenRequest(req *models.TokenRequest) error {
 	}
 
 	switch req.GrantType {
-	case "authorization_code":
+	case GrantTypeAuthorizationCode:
 		if strings.TrimSpace(req.Code) == "" {
 			return dErrors.New(dErrors.CodeValidation, "code is required")
 		}
 		if strings.TrimSpace(req.RedirectURI) == "" {
 			return dErrors.New(dErrors.CodeValidation, "redirect_uri is required")
 		}
-	case "refresh_token":
+	case GrantTypeRefreshToken:
 		if strings.TrimSpace(req.RefreshToken) == "" {
 			return dErrors.New(dErrors.CodeValidation, "refresh_token is required")
 		}

@@ -18,6 +18,7 @@ import (
 	revocationStore "credo/internal/auth/store/revocation"
 	sessionStore "credo/internal/auth/store/session"
 	userStore "credo/internal/auth/store/user"
+	cleanupWorker "credo/internal/auth/workers/cleanup"
 	consentHandler "credo/internal/consent/handler"
 	consentService "credo/internal/consent/service"
 	consentStore "credo/internal/consent/store"
@@ -63,6 +64,9 @@ func main() {
 	refreshTokens := refreshTokenStore.NewInMemoryRefreshTokenStore()
 	auditStore := audit.NewInMemoryStore()
 
+	appCtx, cancelApp := context.WithCancel(context.Background())
+	defer cancelApp()
+
 	// Seed demo data if in demo mode
 	if cfg.DemoMode {
 		seederSvc := seeder.New(users, sessions, codes, refreshTokens, auditStore, log)
@@ -72,8 +76,25 @@ func main() {
 	}
 
 	// Initialize services
-	authSvc := initializeAuthService(m, log, jwtService, &cfg)
+	authSvc := initializeAuthService(m, log, jwtService, &cfg, users, sessions, codes, refreshTokens)
 	adminSvc := admin.NewService(users, sessions, auditStore)
+
+	cleanupSvc, err := cleanupWorker.New(
+		sessions,
+		codes,
+		refreshTokens,
+		cleanupWorker.WithCleanupLogger(log),
+		cleanupWorker.WithCleanupInterval(cfg.Auth.AuthCleanupInterval),
+	)
+	if err != nil {
+		log.Error("failed to initialize auth cleanup service", "error", err)
+		os.Exit(1)
+	}
+	go func() {
+		if err := cleanupSvc.Start(appCtx); err != nil && err != context.Canceled {
+			log.Error("auth cleanup service stopped", "error", err)
+		}
+	}()
 
 	// Setup main API router
 	r := setupRouter(log, m)
@@ -92,11 +113,20 @@ func main() {
 	}
 
 	// Wait for shutdown signal and gracefully shut down both servers
-	waitForShutdown([]*http.Server{mainSrv, adminSrv}, log)
+	waitForShutdown([]*http.Server{mainSrv, adminSrv}, log, cancelApp)
 }
 
 // initializeAuthService creates and configures the authentication service
-func initializeAuthService(m *metrics.Metrics, log *slog.Logger, jwtService *jwttoken.JWTService, cfg *config.Server) *authService.Service {
+func initializeAuthService(
+	m *metrics.Metrics,
+	log *slog.Logger,
+	jwtService *jwttoken.JWTService,
+	cfg *config.Server,
+	users *userStore.InMemoryUserStore,
+	sessions *sessionStore.InMemorySessionStore,
+	codes *authCodeStore.InMemoryAuthorizationCodeStore,
+	refreshTokens *refreshTokenStore.InMemoryRefreshTokenStore,
+) *authService.Service {
 	authCfg := &authService.Config{
 		SessionTTL:             cfg.Auth.SessionTTL,
 		TokenTTL:               cfg.Auth.TokenTTL,
@@ -106,10 +136,10 @@ func initializeAuthService(m *metrics.Metrics, log *slog.Logger, jwtService *jwt
 	trl := revocationStore.NewInMemoryTRL(revocationStore.WithCleanupInterval(cfg.Auth.TokenRevocationCleanupInterval))
 
 	authSvc, err := authService.New(
-		userStore.NewInMemoryUserStore(),
-		sessionStore.NewInMemorySessionStore(),
-		authCodeStore.NewInMemoryAuthorizationCodeStore(),
-		refreshTokenStore.NewInMemoryRefreshTokenStore(),
+		users,
+		sessions,
+		codes,
+		refreshTokens,
 		authCfg,
 		authService.WithMetrics(m),
 		authService.WithLogger(log),
@@ -147,7 +177,7 @@ func setupRouter(log *slog.Logger, m *metrics.Metrics) *chi.Mux {
 	r.Use(middleware.Recovery(log))
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger(log))
-	r.Use(middleware.Timeout(30 * time.Second))
+	r.Use(middleware.Timeout(30 * time.Second)) // TODO: make configurable
 	r.Use(middleware.ContentTypeJSON)
 	r.Use(middleware.LatencyMiddleware(m))
 
@@ -266,12 +296,15 @@ func startServer(srv *http.Server, log *slog.Logger, name string) {
 }
 
 // waitForShutdown waits for an interrupt signal and gracefully shuts down all servers
-func waitForShutdown(servers []*http.Server, log *slog.Logger) {
+func waitForShutdown(servers []*http.Server, log *slog.Logger, cancel context.CancelFunc) {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt)
 	<-quit
 
 	log.Info("shutting down servers gracefully")
+	if cancel != nil {
+		cancel()
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

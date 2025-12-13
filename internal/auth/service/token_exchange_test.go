@@ -29,7 +29,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 	issuedRefreshToken := "ref_mock-refresh-token"
 
 	baseReq := models.TokenRequest{
-		GrantType:   "authorization_code",
+		GrantType:   GrantTypeAuthorizationCode,
 		Code:        code,
 		RedirectURI: redirectURI,
 		ClientID:    clientID,
@@ -164,7 +164,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 			{
 				name: "refresh_token missing refresh_token",
 				modifyReq: func(r *models.TokenRequest) {
-					r.GrantType = "refresh_token"
+					r.GrantType = GrantTypeRefreshToken
 					r.RefreshToken = ""
 					r.Code = ""
 					r.RedirectURI = ""
