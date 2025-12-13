@@ -73,3 +73,76 @@ func Test_GenerateIDToken(t *testing.T) {
 	assert.Equal(t, clientID, claims.ClientID)
 	assert.WithinDuration(t, time.Now().Add(expiresIn), claims.ExpiresAt.Time, time.Minute)
 }
+func Test_ParseTokenSkipClaimsValidation(t *testing.T) {
+	t.Run("valid token", func(t *testing.T) {
+		token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, []string{"read", "write"})
+		require.NoError(t, err)
+
+		claims, err := jwtService.ParseTokenSkipClaimsValidation(token)
+		require.NoError(t, err)
+		assert.NotNil(t, claims)
+		assert.Equal(t, userID.String(), claims.UserID)
+		assert.Equal(t, sessionID.String(), claims.SessionID)
+		assert.Equal(t, clientID, claims.ClientID)
+	})
+
+	t.Run("expired token still parses", func(t *testing.T) {
+		token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, []string{"read", "write"})
+		require.NoError(t, err)
+		time.Sleep(expiresIn + time.Second)
+
+		claims, err := jwtService.ParseTokenSkipClaimsValidation(token)
+		require.NoError(t, err)
+		assert.NotNil(t, claims)
+		assert.Equal(t, userID.String(), claims.UserID)
+	})
+
+	t.Run("error cases", func(t *testing.T) {
+		tests := []struct {
+			name        string
+			tokenFunc   func() string
+			expectedErr string
+		}{
+			{
+				name: "empty token string",
+				tokenFunc: func() string {
+					return ""
+				},
+				expectedErr: "empty token",
+			},
+			{
+				name: "invalid token string",
+				tokenFunc: func() string {
+					return "invalid-token"
+				},
+				expectedErr: "jwt parse failed",
+			},
+			{
+				name: "invalid signature",
+				tokenFunc: func() string {
+					token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, []string{"read"})
+					require.NoError(t, err)
+					return token
+				},
+				expectedErr: "invalid jwt signature",
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				token := tt.tokenFunc()
+				var service *JWTService
+
+				if tt.name == "invalid signature" {
+					service = NewJWTService("wrong-key", "test-issuer", "test-audience", expiresIn)
+				} else {
+					service = jwtService
+				}
+
+				_, err := service.ParseTokenSkipClaimsValidation(token)
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedErr)
+			})
+		}
+	})
+}

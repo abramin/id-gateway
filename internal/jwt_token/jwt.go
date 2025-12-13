@@ -126,6 +126,9 @@ func (s *JWTService) ParseTokenSkipClaimsValidation(tokenString string) (*Claims
 		jwt.WithoutClaimsValidation(),
 	)
 	if err != nil {
+		if errors.Is(err, jwt.ErrSignatureInvalid) {
+			return nil, fmt.Errorf("invalid jwt signature: %w", err)
+		}
 		return nil, fmt.Errorf("jwt parse failed: %w", err)
 	}
 
