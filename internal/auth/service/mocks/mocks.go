@@ -473,6 +473,22 @@ func (mr *MockTokenGeneratorMockRecorder) GenerateAccessToken(userID, sessionID,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateAccessToken", reflect.TypeOf((*MockTokenGenerator)(nil).GenerateAccessToken), userID, sessionID, clientID, scopes)
 }
 
+// GenerateAccessTokenWithJTI mocks base method.
+func (m *MockTokenGenerator) GenerateAccessTokenWithJTI(userID, sessionID uuid.UUID, clientID string, scopes []string) (string, string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GenerateAccessTokenWithJTI", userID, sessionID, clientID, scopes)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// GenerateAccessTokenWithJTI indicates an expected call of GenerateAccessTokenWithJTI.
+func (mr *MockTokenGeneratorMockRecorder) GenerateAccessTokenWithJTI(userID, sessionID, clientID, scopes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateAccessTokenWithJTI", reflect.TypeOf((*MockTokenGenerator)(nil).GenerateAccessTokenWithJTI), userID, sessionID, clientID, scopes)
+}
+
 // GenerateIDToken mocks base method.
 func (m *MockTokenGenerator) GenerateIDToken(userID, sessionID uuid.UUID, clientID string) (string, error) {
 	m.ctrl.T.Helper()

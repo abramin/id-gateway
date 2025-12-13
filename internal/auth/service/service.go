@@ -131,7 +131,7 @@ func WithTRL(trl revocation.TokenRevocationList) Option {
 
 func (s *Service) generateTokenArtifacts(session *models.Session) (*tokenArtifacts, error) {
 	// Generate tokens before mutating persistence state so failures do not leave partial writes.
-	accessToken, err := s.jwt.GenerateAccessToken(session.UserID, session.ID, session.ClientID, session.RequestedScope)
+	accessToken, accessTokenJTI, err := s.jwt.GenerateAccessTokenWithJTI(session.UserID, session.ID, session.ClientID, session.RequestedScope)
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate access token")
 	}
@@ -157,10 +157,11 @@ func (s *Service) generateTokenArtifacts(session *models.Session) (*tokenArtifac
 	}
 
 	return &tokenArtifacts{
-		accessToken:   accessToken,
-		idToken:       idToken,
-		refreshToken:  refreshToken,
-		refreshRecord: tokenRecord,
+		accessToken:    accessToken,
+		accessTokenJTI: accessTokenJTI,
+		idToken:        idToken,
+		refreshToken:   refreshToken,
+		refreshRecord:  tokenRecord,
 	}, nil
 }
 

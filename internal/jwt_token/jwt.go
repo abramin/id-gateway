@@ -20,7 +20,6 @@ type Claims struct {
 	ClientID  string   `json:"client_id"`
 	Env       string   `json:"env,omitempty"`
 	Scope     []string `json:"scope"`
-	JTI       string   `json:"jti"`
 	jwt.RegisteredClaims
 }
 
@@ -51,6 +50,30 @@ func NewJWTService(signingKey string, issuer string, audience string, tokenTTL t
 	}
 }
 
+func (s *JWTService) GenerateAccessTokenWithJTI(
+	userID uuid.UUID,
+	sessionID uuid.UUID,
+	clientID string,
+	scopes []string,
+) (string, string, error) {
+	newToken, err := s.GenerateAccessToken(userID, sessionID, clientID, scopes)
+	if err != nil {
+		return "", "", err
+	}
+	// Extract the JTI from the token
+	parsed, err := jwt.ParseWithClaims(newToken, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		return s.signingKey, nil
+	})
+	if err != nil {
+		return "", "", err
+	}
+	claims, ok := parsed.Claims.(*Claims)
+	if !ok {
+		return "", "", errors.New("invalid token claims")
+	}
+	return newToken, claims.ID, nil
+}
+
 func (s *JWTService) GenerateAccessToken(
 	userID uuid.UUID,
 	sessionID uuid.UUID,
@@ -70,13 +93,12 @@ func (s *JWTService) GenerateAccessToken(
 		ClientID:  clientID,
 		Env:       s.env,
 		Scope:     scopes,
-		JTI:       jti,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(s.tokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			Issuer:    s.issuer,
 			Audience:  []string{s.audience},
-			ID:        uuid.NewString(),
+			ID:        jti,
 		},
 	})
 

@@ -23,6 +23,10 @@ func (s *ServiceSuite) TestToken_Exchange() {
 	clientID := "client-123"
 	redirectURI := "https://client.app/callback"
 	code := "authz_12345"
+	issuedAccessToken := "accessToken"
+	issuedAccessTokenJTI := "access-token-jti"
+	issuedIDToken := "mock-id-token"
+	issuedRefreshToken := "ref_mock-refresh-token"
 
 	baseReq := models.TokenRequest{
 		GrantType:   "authorization_code",
@@ -51,6 +55,38 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		ExpiresAt:      time.Now().Add(24 * time.Hour),
 	}
 
+	expectTokens := func(t *testing.T) {
+		t.Helper()
+		s.mockJWT.EXPECT().GenerateAccessTokenWithJTI(
+			userID, sessionID, clientID, []string{"openid", "profile"},
+		).Return(issuedAccessToken, issuedAccessTokenJTI, nil)
+		s.mockJWT.EXPECT().GenerateIDToken(userID, sessionID, clientID).Return(issuedIDToken, nil)
+		s.mockJWT.EXPECT().CreateRefreshToken().Return(issuedRefreshToken, nil)
+	}
+
+	expectTokenPersistence := func(t *testing.T, expectedStatus string, sess models.Session, req models.TokenRequest) {
+		t.Helper()
+
+		s.mockSessionStore.EXPECT().UpdateSession(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, session *models.Session) error {
+				assert.Equal(t, sess.ID, session.ID)
+				assert.Equal(t, expectedStatus, session.Status)
+				return nil
+			},
+		)
+		s.mockRefreshStore.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, token *models.RefreshTokenRecord) error {
+				assert.Equal(t, issuedRefreshToken, token.Token)
+				assert.Equal(t, sessionID, token.SessionID)
+				assert.False(t, token.Used)
+				assert.True(t, token.ExpiresAt.After(time.Now()))
+				return nil
+			},
+		)
+		s.mockCodeStore.EXPECT().MarkUsed(gomock.Any(), req.Code).Return(nil)
+		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
+	}
+
 	s.T().Run("happy path - successful token exchange", func(t *testing.T) {
 		req := baseReq
 		codeRec := *validCodeRecord
@@ -59,32 +95,14 @@ func (s *ServiceSuite) TestToken_Exchange() {
 
 		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		s.mockJWT.EXPECT().GenerateAccessToken(userID, sessionID, clientID, []string{"openid", "profile"}).Return("mock-access-token", nil)
-		s.mockJWT.EXPECT().GenerateIDToken(userID, sessionID, clientID).Return("mock-id-token", nil)
-		s.mockJWT.EXPECT().CreateRefreshToken().Return("ref_mock-refresh-token", nil)
-		// Inside RunInTx: UpdateSession, Create, MarkUsed
-		s.mockSessionStore.EXPECT().UpdateSession(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(ctx context.Context, session *models.Session) error {
-				assert.Equal(s.T(), sess.ID, session.ID)
-				assert.Equal(s.T(), StatusActive, session.Status)
-				return nil
-			})
-		s.mockRefreshStore.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(ctx context.Context, token *models.RefreshTokenRecord) error {
-				assert.Equal(s.T(), "ref_mock-refresh-token", token.Token)
-				assert.Equal(s.T(), sessionID, token.SessionID)
-				assert.False(s.T(), token.Used)
-				assert.True(s.T(), token.ExpiresAt.After(time.Now()))
-				return nil
-			})
-		s.mockCodeStore.EXPECT().MarkUsed(gomock.Any(), req.Code).Return(nil)
-		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
+		expectTokens(t)
+		expectTokenPersistence(t, StatusActive, sess, req)
 
 		result, err := s.service.Token(ctx, &req)
 		require.NoError(s.T(), err)
-		assert.Equal(s.T(), "mock-access-token", result.AccessToken)
-		assert.Equal(s.T(), "mock-id-token", result.IDToken)
-		assert.Equal(s.T(), "ref_mock-refresh-token", result.RefreshToken)
+		assert.Equal(s.T(), issuedAccessToken, result.AccessToken)
+		assert.Equal(s.T(), issuedIDToken, result.IDToken)
+		assert.Equal(s.T(), issuedRefreshToken, result.RefreshToken)
 		assert.Equal(s.T(), "Bearer", result.TokenType)
 		assert.Equal(s.T(), s.service.TokenTTL, result.ExpiresIn)
 	})
@@ -98,26 +116,8 @@ func (s *ServiceSuite) TestToken_Exchange() {
 
 		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		s.mockJWT.EXPECT().GenerateAccessToken(userID, sessionID, clientID, []string{"openid", "profile"}).Return("mock-access-token", nil)
-		s.mockJWT.EXPECT().GenerateIDToken(userID, sessionID, clientID).Return("mock-id-token", nil)
-		s.mockJWT.EXPECT().CreateRefreshToken().Return("ref_mock-refresh-token", nil)
-		// Inside RunInTx: UpdateSession (to update LastSeenAt), Create, MarkUsed
-		s.mockSessionStore.EXPECT().UpdateSession(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(ctx context.Context, session *models.Session) error {
-				assert.Equal(s.T(), sess.ID, session.ID)
-				assert.Equal(s.T(), StatusActive, session.Status) // Should remain active
-				return nil
-			})
-		s.mockRefreshStore.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(ctx context.Context, token *models.RefreshTokenRecord) error {
-				assert.Equal(s.T(), "ref_mock-refresh-token", token.Token)
-				assert.Equal(s.T(), sessionID, token.SessionID)
-				assert.False(s.T(), token.Used)
-				assert.True(s.T(), token.ExpiresAt.After(time.Now()))
-				return nil
-			})
-		s.mockCodeStore.EXPECT().MarkUsed(gomock.Any(), req.Code).Return(nil)
-		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
+		expectTokens(t)
+		expectTokenPersistence(t, StatusActive, sess, req)
 
 		result, err := s.service.Token(ctx, &req)
 		require.NoError(s.T(), err)
@@ -356,7 +356,9 @@ func (s *ServiceSuite) TestToken_Exchange() {
 
 		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		s.mockJWT.EXPECT().GenerateAccessToken(gomock.Any(), gomock.Any(), gomock.Any(), []string{"openid", "profile"}).Return("mock-access-token", nil)
+		s.mockJWT.EXPECT().GenerateAccessTokenWithJTI(
+			gomock.Any(), gomock.Any(), gomock.Any(), []string{"openid", "profile"},
+		).Return(issuedAccessToken, issuedAccessTokenJTI, nil)
 		s.mockJWT.EXPECT().GenerateIDToken(gomock.Any(), gomock.Any(), gomock.Any()).Return("mock-id-token", nil)
 		s.mockJWT.EXPECT().CreateRefreshToken().Return("ref_mock-refresh-token", nil)
 		// Inside RunInTx, MarkUsed fails
@@ -373,22 +375,22 @@ func (s *ServiceSuite) TestToken_Exchange() {
 	s.T().Run("JWT generation errors", func(t *testing.T) {
 		tests := []struct {
 			name        string
-			setupMocks  func()
+			setupMocks  func(t *testing.T)
 			expectedErr string
 		}{
 			{
 				name: "access token generation fails",
-				setupMocks: func() {
-					s.mockJWT.EXPECT().GenerateAccessToken(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-						Return("", errors.New("jwt error"))
+				setupMocks: func(t *testing.T) {
+					s.mockJWT.EXPECT().GenerateAccessTokenWithJTI(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+						Return("", "", errors.New("jwt error"))
 				},
 				expectedErr: "failed to generate access token",
 			},
 			{
 				name: "id token generation fails",
-				setupMocks: func() {
-					s.mockJWT.EXPECT().GenerateAccessToken(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-						Return("mock-access", nil)
+				setupMocks: func(t *testing.T) {
+					s.mockJWT.EXPECT().GenerateAccessTokenWithJTI(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+						Return("access-token", "access-token-jti", nil)
 					s.mockJWT.EXPECT().GenerateIDToken(gomock.Any(), gomock.Any(), gomock.Any()).
 						Return("", errors.New("jwt error"))
 				},
@@ -396,9 +398,9 @@ func (s *ServiceSuite) TestToken_Exchange() {
 			},
 			{
 				name: "refresh token generation fails",
-				setupMocks: func() {
-					s.mockJWT.EXPECT().GenerateAccessToken(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-						Return("mock-access", nil)
+				setupMocks: func(t *testing.T) {
+					s.mockJWT.EXPECT().GenerateAccessTokenWithJTI(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+						Return("access-token", "access-token-jti", nil)
 					s.mockJWT.EXPECT().GenerateIDToken(gomock.Any(), gomock.Any(), gomock.Any()).
 						Return("mock-id", nil)
 					s.mockJWT.EXPECT().CreateRefreshToken().
@@ -416,7 +418,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 
 				s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
 				s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-				tt.setupMocks()
+				tt.setupMocks(t)
 
 				result, err := s.service.Token(context.Background(), &req)
 				assert.Error(t, err)
@@ -434,7 +436,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 
 		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		s.mockJWT.EXPECT().GenerateAccessToken(userID, sessionID, clientID, []string{"openid", "profile"}).Return("mock-access", nil)
+		s.mockJWT.EXPECT().GenerateAccessTokenWithJTI(userID, sessionID, clientID, []string{"openid", "profile"}).Return(issuedAccessToken, issuedAccessTokenJTI, nil)
 		s.mockJWT.EXPECT().GenerateIDToken(userID, sessionID, clientID).Return("mock-id", nil)
 		s.mockJWT.EXPECT().CreateRefreshToken().Return("ref_mock", nil)
 		// Inside RunInTx, Create fails

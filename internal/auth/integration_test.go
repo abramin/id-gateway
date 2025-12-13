@@ -80,6 +80,7 @@ func SetupSuite(t *testing.T) (
 		r.Use(middleware.RequireAuth(jwtValidator, authService, logger)) // authService implements TokenRevocationChecker
 		r.Get("/auth/userinfo", authHandler.HandleUserInfo)
 		r.Get("/auth/sessions", authHandler.HandleListSessions)
+		r.Delete("/auth/sessions/{session_id}", authHandler.HandleRevokeSession)
 	})
 
 	// Admin endpoints (admin token required)
@@ -428,6 +429,179 @@ func TestTokenRevocation(t *testing.T) {
 		r.ServeHTTP(refreshRec, refreshReq)
 		require.Equal(t, http.StatusUnauthorized, refreshRec.Result().StatusCode)
 		assert.Contains(t, refreshRec.Body.String(), "unauthorized")
+	})
+}
+
+// TestRevokeSpecificSession validates revoking a specific session (PRD-016 FR-5).
+func TestRevokeSpecificSession(t *testing.T) {
+	r, userStore, sessionStore, codeStore, _, auditStore := SetupSuite(t)
+
+	createActiveSession := func(t *testing.T, email string, userAgent string) (accessToken string, sessionID uuid.UUID, userID uuid.UUID) {
+		t.Helper()
+
+		reqBody := models.AuthorizationRequest{
+			Email:       email,
+			ClientID:    "client-123",
+			Scopes:      []string{"openid", "profile"},
+			RedirectURI: "https://client.app/callback",
+			State:       "state-xyz",
+		}
+		payload, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+
+		authReq := httptest.NewRequest(http.MethodPost, "/auth/authorize", bytes.NewReader(payload))
+		authReq.Header.Set("Content-Type", "application/json")
+		authReq.Header.Set("User-Agent", userAgent)
+		authReq.Header.Set("X-Real-IP", "192.168.1.1")
+		authRec := httptest.NewRecorder()
+		r.ServeHTTP(authRec, authReq)
+		authRes := authRec.Result()
+		defer authRes.Body.Close()
+		require.Equal(t, http.StatusOK, authRes.StatusCode)
+
+		var authBody map[string]string
+		require.NoError(t, json.NewDecoder(authRes.Body).Decode(&authBody))
+		code := authBody["code"]
+		require.NotEmpty(t, code)
+
+		var deviceCookie *http.Cookie
+		for _, c := range authRes.Cookies() {
+			if c.Name == "__Secure-Device-ID" {
+				deviceCookie = c
+				break
+			}
+		}
+		require.NotNil(t, deviceCookie)
+
+		tokenRequest := &models.TokenRequest{
+			GrantType:   "authorization_code",
+			Code:        code,
+			ClientID:    reqBody.ClientID,
+			RedirectURI: reqBody.RedirectURI,
+		}
+		tokenPayload, err := json.Marshal(tokenRequest)
+		require.NoError(t, err)
+
+		tokenReq := httptest.NewRequest(http.MethodPost, "/auth/token", bytes.NewReader(tokenPayload))
+		tokenReq.Header.Set("Content-Type", "application/json")
+		tokenReq.Header.Set("User-Agent", userAgent)
+		tokenReq.Header.Set("X-Real-IP", "192.168.1.1")
+		tokenReq.AddCookie(deviceCookie)
+		tokenRec := httptest.NewRecorder()
+		r.ServeHTTP(tokenRec, tokenReq)
+		tokenRes := tokenRec.Result()
+		defer tokenRes.Body.Close()
+		require.Equal(t, http.StatusOK, tokenRes.StatusCode)
+
+		var tokenBody map[string]any
+		require.NoError(t, json.NewDecoder(tokenRes.Body).Decode(&tokenBody))
+		accessTokenValue, ok := tokenBody["access_token"].(string)
+		require.True(t, ok)
+		require.NotEmpty(t, accessTokenValue)
+
+		codeRecord, err := codeStore.FindByCode(context.Background(), code)
+		require.NoError(t, err)
+		session, err := sessionStore.FindByID(context.Background(), codeRecord.SessionID)
+		require.NoError(t, err)
+		require.Equal(t, service.StatusActive, session.Status)
+		require.NotEmpty(t, session.LastAccessTokenJTI)
+
+		user, err := userStore.FindByEmail(context.Background(), email)
+		require.NoError(t, err)
+
+		return accessTokenValue, session.ID, user.ID
+	}
+
+	t.Run("Given two active sessions When user revokes other session Then revoked token cannot access protected endpoint", func(t *testing.T) {
+		uaA := "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+		uaB := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+		accessTokenA, _, userID := createActiveSession(t, "revoke.session@example.com", uaA)
+		accessTokenB, sessionIDB, userIDB := createActiveSession(t, "revoke.session@example.com", uaB)
+		require.Equal(t, userID, userIDB)
+
+		revokeReq := httptest.NewRequest(http.MethodDelete, "/auth/sessions/"+sessionIDB.String(), nil)
+		revokeReq.Header.Set("Authorization", "Bearer "+accessTokenA)
+		revokeRec := httptest.NewRecorder()
+		r.ServeHTTP(revokeRec, revokeReq)
+		revokeRes := revokeRec.Result()
+		defer revokeRes.Body.Close()
+
+		require.Equal(t, http.StatusOK, revokeRes.StatusCode)
+		var out models.SessionRevocationResult
+		require.NoError(t, json.NewDecoder(revokeRes.Body).Decode(&out))
+		assert.True(t, out.Revoked)
+		assert.Equal(t, sessionIDB.String(), out.SessionID)
+		assert.Equal(t, "Session revoked successfully", out.Message)
+
+		revokedSession, err := sessionStore.FindByID(context.Background(), sessionIDB)
+		require.NoError(t, err)
+		assert.Equal(t, service.StatusRevoked, revokedSession.Status)
+		require.NotNil(t, revokedSession.RevokedAt)
+
+		listReq := httptest.NewRequest(http.MethodGet, "/auth/sessions", nil)
+		listReq.Header.Set("Authorization", "Bearer "+accessTokenB)
+		listRec := httptest.NewRecorder()
+		r.ServeHTTP(listRec, listReq)
+		require.Equal(t, http.StatusUnauthorized, listRec.Result().StatusCode)
+		assert.Contains(t, listRec.Body.String(), "Token has been revoked")
+
+		auditEvents, err := auditStore.ListByUser(context.Background(), userID.String())
+		require.NoError(t, err)
+		actions := make([]string, 0, len(auditEvents))
+		for _, event := range auditEvents {
+			actions = append(actions, event.Action)
+		}
+		assert.Contains(t, actions, string(audit.EventSessionRevoked))
+	})
+
+	t.Run("Given session owned by another user When user revokes Then forbidden", func(t *testing.T) {
+		ua := "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+		accessTokenA, _, _ := createActiveSession(t, "owner.one@example.com", ua)
+		_, otherSessionID, _ := createActiveSession(t, "owner.two@example.com", ua)
+
+		revokeReq := httptest.NewRequest(http.MethodDelete, "/auth/sessions/"+otherSessionID.String(), nil)
+		revokeReq.Header.Set("Authorization", "Bearer "+accessTokenA)
+		revokeRec := httptest.NewRecorder()
+		r.ServeHTTP(revokeRec, revokeReq)
+		revokeRes := revokeRec.Result()
+		defer revokeRes.Body.Close()
+
+		require.Equal(t, http.StatusForbidden, revokeRes.StatusCode)
+		var errBody map[string]string
+		require.NoError(t, json.NewDecoder(revokeRes.Body).Decode(&errBody))
+		assert.Equal(t, "forbidden", errBody["error"])
+
+		stillActive, err := sessionStore.FindByID(context.Background(), otherSessionID)
+		require.NoError(t, err)
+		assert.Equal(t, service.StatusActive, stillActive.Status)
+	})
+
+	t.Run("Given invalid session id When revoke Then bad request", func(t *testing.T) {
+		ua := "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+		accessTokenA, _, _ := createActiveSession(t, "invalid.session.id@example.com", ua)
+
+		revokeReq := httptest.NewRequest(http.MethodDelete, "/auth/sessions/not-a-uuid", nil)
+		revokeReq.Header.Set("Authorization", "Bearer "+accessTokenA)
+		revokeRec := httptest.NewRecorder()
+		r.ServeHTTP(revokeRec, revokeReq)
+		revokeRes := revokeRec.Result()
+		defer revokeRes.Body.Close()
+
+		require.Equal(t, http.StatusBadRequest, revokeRes.StatusCode)
+		var errBody map[string]string
+		require.NoError(t, json.NewDecoder(revokeRes.Body).Decode(&errBody))
+		assert.Equal(t, "bad_request", errBody["error"])
+	})
+
+	t.Run("Given missing token When revoke Then unauthorized", func(t *testing.T) {
+		revokeReq := httptest.NewRequest(http.MethodDelete, "/auth/sessions/"+uuid.NewString(), nil)
+		revokeRec := httptest.NewRecorder()
+		r.ServeHTTP(revokeRec, revokeReq)
+		revokeRes := revokeRec.Result()
+		defer revokeRes.Body.Close()
+
+		require.Equal(t, http.StatusUnauthorized, revokeRes.StatusCode)
 	})
 }
 
