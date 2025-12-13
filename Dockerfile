@@ -16,12 +16,14 @@ ENV GOMODCACHE=/go/pkg/mod \
 
 # Pre-fetch dependencies
 COPY go.mod go.sum ./
+COPY contracts/registry/go.mod contracts/registry/go.mod
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go mod download
 
 # Copy only source needed for backend build to keep layer cacheable
 COPY cmd cmd
+COPY contracts contracts
 COPY internal internal
 COPY pkg pkg
 

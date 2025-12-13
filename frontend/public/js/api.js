@@ -24,6 +24,10 @@ class APIClient {
     this.token = localStorage.getItem("access_token");
   }
 
+  defaultRedirectURI() {
+    return `${window.location.origin}/demo/callback.html`;
+  }
+
   async request(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
     const headers = {
@@ -68,16 +72,13 @@ class APIClient {
 
   // Auth Endpoints (PRD-001)
   async authorize(email, clientId = "demo-client") {
-    const data = await this.request("/auth/authorize", {
-      method: "POST",
-      skipAuth: true,
-      body: JSON.stringify({
-        email,
-        client_id: clientId,
-        scopes: ["openid", "profile"],
-      }),
-    });
-    return data;
+    return await this.authorizeOAuth(
+      email,
+      clientId,
+      this.defaultRedirectURI(),
+      "",
+      ["openid", "profile"]
+    );
   }
 
   // OAuth2 Authorization Code Flow
@@ -116,28 +117,8 @@ class APIClient {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
-      skipAuth: true,
-    });
-  }
-
-  async getToken(sessionId) {
-    const data = await this.request("/auth/token", {
-      method: "POST",
-      skipAuth: true,
-      body: JSON.stringify({
-        session_id: sessionId,
-        grant_type: "session",
-      }),
-    });
-
-    if (data.access_token) {
-      this.token = data.access_token;
-      localStorage.setItem("access_token", data.access_token);
-      localStorage.setItem("id_token", data.id_token);
-    }
-
-    return data;
-  }
+  });
+}
 
   async getUserInfo() {
     return await this.request("/auth/userinfo", {
