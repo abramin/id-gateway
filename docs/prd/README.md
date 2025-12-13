@@ -34,6 +34,7 @@ Credo is a **regulated identity and authorization system** that:
 | --------------------------------------------------------- | ----------------------------------- | -------------- | --------- | ------------ |
 | [PRD-001](./PRD-001-Authentication-Session-Management.md) | Authentication & Session Management | 🟢 Done        | 13-14h    | None         |
 | [PRD-016](./PRD-016-Token-Lifecycle-Revocation.md) 🆕     | Token Lifecycle & Revocation        | 🔵 Not Started | 6-8h      | PRD-001      |
+| [PRD-026A](./PRD-026A-Tenant-Client-Management.md) 🆕    | Tenant & Client Management (MVP)    | 🔵 Not Started | 8-10h     | PRD-001, 016 |
 | [PRD-017](./PRD-017-Rate-Limiting-Abuse-Prevention.md) 🆕 | Rate Limiting & Abuse Prevention    | 🔵 Not Started | 8-10h     | PRD-001, 016 |
 | [PRD-002](./PRD-002-Consent-Management.md)                | Consent Management System           | 🟡 In Progress | 5-7h      | PRD-001      |
 
