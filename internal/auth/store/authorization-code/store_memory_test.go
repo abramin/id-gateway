@@ -73,3 +73,54 @@ func (s *InMemoryAuthorizationCodeStoreSuite) TestDelete() {
 func TestInMemoryAuthorizationCodeStoreSuite(t *testing.T) {
 	suite.Run(t, new(InMemoryAuthorizationCodeStoreSuite))
 }
+
+func (s *InMemoryAuthorizationCodeStoreSuite) TestConsumeAuthCode() {
+	ctx := context.Background()
+	now := time.Now()
+	record := &models.AuthorizationCodeRecord{
+		Code:        "authz_consume",
+		SessionID:   uuid.New(),
+		RedirectURI: "https://app/callback",
+		ExpiresAt:   now.Add(time.Minute),
+		Used:        false,
+		CreatedAt:   now.Add(-time.Minute),
+	}
+	require.NoError(s.T(), s.store.Create(ctx, record))
+
+	consumed, err := s.store.ConsumeAuthCode(ctx, record.Code, record.RedirectURI, now)
+	require.NoError(s.T(), err)
+	assert.True(s.T(), consumed.Used)
+
+	_, err = s.store.ConsumeAuthCode(ctx, record.Code, record.RedirectURI, now)
+	assert.ErrorIs(s.T(), err, ErrAuthCodeUsed)
+
+	_, err = s.store.ConsumeAuthCode(ctx, "missing", record.RedirectURI, now)
+	assert.ErrorIs(s.T(), err, ErrNotFound)
+}
+
+func (s *InMemoryAuthorizationCodeStoreSuite) TestConsumeAuthCodeRejectsInvalid() {
+	ctx := context.Background()
+	now := time.Now()
+	record := &models.AuthorizationCodeRecord{
+		Code:        "authz_expired",
+		SessionID:   uuid.New(),
+		RedirectURI: "https://app/callback",
+		ExpiresAt:   now.Add(-time.Minute),
+		Used:        false,
+		CreatedAt:   now.Add(-2 * time.Minute),
+	}
+	require.NoError(s.T(), s.store.Create(ctx, record))
+
+	_, err := s.store.ConsumeAuthCode(ctx, record.Code, record.RedirectURI, now)
+	assert.ErrorIs(s.T(), err, ErrAuthCodeExpired)
+
+	record2 := *record
+	record2.Code = "authz_redirect"
+	record2.ExpiresAt = now.Add(time.Minute)
+	record2.RedirectURI = "https://expected"
+	require.NoError(s.T(), s.store.Create(ctx, &record2))
+
+	_, err = s.store.ConsumeAuthCode(ctx, record2.Code, "https://wrong", now)
+	assert.Error(s.T(), err)
+	assert.Contains(s.T(), err.Error(), "redirect_uri mismatch")
+}

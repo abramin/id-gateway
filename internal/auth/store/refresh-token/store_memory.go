@@ -14,6 +14,8 @@ import (
 // ErrNotFound is returned when a requested record is not found in the store.
 // Services should check for this error using errors.Is(err, store.ErrNotFound).
 var ErrNotFound = dErrors.New(dErrors.CodeNotFound, "record not found")
+var ErrRefreshTokenUsed = dErrors.New(dErrors.CodeUnauthorized, "refresh token already used")
+var ErrRefreshTokenExpired = dErrors.New(dErrors.CodeUnauthorized, "refresh token expired")
 
 // Error Contract:
 // All store methods follow this error pattern:
@@ -102,15 +104,31 @@ func (s *InMemoryRefreshTokenStore) DeleteBySessionID(ctx context.Context, sessi
 	return nil
 }
 
-func (s *InMemoryRefreshTokenStore) Consume(_ context.Context, tokenString string, timestamp time.Time) error {
+func (s *InMemoryRefreshTokenStore) Consume(ctx context.Context, tokenString string, timestamp time.Time) error {
+	_, err := s.ConsumeRefreshToken(ctx, tokenString, timestamp)
+	return err
+}
+
+func (s *InMemoryRefreshTokenStore) ConsumeRefreshToken(_ context.Context, token string, now time.Time) (*models.RefreshTokenRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if token, ok := s.tokens[tokenString]; ok {
-		token.Used = true
-		token.LastRefreshedAt = &timestamp
-		return nil
+
+	record, ok := s.tokens[token]
+	if !ok {
+		return nil, ErrNotFound
 	}
-	return ErrNotFound
+	if now.After(record.ExpiresAt) {
+		return nil, ErrRefreshTokenExpired
+	}
+	if record.Used {
+		return nil, ErrRefreshTokenUsed
+	}
+
+	if record.LastRefreshedAt == nil || now.After(*record.LastRefreshedAt) {
+		record.LastRefreshedAt = &now
+	}
+	record.Used = true
+	return record, nil
 }
 
 func (s *InMemoryRefreshTokenStore) DeleteExpiredTokens(_ context.Context) (int, error) {

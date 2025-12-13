@@ -14,6 +14,8 @@ import (
 // ErrNotFound is returned when a requested record is not found in the store.
 // Services should check for this error using errors.Is(err, store.ErrNotFound).
 var ErrNotFound = dErrors.New(dErrors.CodeNotFound, "record not found")
+var ErrAuthCodeUsed = dErrors.New(dErrors.CodeUnauthorized, "authorization code already used")
+var ErrAuthCodeExpired = dErrors.New(dErrors.CodeUnauthorized, "authorization code expired")
 
 // Error Contract:
 // All store methods follow this error pattern:
@@ -78,6 +80,28 @@ func (s *InMemoryAuthorizationCodeStore) MarkUsed(_ context.Context, code string
 		return nil
 	}
 	return ErrNotFound
+}
+
+func (s *InMemoryAuthorizationCodeStore) ConsumeAuthCode(_ context.Context, code string, redirectURI string, now time.Time) (*models.AuthorizationCodeRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	record, ok := s.authCodes[code]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	if record.RedirectURI != redirectURI {
+		return record, dErrors.New(dErrors.CodeBadRequest, "redirect_uri mismatch")
+	}
+	if now.After(record.ExpiresAt) {
+		return record, ErrAuthCodeExpired
+	}
+	if record.Used {
+		return record, ErrAuthCodeUsed
+	}
+
+	record.Used = true
+	return record, nil
 }
 
 func (s *InMemoryAuthorizationCodeStore) DeleteExpiredCodes(_ context.Context) (int, error) {

@@ -2,12 +2,15 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 
 	"credo/internal/auth/models"
+	sessionStore "credo/internal/auth/store/session"
 	jwttoken "credo/internal/jwt_token"
 )
 
@@ -122,13 +125,10 @@ const (
 
 // revokeSessionInternal marks a session as revoked and adds tokens to the revocation list.
 func (s *Service) revokeSessionInternal(ctx context.Context, session *models.Session, jti string) (revokeSessionOutcome, error) {
-	// Already revoked - idempotent success
-	if session.Status == StatusRevoked {
-		return revokeSessionOutcomeAlreadyRevoked, nil
-	}
-
-	// Revoke the session
-	if err := s.sessions.RevokeSession(ctx, session.ID); err != nil {
+	if err := s.sessions.RevokeSessionIfActive(ctx, session.ID, time.Now()); err != nil {
+		if errors.Is(err, sessionStore.ErrSessionRevoked) {
+			return revokeSessionOutcomeAlreadyRevoked, nil
+		}
 		s.logger.Error("failed to revoke session", "error", err, "session_id", session.ID)
 		return revokeSessionOutcomeRevoked, fmt.Errorf("failed to revoke session: %w", err)
 	}

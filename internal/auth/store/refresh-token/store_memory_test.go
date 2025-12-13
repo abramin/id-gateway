@@ -83,14 +83,15 @@ func (s *InMemoryRefreshTokenStoreSuite) TestConsumeMarksUsedAndTouches() {
 	require.NoError(s.T(), s.store.Create(context.Background(), record))
 
 	consumeAt := now.Add(10 * time.Second)
-	err := s.store.Consume(context.Background(), record.Token, consumeAt)
+	consumed, err := s.store.ConsumeRefreshToken(context.Background(), record.Token, consumeAt)
 	require.NoError(s.T(), err)
 
-	fetched, err := s.store.Find(context.Background(), record.Token)
-	require.NoError(s.T(), err)
-	assert.True(s.T(), fetched.Used)
-	require.NotNil(s.T(), fetched.LastRefreshedAt)
-	assert.Equal(s.T(), consumeAt, *fetched.LastRefreshedAt)
+	assert.True(s.T(), consumed.Used)
+	require.NotNil(s.T(), consumed.LastRefreshedAt)
+	assert.Equal(s.T(), consumeAt, *consumed.LastRefreshedAt)
+
+	_, err = s.store.ConsumeRefreshToken(context.Background(), record.Token, consumeAt)
+	assert.ErrorIs(s.T(), err, ErrRefreshTokenUsed)
 }
 
 func (s *InMemoryRefreshTokenStoreSuite) TestFindBySessionIDReturnsNewestActive() {
@@ -122,10 +123,27 @@ func (s *InMemoryRefreshTokenStoreSuite) TestFindBySessionIDReturnsNewestActive(
 	assert.Equal(s.T(), newer, found)
 
 	// Once the newest is used, it should return the remaining active token.
-	require.NoError(s.T(), s.store.Consume(context.Background(), newer.Token, now))
+	_, err = s.store.ConsumeRefreshToken(context.Background(), newer.Token, now)
+	require.NoError(s.T(), err)
 	found, err = s.store.FindBySessionID(context.Background(), sessionID)
 	require.NoError(s.T(), err)
 	assert.Equal(s.T(), old, found)
+}
+
+func (s *InMemoryRefreshTokenStoreSuite) TestConsumeRefreshTokenRejectsExpired() {
+	now := time.Now()
+	record := &models.RefreshTokenRecord{
+		ID:        uuid.New(),
+		Token:     "ref_expired",
+		SessionID: uuid.New(),
+		CreatedAt: now.Add(-time.Hour),
+		ExpiresAt: now.Add(-time.Minute),
+		Used:      false,
+	}
+	require.NoError(s.T(), s.store.Create(context.Background(), record))
+
+	_, err := s.store.ConsumeRefreshToken(context.Background(), record.Token, now)
+	assert.ErrorIs(s.T(), err, ErrRefreshTokenExpired)
 }
 
 func TestInMemoryRefreshTokenStoreSuite(t *testing.T) {

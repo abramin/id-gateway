@@ -141,6 +141,36 @@ func (m *MockSessionStore) EXPECT() *MockSessionStoreMockRecorder {
 	return m.recorder
 }
 
+// AdvanceLastRefreshed mocks base method.
+func (m *MockSessionStore) AdvanceLastRefreshed(ctx context.Context, id uuid.UUID, clientID string, at time.Time, accessTokenJTI, deviceID, deviceFingerprintHash string) (*models.Session, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AdvanceLastRefreshed", ctx, id, clientID, at, accessTokenJTI, deviceID, deviceFingerprintHash)
+	ret0, _ := ret[0].(*models.Session)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AdvanceLastRefreshed indicates an expected call of AdvanceLastRefreshed.
+func (mr *MockSessionStoreMockRecorder) AdvanceLastRefreshed(ctx, id, clientID, at, accessTokenJTI, deviceID, deviceFingerprintHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdvanceLastRefreshed", reflect.TypeOf((*MockSessionStore)(nil).AdvanceLastRefreshed), ctx, id, clientID, at, accessTokenJTI, deviceID, deviceFingerprintHash)
+}
+
+// AdvanceLastSeen mocks base method.
+func (m *MockSessionStore) AdvanceLastSeen(ctx context.Context, id uuid.UUID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID, deviceFingerprintHash string) (*models.Session, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AdvanceLastSeen", ctx, id, clientID, at, accessTokenJTI, activate, deviceID, deviceFingerprintHash)
+	ret0, _ := ret[0].(*models.Session)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AdvanceLastSeen indicates an expected call of AdvanceLastSeen.
+func (mr *MockSessionStoreMockRecorder) AdvanceLastSeen(ctx, id, clientID, at, accessTokenJTI, activate, deviceID, deviceFingerprintHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdvanceLastSeen", reflect.TypeOf((*MockSessionStore)(nil).AdvanceLastSeen), ctx, id, clientID, at, accessTokenJTI, activate, deviceID, deviceFingerprintHash)
+}
+
 // Create mocks base method.
 func (m *MockSessionStore) Create(ctx context.Context, session *models.Session) error {
 	m.ctrl.T.Helper()
@@ -213,6 +243,20 @@ func (mr *MockSessionStoreMockRecorder) RevokeSession(ctx, id any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokeSession", reflect.TypeOf((*MockSessionStore)(nil).RevokeSession), ctx, id)
 }
 
+// RevokeSessionIfActive mocks base method.
+func (m *MockSessionStore) RevokeSessionIfActive(ctx context.Context, id uuid.UUID, now time.Time) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RevokeSessionIfActive", ctx, id, now)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RevokeSessionIfActive indicates an expected call of RevokeSessionIfActive.
+func (mr *MockSessionStoreMockRecorder) RevokeSessionIfActive(ctx, id, now any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokeSessionIfActive", reflect.TypeOf((*MockSessionStore)(nil).RevokeSessionIfActive), ctx, id, now)
+}
+
 // UpdateSession mocks base method.
 func (m *MockSessionStore) UpdateSession(ctx context.Context, session *models.Session) error {
 	m.ctrl.T.Helper()
@@ -249,6 +293,21 @@ func NewMockAuthCodeStore(ctrl *gomock.Controller) *MockAuthCodeStore {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockAuthCodeStore) EXPECT() *MockAuthCodeStoreMockRecorder {
 	return m.recorder
+}
+
+// ConsumeAuthCode mocks base method.
+func (m *MockAuthCodeStore) ConsumeAuthCode(ctx context.Context, code, redirectURI string, now time.Time) (*models.AuthorizationCodeRecord, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConsumeAuthCode", ctx, code, redirectURI, now)
+	ret0, _ := ret[0].(*models.AuthorizationCodeRecord)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ConsumeAuthCode indicates an expected call of ConsumeAuthCode.
+func (mr *MockAuthCodeStoreMockRecorder) ConsumeAuthCode(ctx, code, redirectURI, now any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConsumeAuthCode", reflect.TypeOf((*MockAuthCodeStore)(nil).ConsumeAuthCode), ctx, code, redirectURI, now)
 }
 
 // Create mocks base method.
@@ -359,6 +418,21 @@ func (m *MockRefreshTokenStore) Consume(ctx context.Context, token string, times
 func (mr *MockRefreshTokenStoreMockRecorder) Consume(ctx, token, timestamp any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Consume", reflect.TypeOf((*MockRefreshTokenStore)(nil).Consume), ctx, token, timestamp)
+}
+
+// ConsumeRefreshToken mocks base method.
+func (m *MockRefreshTokenStore) ConsumeRefreshToken(ctx context.Context, token string, now time.Time) (*models.RefreshTokenRecord, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConsumeRefreshToken", ctx, token, now)
+	ret0, _ := ret[0].(*models.RefreshTokenRecord)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ConsumeRefreshToken indicates an expected call of ConsumeRefreshToken.
+func (mr *MockRefreshTokenStoreMockRecorder) ConsumeRefreshToken(ctx, token, now any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConsumeRefreshToken", reflect.TypeOf((*MockRefreshTokenStore)(nil).ConsumeRefreshToken), ctx, token, now)
 }
 
 // Create mocks base method.

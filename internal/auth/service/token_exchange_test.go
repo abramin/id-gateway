@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"credo/internal/auth/models"
+	authCodeStore "credo/internal/auth/store/authorization-code"
 	sessionStore "credo/internal/auth/store/session"
 	dErrors "credo/pkg/domain-errors"
 
@@ -64,14 +65,19 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		s.mockJWT.EXPECT().CreateRefreshToken().Return(issuedRefreshToken, nil)
 	}
 
-	expectTokenPersistence := func(t *testing.T, expectedStatus string, sess models.Session, req models.TokenRequest) {
-		t.Helper()
+expectTokenPersistence := func(t *testing.T, expectedStatus string, sess models.Session, req models.TokenRequest) {
+	t.Helper()
 
-		s.mockSessionStore.EXPECT().UpdateSession(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, session *models.Session) error {
-				assert.Equal(t, sess.ID, session.ID)
-				assert.Equal(t, expectedStatus, session.Status)
-				return nil
+	activate := sess.Status == StatusPendingConsent
+	s.mockSessionStore.EXPECT().AdvanceLastSeen(gomock.Any(), sess.ID, clientID, gomock.Any(), issuedAccessTokenJTI, activate, sess.DeviceID, sess.DeviceFingerprintHash).DoAndReturn(
+			func(_ context.Context, id uuid.UUID, client string, seenAt time.Time, jti string, activateFlag bool, deviceID string, fingerprint string) (*models.Session, error) {
+				assert.Equal(t, sess.ID, id)
+				assert.Equal(t, clientID, client)
+				assert.Equal(t, issuedAccessTokenJTI, jti)
+				assert.Equal(t, activate, activateFlag)
+				assert.False(t, seenAt.IsZero())
+				sess.Status = expectedStatus
+				return &sess, nil
 			},
 		)
 		s.mockRefreshStore.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
@@ -83,7 +89,6 @@ func (s *ServiceSuite) TestToken_Exchange() {
 				return nil
 			},
 		)
-		s.mockCodeStore.EXPECT().MarkUsed(gomock.Any(), req.Code).Return(nil)
 		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
 	}
 
@@ -93,7 +98,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		sess := *validSession
 		ctx := context.Background()
 
-		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
+		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
 		expectTokens(t)
 		expectTokenPersistence(t, StatusActive, sess, req)
@@ -114,7 +119,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		sess.Status = StatusActive // Already active
 		ctx := context.Background()
 
-		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
+		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
 		expectTokens(t)
 		expectTokenPersistence(t, StatusActive, sess, req)
@@ -195,7 +200,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 	s.T().Run("authorization code not found", func(t *testing.T) {
 		req := baseReq
 
-		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(nil, sessionStore.ErrNotFound)
+		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(nil, authCodeStore.ErrNotFound)
 
 		result, err := s.service.Token(context.Background(), &req)
 		assert.Error(s.T(), err)
@@ -209,7 +214,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		codeRec := *validCodeRecord
 		codeRec.ExpiresAt = time.Now().Add(-5 * time.Minute) // Expired
 
-		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
+		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, authCodeStore.ErrAuthCodeExpired)
 
 		result, err := s.service.Token(context.Background(), &req)
 		assert.Error(s.T(), err)
@@ -223,8 +228,8 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		codeRec := *validCodeRecord
 		codeRec.Used = true
 
-		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
-		s.mockSessionStore.EXPECT().RevokeSession(gomock.Any(), sessionID).Return(nil)
+		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, authCodeStore.ErrAuthCodeUsed)
+		s.mockSessionStore.EXPECT().RevokeSessionIfActive(gomock.Any(), sessionID, gomock.Any()).Return(sessionStore.ErrSessionRevoked)
 
 		result, err := s.service.Token(context.Background(), &req)
 		assert.Error(s.T(), err)
@@ -238,7 +243,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		req.RedirectURI = "https://evil.com/callback" // Different from code's redirect_uri
 		codeRec := *validCodeRecord
 
-		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
+		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, dErrors.New(dErrors.CodeBadRequest, "redirect_uri mismatch"))
 
 		result, err := s.service.Token(context.Background(), &req)
 		assert.Error(s.T(), err)
@@ -252,7 +257,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		req := baseReq
 		codeRec := *validCodeRecord
 
-		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
+		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(nil, sessionStore.ErrNotFound)
 
 		result, err := s.service.Token(context.Background(), &req)
@@ -267,13 +272,16 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		codeRec := *validCodeRecord
 		sess := *validSession
 
-		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
+		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
+		expectTokens(t)
+		s.mockSessionStore.EXPECT().AdvanceLastSeen(gomock.Any(), sess.ID, req.ClientID, gomock.Any(), issuedAccessTokenJTI, true, sess.DeviceID, sess.DeviceFingerprintHash).
+			Return(nil, dErrors.New(dErrors.CodeUnauthorized, "client_id mismatch"))
 
 		result, err := s.service.Token(context.Background(), &req)
 		assert.Error(s.T(), err)
 		assert.Nil(s.T(), result)
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeBadRequest))
+		assert.True(s.T(), dErrors.Is(err, dErrors.CodeUnauthorized))
 		assert.Contains(s.T(), err.Error(), "client_id mismatch")
 	})
 
@@ -283,8 +291,11 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		sess := *validSession
 		sess.Status = "revoked"
 
-		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
+		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
+		expectTokens(t)
+		s.mockSessionStore.EXPECT().AdvanceLastSeen(gomock.Any(), sess.ID, req.ClientID, gomock.Any(), issuedAccessTokenJTI, false, sess.DeviceID, sess.DeviceFingerprintHash).
+			Return(nil, sessionStore.ErrSessionRevoked)
 
 		result, err := s.service.Token(context.Background(), &req)
 		assert.Error(s.T(), err)
@@ -299,8 +310,11 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		sess := *validSession
 		sess.Status = "unknown_status"
 
-		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
+		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
+		expectTokens(t)
+		s.mockSessionStore.EXPECT().AdvanceLastSeen(gomock.Any(), sess.ID, req.ClientID, gomock.Any(), issuedAccessTokenJTI, false, sess.DeviceID, sess.DeviceFingerprintHash).
+			Return(nil, dErrors.New(dErrors.CodeUnauthorized, "session in invalid state"))
 
 		result, err := s.service.Token(context.Background(), &req)
 		assert.Error(s.T(), err)
@@ -315,8 +329,11 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		sess := *validSession
 		sess.ExpiresAt = time.Now().Add(-1 * time.Hour) // Expired
 
-		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
+		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
+		expectTokens(t)
+		s.mockSessionStore.EXPECT().AdvanceLastSeen(gomock.Any(), sess.ID, req.ClientID, gomock.Any(), issuedAccessTokenJTI, true, sess.DeviceID, sess.DeviceFingerprintHash).
+			Return(nil, dErrors.New(dErrors.CodeUnauthorized, "session expired"))
 
 		result, err := s.service.Token(context.Background(), &req)
 		assert.Error(s.T(), err)
@@ -328,7 +345,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 	// Infrastructure errors
 	s.T().Run("code store lookup error", func(t *testing.T) {
 		req := baseReq
-		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(nil, errors.New("db error"))
+		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(nil, errors.New("db error"))
 
 		result, err := s.service.Token(context.Background(), &req)
 		assert.Error(s.T(), err)
@@ -340,7 +357,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		req := baseReq
 		codeRec := *validCodeRecord
 
-		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
+		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(nil, errors.New("db error"))
 
 		result, err := s.service.Token(context.Background(), &req)
@@ -349,22 +366,20 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		assert.True(s.T(), dErrors.Is(err, dErrors.CodeInternal))
 	})
 
-	s.T().Run("mark code used error", func(t *testing.T) {
+	s.T().Run("advance last seen error", func(t *testing.T) {
 		req := baseReq
 		codeRec := *validCodeRecord
 		sess := *validSession
 
-		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
+		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
 		s.mockJWT.EXPECT().GenerateAccessTokenWithJTI(
 			gomock.Any(), gomock.Any(), gomock.Any(), []string{"openid", "profile"},
 		).Return(issuedAccessToken, issuedAccessTokenJTI, nil)
 		s.mockJWT.EXPECT().GenerateIDToken(gomock.Any(), gomock.Any(), gomock.Any()).Return("mock-id-token", nil)
 		s.mockJWT.EXPECT().CreateRefreshToken().Return("ref_mock-refresh-token", nil)
-		// Inside RunInTx, MarkUsed fails
-		s.mockSessionStore.EXPECT().UpdateSession(gomock.Any(), gomock.Any()).Return(nil)
-		s.mockRefreshStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
-		s.mockCodeStore.EXPECT().MarkUsed(gomock.Any(), req.Code).Return(errors.New("write error"))
+		s.mockSessionStore.EXPECT().AdvanceLastSeen(gomock.Any(), sess.ID, req.ClientID, gomock.Any(), issuedAccessTokenJTI, true, sess.DeviceID, sess.DeviceFingerprintHash).
+			Return(nil, errors.New("write error"))
 
 		result, err := s.service.Token(context.Background(), &req)
 		assert.Error(s.T(), err)
@@ -416,7 +431,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 				codeRec := *validCodeRecord
 				sess := *validSession
 
-				s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
+				s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, nil)
 				s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
 				tt.setupMocks(t)
 
@@ -434,13 +449,12 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		codeRec := *validCodeRecord
 		sess := *validSession
 
-		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
+		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
 		s.mockJWT.EXPECT().GenerateAccessTokenWithJTI(userID, sessionID, clientID, []string{"openid", "profile"}).Return(issuedAccessToken, issuedAccessTokenJTI, nil)
 		s.mockJWT.EXPECT().GenerateIDToken(userID, sessionID, clientID).Return("mock-id", nil)
 		s.mockJWT.EXPECT().CreateRefreshToken().Return("ref_mock", nil)
-		// Inside RunInTx, Create fails
-		s.mockSessionStore.EXPECT().UpdateSession(gomock.Any(), gomock.Any()).Return(nil)
+		s.mockSessionStore.EXPECT().AdvanceLastSeen(gomock.Any(), sess.ID, req.ClientID, gomock.Any(), issuedAccessTokenJTI, true, sess.DeviceID, sess.DeviceFingerprintHash).Return(&sess, nil)
 		s.mockRefreshStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(errors.New("store error"))
 
 		result, err := s.service.Token(context.Background(), &req)

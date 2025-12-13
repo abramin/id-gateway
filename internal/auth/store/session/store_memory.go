@@ -14,6 +14,7 @@ import (
 // ErrNotFound is returned when a requested record is not found in the store.
 // Services should check for this error using errors.Is(err, store.ErrNotFound).
 var ErrNotFound = dErrors.New(dErrors.CodeNotFound, "record not found")
+var ErrSessionRevoked = dErrors.New(dErrors.CodeUnauthorized, "session has been revoked")
 
 // Error Contract:
 // All store methods follow this error pattern:
@@ -104,17 +105,28 @@ func (s *InMemorySessionStore) DeleteSessionsByUser(_ context.Context, userID uu
 }
 
 func (s *InMemorySessionStore) RevokeSession(_ context.Context, id uuid.UUID) error {
+	return s.RevokeSessionIfActive(context.Background(), id, time.Now())
+}
+
+func (s *InMemorySessionStore) RevokeSessionIfActive(_ context.Context, id uuid.UUID, now time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	key := id.String()
-	if session, ok := s.sessions[key]; ok {
-		now := time.Now()
-		session.Status = "revoked"
-		session.RevokedAt = &now
-		s.sessions[key] = session
-		return nil
+	session, ok := s.sessions[key]
+	if !ok {
+		return ErrNotFound
 	}
-	return ErrNotFound
+	if session.Status == "revoked" {
+		return ErrSessionRevoked
+	}
+
+	session.Status = "revoked"
+	if session.RevokedAt == nil || now.After(*session.RevokedAt) {
+		session.RevokedAt = &now
+	}
+	s.sessions[key] = session
+	return nil
 }
 
 // for use in token cleanup strategy
@@ -134,59 +146,6 @@ func (s *InMemorySessionStore) DeleteExpiredSessions(ctx context.Context) (int, 
 	return deletedCount, nil
 }
 
-// **1. Cleanup rules for MVP**
-
-// * One goroutine per store.
-// * One `time.Ticker`, coarse interval.
-// * Hold the lock once per sweep.
-// * Delete only on `ExpiresAt.Before(now)`.
-
-// No heap timers, no per-entry goroutines.
-
-// **2. Minimal pattern (in-memory store)**
-
-// High level structure:
-
-// * Store has:
-
-//   * `map[key]value`
-//   * `sync.RWMutex`
-//   * `stop chan struct{}`
-
-// * `StartCleanup()`:
-
-//   * `ticker := time.NewTicker(interval)`
-//   * `go func() { for { select { case <-ticker.C: sweep(); case <-stop: ticker.Stop(); return }}}`
-
-// * `sweep()`:
-
-//   * `now := time.Now()`
-//   * `Lock()`
-//   * `for k, v := range store { if v.ExpiresAt.Before(now) { delete(store, k) }}`
-//   * `Unlock()`
-
-// Call `StartCleanup()` when the app boots.
-// Call `Stop()` on shutdown.
-
-// **3. Interview-ready talking points**
-// If asked “why this design”:
-
-// * Coarse sweeper avoids timer explosion.
-// * Predictable CPU and memory.
-// * Easy to replace with DB TTL or Redis expiry later.
-// * Correct under concurrent access.
-
-// If asked “what about races”:
-
-// * Expiry is rechecked on read.
-// * Worst case: token lives slightly past expiry window.
-
-// **4. Per-store intervals**
-
-// * AuthorizationCodeStore: 30–60 seconds
-// * RefreshTokenStore: 1–5 minutes
-// * SessionStore: optional or longer
-
 func (s *InMemorySessionStore) ListAll(_ context.Context) (map[string]*models.Session, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -197,4 +156,86 @@ func (s *InMemorySessionStore) ListAll(_ context.Context) (map[string]*models.Se
 		copy[k] = v
 	}
 	return copy, nil
+}
+
+func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, id uuid.UUID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID string, deviceFingerprintHash string) (*models.Session, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session, ok := s.sessions[id.String()]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	if session.ClientID != clientID {
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "client_id mismatch")
+	}
+	if session.Status == "revoked" {
+		return nil, ErrSessionRevoked
+	}
+	if session.Status != "pending_consent" && session.Status != "active" {
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "session in invalid state")
+	}
+	if at.After(session.ExpiresAt) {
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "session expired")
+	}
+
+	if at.After(session.LastSeenAt) {
+		session.LastSeenAt = at
+	}
+	if activate && session.Status == "pending_consent" {
+		session.Status = "active"
+	}
+	if accessTokenJTI != "" {
+		session.LastAccessTokenJTI = accessTokenJTI
+	}
+	if deviceID != "" {
+		session.DeviceID = deviceID
+	}
+	if deviceFingerprintHash != "" {
+		session.DeviceFingerprintHash = deviceFingerprintHash
+	}
+
+	s.sessions[id.String()] = session
+	return session, nil
+}
+
+func (s *InMemorySessionStore) AdvanceLastRefreshed(_ context.Context, id uuid.UUID, clientID string, at time.Time, accessTokenJTI string, deviceID string, deviceFingerprintHash string) (*models.Session, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session, ok := s.sessions[id.String()]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	if session.ClientID != clientID {
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "client_id mismatch")
+	}
+	if session.Status == "revoked" {
+		return nil, ErrSessionRevoked
+	}
+	if session.Status != "active" {
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "session in invalid state")
+	}
+	if at.After(session.ExpiresAt) {
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "session expired")
+	}
+
+	if session.LastRefreshedAt == nil || at.After(*session.LastRefreshedAt) {
+		session.LastRefreshedAt = &at
+	}
+	if at.After(session.LastSeenAt) {
+		session.LastSeenAt = at
+	}
+	if accessTokenJTI != "" {
+		session.LastAccessTokenJTI = accessTokenJTI
+	}
+	if deviceID != "" {
+		session.DeviceID = deviceID
+	}
+	if deviceFingerprintHash != "" {
+		session.DeviceFingerprintHash = deviceFingerprintHash
+	}
+
+	s.sessions[id.String()] = session
+	return session, nil
 }
