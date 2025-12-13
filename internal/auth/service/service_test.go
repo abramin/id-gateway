@@ -197,7 +197,7 @@ func (s *ServiceSuite) TestAuthorize() {
 }
 
 // TestToken tests the OAuth 2.0 token exchange endpoint (PRD-001 FR-2)
-func (s *ServiceSuite) TestToken() {
+func (s *ServiceSuite) TestToken_Exchange() {
 	sessionID := uuid.New()
 	userID := uuid.New()
 	clientID := "client-123"
@@ -733,6 +733,27 @@ func (s *ServiceSuite) TestDeleteUser() {
 		assert.True(t, dErrors.Is(err, dErrors.CodeInternal))
 	})
 }
+
+func (s *ServiceSuite) TestToken_Refresh() {
+		s.T().Run("refresh_token happy path (TODO PRD-016 FR-2)", func(t *testing.T) {
+// 			1. Validate `grant_type` is `"refresh_token"`
+// 2. Validate `refresh_token` and `client_id` are provided
+// 3. Find session by refresh token in SessionStore
+// 4. If session not found → 401 Invalid refresh token
+// 5. Validate refresh token has not expired (< 30 days old)
+// 6. Validate refresh token has not been revoked (session status != "revoked")
+// 7. Validate device binding (see [DEVICE_BINDING.md](../DEVICE_BINDING.md) for validation logic)
+// 8. **Refresh Token Rotation:**
+//    - Revoke old refresh token (mark as used)
+//    - Generate new refresh token
+//    - Update session with new refresh token
+// 9. Generate new access token (new expiry, same session_id)
+// 10. Generate new ID token
+// 11. Update session `LastRefreshedAt` timestamp
+// 12. Emit audit event: `token_refreshed`
+// 13. Return new tokens
+		t.Skip("TODO(PRD-016): implement refresh_token grant flow (steps 1-13); requires extending TokenRequest with refresh_token and adding service logic + tests.")
+	})
 
 func (s *ServiceSuite) TestNewService_RequiresDepsAndConfig() {
 	s.T().Run("missing stores fails", func(t *testing.T) {
