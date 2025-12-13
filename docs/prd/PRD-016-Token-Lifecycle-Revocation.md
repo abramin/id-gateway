@@ -942,6 +942,8 @@ See [DEVICE_BINDING.md](../DEVICE_BINDING.md) for complete security model and im
 - Configurable per user or globally
 - Oldest session auto-revoked when limit exceeded
 
+Related Future Requirements: See [docs/requirements-wishlist.md](docs/requirements-wishlist.md) for the evolving specification and policy options (evict-oldest vs deny-new), audit and metrics.
+
 ---
 
 ## 8. API Examples
