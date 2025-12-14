@@ -37,8 +37,8 @@ func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.Tok
 		s.applyDeviceBinding(ctx, &mutableSession)
 		mutableSession.LastSeenAt = now
 		activate := false
-		if mutableSession.Status == StatusPendingConsent {
-			mutableSession.Status = StatusActive
+		if mutableSession.Status == string(models.SessionStatusPendingConsent) {
+			mutableSession.Status = string(models.SessionStatusActive)
 			activate = true
 		}
 

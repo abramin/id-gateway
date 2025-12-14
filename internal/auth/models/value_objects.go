@@ -1,5 +1,20 @@
 package models
 
+type SessionStatus string
+
+const (
+	SessionStatusPendingConsent SessionStatus = "pending_consent"
+	SessionStatusActive         SessionStatus = "active"
+	SessionStatusRevoked        SessionStatus = "revoked"
+)
+
+type Grant string
+
+const (
+	GrantAuthorizationCode Grant = "authorization_code"
+	GrantRefreshToken      Grant = "refresh_token"
+)
+
 // Scope represents a valid OAuth 2.0 / OIDC scope
 type Scope string
 
@@ -13,8 +28,3 @@ const (
 	// ScopeEmail grants access to user email and email_verified claims
 	ScopeEmail Scope = "email"
 )
-
-// String returns the string representation of a Scope
-func (s Scope) String() string {
-	return string(s)
-}

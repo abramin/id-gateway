@@ -28,7 +28,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 	issuedRefreshToken := "ref_mock-refresh-token"
 
 	baseReq := models.TokenRequest{
-		GrantType:   GrantTypeAuthorizationCode,
+		GrantType:   string(models.GrantAuthorizationCode),
 		Code:        code,
 		RedirectURI: redirectURI,
 		ClientID:    clientID,
@@ -49,7 +49,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		ClientID:       clientID,
 		RequestedScope: []string{"openid", "profile"},
 		DeviceID:       "device-123",
-		Status:         StatusPendingConsent, // Should be pending_consent before token exchange
+		Status:         string(models.SessionStatusPendingConsent), // Should be pending_consent before token exchange
 		CreatedAt:      time.Now().Add(-5 * time.Minute),
 		ExpiresAt:      time.Now().Add(24 * time.Hour),
 	}
@@ -66,7 +66,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 	expectTokenPersistence := func(t *testing.T, expectedStatus string, sess models.Session, req models.TokenRequest) {
 		t.Helper()
 
-		activate := sess.Status == StatusPendingConsent
+		activate := sess.Status == string(models.SessionStatusPendingConsent)
 		s.mockSessionStore.EXPECT().AdvanceLastSeen(gomock.Any(), sess.ID, clientID, gomock.Any(), issuedAccessTokenJTI, activate, sess.DeviceID, sess.DeviceFingerprintHash).DoAndReturn(
 			func(_ context.Context, id uuid.UUID, client string, seenAt time.Time, jti string, activateFlag bool, deviceID string, fingerprint string) (*models.Session, error) {
 				assert.Equal(t, sess.ID, id)
@@ -99,7 +99,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
 		expectTokens(t)
-		expectTokenPersistence(t, StatusActive, sess, req)
+		expectTokenPersistence(t, string(models.SessionStatusActive), sess, req)
 
 		result, err := s.service.Token(ctx, &req)
 		require.NoError(s.T(), err)
@@ -114,18 +114,18 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		req := baseReq
 		codeRec := *validCodeRecord
 		sess := *validSession
-		sess.Status = StatusActive // Already active
+		sess.Status = string(models.SessionStatusActive) // Already active
 		ctx := context.Background()
 
 		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
 		expectTokens(t)
-		expectTokenPersistence(t, StatusActive, sess, req)
+		expectTokenPersistence(t, string(models.SessionStatusActive), sess, req)
 
 		result, err := s.service.Token(ctx, &req)
 		require.NoError(s.T(), err)
 		assert.NotNil(s.T(), result)
-		assert.Equal(s.T(), StatusActive, sess.Status) // Should remain active
+		assert.Equal(s.T(), string(models.SessionStatusActive), sess.Status) // Should remain active
 	})
 
 	// Table test for simple validation errors
@@ -167,7 +167,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 			{
 				name: "refresh_token missing refresh_token",
 				modifyReq: func(r *models.TokenRequest) {
-					r.GrantType = GrantTypeRefreshToken
+					r.GrantType = string(models.GrantRefreshToken)
 					r.RefreshToken = ""
 					r.Code = ""
 					r.RedirectURI = ""

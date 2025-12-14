@@ -25,44 +25,10 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 		return nil, dErrors.New(dErrors.CodeBadRequest, fmt.Sprintf("redirect_uri scheme '%s' not allowed", parsedURI.Scheme))
 	}
 
-	firstName, lastName := email.DeriveNameFromEmail(req.Email)
-	newUser := &models.User{
-		ID:        uuid.New(),
-		Email:     req.Email,
-		FirstName: firstName,
-		LastName:  lastName,
-		Verified:  false,
-	}
-	user, err := s.users.FindOrCreateByEmail(ctx, req.Email, newUser)
-	if err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to find or create user")
-	}
-	if user.ID == newUser.ID {
-		s.logAudit(ctx, string(audit.EventUserCreated),
-			"user_id", user.ID.String(),
-			"client_id", req.ClientID,
-		)
-		s.incrementUserCreated()
-	}
-
 	now := time.Now()
 	scopes := req.Scopes
 	if len(scopes) == 0 {
-		scopes = []string{models.ScopeOpenID.String()}
-	}
-
-	// Generate OAuth 2.0 authorization code
-	authCode := &models.AuthorizationCodeRecord{
-		Code:        "authz_" + uuid.New().String(),
-		SessionID:   uuid.New(),
-		RedirectURI: req.RedirectURI,
-		ExpiresAt:   now.Add(10 * time.Minute),
-		Used:        false,
-		CreatedAt:   now,
-	}
-
-	if err := s.codes.Create(ctx, authCode); err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to save authorization code")
+		scopes = []string{string(models.ScopeOpenID)}
 	}
 
 	userAgent := middleware.GetUserAgent(ctx)
@@ -80,28 +46,83 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 
 	deviceFingerprint := s.deviceService.ComputeFingerprint(userAgent)
 
-	newSession := &models.Session{
-		ID:                    authCode.SessionID,
-		UserID:                user.ID,
-		ClientID:              req.ClientID,
-		RequestedScope:        scopes,
-		DeviceID:              deviceID,
-		DeviceFingerprintHash: deviceFingerprint,
-		DeviceDisplayName:     deviceDisplayName,
-		ApproximateLocation:   "",
-		Status:                StatusPendingConsent,
-		CreatedAt:             now,
-		ExpiresAt:             now.Add(s.SessionTTL),
-		LastSeenAt:            now,
+	var user *models.User
+	var authCode *models.AuthorizationCodeRecord
+	var session *models.Session
+	userWasCreated := false
+
+	// Wrap user+code+session creation in transaction for atomicity
+	txErr := s.tx.RunInTx(ctx, func(stores TxAuthStores) error {
+		firstName, lastName := email.DeriveNameFromEmail(req.Email)
+		newUser, err := models.NewUser(uuid.New(), req.Email, firstName, lastName, false)
+		if err != nil {
+			return dErrors.Wrap(err, dErrors.CodeInternal, "failed to create user")
+		}
+		user, err = stores.Users.FindOrCreateByEmail(ctx, req.Email, newUser)
+		if err != nil {
+			return dErrors.Wrap(err, dErrors.CodeInternal, "failed to find or create user")
+		}
+		userWasCreated = (user.ID == newUser.ID)
+
+		// Generate OAuth 2.0 authorization code
+		sessionID := uuid.New()
+		authCode, err = models.NewAuthorizationCode(
+			"authz_"+uuid.New().String(),
+			sessionID,
+			req.RedirectURI,
+			now,
+			now.Add(10*time.Minute),
+		)
+		if err != nil {
+			return dErrors.Wrap(err, dErrors.CodeInternal, "failed to create authorization code")
+		}
+
+		if err := stores.Codes.Create(ctx, authCode); err != nil {
+			return dErrors.Wrap(err, dErrors.CodeInternal, "failed to save authorization code")
+		}
+
+		session, err = models.NewSession(
+			authCode.SessionID,
+			user.ID,
+			req.ClientID,
+			scopes,
+			string(models.SessionStatusPendingConsent),
+			now,
+			now.Add(s.SessionTTL),
+			now,
+		)
+		if err != nil {
+			return dErrors.Wrap(err, dErrors.CodeInternal, "failed to create session")
+		}
+		// Set optional device binding fields
+		session.DeviceID = deviceID
+		session.DeviceFingerprintHash = deviceFingerprint
+		session.DeviceDisplayName = deviceDisplayName
+		session.ApproximateLocation = ""
+
+		if err := stores.Sessions.Create(ctx, session); err != nil {
+			return dErrors.Wrap(err, dErrors.CodeInternal, "failed to save session")
+		}
+
+		return nil
+	})
+
+	if txErr != nil {
+		return nil, txErr
 	}
 
-	err = s.sessions.Create(ctx, newSession)
-	if err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to save session")
+	// Emit audit events after successful transaction
+	if userWasCreated {
+		s.logAudit(ctx, string(audit.EventUserCreated),
+			"user_id", user.ID.String(),
+			"client_id", req.ClientID,
+		)
+		s.incrementUserCreated()
 	}
+
 	s.logAudit(ctx, string(audit.EventSessionCreated),
 		"user_id", user.ID.String(),
-		"session_id", newSession.ID.String(),
+		"session_id", session.ID.String(),
 		"client_id", req.ClientID,
 	)
 	s.incrementActiveSession()

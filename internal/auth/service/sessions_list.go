@@ -30,7 +30,7 @@ func (s *Service) ListSessions(ctx context.Context, userID uuid.UUID, currentSes
 		if session == nil {
 			continue
 		}
-		if session.Status != StatusActive {
+		if session.Status != string(models.SessionStatusActive) {
 			continue
 		}
 		if session.ExpiresAt.Before(now) {

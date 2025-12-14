@@ -30,7 +30,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 
 	newReq := func() models.TokenRequest {
 		return models.TokenRequest{
-			GrantType:    GrantTypeRefreshToken,
+			GrantType:    string(models.GrantRefreshToken),
 			RefreshToken: refreshTokenString,
 			ClientID:     clientID,
 		}
@@ -51,7 +51,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		ClientID:       clientID,
 		RequestedScope: []string{"openid", "profile"},
 		DeviceID:       "device-123",
-		Status:         StatusActive,
+		Status:         string(models.SessionStatusActive),
 		CreatedAt:      time.Now().Add(-1 * time.Hour),
 		ExpiresAt:      time.Now().Add(23 * time.Hour),
 	}
@@ -117,7 +117,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 
 	s.T().Run("refresh token not found", func(t *testing.T) {
 		req := models.TokenRequest{
-			GrantType:    GrantTypeRefreshToken,
+			GrantType:    string(models.GrantRefreshToken),
 			RefreshToken: "invalid_token",
 			ClientID:     clientID,
 		}
@@ -179,7 +179,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 
 	s.T().Run("client_id mismatch", func(t *testing.T) {
 		req := models.TokenRequest{
-			GrantType:    GrantTypeRefreshToken,
+			GrantType:    string(models.GrantRefreshToken),
 			RefreshToken: refreshTokenString,
 			ClientID:     "evil-client",
 		}

@@ -65,7 +65,7 @@ func (s *ServiceSuite) TestAuthorize() {
 			func(ctx context.Context, session *models.Session) error {
 				assert.NotNil(s.T(), session.UserID)
 				assert.True(s.T(), session.ExpiresAt.After(time.Now()))
-				assert.Equal(s.T(), StatusPendingConsent, session.Status)
+				assert.Equal(s.T(), string(models.SessionStatusPendingConsent), session.Status)
 				assert.NotNil(s.T(), session.ID)
 				// Device binding disabled by default; device metadata optional
 				return nil
@@ -93,7 +93,7 @@ func (s *ServiceSuite) TestAuthorize() {
 			func(ctx context.Context, session *models.Session) error {
 				assert.Equal(s.T(), existingUser.ID, session.UserID)
 				assert.True(s.T(), session.ExpiresAt.After(time.Now()))
-				assert.Equal(s.T(), StatusPendingConsent, session.Status)
+				assert.Equal(s.T(), string(models.SessionStatusPendingConsent), session.Status)
 				assert.NotNil(s.T(), session.ID)
 				return nil
 			})

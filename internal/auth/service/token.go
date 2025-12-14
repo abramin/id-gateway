@@ -14,9 +14,9 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 	}
 
 	switch req.GrantType {
-	case GrantTypeAuthorizationCode:
+	case string(models.GrantAuthorizationCode):
 		return s.exchangeAuthorizationCode(ctx, req)
-	case GrantTypeRefreshToken:
+	case string(models.GrantRefreshToken):
 		return s.refreshWithRefreshToken(ctx, req)
 	default:
 		return nil, dErrors.New(dErrors.CodeBadRequest, "unsupported grant_type")
@@ -35,14 +35,14 @@ func (s *Service) validateTokenRequest(req *models.TokenRequest) error {
 	}
 
 	switch req.GrantType {
-	case GrantTypeAuthorizationCode:
+	case string(models.GrantAuthorizationCode):
 		if strings.TrimSpace(req.Code) == "" {
 			return dErrors.New(dErrors.CodeValidation, "code is required")
 		}
 		if strings.TrimSpace(req.RedirectURI) == "" {
 			return dErrors.New(dErrors.CodeValidation, "redirect_uri is required")
 		}
-	case GrantTypeRefreshToken:
+	case string(models.GrantRefreshToken):
 		if strings.TrimSpace(req.RefreshToken) == "" {
 			return dErrors.New(dErrors.CodeValidation, "refresh_token is required")
 		}

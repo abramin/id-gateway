@@ -27,7 +27,7 @@ func (s *ServiceSuite) TestRevokeToken() {
 		ID:                 sessionID,
 		UserID:             userID,
 		ClientID:           clientID,
-		Status:             StatusActive,
+		Status:             string(models.SessionStatusActive),
 		LastAccessTokenJTI: jti,
 		CreatedAt:          time.Now().Add(-1 * time.Hour),
 		ExpiresAt:          time.Now().Add(23 * time.Hour),
@@ -276,7 +276,7 @@ func (s *ServiceSuite) TestExtractSessionFromAccessToken() {
 		ID:        sessionID,
 		UserID:    userID,
 		ClientID:  clientID,
-		Status:    StatusActive,
+		Status:    string(models.SessionStatusActive),
 		CreatedAt: time.Now().Add(-1 * time.Hour),
 		ExpiresAt: time.Now().Add(23 * time.Hour),
 	}

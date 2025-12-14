@@ -142,7 +142,7 @@ func TestOAuthFlow(t *testing.T) {
 	require.NoError(t, err)
 	session, err := sessionStore.FindByID(context.Background(), codeRecord.SessionID)
 	require.NoError(t, err)
-	assert.Equal(t, service.StatusPendingConsent, session.Status)
+	assert.Equal(t, string(models.SessionStatusPendingConsent), session.Status)
 	assert.Equal(t, reqBody.Scopes, session.RequestedScope)
 	assert.Equal(t, deviceCookie.Value, session.DeviceID)
 	assert.Equal(t, device.NewService(true).ComputeFingerprint(uaString), session.DeviceFingerprintHash)
@@ -153,7 +153,7 @@ func TestOAuthFlow(t *testing.T) {
 
 	t.Log("Step 2: Token Request")
 	tokenRequest := &models.TokenRequest{
-		GrantType: service.GrantTypeAuthorizationCode,
+		GrantType: string(models.GrantAuthorizationCode),
 		Code:      code,
 		ClientID:  session.ClientID,
 		// RedirectURI must match what was used at /auth/authorize
@@ -208,7 +208,7 @@ func TestOAuthFlow(t *testing.T) {
 	require.NoError(t, err)
 	session, err = sessionStore.FindByID(context.Background(), codeRecord.SessionID)
 	require.NoError(t, err)
-	assert.Equal(t, service.StatusActive, session.Status)
+	assert.Equal(t, string(models.SessionStatusActive), session.Status)
 
 	t.Log("Verifying user stored correctly")
 	users, err := userStore.ListAll(context.Background())
@@ -279,7 +279,7 @@ func TestTokenRevocation(t *testing.T) {
 
 		t.Log("Step 2: Token Request")
 		tokenRequest := &models.TokenRequest{
-			GrantType:    service.GrantTypeAuthorizationCode,
+			GrantType:    string(models.GrantAuthorizationCode),
 			Code:         code,
 			ClientID:     reqBody.ClientID,
 			RedirectURI:  reqBody.RedirectURI,
@@ -308,7 +308,7 @@ func TestTokenRevocation(t *testing.T) {
 		require.NoError(t, err)
 		session, err := sessionStore.FindByID(context.Background(), codeRecord.SessionID)
 		require.NoError(t, err)
-		require.Equal(t, service.StatusActive, session.Status)
+		require.Equal(t, string(models.SessionStatusActive), session.Status)
 
 		t.Log("Step 3: Revoke Access Token")
 		revokePayload, err := json.Marshal(map[string]any{
@@ -335,7 +335,7 @@ func TestTokenRevocation(t *testing.T) {
 		t.Log("Verifying session is updated to revoked status")
 		session, err = sessionStore.FindByID(context.Background(), codeRecord.SessionID)
 		require.NoError(t, err)
-		assert.Equal(t, service.StatusRevoked, session.Status)
+		assert.Equal(t, string(models.SessionStatusRevoked), session.Status)
 		require.NotNil(t, session.RevokedAt)
 	})
 
@@ -377,7 +377,7 @@ func TestTokenRevocation(t *testing.T) {
 
 		t.Log("Step 2: Token Request")
 		tokenRequest := &models.TokenRequest{
-			GrantType:   service.GrantTypeAuthorizationCode,
+			GrantType:   string(models.GrantAuthorizationCode),
 			Code:        code,
 			ClientID:    reqBody.ClientID,
 			RedirectURI: reqBody.RedirectURI,
@@ -474,7 +474,7 @@ func TestRevokeSpecificSession(t *testing.T) {
 		require.NotNil(t, deviceCookie)
 
 		tokenRequest := &models.TokenRequest{
-			GrantType:   service.GrantTypeAuthorizationCode,
+			GrantType:   string(models.GrantAuthorizationCode),
 			Code:        code,
 			ClientID:    reqBody.ClientID,
 			RedirectURI: reqBody.RedirectURI,
@@ -503,7 +503,7 @@ func TestRevokeSpecificSession(t *testing.T) {
 		require.NoError(t, err)
 		session, err := sessionStore.FindByID(context.Background(), codeRecord.SessionID)
 		require.NoError(t, err)
-		require.Equal(t, service.StatusActive, session.Status)
+		require.Equal(t, string(models.SessionStatusActive), session.Status)
 		require.NotEmpty(t, session.LastAccessTokenJTI)
 
 		user, err := userStore.FindByEmail(context.Background(), email)
@@ -536,7 +536,7 @@ func TestRevokeSpecificSession(t *testing.T) {
 
 		revokedSession, err := sessionStore.FindByID(context.Background(), sessionIDB)
 		require.NoError(t, err)
-		assert.Equal(t, service.StatusRevoked, revokedSession.Status)
+		assert.Equal(t, string(models.SessionStatusRevoked), revokedSession.Status)
 		require.NotNil(t, revokedSession.RevokedAt)
 
 		listReq := httptest.NewRequest(http.MethodGet, "/auth/sessions", nil)
@@ -574,7 +574,7 @@ func TestRevokeSpecificSession(t *testing.T) {
 
 		stillActive, err := sessionStore.FindByID(context.Background(), otherSessionID)
 		require.NoError(t, err)
-		assert.Equal(t, service.StatusActive, stillActive.Status)
+		assert.Equal(t, string(models.SessionStatusActive), stillActive.Status)
 	})
 
 	t.Run("Given invalid session id When revoke Then bad request", func(t *testing.T) {

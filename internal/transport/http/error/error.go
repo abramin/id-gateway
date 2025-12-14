@@ -37,7 +37,7 @@ func DomainCodeToHTTPStatus(code dErrors.Code) int {
 	switch code {
 	case dErrors.CodeNotFound:
 		return http.StatusNotFound
-	case dErrors.CodeBadRequest, dErrors.CodeValidation, dErrors.CodeInvalidInput:
+	case dErrors.CodeBadRequest, dErrors.CodeValidation, dErrors.CodeInvalidInput, dErrors.CodeInvariantViolation:
 		return http.StatusBadRequest
 	case dErrors.CodeConflict:
 		return http.StatusConflict

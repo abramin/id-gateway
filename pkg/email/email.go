@@ -5,6 +5,25 @@ import (
 	"unicode"
 )
 
+// IsValidEmail performs basic email validation.
+func IsValidEmail(email string) bool {
+	if email == "" {
+		return false
+	}
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return false
+	}
+	if parts[0] == "" || parts[1] == "" {
+		return false
+	}
+	// Basic domain validation
+	if !strings.Contains(parts[1], ".") {
+		return false
+	}
+	return true
+}
+
 func DeriveNameFromEmail(email string) (string, string) {
 	localPart := email
 	if at := strings.IndexByte(email, '@'); at > 0 {
