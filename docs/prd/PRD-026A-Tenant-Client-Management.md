@@ -224,11 +224,7 @@ Auth0 and similar providers make tenant + application registration first-class. 
 
 ---
 
-Here’s a **minimal, correct MVP section** you can drop straight into **PRD-026A**. It avoids roles/policies but closes the auth hole cleanly.
-
----
-
-## Authorization Model (MVP)\*\*
+## Authorization Model (MVP)
 
 - All `/admin/*` endpoints **MUST require authentication**.
 - Authentication is performed using **access tokens issued by PRD-001 (Authentication & Session Management)**.
@@ -284,22 +280,18 @@ These capabilities may be introduced in a future PRD once tenant and client prim
 
 ## 9. Acceptance Criteria
 
-- A tenant can be created and retrieved via admin API.
-- A client can be registered under a tenant with redirect URI validation.
-- OAuth authorization fails with `invalid_client` when client_id is unknown or disabled.
-- Users created during signup are scoped to the tenant associated with the client.
-- Access and ID tokens include `tenant_id` and `client_id` claims.
-- Client secret rotation updates the stored hash and old secrets fail authentication.
-- Audit events emitted for tenant/client/user creation and secret rotation.
-  All /admin/\* endpoints reject unauthenticated requests with 401 Unauthorized.
-
-Authenticated requests without sufficient admin capability are rejected with 403 Forbidden.
-
-Platform admin access allows tenant creation and retrieval.
-
-Tenant admin access allows client management only within the caller’s tenant.
-
-Authorization checks are enforced in the service layer and cannot be bypassed by handler misuse.
+- [ ]A tenant can be created and retrieved via admin API.
+- [ ]A client can be registered under a tenant with redirect URI validation.
+- [ ]OAuth authorization fails with `invalid_client` when client_id is unknown or disabled.
+- [ ]Users created during signup are scoped to the tenant associated with the client.
+- [ ]Access and ID tokens include `tenant_id` and `client_id` claims.
+- [ ]Client secret rotation updates the stored hash and old secrets fail authentication.
+- [ ]Audit events emitted for tenant/client/user creation and secret rotation.
+- [ ] All admin endpoints reject unauthenticated requests with 401 Unauthorized.
+- [ ] Authenticated requests without sufficient admin capability are rejected with 403 Forbidden.
+- [ ] Platform admin access allows tenant creation and retrieval.
+- [ ] Tenant admin access allows client management only within the caller’s tenant.
+- [ ] Authorization checks are enforced in the service layer and cannot be bypassed by handler misuse.
 
 ---
 

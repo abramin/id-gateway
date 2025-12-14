@@ -46,15 +46,22 @@ func (h *Handler) HandleCreateTenant(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
 
-	var payload struct {
-		Name string `json:"name"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+	var req *models.CreateTenantRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid json"))
 		return
 	}
 
-	tenant, err := h.service.CreateTenant(ctx, payload.Name)
+	req.Normalize()
+	if err := req.Validate(); err != nil {
+		h.logger.WarnContext(ctx, "invalid authorize request",
+			"error", err,
+			"request_id", requestID,
+		)
+		httpError.WriteError(w, err)
+		return
+	}
+	tenant, err := h.service.CreateTenant(ctx, req.Name)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "create tenant failed", "error", err, "request_id", requestID)
 		httpError.WriteError(w, err)
@@ -90,13 +97,13 @@ func (h *Handler) HandleCreateClient(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
 
-	var payload models.CreateClientRequest
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+	var req models.CreateClientRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid json"))
 		return
 	}
 
-	client, err := h.service.CreateClient(ctx, &payload)
+	client, err := h.service.CreateClient(ctx, &req)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "create client failed", "error", err, "request_id", requestID)
 		httpError.WriteError(w, err)
@@ -140,13 +147,13 @@ func (h *Handler) HandleUpdateClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var payload models.UpdateClientRequest
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+	var req models.UpdateClientRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid json"))
 		return
 	}
 
-	res, err := h.service.UpdateClient(ctx, clientID, &payload)
+	res, err := h.service.UpdateClient(ctx, clientID, &req)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "update client failed", "error", err, "request_id", requestID, "client_id", clientID)
 		httpError.WriteError(w, err)
