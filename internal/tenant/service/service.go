@@ -19,7 +19,7 @@ import (
 
 const (
 	clientStatusActive   = "active"
-	clientStatusDisabled = "disabled"
+	clientStatusInactive = "inactive"
 )
 
 type TenantStore interface {
@@ -33,6 +33,7 @@ type ClientStore interface {
 	Create(ctx context.Context, client *models.Client) error
 	Update(ctx context.Context, client *models.Client) error
 	FindByID(ctx context.Context, id uuid.UUID) (*models.Client, error)
+	FindByTenantAndID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*models.Client, error)
 	FindByClientID(ctx context.Context, clientID string) (*models.Client, error)
 	CountByTenant(ctx context.Context, tenantID uuid.UUID) (int, error)
 }
@@ -137,7 +138,7 @@ func (s *Service) GetTenant(ctx context.Context, id uuid.UUID) (*models.TenantDe
 func (s *Service) CreateClient(ctx context.Context, req *models.CreateClientRequest) (*models.ClientResponse, error) {
 	req.Normalize()
 	if err := req.Validate(); err != nil {
-		return nil, err
+		return nil, dErrors.Wrap(err, dErrors.CodeValidation, "invalid client request")
 	}
 
 	if _, err := s.tenants.FindByID(ctx, req.TenantID); err != nil {
@@ -154,11 +155,11 @@ func (s *Service) CreateClient(ctx context.Context, req *models.CreateClientRequ
 	if !req.Public {
 		secret, err = secrets.Generate()
 		if err != nil {
-			return nil, err
+			return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate client secret")
 		}
 		secretHash, err = secrets.Hash(secret)
 		if err != nil {
-			return nil, err
+			return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to hash client secret")
 		}
 	}
 
@@ -197,14 +198,14 @@ func (s *Service) GetClient(ctx context.Context, id uuid.UUID) (*models.ClientRe
 
 // GetClientForTenant enforces tenant scoping when retrieving a client.
 func (s *Service) GetClientForTenant(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*models.ClientResponse, error) {
-	client, err := s.GetClient(ctx, id)
+	client, err := s.clients.FindByTenantAndID(ctx, tenantID, id)
 	if err != nil {
-		return nil, err
+		if dErrors.Is(err, dErrors.CodeNotFound) {
+			return nil, dErrors.New(dErrors.CodeNotFound, "client not found")
+		}
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to get client")
 	}
-	if client.TenantID != tenantID {
-		return nil, dErrors.New(dErrors.CodeNotFound, "client not found")
-	}
-	return client, nil
+	return toResponse(client, ""), nil
 }
 
 // UpdateClient updates mutable fields and optionally rotates the secret.
@@ -219,7 +220,7 @@ func (s *Service) UpdateClient(ctx context.Context, id uuid.UUID, req *models.Up
 
 	req.Normalize()
 	if err := req.Validate(); err != nil {
-		return nil, err
+		return nil, dErrors.Wrap(err, dErrors.CodeValidation, "invalid update request")
 	}
 
 	if req.Name != nil {
@@ -239,11 +240,11 @@ func (s *Service) UpdateClient(ctx context.Context, id uuid.UUID, req *models.Up
 	if req.RotateSecret {
 		rotatedSecret, err = secrets.Generate()
 		if err != nil {
-			return nil, err
+			return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate rotated secret")
 		}
 		client.ClientSecretHash, err = secrets.Hash(rotatedSecret)
 		if err != nil {
-			return nil, err
+			return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to hash rotated secret")
 		}
 	}
 
@@ -257,14 +258,14 @@ func (s *Service) UpdateClient(ctx context.Context, id uuid.UUID, req *models.Up
 
 // UpdateClientForTenant enforces tenant scoping when updating a client.
 func (s *Service) UpdateClientForTenant(ctx context.Context, tenantID uuid.UUID, id uuid.UUID, req *models.UpdateClientRequest) (*models.ClientResponse, error) {
-	resp, err := s.UpdateClient(ctx, id, req)
+	client, err := s.clients.FindByTenantAndID(ctx, tenantID, id)
 	if err != nil {
-		return nil, err
+		if dErrors.Is(err, dErrors.CodeNotFound) {
+			return nil, dErrors.New(dErrors.CodeNotFound, "client not found")
+		}
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to get client")
 	}
-	if resp.TenantID != tenantID {
-		return nil, dErrors.New(dErrors.CodeNotFound, "client not found")
-	}
-	return resp, nil
+	return s.UpdateClient(ctx, client.ID, req)
 }
 
 // ResolveClient maps client_id -> client and tenant as a single choke point.
@@ -282,7 +283,7 @@ func (s *Service) ResolveClient(ctx context.Context, clientID string) (*models.C
 		return nil, nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to resolve client")
 	}
 	if client.Status != clientStatusActive {
-		return nil, nil, dErrors.New(dErrors.CodeForbidden, "client is disabled")
+		return nil, nil, dErrors.New(dErrors.CodeForbidden, "client is inactive")
 	}
 
 	tenant, err := s.tenants.FindByID(ctx, client.TenantID)
@@ -306,8 +307,6 @@ func toResponse(client *models.Client, secret string) *models.ClientResponse {
 		AllowedGrants: client.AllowedGrants,
 		AllowedScopes: client.AllowedScopes,
 		Status:        client.Status,
-		CreatedAt:     client.CreatedAt,
-		UpdatedAt:     client.UpdatedAt,
 	}
 }
 

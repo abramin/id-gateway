@@ -101,13 +101,13 @@ Auth0 and similar providers make tenant + application registration first-class. 
 
 - **Creation:** Users created during signup are stored with `tenant_id` derived from the client.
 - **Lookup:** Login resolves user by `tenant_id + email` to avoid cross-tenant collisions.
-- **Status:** Users have `status` (active, disabled). Disabled users cannot obtain tokens.
+- **Status:** Users have `status` (active, inactive). Inactive users cannot obtain tokens.
 
 ### FR-6: OAuth Flow Tenant Resolution
 
 - **Authorization Request:** Existing `/oauth/authorize` requires `client_id`; Credo resolves client → tenant before rendering signup/login UI.
 - **Token Exchange:** `/oauth/token` validates `client_id`/secret (if confidential) and issues tokens containing `tenant_id` + `client_id` claims.
-- **Error Handling:** Unknown or disabled client returns `invalid_client`; tenant-disabled returns `access_denied`.
+- **Error Handling:** Unknown or inactive client returns `invalid_client`; tenant-inactive returns `access_denied`.
 
 ### FR-7: Claims & Scopes
 
@@ -146,7 +146,7 @@ Auth0 and similar providers make tenant + application registration first-class. 
 - `allowed_scopes` (string array)
 - `created_at` (timestamp)
 - `updated_at` (timestamp)
-- `status` (active, disabled)
+- `status` (active, inactive)
 
 ### User
 
@@ -154,7 +154,7 @@ Auth0 and similar providers make tenant + application registration first-class. 
 - `tenant_id` (uuid, fk → tenant.id)
 - `email` (string, unique per tenant)
 - `password_hash` (string)
-- `status` (active, disabled)
+- `status` (active, inactive)
 - `created_at` (timestamp)
 - `updated_at` (timestamp)
 
@@ -274,7 +274,7 @@ These capabilities may be introduced in a future PRD once tenant and client prim
 - **Migration/Seed:** Provide bootstrap migration to create an initial tenant and client for demo/E2E tests to avoid breaking existing flows.
 - **Observability:** Log tenant_id/client_id in structured logs for auth/admin endpoints (without leaking secrets).
 - **Latency:** Tenant/client resolution adds <5ms p95 with indexed lookups.
-- **Resilience:** If tenant disabled, all auth requests for its clients return `access_denied` without leaking tenant existence.
+- **Resilience:** If tenant inactive, all auth requests for its clients return `access_denied` without leaking tenant existence.
 
 ---
 
@@ -282,7 +282,7 @@ These capabilities may be introduced in a future PRD once tenant and client prim
 
 - [ ]A tenant can be created and retrieved via admin API.
 - [ ]A client can be registered under a tenant with redirect URI validation.
-- [ ]OAuth authorization fails with `invalid_client` when client_id is unknown or disabled.
+- [ ]OAuth authorization fails with `invalid_client` when client_id is unknown or inactive.
 - [ ]Users created during signup are scoped to the tenant associated with the client.
 - [ ]Access and ID tokens include `tenant_id` and `client_id` claims.
 - [ ]Client secret rotation updates the stored hash and old secrets fail authentication.

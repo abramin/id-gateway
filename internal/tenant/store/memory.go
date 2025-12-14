@@ -103,6 +103,17 @@ func (s *InMemoryClientStore) FindByID(_ context.Context, id uuid.UUID) (*tenant
 	return nil, ErrNotFound
 }
 
+func (s *InMemoryClientStore) FindByTenantAndID(_ context.Context, tenantID uuid.UUID, id uuid.UUID) (*tenant.Client, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if c, ok := s.clients[id.String()]; ok {
+		if c.TenantID == tenantID {
+			return c, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
 func (s *InMemoryClientStore) FindByClientID(_ context.Context, clientID string) (*tenant.Client, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

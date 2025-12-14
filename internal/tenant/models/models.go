@@ -39,8 +39,6 @@ type ClientResponse struct {
 	AllowedGrants []string  `json:"allowed_grants"`
 	AllowedScopes []string  `json:"allowed_scopes"`
 	Status        string    `json:"status"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // TenantDetails aggregates tenant metadata with counts for admin dashboards.

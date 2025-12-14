@@ -73,6 +73,7 @@ func (h *Handler) HandleCreateTenant(w http.ResponseWriter, r *http.Request) {
 
 // HandleGetTenant returns tenant metadata with counts.
 func (h *Handler) HandleGetTenant(w http.ResponseWriter, r *http.Request) {
+	// TODO: 403 if not admin
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
 	idStr := chi.URLParam(r, "id")
