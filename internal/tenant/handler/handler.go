@@ -30,8 +30,8 @@ type Handler struct {
 	logger  *slog.Logger
 }
 
-// NewHandler constructs a Handler.
-func NewHandler(service Service, logger *slog.Logger) *Handler {
+// New constructs a Handler.
+func New(service Service, logger *slog.Logger) *Handler {
 	return &Handler{service: service, logger: logger}
 }
 

@@ -3,12 +3,13 @@ package service
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 
 	"credo/internal/tenant/models"
 	dErrors "credo/pkg/domain-errors"
@@ -57,7 +58,11 @@ func (s *Service) CreateTenant(ctx context.Context, name string) (*models.Tenant
 	if len(name) > 128 {
 		return nil, dErrors.New(dErrors.CodeValidation, "name must be 128 characters or less")
 	}
-	if existing, err := s.tenants.FindByName(ctx, name); err == nil && existing != nil {
+	existing, err := s.tenants.FindByName(ctx, name)
+	if err != nil && !dErrors.Is(err, dErrors.CodeNotFound) {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to verify tenant uniqueness")
+	}
+	if existing != nil {
 		return nil, dErrors.New(dErrors.CodeConflict, "tenant name must be unique")
 	}
 
@@ -111,9 +116,16 @@ func (s *Service) CreateClient(ctx context.Context, req *models.CreateClientRequ
 	now := time.Now()
 	secret := ""
 	secretHash := ""
+	var err error
 	if !req.Public {
-		secret = generateSecret()
-		secretHash = hashSecret(secret)
+		secret, err = generateSecret()
+		if err != nil {
+			return nil, err
+		}
+		secretHash, err = hashSecret(secret)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	client := &models.Client{
@@ -178,8 +190,14 @@ func (s *Service) UpdateClient(ctx context.Context, id uuid.UUID, req *models.Up
 
 	rotatedSecret := ""
 	if req.RotateSecret {
-		rotatedSecret = generateSecret()
-		client.ClientSecretHash = hashSecret(rotatedSecret)
+		rotatedSecret, err = generateSecret()
+		if err != nil {
+			return nil, err
+		}
+		client.ClientSecretHash, err = hashSecret(rotatedSecret)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	client.UpdatedAt = time.Now()
@@ -190,15 +208,26 @@ func (s *Service) UpdateClient(ctx context.Context, id uuid.UUID, req *models.Up
 	return toResponse(client, rotatedSecret), nil
 }
 
-func generateSecret() string {
+func generateSecret() (string, error) {
 	buf := make([]byte, 32)
-	_, _ = rand.Read(buf)
-	return base64.RawURLEncoding.EncodeToString(buf)
+	if _, err := rand.Read(buf); err != nil {
+		return "", dErrors.Wrap(err, dErrors.CodeInternal, "could not generate client secret")
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-func hashSecret(secret string) string {
-	hashed := sha256.Sum256([]byte(secret))
-	return base64.RawURLEncoding.EncodeToString(hashed[:])
+func hashSecret(secret string) (string, error) {
+	if secret == "" {
+		return "", dErrors.New(dErrors.CodeValidation, "client secret cannot be empty")
+	}
+	hashed, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
+	if err != nil {
+		if errors.Is(err, bcrypt.ErrPasswordTooLong) {
+			return "", dErrors.New(dErrors.CodeValidation, "client secret is too long")
+		}
+		return "", dErrors.Wrap(err, dErrors.CodeInternal, "could not hash client secret")
+	}
+	return string(hashed), nil
 }
 
 func toResponse(client *models.Client, secret string) *models.ClientResponse {

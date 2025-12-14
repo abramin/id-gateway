@@ -29,7 +29,8 @@ import (
 	"credo/internal/platform/metrics"
 	"credo/internal/platform/middleware"
 	"credo/internal/seeder"
-	"credo/internal/tenant"
+	tenantHandler "credo/internal/tenant/handler"
+	tenantService "credo/internal/tenant/service"
 	tenantStore "credo/internal/tenant/store"
 
 	"github.com/go-chi/chi/v5"
@@ -62,8 +63,8 @@ type consentModule struct {
 }
 
 type tenantModule struct {
-	Service *tenant.Service
-	Handler *tenant.Handler
+	Service *tenantService.Service
+	Handler *tenantHandler.Handler
 	Tenants *tenantStore.InMemoryTenantStore
 	Clients *tenantStore.InMemoryClientStore
 }
@@ -216,14 +217,14 @@ func buildConsentModule(infra *infraBundle) *consentModule {
 func buildTenantModule(infra *infraBundle) *tenantModule {
 	tenants := tenantStore.NewInMemoryTenantStore()
 	clients := tenantStore.NewInMemoryClientStore()
-	service := tenant.NewService(tenants, clients, nil)
+	service := tenantService.New(tenants, clients, nil)
 
 	// Bootstrap a default tenant/client for backward compatibility with existing flows.
 	tenantStore.SeedBootstrapTenant(tenants, clients)
 
 	return &tenantModule{
 		Service: service,
-		Handler: tenant.NewHandler(service, infra.Log),
+		Handler: tenantHandler.New(service, infra.Log),
 		Tenants: tenants,
 		Clients: clients,
 	}
@@ -242,7 +243,7 @@ func initializeJWTService(cfg *config.Server) (*jwttoken.JWTService, *jwttoken.J
 	jwtService := jwttoken.NewJWTService(
 		cfg.Auth.JWTSigningKey,
 		cfg.Auth.JWTIssuer,
-		"credo-client",
+		"credo-client", // TODO: make configurable
 		cfg.Auth.TokenTTL,
 	)
 	if cfg.DemoMode {
@@ -312,7 +313,7 @@ func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consent
 }
 
 // setupAdminRouter creates a router for the admin server
-func setupAdminRouter(log *slog.Logger, adminSvc *admin.Service, tenantHandler *tenant.Handler, cfg *config.Server) *chi.Mux {
+func setupAdminRouter(log *slog.Logger, adminSvc *admin.Service, tenantHandler *tenantHandler.Handler, cfg *config.Server) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Common middleware for all routes

@@ -76,6 +76,9 @@ func (r *CreateClientRequest) Validate() error {
 	if r.Name == "" {
 		return dErrors.New(dErrors.CodeValidation, "name is required")
 	}
+	if len(r.Name) > 128 {
+		return dErrors.New(dErrors.CodeValidation, "name must be 128 characters or less")
+	}
 	if len(r.RedirectURIs) == 0 {
 		return dErrors.New(dErrors.CodeValidation, "redirect_uris are required")
 	}
@@ -90,6 +93,13 @@ func (r *CreateClientRequest) Validate() error {
 	if err := validateGrants(r.AllowedGrants); err != nil {
 		return err
 	}
+	if r.Public {
+		for _, grant := range r.AllowedGrants {
+			if grant == "client_credentials" {
+				return dErrors.New(dErrors.CodeValidation, "client_credentials grant requires a confidential client")
+			}
+		}
+	}
 	if len(r.AllowedScopes) == 0 {
 		return dErrors.New(dErrors.CodeValidation, "allowed_scopes are required")
 	}
@@ -100,6 +110,9 @@ func validateRedirectURI(uri string) error {
 	parsed, err := url.Parse(uri)
 	if err != nil || parsed.Scheme == "" {
 		return dErrors.New(dErrors.CodeValidation, "invalid redirect_uri")
+	}
+	if parsed.Host == "" {
+		return dErrors.New(dErrors.CodeValidation, "redirect_uri must include host")
 	}
 	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && strings.HasPrefix(parsed.Host, "localhost")) {
 		return dErrors.New(dErrors.CodeValidation, "redirect_uri must be https or localhost for development")
@@ -138,6 +151,9 @@ func (r *UpdateClientRequest) Validate() error {
 		trimmed := strings.TrimSpace(*r.Name)
 		if trimmed == "" {
 			return dErrors.New(dErrors.CodeValidation, "name cannot be empty")
+		}
+		if len(trimmed) > 128 {
+			return dErrors.New(dErrors.CodeValidation, "name must be 128 characters or less")
 		}
 	}
 	if r.RedirectURIs != nil {

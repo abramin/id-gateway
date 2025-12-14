@@ -67,6 +67,12 @@ A `Client` must always have a non-nil `TenantID` (domain invariant), but redirec
 
 ---
 
+## Entity state
+
+- Entity lifecycle state (e.g. Session status) must be modeled using
+  closed sets (typed constants or value objects), never magic strings
+  or booleans. State transitions are enforced in services or entities.
+
 ## Error handling
 
 - Use domain error codes via `pkg/domain-errors`.
