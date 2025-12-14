@@ -17,6 +17,15 @@ import (
 )
 
 func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationRequest) (*models.AuthorizationResult, error) {
+	if req == nil {
+		return nil, dErrors.New(dErrors.CodeBadRequest, "request is required")
+	}
+
+	req.Normalize()
+	if err := req.Validate(); err != nil {
+		return nil, err
+	}
+
 	parsedURI, err := url.Parse(req.RedirectURI)
 	if err != nil {
 		return nil, dErrors.New(dErrors.CodeBadRequest, "invalid redirect_uri")
@@ -27,9 +36,6 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 
 	now := time.Now()
 	scopes := req.Scopes
-	if len(scopes) == 0 {
-		scopes = []string{string(models.ScopeOpenID)}
-	}
 
 	userAgent := middleware.GetUserAgent(ctx)
 	deviceDisplayName := device.ParseUserAgent(userAgent)

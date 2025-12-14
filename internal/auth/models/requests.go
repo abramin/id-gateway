@@ -107,6 +107,18 @@ type TokenRequest struct {
 	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
+// Normalize trims user-supplied values before validation.
+func (r *TokenRequest) Normalize() {
+	if r == nil {
+		return
+	}
+	r.GrantType = strings.TrimSpace(r.GrantType)
+	r.ClientID = strings.TrimSpace(r.ClientID)
+	r.Code = strings.TrimSpace(r.Code)
+	r.RedirectURI = strings.TrimSpace(r.RedirectURI)
+	r.RefreshToken = strings.TrimSpace(r.RefreshToken)
+}
+
 // Validate checks API input rules.
 func (r *TokenRequest) Validate() error {
 	if r == nil {
@@ -116,7 +128,7 @@ func (r *TokenRequest) Validate() error {
 		return dErrors.New(dErrors.CodeValidation, "grant_type is required")
 	}
 	if r.GrantType != string(GrantAuthorizationCode) && r.GrantType != string(GrantRefreshToken) {
-		return dErrors.New(dErrors.CodeValidation, "grant_type must be authorization_code or refresh_token")
+		return dErrors.New(dErrors.CodeBadRequest, "unsupported grant_type")
 	}
 	if r.ClientID == "" {
 		return dErrors.New(dErrors.CodeValidation, "client_id is required")
@@ -125,6 +137,9 @@ func (r *TokenRequest) Validate() error {
 	if r.GrantType == string(GrantAuthorizationCode) {
 		if r.Code == "" {
 			return dErrors.New(dErrors.CodeValidation, "code is required for authorization_code grant")
+		}
+		if r.RedirectURI == "" {
+			return dErrors.New(dErrors.CodeValidation, "redirect_uri is required")
 		}
 	} else if r.GrantType == string(GrantRefreshToken) {
 		if r.RefreshToken == "" {

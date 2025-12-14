@@ -79,7 +79,7 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
 
-	var req *models.AuthorizationRequest
+	var req models.AuthorizationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.logger.WarnContext(ctx, "failed to decode authorize request",
 			"error", err,
@@ -89,22 +89,12 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req.Normalize()
-	if err := req.Validate(); err != nil {
-		h.logger.WarnContext(ctx, "invalid authorize request",
-			"error", err,
-			"request_id", requestID,
-		)
-		httpError.WriteError(w, err)
-		return
-	}
-
 	// Extract device ID cookie (if present) for device binding.
 	if cookie, err := r.Cookie(h.deviceCookieName); err == nil && cookie != nil {
 		ctx = middleware.WithDeviceID(ctx, cookie.Value)
 	}
 
-	res, err := h.auth.Authorize(ctx, req)
+	res, err := h.auth.Authorize(ctx, &req)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "authorize failed",
 			"error", err,
@@ -153,14 +143,6 @@ func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 			"request_id", requestID,
 		)
 		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
-		return
-	}
-	if err := req.Validate(); err != nil {
-		h.logger.WarnContext(ctx, "invalid token request",
-			"error", err,
-			"request_id", requestID,
-		)
-		httpError.WriteError(w, err)
 		return
 	}
 
@@ -357,20 +339,6 @@ func (h *Handler) HandleRevoke(w http.ResponseWriter, r *http.Request) {
 		)
 		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
 		return
-	}
-
-	// Validate required field
-	if strings.TrimSpace(req.Token) == "" {
-		httpError.WriteError(w, dErrors.New(dErrors.CodeValidation, "token is required"))
-		return
-	}
-
-	// Validate token_type_hint if provided
-	if req.TokenTypeHint != "" {
-		if req.TokenTypeHint != "access_token" && req.TokenTypeHint != "refresh_token" {
-			httpError.WriteError(w, dErrors.New(dErrors.CodeValidation, "token_type_hint must be 'access_token' or 'refresh_token'"))
-			return
-		}
 	}
 
 	// Call service to revoke the token
