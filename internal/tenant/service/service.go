@@ -2,17 +2,19 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
-	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 
+	"credo/internal/audit"
+	"credo/internal/platform/metrics"
+	"credo/internal/platform/middleware"
 	"credo/internal/tenant/models"
+	"credo/pkg/attrs"
 	dErrors "credo/pkg/domain-errors"
+	"credo/pkg/secrets"
 )
 
 const (
@@ -39,16 +41,47 @@ type UserCounter interface {
 	CountByTenant(ctx context.Context, tenantID uuid.UUID) (int, error)
 }
 
+type AuditPublisher interface {
+	Emit(ctx context.Context, base audit.Event) error
+}
+
 // Service orchestrates tenant and client management.
 type Service struct {
-	tenants     TenantStore
-	clients     ClientStore
-	userCounter UserCounter
+	tenants        TenantStore
+	clients        ClientStore
+	userCounter    UserCounter
+	logger         *slog.Logger
+	auditPublisher AuditPublisher
+	metrics        *metrics.Metrics
+}
+
+type Option func(s *Service)
+
+func WithLogger(logger *slog.Logger) Option {
+	return func(s *Service) {
+		s.logger = logger
+	}
+}
+
+func WithAuditPublisher(publisher AuditPublisher) Option {
+	return func(s *Service) {
+		s.auditPublisher = publisher
+	}
+}
+
+func WithMetrics(m *metrics.Metrics) Option {
+	return func(s *Service) {
+		s.metrics = m
+	}
 }
 
 // New constructs a Service.
-func New(tenants TenantStore, clients ClientStore, users UserCounter) *Service {
-	return &Service{tenants: tenants, clients: clients, userCounter: users}
+func New(tenants TenantStore, clients ClientStore, users UserCounter, opts ...Option) *Service {
+	s := &Service{tenants: tenants, clients: clients, userCounter: users}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 func (s *Service) CreateTenant(ctx context.Context, name string) (*models.Tenant, error) {
@@ -67,9 +100,9 @@ func (s *Service) CreateTenant(ctx context.Context, name string) (*models.Tenant
 		}
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to create tenant")
 	}
-
-	// TODO: Emit tenant.created with the admin actor ID in the service
-	// after successful create to satisfy FR-1.
+	s.logAudit(ctx, string(audit.EventTenantCreated),
+		"tenant_id", t.ID)
+	s.incrementTenantCreated()
 
 	return t, nil
 }
@@ -119,11 +152,11 @@ func (s *Service) CreateClient(ctx context.Context, req *models.CreateClientRequ
 	secretHash := ""
 	var err error
 	if !req.Public {
-		secret, err = generateSecret()
+		secret, err = secrets.Generate()
 		if err != nil {
 			return nil, err
 		}
-		secretHash, err = hashSecret(secret)
+		secretHash, err = secrets.Hash(secret)
 		if err != nil {
 			return nil, err
 		}
@@ -204,11 +237,11 @@ func (s *Service) UpdateClient(ctx context.Context, id uuid.UUID, req *models.Up
 
 	rotatedSecret := ""
 	if req.RotateSecret {
-		rotatedSecret, err = generateSecret()
+		rotatedSecret, err = secrets.Generate()
 		if err != nil {
 			return nil, err
 		}
-		client.ClientSecretHash, err = hashSecret(rotatedSecret)
+		client.ClientSecretHash, err = secrets.Hash(rotatedSecret)
 		if err != nil {
 			return nil, err
 		}
@@ -262,28 +295,6 @@ func (s *Service) ResolveClient(ctx context.Context, clientID string) (*models.C
 	return client, tenant, nil
 }
 
-func generateSecret() (string, error) {
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", dErrors.Wrap(err, dErrors.CodeInternal, "could not generate client secret")
-	}
-	return base64.RawURLEncoding.EncodeToString(buf), nil
-}
-
-func hashSecret(secret string) (string, error) {
-	if secret == "" {
-		return "", dErrors.New(dErrors.CodeValidation, "client secret cannot be empty")
-	}
-	hashed, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
-	if err != nil {
-		if errors.Is(err, bcrypt.ErrPasswordTooLong) {
-			return "", dErrors.New(dErrors.CodeValidation, "client secret is too long")
-		}
-		return "", dErrors.Wrap(err, dErrors.CodeInternal, "could not hash client secret")
-	}
-	return string(hashed), nil
-}
-
 func toResponse(client *models.Client, secret string) *models.ClientResponse {
 	return &models.ClientResponse{
 		ID:            client.ID,
@@ -297,5 +308,31 @@ func toResponse(client *models.Client, secret string) *models.ClientResponse {
 		Status:        client.Status,
 		CreatedAt:     client.CreatedAt,
 		UpdatedAt:     client.UpdatedAt,
+	}
+}
+
+func (s *Service) logAudit(ctx context.Context, event string, attributes ...any) {
+	// Add request_id from context if available
+	if requestID := middleware.GetRequestID(ctx); requestID != "" {
+		attributes = append(attributes, "request_id", requestID)
+	}
+	args := append(attributes, "event", event, "log_type", "audit")
+	if s.logger != nil {
+		s.logger.InfoContext(ctx, event, args...)
+	}
+	if s.auditPublisher == nil {
+		return
+	}
+	userID := attrs.ExtractString(attributes, "user_id")
+	_ = s.auditPublisher.Emit(ctx, audit.Event{
+		UserID:  userID,
+		Subject: userID,
+		Action:  event,
+	})
+}
+
+func (s *Service) incrementTenantCreated() {
+	if s.metrics != nil {
+		s.metrics.TenantCreated.Inc()
 	}
 }

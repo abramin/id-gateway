@@ -27,4 +27,5 @@ const (
 	EventAuthFailed       AuditEvent = "auth_failed"
 	EventUserDeleted      AuditEvent = "user_deleted"
 	EventSessionsRevoked  AuditEvent = "sessions_revoked"
+	EventTenantCreated    AuditEvent = "tenant_created"
 )

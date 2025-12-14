@@ -39,6 +39,7 @@ type Handler struct {
 
 // New creates a new auth Handler with the given service and logger.
 func New(auth Service, logger *slog.Logger, deviceCookieName string, deviceCookieMaxAge int) *Handler {
+	// TODO: Make cookie name and age configurable via env vars.
 	if deviceCookieName == "" {
 		deviceCookieName = "__Secure-Device-ID"
 	}

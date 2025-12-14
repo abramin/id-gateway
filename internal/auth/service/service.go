@@ -129,43 +129,6 @@ func WithTRL(trl revocation.TokenRevocationList) Option {
 	}
 }
 
-func (s *Service) generateTokenArtifacts(session *models.Session) (*tokenArtifacts, error) {
-	// Generate tokens before mutating persistence state so failures do not leave partial writes.
-	accessToken, accessTokenJTI, err := s.jwt.GenerateAccessTokenWithJTI(session.UserID, session.ID, session.ClientID, session.RequestedScope)
-	if err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate access token")
-	}
-
-	idToken, err := s.jwt.GenerateIDToken(session.UserID, session.ID, session.ClientID)
-	if err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate ID token")
-	}
-
-	refreshToken, err := s.jwt.CreateRefreshToken()
-	if err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to create refresh token")
-	}
-
-	now := time.Now()
-	tokenRecord, err := models.NewRefreshToken(
-		refreshToken,
-		session.ID,
-		now,
-		now.Add(s.RefreshTokenTTL),
-	)
-	if err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to create refresh token record")
-	}
-
-	return &tokenArtifacts{
-		accessToken:    accessToken,
-		accessTokenJTI: accessTokenJTI,
-		idToken:        idToken,
-		refreshToken:   refreshToken,
-		refreshRecord:  tokenRecord,
-	}, nil
-}
-
 func New(
 	users UserStore,
 	sessions SessionStore,
@@ -243,6 +206,7 @@ func (s *Service) logAudit(ctx context.Context, event string, attributes ...any)
 		return
 	}
 	userID := attrs.ExtractString(attributes, "user_id")
+	// TODO: log errors from audit publisher?
 	_ = s.auditPublisher.Emit(ctx, audit.Event{
 		UserID:  userID,
 		Subject: userID,
@@ -363,4 +327,41 @@ func (s *Service) handleTokenError(ctx context.Context, err error, clientID stri
 
 	s.authFailure(ctx, meta.auditReason, false, attrs...)
 	return dErrors.New(meta.errorCode, meta.publicMsg)
+}
+
+func (s *Service) generateTokenArtifacts(session *models.Session) (*tokenArtifacts, error) {
+	// Generate tokens before mutating persistence state so failures do not leave partial writes.
+	accessToken, accessTokenJTI, err := s.jwt.GenerateAccessTokenWithJTI(session.UserID, session.ID, session.ClientID, session.RequestedScope)
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate access token")
+	}
+
+	idToken, err := s.jwt.GenerateIDToken(session.UserID, session.ID, session.ClientID)
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate ID token")
+	}
+
+	refreshToken, err := s.jwt.CreateRefreshToken()
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to create refresh token")
+	}
+
+	now := time.Now()
+	tokenRecord, err := models.NewRefreshToken(
+		refreshToken,
+		session.ID,
+		now,
+		now.Add(s.RefreshTokenTTL),
+	)
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to create refresh token record")
+	}
+
+	return &tokenArtifacts{
+		accessToken:    accessToken,
+		accessTokenJTI: accessTokenJTI,
+		idToken:        idToken,
+		refreshToken:   refreshToken,
+		refreshRecord:  tokenRecord,
+	}, nil
 }
