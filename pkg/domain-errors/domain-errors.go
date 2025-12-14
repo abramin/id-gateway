@@ -7,18 +7,19 @@ import "errors"
 type Code string
 
 const (
-	CodeNotFound        Code = "not_found"
-	CodeBadRequest      Code = "bad_request"
-	CodeInvalidInput    Code = "invalid_input"
-	CodeValidation      Code = "validation_failed"
-	CodeInternal        Code = "internal_error"
-	CodeConflict        Code = "conflict"
-	CodeUnauthorized    Code = "unauthorized"
-	CodeForbidden       Code = "forbidden"
-	CodeInvalidConsent  Code = "invalid_consent"
-	CodeMissingConsent  Code = "missing_consent"
-	CodePolicyViolation Code = "policy_violation"
-	CodeTimeout         Code = "timeout"
+	CodeNotFound           Code = "not_found"
+	CodeBadRequest         Code = "bad_request"
+	CodeInvalidInput       Code = "invalid_input"
+	CodeValidation         Code = "validation_failed"
+	CodeInternal           Code = "internal_error"
+	CodeConflict           Code = "conflict"
+	CodeUnauthorized       Code = "unauthorized"
+	CodeForbidden          Code = "forbidden"
+	CodeInvalidConsent     Code = "invalid_consent"
+	CodeMissingConsent     Code = "missing_consent"
+	CodePolicyViolation    Code = "policy_violation"
+	CodeTimeout            Code = "timeout"
+	CodeInvariantViolation Code = "invariant_violation"
 )
 
 // DomainError wraps domain or infrastructure failures with a stable code.

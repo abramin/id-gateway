@@ -15,8 +15,6 @@ import (
 	httpError "credo/internal/transport/http/error"
 	jsonResponse "credo/internal/transport/http/json"
 	dErrors "credo/pkg/domain-errors"
-	s "credo/pkg/string"
-	"credo/pkg/validation"
 )
 
 // Service defines the interface for authentication operations.
@@ -91,12 +89,8 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.Sanitize(req)
-	// default to "openid" scope if none provided
-	if len(req.Scopes) == 0 {
-		req.Scopes = []string{models.ScopeOpenID.String()}
-	}
-	if err := validation.Validate(req); err != nil {
+	req.Normalize()
+	if err := req.Validate(); err != nil {
 		h.logger.WarnContext(ctx, "invalid authorize request",
 			"error", err,
 			"request_id", requestID,
@@ -161,8 +155,7 @@ func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
 		return
 	}
-	s.Sanitize(&req)
-	if err := validation.Validate(&req); err != nil {
+	if err := req.Validate(); err != nil {
 		h.logger.WarnContext(ctx, "invalid token request",
 			"error", err,
 			"request_id", requestID,

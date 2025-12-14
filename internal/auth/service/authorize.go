@@ -26,12 +26,9 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 	}
 
 	firstName, lastName := email.DeriveNameFromEmail(req.Email)
-	newUser := &models.User{
-		ID:        uuid.New(),
-		Email:     req.Email,
-		FirstName: firstName,
-		LastName:  lastName,
-		Verified:  false,
+	newUser, err := models.NewUser(uuid.New(), req.Email, firstName, lastName, false)
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to create user")
 	}
 	user, err := s.users.FindOrCreateByEmail(ctx, req.Email, newUser)
 	if err != nil {
@@ -48,17 +45,20 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 	now := time.Now()
 	scopes := req.Scopes
 	if len(scopes) == 0 {
-		scopes = []string{models.ScopeOpenID.String()}
+		scopes = []string{string(models.ScopeOpenID)}
 	}
 
 	// Generate OAuth 2.0 authorization code
-	authCode := &models.AuthorizationCodeRecord{
-		Code:        "authz_" + uuid.New().String(),
-		SessionID:   uuid.New(),
-		RedirectURI: req.RedirectURI,
-		ExpiresAt:   now.Add(10 * time.Minute),
-		Used:        false,
-		CreatedAt:   now,
+	sessionID := uuid.New()
+	authCode, err := models.NewAuthorizationCode(
+		"authz_"+uuid.New().String(),
+		sessionID,
+		req.RedirectURI,
+		now,
+		now.Add(10*time.Minute),
+	)
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to create authorization code")
 	}
 
 	if err := s.codes.Create(ctx, authCode); err != nil {
@@ -80,20 +80,24 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 
 	deviceFingerprint := s.deviceService.ComputeFingerprint(userAgent)
 
-	newSession := &models.Session{
-		ID:                    authCode.SessionID,
-		UserID:                user.ID,
-		ClientID:              req.ClientID,
-		RequestedScope:        scopes,
-		DeviceID:              deviceID,
-		DeviceFingerprintHash: deviceFingerprint,
-		DeviceDisplayName:     deviceDisplayName,
-		ApproximateLocation:   "",
-		Status:                StatusPendingConsent,
-		CreatedAt:             now,
-		ExpiresAt:             now.Add(s.SessionTTL),
-		LastSeenAt:            now,
+	newSession, err := models.NewSession(
+		authCode.SessionID,
+		user.ID,
+		req.ClientID,
+		scopes,
+		string(models.SessionStatusPendingConsent),
+		now,
+		now.Add(s.SessionTTL),
+		now,
+	)
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to create session")
 	}
+	// Set optional device binding fields
+	newSession.DeviceID = deviceID
+	newSession.DeviceFingerprintHash = deviceFingerprint
+	newSession.DeviceDisplayName = deviceDisplayName
+	newSession.ApproximateLocation = ""
 
 	err = s.sessions.Create(ctx, newSession)
 	if err != nil {

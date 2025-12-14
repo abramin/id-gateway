@@ -44,7 +44,7 @@ func (s *ServiceSuite) TestService_RevokeSession() {
 		session := &models.Session{
 			ID:     sessionID,
 			UserID: otherUserID,
-			Status: StatusActive,
+			Status: string(models.SessionStatusActive),
 		}
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(session, nil)
 
@@ -61,7 +61,7 @@ func (s *ServiceSuite) TestService_RevokeSession() {
 			ID:                 sessionID,
 			UserID:             userID,
 			ClientID:           "demo-client",
-			Status:             StatusActive,
+			Status:             string(models.SessionStatusActive),
 			LastAccessTokenJTI: jti,
 		}
 

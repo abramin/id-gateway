@@ -21,7 +21,7 @@ func (s *ServiceSuite) TestListSessions() {
 	activeCurrent := &models.Session{
 		ID:                currentSessionID,
 		UserID:            userID,
-		Status:            StatusActive,
+		Status:            string(models.SessionStatusActive),
 		DeviceDisplayName: "Chrome on macOS",
 		CreatedAt:         now.Add(-2 * time.Hour),
 		LastSeenAt:        now.Add(-1 * time.Minute),
@@ -30,7 +30,7 @@ func (s *ServiceSuite) TestListSessions() {
 	activeOther := &models.Session{
 		ID:                uuid.New(),
 		UserID:            userID,
-		Status:            StatusActive,
+		Status:            string(models.SessionStatusActive),
 		DeviceDisplayName: "Safari on iPhone",
 		CreatedAt:         now.Add(-5 * time.Hour),
 		LastSeenAt:        now.Add(-30 * time.Minute),
@@ -39,7 +39,7 @@ func (s *ServiceSuite) TestListSessions() {
 	revoked := &models.Session{
 		ID:         uuid.New(),
 		UserID:     userID,
-		Status:     StatusRevoked,
+		Status:     string(models.SessionStatusRevoked),
 		CreatedAt:  now.Add(-24 * time.Hour),
 		LastSeenAt: now.Add(-23 * time.Hour),
 		ExpiresAt:  now.Add(24 * time.Hour),
@@ -47,7 +47,7 @@ func (s *ServiceSuite) TestListSessions() {
 	expired := &models.Session{
 		ID:         uuid.New(),
 		UserID:     userID,
-		Status:     StatusActive,
+		Status:     string(models.SessionStatusActive),
 		CreatedAt:  now.Add(-48 * time.Hour),
 		LastSeenAt: now.Add(-47 * time.Hour),
 		ExpiresAt:  now.Add(-1 * time.Hour),

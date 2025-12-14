@@ -13,15 +13,14 @@ import (
 	"credo/internal/audit"
 	"credo/internal/auth/device"
 	"credo/internal/auth/models"
+	authCodeStore "credo/internal/auth/store/authorization-code"
+	refreshTokenStore "credo/internal/auth/store/refresh-token"
 	"credo/internal/auth/store/revocation"
+	sessionStore "credo/internal/auth/store/session"
 	"credo/internal/platform/metrics"
 	"credo/internal/platform/middleware"
 	"credo/pkg/attrs"
 	dErrors "credo/pkg/domain-errors"
-
-	authCodeStore "credo/internal/auth/store/authorization-code"
-	refreshTokenStore "credo/internal/auth/store/refresh-token"
-	sessionStore "credo/internal/auth/store/session"
 )
 
 type Service struct {
@@ -40,14 +39,9 @@ type Service struct {
 }
 
 const (
-	StatusPendingConsent       = "pending_consent"
-	StatusActive               = "active"
-	StatusRevoked              = "revoked"
-	GrantTypeAuthorizationCode = "authorization_code"
-	GrantTypeRefreshToken      = "refresh_token"
-	defaultSessionTTL          = 24 * time.Hour
-	defaultTokenTTL            = 15 * time.Minute
-	defaultRefreshTokenTTL     = 30 * 24 * time.Hour
+	defaultSessionTTL      = 24 * time.Hour
+	defaultTokenTTL        = 15 * time.Minute
+	defaultRefreshTokenTTL = 30 * 24 * time.Hour
 )
 
 type Config struct {
@@ -152,13 +146,14 @@ func (s *Service) generateTokenArtifacts(session *models.Session) (*tokenArtifac
 	}
 
 	now := time.Now()
-	tokenRecord := &models.RefreshTokenRecord{
-		Token:           refreshToken,
-		SessionID:       session.ID,
-		CreatedAt:       now,
-		LastRefreshedAt: nil,
-		ExpiresAt:       now.Add(s.RefreshTokenTTL), // 30 days
-		Used:            false,
+	tokenRecord, err := models.NewRefreshToken(
+		refreshToken,
+		session.ID,
+		now,
+		now.Add(s.RefreshTokenTTL),
+	)
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to create refresh token record")
 	}
 
 	return &tokenArtifacts{
