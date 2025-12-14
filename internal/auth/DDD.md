@@ -78,7 +78,7 @@ This aligns with Credo’s `AGENTS.md` rules:
 
 **AuthorizationCodeRecord** and **RefreshTokenRecord** are best modeled as:
 
-- Entities that are *associated with* the `Session` aggregate and must obey strict invariants:
+- Entities that are _associated with_ the `Session` aggregate and must obey strict invariants:
   - auth code is single-use, expires, binds to redirect URI
   - refresh token rotates (consume-once), expires, binds to session
 
@@ -119,7 +119,7 @@ This is aligned with Credo’s atomic multi-write requirement.
 
 ### 2.7 Domain events / audit (current)
 
-Audit emissions in `internal/auth/service/service.go#logAudit` behave like *domain events* (facts emitted on lifecycle transitions), but they are not explicitly modeled as domain events in code.
+Audit emissions in `internal/auth/service/service.go#logAudit` behave like _domain events_ (facts emitted on lifecycle transitions), but they are not explicitly modeled as domain events in code.
 
 That is acceptable for MVP, but the key DDD intent is: **events are emitted by the service at domain transitions**, not by handlers.
 
@@ -132,7 +132,7 @@ That is acceptable for MVP, but the key DDD intent is: **events are emitted by t
 `internal/auth/models/models.go` and `internal/auth/models/responses.go` contain `validate:` struct tags (e.g., `internal/auth/models/models.go:12-17`).
 
 - In DDD terms, this couples the domain model to a validation framework (and often to transport concerns).
-- In Credo’s `AGENTS.md` terms, validation rules on *domain entities* are discouraged when they are API-input rules.
+- In Credo’s `AGENTS.md` terms, validation rules on _domain entities_ are discouraged when they are API-input rules.
 
 **Preferred direction**
 
@@ -143,7 +143,7 @@ That is acceptable for MVP, but the key DDD intent is: **events are emitted by t
 
 `internal/auth/handler/handler.go` sets default scopes (“openid”) in the handler before calling the service.
 
-- Defaulting is a *use-case rule* (policy) and should live in the service or in a request “Normalize/Validate” method, not in the HTTP handler.
+- Defaulting is a _use-case rule_ (policy) and should live in the service or in a request “Normalize/Validate” method, not in the HTTP handler.
 
 ### 3.3 `internal/auth/models` mixes domain entities with transport DTOs
 
@@ -202,4 +202,3 @@ DDD prefers:
    - Extend `AuthStoreTx` (or add a separate tx boundary) so user+code+session writes are all-or-nothing.
 5. **Optionally split domain vs transport models**
    - Reduce accidental coupling and keep invariants vs API rules clean.
-

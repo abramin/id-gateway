@@ -70,6 +70,7 @@ type AuthStoreTx interface {
 
 // TxAuthStores groups the stores used inside a transaction.
 type TxAuthStores struct {
+	Users         UserStore
 	Codes         AuthCodeStore
 	Sessions      SessionStore
 	RefreshTokens RefreshTokenStore
@@ -198,8 +199,16 @@ func New(
 		sessions:      sessions,
 		codes:         codes,
 		refreshTokens: refreshTokens,
-		tx:            &mutexAuthTx{mu: &sync.Mutex{}, stores: TxAuthStores{Codes: codes, Sessions: sessions, RefreshTokens: refreshTokens}},
-		Config:        cfg,
+		tx: &mutexAuthTx{
+			mu: &sync.Mutex{},
+			stores: TxAuthStores{
+				Users:         users,
+				Codes:         codes,
+				Sessions:      sessions,
+				RefreshTokens: refreshTokens,
+			},
+		},
+		Config: cfg,
 	}
 
 	for _, opt := range opts {
