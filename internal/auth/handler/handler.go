@@ -99,6 +99,7 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: Should this be done in middleware or service layer?
 	// Extract device ID cookie (if present) for device binding.
 	if cookie, err := r.Cookie(h.deviceCookieName); err == nil && cookie != nil {
 		ctx = middleware.WithDeviceID(ctx, cookie.Value)
@@ -120,6 +121,7 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		"client_id", req.ClientID,
 	)
 
+	// TODO: Should this be done in middleware or service layer?
 	// Set device ID cookie (Phase 1: soft launch — generate cookie, no enforcement).
 	if res.DeviceID != "" {
 		http.SetCookie(w, &http.Cookie{
@@ -213,7 +215,6 @@ func (h *Handler) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
-
 	userIDStr := middleware.GetUserID(ctx)
 	sessionIDStr := middleware.GetSessionID(ctx)
 
@@ -255,8 +256,8 @@ func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleRevokeSession(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
-
 	userIDStr := middleware.GetUserID(ctx)
+
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		h.logger.WarnContext(ctx, "invalid user id in context",
@@ -344,12 +345,7 @@ func (h *Handler) HandleRevoke(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
 
-	// Parse request body
-	var req struct {
-		Token         string `json:"token"`
-		TokenTypeHint string `json:"token_type_hint,omitempty"`
-	}
-
+	var req models.RevokeTokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.logger.WarnContext(ctx, "failed to decode revoke request",
 			"error", err,
@@ -358,22 +354,15 @@ func (h *Handler) HandleRevoke(w http.ResponseWriter, r *http.Request) {
 		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
 		return
 	}
-
-	// Validate required field
-	if strings.TrimSpace(req.Token) == "" {
-		httpError.WriteError(w, dErrors.New(dErrors.CodeValidation, "token is required"))
+	req.Normalize()
+	if err := req.Validate(); err != nil {
+		h.logger.WarnContext(ctx, "invalid revoke request",
+			"error", err,
+			"request_id", requestID,
+		)
+		httpError.WriteError(w, err)
 		return
 	}
-
-	// Validate token_type_hint if provided
-	if req.TokenTypeHint != "" {
-		if req.TokenTypeHint != "access_token" && req.TokenTypeHint != "refresh_token" {
-			httpError.WriteError(w, dErrors.New(dErrors.CodeValidation, "token_type_hint must be 'access_token' or 'refresh_token'"))
-			return
-		}
-	}
-
-	// Call service to revoke the token
 	if err := h.auth.RevokeToken(ctx, req.Token, req.TokenTypeHint); err != nil {
 		h.logger.ErrorContext(ctx, "failed to revoke token",
 			"error", err,

@@ -133,3 +133,41 @@ func (r *TokenRequest) Validate() error {
 	}
 	return nil
 }
+
+type RevokeTokenRequest struct {
+	Token         string `json:"token"`
+	ClientID      string `json:"client_id"`
+	TokenTypeHint string `json:"token_type_hint,omitempty"`
+}
+
+// Validate checks API input rules.
+func (r *RevokeTokenRequest) Validate() error {
+	if r == nil {
+		return dErrors.New(dErrors.CodeBadRequest, "request is required")
+	}
+	if r.Token == "" {
+		return dErrors.New(dErrors.CodeValidation, "token is required")
+	}
+	if r.ClientID == "" {
+		return dErrors.New(dErrors.CodeValidation, "client_id is required")
+	}
+	if r.TokenTypeHint != "" {
+		allowed := map[string]struct{}{
+			string(TokenTypeAccess):  {},
+			string(TokenTypeRefresh): {},
+		}
+		if _, ok := allowed[r.TokenTypeHint]; !ok {
+			return dErrors.New(dErrors.CodeValidation, "token_type_hint must be access_token or refresh_token if provided")
+		}
+	}
+	return nil
+}
+
+func (r *RevokeTokenRequest) Normalize() {
+	if r == nil {
+		return
+	}
+	r.Token = strings.TrimSpace(r.Token)
+	r.ClientID = strings.TrimSpace(r.ClientID)
+	r.TokenTypeHint = strings.TrimSpace(r.TokenTypeHint)
+}
