@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"credo/internal/audit"
@@ -17,26 +18,39 @@ func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.Token
 		artifacts     *tokenArtifacts
 	)
 
+	// Find refresh token and session (non-transactional reads for validation)
+	refreshRecord, err := s.refreshTokens.Find(ctx, req.RefreshToken)
+	if err != nil {
+		return nil, s.handleTokenError(ctx, err, req.ClientID, "", "refresh")
+	}
+
+	session, err = s.sessions.FindByID(ctx, refreshRecord.SessionID)
+	if err != nil {
+		return nil, s.handleTokenError(ctx, err, req.ClientID, refreshRecord.SessionID.String(), "refresh")
+	}
+
+	// Validate client and user status before issuing new tokens (PRD-026A FR-4.5.4)
+	tc, err := s.resolveTokenContext(ctx, session)
+	if err != nil {
+		return nil, s.handleTokenError(ctx, err, req.ClientID, session.ID.String(), "refresh")
+	}
+
+	if models.UserStatus(tc.Client.Status) != models.UserStatusActive {
+		return nil, dErrors.New(dErrors.CodeForbidden, "client is not active")
+	}
+
+	// Now perform transactional updates
 	txErr := s.tx.RunInTx(ctx, func(stores TxAuthStores) error {
 		var err error
+		// Consume the refresh token (transactional to prevent replay)
 		refreshRecord, err = stores.RefreshTokens.ConsumeRefreshToken(ctx, req.RefreshToken, now)
 		if err != nil {
-			return err
+			return fmt.Errorf("consume refresh token: %w", err)
 		}
 
 		session, err = stores.Sessions.FindByID(ctx, refreshRecord.SessionID)
 		if err != nil {
-			return err
-		}
-
-		// Validate client and user status before issuing new tokens (PRD-026A FR-4.5.4)
-		tc, err := s.resolveTokenContext(ctx, session)
-		if err != nil {
-			return dErrors.Wrap(err, dErrors.CodeUnauthorized, "invalid token context")
-		}
-
-		if models.UserStatus(tc.Client.Status) != models.UserStatusActive {
-			return dErrors.New(dErrors.CodeForbidden, "client is not active")
+			return fmt.Errorf("fetch session: %w", err)
 		}
 
 		mutableSession := *session
@@ -46,15 +60,15 @@ func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.Token
 
 		artifacts, err = s.generateTokenArtifacts(&mutableSession)
 		if err != nil {
-			return err
+			return dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate tokens")
 		}
 
 		session, err = stores.Sessions.AdvanceLastRefreshed(ctx, session.ID, req.ClientID, now, artifacts.accessTokenJTI, mutableSession.DeviceID, mutableSession.DeviceFingerprintHash)
 		if err != nil {
-			return err
+			return fmt.Errorf("advance session last refreshed: %w", err)
 		}
 		if err := stores.RefreshTokens.Create(ctx, artifacts.refreshRecord); err != nil {
-			return err
+			return dErrors.Wrap(err, dErrors.CodeInternal, "failed to create refresh token")
 		}
 		return nil
 	})

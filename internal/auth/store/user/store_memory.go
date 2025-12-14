@@ -2,17 +2,18 @@ package user
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/google/uuid"
 
 	"credo/internal/auth/models"
-	dErrors "credo/pkg/domain-errors"
+	"credo/internal/facts"
 )
 
 // ErrNotFound is returned when a requested record is not found in the store.
 // Services should check for this error using errors.Is(err, store.ErrNotFound).
-var ErrNotFound = dErrors.New(dErrors.CodeNotFound, "record not found")
+var ErrNotFound = facts.ErrNotFound
 
 // Error Contract:
 // All store methods follow this error pattern:
@@ -48,7 +49,7 @@ func (s *InMemoryUserStore) FindByID(_ context.Context, id uuid.UUID) (*models.U
 	if user, ok := s.users[id.String()]; ok {
 		return user, nil
 	}
-	return nil, ErrNotFound
+	return nil, fmt.Errorf("user not found: %w", ErrNotFound)
 }
 
 func (s *InMemoryUserStore) FindByEmail(ctx context.Context, email string) (*models.User, error) {
@@ -59,7 +60,7 @@ func (s *InMemoryUserStore) FindByEmail(ctx context.Context, email string) (*mod
 			return user, nil
 		}
 	}
-	return nil, ErrNotFound
+	return nil, fmt.Errorf("user not found: %w", ErrNotFound)
 }
 
 // FindOrCreateByTenantAndEmail atomically finds a user by tenant and email or creates it if not found.
@@ -88,5 +89,5 @@ func (s *InMemoryUserStore) Delete(ctx context.Context, id uuid.UUID) error {
 		delete(s.users, key)
 		return nil
 	}
-	return ErrNotFound
+	return fmt.Errorf("user not found: %w", ErrNotFound)
 }

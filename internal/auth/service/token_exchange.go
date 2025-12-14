@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"credo/internal/audit"
@@ -20,15 +21,15 @@ func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.Tok
 	)
 	code, err := s.codes.FindByCode(ctx, req.Code)
 	if err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeUnauthorized, "invalid code")
+		return nil, s.handleTokenError(ctx, err, req.ClientID, "", "code")
 	}
 	session, err = s.sessions.FindByID(ctx, code.SessionID)
 	if err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeUnauthorized, "invalid session")
+		return nil, s.handleTokenError(ctx, err, req.ClientID, code.SessionID.String(), "code")
 	}
 	tc, err := s.resolveTokenContext(ctx, session)
 	if err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeUnauthorized, "invalid token context")
+		return nil, s.handleTokenError(ctx, err, req.ClientID, code.SessionID.String(), "code")
 	}
 
 	if models.UserStatus(tc.Client.Status) != models.UserStatusActive {
@@ -39,14 +40,17 @@ func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.Tok
 		codeRecord, err = stores.Codes.ConsumeAuthCode(ctx, req.Code, req.RedirectURI, now)
 		if err != nil {
 			if errors.Is(err, authCodeStore.ErrAuthCodeUsed) && codeRecord != nil {
-				_ = stores.Sessions.RevokeSessionIfActive(ctx, codeRecord.SessionID, now)
+				err = stores.Sessions.RevokeSessionIfActive(ctx, codeRecord.SessionID, now)
+				if err != nil {
+					return dErrors.Wrap(err, dErrors.CodeInternal, "failed to revoke session for used code")
+				}
 			}
-			return err
+			return fmt.Errorf("consume authorization code: %w", err)
 		}
 
 		session, err = stores.Sessions.FindByID(ctx, codeRecord.SessionID)
 		if err != nil {
-			return err
+			return fmt.Errorf("fetch session: %w", err)
 		}
 
 		mutableSession := *session
@@ -61,21 +65,25 @@ func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.Tok
 
 		artifacts, err = s.generateTokenArtifacts(&mutableSession)
 		if err != nil {
-			return err
+			return dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate tokens")
 		}
 
-		session, err = stores.Sessions.AdvanceLastSeen(ctx, session.ID, req.ClientID, now, artifacts.accessTokenJTI, activate, mutableSession.DeviceID, mutableSession.DeviceFingerprintHash)
+		session, err = stores.Sessions.AdvanceLastSeen(ctx, session.ID, tc.Client.ID.String(), now, artifacts.accessTokenJTI, activate, mutableSession.DeviceID, mutableSession.DeviceFingerprintHash)
 		if err != nil {
-			return err
+			return fmt.Errorf("advance last seen: %w", err)
 		}
 
 		if err := stores.RefreshTokens.Create(ctx, artifacts.refreshRecord); err != nil {
-			return err
+			return dErrors.Wrap(err, dErrors.CodeInternal, "failed to create refresh token")
 		}
 		return nil
 	})
 	if txErr != nil {
-		return nil, s.handleAuthorizationCodeError(ctx, txErr, req, codeRecord)
+		recordID := ""
+		if codeRecord != nil {
+			recordID = codeRecord.SessionID.String()
+		}
+		return nil, s.handleTokenError(ctx, txErr, req.ClientID, recordID, "code")
 	}
 
 	s.logAudit(ctx,
@@ -93,12 +101,4 @@ func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.Tok
 		TokenType:    "Bearer",
 		ExpiresIn:    s.TokenTTL, // Access token TTL
 	}, nil
-}
-
-func (s *Service) handleAuthorizationCodeError(ctx context.Context, err error, req *models.TokenRequest, codeRecord *models.AuthorizationCodeRecord) error {
-	recordID := ""
-	if codeRecord != nil {
-		recordID = codeRecord.SessionID.String()
-	}
-	return s.handleTokenError(ctx, err, req.ClientID, recordID, "code")
 }

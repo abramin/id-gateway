@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	authCodeStore "credo/internal/auth/store/authorization-code"
 	refreshTokenStore "credo/internal/auth/store/refresh-token"
 	sessionStore "credo/internal/auth/store/session"
+	"credo/internal/facts"
 	dErrors "credo/pkg/domain-errors"
 
 	"github.com/stretchr/testify/assert"
@@ -114,11 +116,11 @@ func (s *ServiceSuite) TestHandleTokenError() {
 		// Domain errors
 		{
 			name:           "bad request - redirect_uri mismatch",
-			err:            dErrors.New(dErrors.CodeBadRequest, "redirect_uri mismatch"),
+			err:            fmt.Errorf("redirect_uri mismatch: %w", facts.ErrBadRequest),
 			flow:           "code",
 			expectedCode:   dErrors.CodeBadRequest,
-			expectedMsg:    "redirect_uri mismatch",
-			auditReason:    "redirect_uri_mismatch",
+			expectedMsg:    "redirect_uri mismatch: bad request",
+			auditReason:    "bad_request",
 			expectRecordID: false,
 		},
 		{
@@ -145,7 +147,7 @@ func (s *ServiceSuite) TestHandleTokenError() {
 			err:            errors.New("random error"),
 			flow:           "code",
 			expectedCode:   dErrors.CodeInternal,
-			expectedMsg:    "internal server error",
+			expectedMsg:    "token handling failed",
 			auditReason:    "internal_error",
 			expectRecordID: false,
 		},

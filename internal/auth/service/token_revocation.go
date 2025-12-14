@@ -43,7 +43,7 @@ func (s *Service) RevokeToken(ctx context.Context, token string, tokenTypeHint s
 		if err == nil {
 			outcome, err := s.revokeSessionInternal(ctx, session, jti)
 			if err != nil {
-				return err
+				return dErrors.Wrap(err, dErrors.CodeInternal, "failed to revoke session")
 			}
 			if outcome == revokeSessionOutcomeAlreadyRevoked {
 				s.logAudit(ctx, "token_revocation_noop",
@@ -65,7 +65,7 @@ func (s *Service) RevokeToken(ctx context.Context, token string, tokenTypeHint s
 		if err == nil {
 			outcome, err := s.revokeSessionInternal(ctx, session, "")
 			if err != nil {
-				return err
+				return dErrors.Wrap(err, dErrors.CodeInternal, "failed to revoke session")
 			}
 			if outcome == revokeSessionOutcomeAlreadyRevoked {
 				s.logAudit(ctx, "token_revocation_noop",

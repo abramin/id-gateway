@@ -1,7 +1,6 @@
 package jwttoken
 
 import (
-	dErrors "credo/pkg/domain-errors"
 	"testing"
 	"time"
 
@@ -38,7 +37,7 @@ func Test_GenerateAccessToken(t *testing.T) {
 
 func Test_ValidateToken_InvalidToken(t *testing.T) {
 	_, err := jwtService.ValidateToken("invalid-token-string")
-	require.ErrorIs(t, err, dErrors.New(dErrors.CodeUnauthorized, "invalid token"))
+	require.ErrorContains(t, err, "invalid token")
 }
 
 func Test_ValidateToken_ExpiredToken(t *testing.T) {
@@ -47,7 +46,7 @@ func Test_ValidateToken_ExpiredToken(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = jwtService.ValidateToken(token)
-	require.ErrorIs(t, err, dErrors.New(dErrors.CodeUnauthorized, "token has expired"))
+	require.ErrorContains(t, err, "token has expired")
 }
 
 func Test_ValidateToken_ValidTokent(t *testing.T) {

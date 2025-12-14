@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,6 +13,7 @@ import (
 	"credo/internal/audit"
 	"credo/internal/auth/device"
 	"credo/internal/auth/models"
+	"credo/internal/facts"
 	"credo/internal/platform/middleware"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/email"
@@ -23,7 +26,14 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 
 	req.Normalize()
 	if err := req.Validate(); err != nil {
-		return nil, err
+		code := dErrors.CodeValidation
+		if errors.Is(err, facts.ErrBadRequest) {
+			code = dErrors.CodeBadRequest
+		}
+		// Extract just the context message without the sentinel
+		msg := strings.TrimSuffix(err.Error(), ": "+facts.ErrInvalidInput.Error())
+		msg = strings.TrimSuffix(msg, ": "+facts.ErrBadRequest.Error())
+		return nil, dErrors.New(code, msg)
 	}
 
 	parsedURI, err := url.Parse(req.RedirectURI)

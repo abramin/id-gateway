@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	dErrors "credo/pkg/domain-errors"
+	"credo/internal/facts"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -185,18 +185,18 @@ func (s *JWTService) ValidateToken(tokenString string) (*AccessTokenClaims, erro
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, dErrors.New(dErrors.CodeUnauthorized, "token has expired")
+			return nil, fmt.Errorf("token has expired: %w", facts.ErrExpired)
 		}
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid token")
+		return nil, fmt.Errorf("invalid token: %w", facts.ErrInvalidInput)
 	}
 
 	if !parsed.Valid {
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid token")
+		return nil, fmt.Errorf("invalid token: %w", facts.ErrInvalidInput)
 	}
 
 	claims, ok := parsed.Claims.(*AccessTokenClaims)
 	if !ok {
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid token claims")
+		return nil, fmt.Errorf("invalid token claims: %w", facts.ErrInvalidInput)
 	}
 
 	return claims, nil
@@ -212,18 +212,18 @@ func (s *JWTService) ValidateIDToken(tokenString string) (*IDTokenClaims, error)
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, dErrors.New(dErrors.CodeUnauthorized, "token has expired")
+			return nil, fmt.Errorf("token has expired: %w", facts.ErrExpired)
 		}
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid token")
+		return nil, fmt.Errorf("invalid token: %w", facts.ErrInvalidInput)
 	}
 
 	if !parsed.Valid {
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid token")
+		return nil, fmt.Errorf("invalid token: %w", facts.ErrInvalidInput)
 	}
 
 	claims, ok := parsed.Claims.(*IDTokenClaims)
 	if !ok {
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid token claims")
+		return nil, fmt.Errorf("invalid token claims: %w", facts.ErrInvalidInput)
 	}
 
 	return claims, nil
@@ -233,7 +233,7 @@ func (s *JWTService) CreateRefreshToken() (string, error) {
 	randomBytes := make([]byte, 32)
 	_, err := rand.Read(randomBytes)
 	if err != nil {
-		return "", dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate refresh token")
+		return "", fmt.Errorf("failed to generate refresh token: %w", err)
 	}
 
 	base64Token := base64.RawURLEncoding.EncodeToString(randomBytes)

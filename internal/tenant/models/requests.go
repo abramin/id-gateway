@@ -74,14 +74,14 @@ func (r *CreateClientRequest) Validate() error {
 	}
 	for _, uri := range r.RedirectURIs {
 		if err := validateRedirectURI(uri); err != nil {
-			return err
+			return dErrors.Wrap(err, dErrors.CodeValidation, "invalid redirect_uri")
 		}
 	}
 	if len(r.AllowedGrants) == 0 {
 		return dErrors.New(dErrors.CodeValidation, "allowed_grants are required")
 	}
 	if err := validateGrants(r.AllowedGrants); err != nil {
-		return err
+		return dErrors.Wrap(err, dErrors.CodeValidation, "invalid allowed_grants")
 	}
 	if r.Public {
 		for _, grant := range r.AllowedGrants {
@@ -104,7 +104,7 @@ func validateRedirectURI(uri string) error {
 	if parsed.Host == "" {
 		return dErrors.New(dErrors.CodeValidation, "redirect_uri must include host")
 	}
-	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && strings.HasPrefix(parsed.Host, "localhost")) {
+	if parsed.Scheme != "https" && (parsed.Scheme != "http" || !strings.HasPrefix(parsed.Host, "localhost")) {
 		return dErrors.New(dErrors.CodeValidation, "redirect_uri must be https or localhost for development")
 	}
 	return nil
@@ -173,7 +173,7 @@ func (r *UpdateClientRequest) Validate() error {
 		}
 		for _, uri := range *r.RedirectURIs {
 			if err := validateRedirectURI(uri); err != nil {
-				return err
+				return dErrors.Wrap(err, dErrors.CodeValidation, "invalid redirect_uri")
 			}
 		}
 	}
@@ -182,7 +182,7 @@ func (r *UpdateClientRequest) Validate() error {
 			return dErrors.New(dErrors.CodeValidation, "allowed_grants cannot be empty")
 		}
 		if err := validateGrants(*r.AllowedGrants); err != nil {
-			return err
+			return dErrors.Wrap(err, dErrors.CodeValidation, "invalid allowed_grants")
 		}
 	}
 	if r.AllowedScopes != nil && len(*r.AllowedScopes) == 0 {

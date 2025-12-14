@@ -48,6 +48,14 @@ func New(code Code, msg string) DomainError {
 
 // Wrap creates a new DomainError wrapping an existing error.
 func Wrap(err error, code Code, msg string) DomainError {
+	// Preserve an existing domain code if the cause is already a DomainError
+	var de DomainError
+	if errors.As(err, &de) {
+		de.Message = msg
+		de.Err = err
+		return de
+	}
+
 	return DomainError{Code: code, Message: msg, Err: err}
 }
 

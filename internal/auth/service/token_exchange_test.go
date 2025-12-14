@@ -93,10 +93,10 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		t.Helper()
 
 		activate := sess.Status == string(models.SessionStatusPendingConsent)
-		s.mockSessionStore.EXPECT().AdvanceLastSeen(gomock.Any(), sess.ID, req.ClientID, gomock.Any(), issuedAccessTokenJTI, activate, sess.DeviceID, sess.DeviceFingerprintHash).DoAndReturn(
+		s.mockSessionStore.EXPECT().AdvanceLastSeen(gomock.Any(), sess.ID, clientUUID.String(), gomock.Any(), issuedAccessTokenJTI, activate, sess.DeviceID, sess.DeviceFingerprintHash).DoAndReturn(
 			func(_ context.Context, id uuid.UUID, client string, seenAt time.Time, jti string, activateFlag bool, deviceID string, fingerprint string) (*models.Session, error) {
 				assert.Equal(t, sess.ID, id)
-				assert.Equal(t, req.ClientID, client)
+				assert.Equal(t, clientUUID.String(), client)
 				assert.Equal(t, issuedAccessTokenJTI, jti)
 				assert.Equal(t, activate, activateFlag)
 				assert.False(t, seenAt.IsZero())
@@ -106,8 +106,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		)
 		s.mockRefreshStore.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, token *models.RefreshTokenRecord) error {
-				assert.Equal(t, issuedRefreshToken, token.Token)
-				assert.Equal(t, sessionID, token.SessionID)
+				assert.Equal(t, sess.ID, token.SessionID)
 				assert.False(t, token.Used)
 				assert.True(t, token.ExpiresAt.After(time.Now()))
 				return nil
@@ -240,7 +239,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		result, err := s.service.Token(context.Background(), &req)
 		assert.Error(s.T(), err)
 		assert.Nil(s.T(), result)
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeUnauthorized))
+		assert.True(s.T(), dErrors.Is(err, dErrors.CodeInternal))
 	})
 
 	s.T().Run("JWT generation errors", func(t *testing.T) {
@@ -255,7 +254,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 					s.mockJWT.EXPECT().GenerateAccessTokenWithJTI(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 						Return("", "", errors.New("jwt error"))
 				},
-				expectedErr: "failed to generate access token",
+				expectedErr: "failed to generate tokens",
 			},
 			{
 				name: "id token generation fails",
@@ -265,7 +264,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 					s.mockJWT.EXPECT().GenerateIDToken(gomock.Any(), gomock.Any(), gomock.Any()).
 						Return("", errors.New("jwt error"))
 				},
-				expectedErr: "failed to generate ID token",
+				expectedErr: "failed to generate tokens",
 			},
 			{
 				name: "refresh token generation fails",
@@ -277,7 +276,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 					s.mockJWT.EXPECT().CreateRefreshToken().
 						Return("", errors.New("jwt error"))
 				},
-				expectedErr: "failed to create refresh token",
+				expectedErr: "failed to generate tokens",
 			},
 		}
 

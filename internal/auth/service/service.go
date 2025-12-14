@@ -13,10 +13,9 @@ import (
 	"credo/internal/audit"
 	"credo/internal/auth/device"
 	"credo/internal/auth/models"
-	authCodeStore "credo/internal/auth/store/authorization-code"
-	refreshTokenStore "credo/internal/auth/store/refresh-token"
 	"credo/internal/auth/store/revocation"
 	sessionStore "credo/internal/auth/store/session"
+	"credo/internal/facts"
 	"credo/internal/platform/metrics"
 	"credo/internal/platform/middleware"
 	"credo/pkg/attrs"
@@ -268,66 +267,62 @@ func (s *Service) isRedirectSchemeAllowed(uri *url.URL) bool {
 	return false
 }
 
-// tokenErrorMeta holds audit and error response metadata for token operations
-type tokenErrorMeta struct {
-	auditReason string
-	publicMsg   string
-	errorCode   dErrors.Code
-	hasRecord   bool // Include record ID in audit attrs
-}
-
-// handleTokenError maps store/domain errors to audit events and public responses.
-// Uses type-based dispatch via errors.Is to avoid massive switch statements.
-// The flow parameter ("code" or "refresh") determines context-specific messages.
+// handleTokenError translates dependency errors into domain errors once.
+// The flow parameter ("code" or "refresh") scopes user-facing messages.
 func (s *Service) handleTokenError(ctx context.Context, err error, clientID string, recordID string, flow string) error {
-	var meta tokenErrorMeta
-
-	// Session errors (context-aware messages)
-	switch {
-	case errors.Is(err, sessionStore.ErrNotFound):
-		if flow == "refresh" {
-			meta = tokenErrorMeta{"session_not_found", "invalid refresh token", dErrors.CodeUnauthorized, true}
-		} else {
-			meta = tokenErrorMeta{"session_not_found", "invalid authorization code", dErrors.CodeUnauthorized, true}
-		}
-	case errors.Is(err, sessionStore.ErrSessionRevoked):
-		meta = tokenErrorMeta{"session_revoked", "session has been revoked", dErrors.CodeUnauthorized, true}
-
-	// Auth code errors
-	case errors.Is(err, authCodeStore.ErrNotFound):
-		meta = tokenErrorMeta{"code_not_found", "invalid authorization code", dErrors.CodeUnauthorized, false}
-	case errors.Is(err, authCodeStore.ErrAuthCodeExpired):
-		meta = tokenErrorMeta{"authorization_code_expired", "authorization code expired", dErrors.CodeUnauthorized, false}
-	case errors.Is(err, authCodeStore.ErrAuthCodeUsed):
-		meta = tokenErrorMeta{"authorization_code_reused", "authorization code already used", dErrors.CodeUnauthorized, true}
-
-	// Refresh token errors
-	case errors.Is(err, refreshTokenStore.ErrNotFound):
-		meta = tokenErrorMeta{"refresh_token_not_found", "invalid refresh token", dErrors.CodeUnauthorized, false}
-	case errors.Is(err, refreshTokenStore.ErrRefreshTokenExpired):
-		meta = tokenErrorMeta{"refresh_token_expired", "refresh token expired", dErrors.CodeUnauthorized, true}
-	case errors.Is(err, refreshTokenStore.ErrRefreshTokenUsed):
-		meta = tokenErrorMeta{"refresh_token_reused", "invalid refresh token", dErrors.CodeUnauthorized, true}
-
-	// Domain errors
-	case dErrors.Is(err, dErrors.CodeBadRequest):
-		meta = tokenErrorMeta{"redirect_uri_mismatch", "redirect_uri mismatch", dErrors.CodeBadRequest, false}
-	case dErrors.Is(err, dErrors.CodeUnauthorized):
-		meta = tokenErrorMeta{"invalid_session_state", err.Error(), dErrors.CodeUnauthorized, true}
-	case dErrors.Is(err, dErrors.CodeInternal):
-		return err // Already wrapped
-	default:
-		meta = tokenErrorMeta{"internal_error", "internal server error", dErrors.CodeInternal, false}
+	if err == nil {
+		return nil
 	}
 
-	// Build audit attributes
 	attrs := []any{"client_id", clientID}
-	if recordID != "" && meta.hasRecord {
+	if recordID != "" {
 		attrs = append(attrs, "record_id", recordID)
 	}
 
-	s.authFailure(ctx, meta.auditReason, false, attrs...)
-	return dErrors.New(meta.errorCode, meta.publicMsg)
+	var de dErrors.DomainError
+	if errors.As(err, &de) {
+		s.authFailure(ctx, string(de.Code), false, attrs...)
+		return err
+	}
+
+	switch {
+	case errors.Is(err, facts.ErrNotFound):
+		msg := "invalid authorization code"
+		if flow == "refresh" {
+			msg = "invalid refresh token"
+		}
+		s.authFailure(ctx, "not_found", false, attrs...)
+		return dErrors.Wrap(err, dErrors.CodeUnauthorized, msg)
+	case errors.Is(err, facts.ErrExpired):
+		msg := "authorization code expired"
+		if flow == "refresh" {
+			msg = "refresh token expired"
+		}
+		s.authFailure(ctx, "expired", false, attrs...)
+		return dErrors.Wrap(err, dErrors.CodeUnauthorized, msg)
+	case errors.Is(err, facts.ErrAlreadyUsed):
+		msg := "authorization code already used"
+		if flow == "refresh" {
+			msg = "invalid refresh token"
+		}
+		s.authFailure(ctx, "already_used", false, attrs...)
+		return dErrors.Wrap(err, dErrors.CodeUnauthorized, msg)
+	case errors.Is(err, sessionStore.ErrSessionRevoked):
+		s.authFailure(ctx, "session_revoked", false, attrs...)
+		return dErrors.Wrap(err, dErrors.CodeUnauthorized, "session has been revoked")
+	case errors.Is(err, facts.ErrInvalidState):
+		s.authFailure(ctx, "invalid_state", false, attrs...)
+		return dErrors.Wrap(err, dErrors.CodeUnauthorized, "session not active")
+	case errors.Is(err, facts.ErrInvalidInput):
+		s.authFailure(ctx, "invalid_input", false, attrs...)
+		return dErrors.Wrap(err, dErrors.CodeValidation, err.Error())
+	case errors.Is(err, facts.ErrBadRequest):
+		s.authFailure(ctx, "bad_request", false, attrs...)
+		return dErrors.Wrap(err, dErrors.CodeBadRequest, err.Error())
+	default:
+		s.authFailure(ctx, "internal_error", true, attrs...)
+		return dErrors.Wrap(err, dErrors.CodeInternal, "token handling failed")
+	}
 }
 
 func (s *Service) generateTokenArtifacts(session *models.Session) (*tokenArtifacts, error) {

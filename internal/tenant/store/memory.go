@@ -2,18 +2,19 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 
+	"credo/internal/facts"
 	tenant "credo/internal/tenant/models"
-	dErrors "credo/pkg/domain-errors"
 )
 
-// ErrNotFound is returned when a record cannot be located.
-var ErrNotFound = dErrors.New(dErrors.CodeNotFound, "record not found")
+// ErrNotFound is returned when a tenant or client is not found.
+var ErrNotFound = facts.ErrNotFound
 
 // InMemoryTenantStore stores tenants in memory for the demo environment.
 type InMemoryTenantStore struct {
@@ -32,7 +33,7 @@ func (s *InMemoryTenantStore) CreateIfNameAvailable(_ context.Context, t *tenant
 	defer s.mu.Unlock()
 	lower := strings.ToLower(t.Name)
 	if _, exists := s.nameIdx[lower]; exists {
-		return dErrors.New(dErrors.CodeConflict, "tenant name must be unique")
+		return fmt.Errorf("tenant name must be unique: %w", facts.ErrAlreadyUsed)
 	}
 	key := t.ID.String()
 	s.tenants[key] = t

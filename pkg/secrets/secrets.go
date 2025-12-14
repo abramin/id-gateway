@@ -4,10 +4,11 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 
 	"golang.org/x/crypto/bcrypt"
 
-	dErrors "credo/pkg/domain-errors"
+	"credo/internal/facts"
 )
 
 // Generate creates a cryptographically secure random secret.
@@ -15,7 +16,7 @@ import (
 func Generate() (string, error) {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
-		return "", dErrors.Wrap(err, dErrors.CodeInternal, "could not generate secret")
+		return "", fmt.Errorf("could not generate secret: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
@@ -24,14 +25,14 @@ func Generate() (string, error) {
 // Use this to securely store secrets for later verification.
 func Hash(secret string) (string, error) {
 	if secret == "" {
-		return "", dErrors.New(dErrors.CodeValidation, "secret cannot be empty")
+		return "", fmt.Errorf("secret cannot be empty: %w", facts.ErrInvalidInput)
 	}
 	hashed, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
 	if err != nil {
 		if errors.Is(err, bcrypt.ErrPasswordTooLong) {
-			return "", dErrors.New(dErrors.CodeValidation, "secret is too long")
+			return "", fmt.Errorf("secret is too long: %w", facts.ErrInvalidInput)
 		}
-		return "", dErrors.Wrap(err, dErrors.CodeInternal, "could not hash secret")
+		return "", fmt.Errorf("could not hash secret: %w", err)
 	}
 	return string(hashed), nil
 }
@@ -40,9 +41,9 @@ func Hash(secret string) (string, error) {
 func Verify(secret, hash string) error {
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(secret)); err != nil {
 		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
-			return dErrors.New(dErrors.CodeUnauthorized, "invalid secret")
+			return fmt.Errorf("invalid secret: %w", facts.ErrInvalidInput)
 		}
-		return dErrors.Wrap(err, dErrors.CodeInternal, "could not verify secret")
+		return fmt.Errorf("could not verify secret: %w", err)
 	}
 	return nil
 }
