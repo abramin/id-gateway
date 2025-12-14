@@ -1,132 +1,94 @@
-# Credo Module Conventions
+# Credo Agent Rules (Authoritative)
 
-Credo is a modular identity and evidence platform composed of small, isolated APIs. Each module follows consistent structural, testing, and implementation conventions to maximise clarity, testability, and interchangeability.
+This file defines **non-negotiable rules** that all code generated or modified by agents must follow.
+If a rule here conflicts with any other document, this file wins.
 
 ---
 
-## Module Structure
+## Non-negotiable rules
 
-### 1. Handlers
+- No business logic in handlers.
+- No globals.
+- Services own orchestration and domain behavior.
+- Domain entities do not contain API input rules.
+- Stores return domain models, never persistence structs.
+- Internal errors are never exposed to clients.
+- All multi-write operations must be atomic.
 
-- Handle HTTP concerns only: parsing, validation, and response mapping.
-- No business logic.
+---
+
+## Module structure
+
+### Handlers
+
+- Handle HTTP concerns only: parsing, request validation, response mapping.
 - Always accept and pass through `context.Context`.
 
-### 2. Services
+### Services
 
-- All business logic lives in the service layer.
-- Services depend on stores, clients, and publishers via interfaces.
-- Services handle orchestration, domain validation, and error mapping.
-- Designed for unit testing via explicit dependency injection.
-- No globals.
+- All business logic lives in services.
+- Depend only on interfaces.
+- Validate domain invariants.
+- Perform orchestration and error mapping.
 
-### 3. Models
+### Models
 
-- Pure data structures only.
-- No business logic.
-- Keep domain models separate from transport types where appropriate.
+- Domain models represent persisted state.
+- No API input rules on domain entities.
+- Request/command structs may contain `Validate()` methods.
 
-### 4. Stores
+### Stores
 
 - Interfaces only.
-- Allow multiple implementations (in-memory, SQL, etc.).
-- For SQL persistence, use **sqlc** to generate queries.
-- Stores return domain models, not DB-specific structs.
+- Must be swappable (in-memory, SQL, etc.).
+- Return domain models.
 
 ---
 
-## Testing
+## Validation placement
 
-### Unit Testing
+### Domain invariants
 
-- **gomock**
+- Rules that must _always_ hold for an entity.
+- Violations mean corrupted state.
+- Enforced via constructors or persistence boundaries.
 
-  - Used for mocking stores, clients, publishers, and external dependencies.
-  - Mocks live under `internal/<module>/mocks`.
+### API input rules
 
-- **testify**
+- Rules specific to an API, flow, or version.
+- May change without data migration.
+- Enforced on request/command structs or in services.
 
-  - Use `assert` and `require` for clarity.
+**Rule of thumb**  
+If a rule can change without invalidating stored data, it is an API input rule.
 
-- **BDD-style structure**
-
-  - Tests follow `Given / When / Then`.
-
-- **Test suite layout**
-
-  - One test suite per exported function or method.
-  - Use subtests to cover behaviors and edge cases.
-  - Prefer table tests for pure validation logic.
-  - Keep default test contexts minimal.
-
-### Integration Testing
-
-- Validate end-to-end flows required by PRDs.
-- One integration suite per PRD journey.
-- Use subtests for error cases (400, 401, 404, 500).
-- Do not duplicate unit test coverage.
-- Focus on HTTP wiring, persistence, middleware, and cross-component interaction.
-
-### Feature Flags
-
-- Feature flags are disabled by default.
-- Enable flags only in tests that exercise the feature.
-- Use functional options, not globals.
+Example:  
+A `Client` must always have a non-nil `TenantID` (domain invariant), but redirect URI scheme rules are API input rules.
 
 ---
 
-## Implementation Patterns
-
-### Service Construction
-
-- Constructors accept required config plus functional options.
-- Validate required dependencies and critical config at construction time.
-- Apply sensible defaults for optional fields (e.g. TTLs).
-
-### Error Handling
+## Error handling
 
 - Use domain error codes via `pkg/domain-errors`.
-- Wrap errors with `dErrors.New` or `dErrors.Wrap`.
-- Map store-specific errors to domain errors at the service boundary.
-- Never expose internal implementation details to clients.
-
-### Audit & Observability
-
-- Emit audit events at key lifecycle transitions.
-- Audit publishing happens in services, not handlers.
-- Include contextual fields where available:
-
-  - `user_id`, `session_id`, `client_id`, `request_id`
-
-- Use structured logging (`slog`) with context.
-- Emit security events to both logs and audit streams.
-
-### Context & Middleware
-
-- Middleware attaches request metadata (IP, user agent, device ID) to `context.Context`.
-- Services read request-scoped metadata from context.
-- Do not store sensitive data in context.
-
-### Transactions & State Management
-
-- Use `RunInTx` for multi-store writes.
-- Update related state atomically:
-
-  - session timestamps
-  - token persistence
-  - code or refresh token consumption
-
-- Avoid partial persistence on failure.
-
-### Mocks & Interfaces
-
-- Interfaces live with their consuming module.
-- Include `//go:generate mockgen` directives with interface definitions.
-- Regenerate mocks after interface changes and commit together.
+- Map store or infra errors to domain errors at the service boundary.
+- Never leak internal error details.
 
 ---
 
-## References
+## Transactions
 
-- `docs/architecture.md`
-- `prd/` directory for feature-specific requirements
+- Use `RunInTx` for multi-store writes.
+- Avoid partial persistence on failure.
+- Token, session, and audit updates must be atomic.
+
+---
+
+## Testing (hard rules)
+
+- Unit tests for all service logic.
+- Handlers are tested only for wiring and HTTP behavior.
+- Integration tests cover PRD journeys only.
+
+### Additional conventions
+
+- see docs/conventions.md
