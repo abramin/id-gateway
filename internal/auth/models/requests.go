@@ -31,10 +31,13 @@ func (r *AuthorizationRequest) Normalize() {
 	if len(r.Scopes) == 0 {
 		r.Scopes = []string{string(ScopeOpenID)}
 	}
-	// Trim and deduplicate scopes
+	r.Scopes = trimAndDedupScopes(r.Scopes)
+}
+
+func trimAndDedupScopes(scopes []string) []string {
 	seen := make(map[string]struct{})
-	normalized := make([]string, 0, len(r.Scopes))
-	for _, s := range r.Scopes {
+	normalized := make([]string, 0, len(scopes))
+	for _, s := range scopes {
 		trimmed := strings.TrimSpace(s)
 		if trimmed == "" {
 			continue
@@ -44,7 +47,7 @@ func (r *AuthorizationRequest) Normalize() {
 			normalized = append(normalized, trimmed)
 		}
 	}
-	r.Scopes = normalized
+	return normalized
 }
 
 // Validate checks API input rules.
