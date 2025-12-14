@@ -97,6 +97,178 @@ Auth0 and similar providers make tenant + application registration first-class. 
 - **Behavior:** Fetch or update client metadata, redirect URIs, and allowed grants/scopes. Secret rotation via update regenerates secret and invalidates previous hash.
 - **Constraints:** Tenant admins can only manage clients within their tenant.
 
+---
+
+## FR-4.5 Auth ↔ Tenant Integration (Concrete)
+
+### Purpose
+
+Define the **explicit integration boundary** between the Auth module and the Tenant & Client module.
+Auth must enforce tenant-scoped identity rules without owning tenant data.
+Tenant must remain the source of truth for clients and tenants.
+
+This section specifies:
+
+- what Auth must change
+- what Tenant must expose
+- how data flows, step by step
+
+No transport is assumed. In-process calls are used for MVP.
+
+---
+
+## FR-4.5.1 Ownership & Boundaries
+
+**Tenant module owns:**
+
+- Tenant lifecycle
+- Client lifecycle
+- Client → Tenant resolution
+- Client and tenant status
+
+**Auth module owns:**
+
+- User lifecycle
+- Sessions, authorization codes, tokens
+- Enforcement of user status
+- Token claims
+
+**Hard rule:**
+Auth MUST NOT access tenant/client stores directly.
+Tenant MUST NOT access auth user stores directly.
+
+---
+
+## FR-4.5.2 Integration Port (Required)
+
+Auth defines a port. Tenant implements it.
+
+```go
+// internal/auth/ports/client_resolver.go
+type ClientResolver interface {
+    ResolveClient(ctx context.Context, clientID string) (*Client, *Tenant, error)
+}
+```
+
+This is injected into `AuthService`.
+
+```go
+type AuthService struct {
+    users          UserStore
+    sessions       SessionStore
+    codes          AuthorizationCodeStore
+    refreshTokens  RefreshTokenStore
+    clientResolver ClientResolver
+}
+```
+
+---
+
+## FR-4.5.3 Tenant Responsibilities (What to Add)
+
+Tenant service MUST expose:
+
+```go
+// internal/tenant/service/service.go
+func (s *Service) ResolveClient(
+    ctx context.Context,
+    clientID string,
+) (*models.Client, *models.Tenant, error)
+```
+
+Behavior:
+
+1. Lookup client by `client_id`
+2. Enforce `client.status == active`
+3. Lookup tenant by `client.tenant_id`
+4. Enforce `tenant.status == active`
+5. Return `(client, tenant)`
+
+Errors:
+
+- unknown client → `invalid_client`
+- inactive client → `invalid_client`
+- inactive tenant → `access_denied`
+
+This method is the **only supported way** for auth to derive tenant context.
+
+---
+
+## FR-4.5.4 Auth Changes (Where FR-5 Is Enforced)
+
+### Authorize flow (signup + login)
+
+Pseudocode inside `AuthService.Authorize`:
+
+```go
+client, tenant, err := s.clientResolver.ResolveClient(ctx, req.ClientID)
+if err != nil {
+    return nil, err
+}
+
+user, err := s.users.FindByTenantAndEmail(ctx, tenant.ID, req.Email)
+if err == NotFound {
+    user = NewUser(tenant.ID, req.Email)
+    s.users.Save(ctx, user)
+}
+
+if user.Status != Active {
+    return nil, accessDenied("user inactive")
+}
+
+// proceed with session + auth code creation
+```
+
+**Key points:**
+
+- tenant_id is derived, never accepted from request
+- user lookup is `(tenant_id, email)`
+- inactive users fail before code issuance
+
+This fully implements **FR-5 Creation + Lookup + Status**.
+
+---
+
+### Token exchange
+
+Pseudocode inside `AuthService.Token`:
+
+```go
+code := s.codes.FindByCode(req.Code)
+session := s.sessions.FindByID(code.SessionID)
+
+// resolve client again to enforce status at token time
+client, tenant := s.clientResolver.ResolveClient(ctx, session.ClientID)
+
+if session.UserStatus != Active {
+    return nil, accessDenied("user inactive")
+}
+
+// issue tokens with tenant_id + client_id claims
+```
+
+Tenant resolution happens again to prevent:
+
+- client disabled after authorize
+- tenant suspended mid-flow
+
+---
+
+## FR-4.5.5 User Store Changes (Auth)
+
+User store MUST support tenant-scoped lookup.
+
+```go
+FindByTenantAndEmail(ctx, tenantID, email)
+```
+
+Auth enforces uniqueness on `(tenant_id, email)`.
+
+Tenant module never queries users directly.
+At most, it consumes a **read-only counter interface**.
+
+---
+
 ### FR-5: Tenant-Scoped User Lifecycle
 
 - **Creation:** Users created during signup are stored with `tenant_id` derived from the client.
