@@ -3,6 +3,7 @@ package models
 import (
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 
 	"credo/internal/facts"
@@ -51,7 +52,6 @@ func trimAndDedupScopes(scopes []string) []string {
 	return normalized
 }
 
-// Validate checks API input rules.
 func (r *AuthorizationRequest) Validate() error {
 	if r == nil {
 		return fmt.Errorf("request is required: %w", facts.ErrBadRequest)
@@ -74,11 +74,8 @@ func (r *AuthorizationRequest) Validate() error {
 	if len(r.ClientID) > 100 {
 		return fmt.Errorf("client_id must be 100 characters or less: %w", facts.ErrInvalidInput)
 	}
-	if len(r.Scopes) == 0 {
-		return fmt.Errorf("scopes are required: %w", facts.ErrInvalidInput)
-	}
-	for _, scope := range r.Scopes {
-		if scope == "" {
+	if len(r.Scopes) > 0 {
+		if slices.Contains(r.Scopes, "") {
 			return fmt.Errorf("scopes cannot contain empty strings: %w", facts.ErrInvalidInput)
 		}
 	}
@@ -88,7 +85,6 @@ func (r *AuthorizationRequest) Validate() error {
 	if len(r.RedirectURI) > 2048 {
 		return fmt.Errorf("redirect_uri must be 2048 characters or less: %w", facts.ErrInvalidInput)
 	}
-	// Validate URL format - must have scheme and host
 	parsed, err := url.Parse(r.RedirectURI)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return fmt.Errorf("redirect_uri must be a valid URL: %w", facts.ErrInvalidInput)
@@ -108,7 +104,6 @@ type TokenRequest struct {
 	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
-// Normalize trims user-supplied values before validation.
 func (r *TokenRequest) Normalize() {
 	if r == nil {
 		return
@@ -120,7 +115,6 @@ func (r *TokenRequest) Normalize() {
 	r.RefreshToken = strings.TrimSpace(r.RefreshToken)
 }
 
-// Validate checks API input rules.
 func (r *TokenRequest) Validate() error {
 	if r == nil {
 		return fmt.Errorf("request is required: %w", facts.ErrBadRequest)
@@ -156,7 +150,6 @@ type RevokeTokenRequest struct {
 	TokenTypeHint string `json:"token_type_hint,omitempty"`
 }
 
-// Validate checks API input rules.
 func (r *RevokeTokenRequest) Validate() error {
 	if r == nil {
 		return fmt.Errorf("request is required: %w", facts.ErrBadRequest)
