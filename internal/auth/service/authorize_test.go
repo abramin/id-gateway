@@ -2,13 +2,11 @@ package service
 
 import (
 	"context"
-	"io"
-	"log/slog"
 	"testing"
 	"time"
 
+	"credo/internal/auth/device"
 	"credo/internal/auth/models"
-	"credo/internal/auth/service/mocks"
 	"credo/internal/platform/middleware"
 	tenant "credo/internal/tenant/models"
 	dErrors "credo/pkg/domain-errors"
@@ -136,67 +134,45 @@ func (s *ServiceSuite) TestAuthorize() {
 	})
 
 	s.T().Run("device binding enabled attaches device metadata", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		mockUserStore := mocks.NewMockUserStore(ctrl)
-		mockSessionStore := mocks.NewMockSessionStore(ctrl)
-		mockCodeStore := mocks.NewMockAuthCodeStore(ctrl)
-		mockRefreshStore := mocks.NewMockRefreshTokenStore(ctrl)
-		mockJWT := mocks.NewMockTokenGenerator(ctrl)
-		mockAuditPublisher := mocks.NewMockAuditPublisher(ctrl)
-		mockClientResolver := mocks.NewMockClientResolver(ctrl)
-		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		cfg := &Config{
-			SessionTTL:             2 * time.Hour,
-			TokenTTL:               30 * time.Minute,
-			RefreshTokenTTL:        1 * time.Hour,
-			AllowedRedirectSchemes: []string{"https", "http"},
-			DeviceBindingEnabled:   true,
-		}
-
-		serviceWithDevice, _ := New(
-			mockUserStore,
-			mockSessionStore,
-			mockCodeStore,
-			mockRefreshStore,
-			cfg,
-			WithLogger(logger),
-			WithJWTService(mockJWT),
-			WithAuditPublisher(mockAuditPublisher),
-			WithDeviceBindingEnabled(true),
-			WithClientResolver(mockClientResolver),
-		)
+		// Temporarily enable device binding on the service
+		prevBinding := s.service.DeviceBindingEnabled
+		prevDeviceSvc := s.service.deviceService
+		s.service.DeviceBindingEnabled = true
+		s.service.deviceService = device.NewService(true)
+		t.Cleanup(func() {
+			s.service.DeviceBindingEnabled = prevBinding
+			s.service.deviceService = prevDeviceSvc
+		})
 
 		req := baseReq
 		req.State = "xyz"
 		ctx := middleware.WithClientMetadata(context.Background(), "192.168.1.1", "Mozilla/5.0")
 
-		mockClientResolver.EXPECT().ResolveClient(gomock.Any(), req.ClientID).Return(mockClient, mockTenant, nil)
+		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), req.ClientID).Return(mockClient, mockTenant, nil)
 
-		mockUserStore.EXPECT().FindOrCreateByTenantAndEmail(gomock.Any(), tenantID, req.Email, gomock.Any()).DoAndReturn(
+		s.mockUserStore.EXPECT().FindOrCreateByTenantAndEmail(gomock.Any(), tenantID, req.Email, gomock.Any()).DoAndReturn(
 			func(ctx context.Context, tid uuid.UUID, email string, user *models.User) (*models.User, error) {
 				return user, nil
 			})
 
-		mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
+		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
 
-		mockCodeStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		s.mockCodeStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 
-		mockSessionStore.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
+		s.mockSessionStore.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(ctx context.Context, session *models.Session) error {
-				assert.NotEmpty(t, session.DeviceID)
-				assert.NotEmpty(t, session.DeviceFingerprintHash)
-				assert.Equal(t, clientID, session.ClientID)
-				assert.Equal(t, tenantID, session.TenantID)
+				assert.NotEmpty(s.T(), session.DeviceID)
+				assert.NotEmpty(s.T(), session.DeviceFingerprintHash)
+				assert.Equal(s.T(), clientID, session.ClientID)
+				assert.Equal(s.T(), tenantID, session.TenantID)
 				return nil
 			})
 
-		mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
+		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
 
-		result, err := serviceWithDevice.Authorize(ctx, &req)
-		assert.NoError(t, err)
-		assert.NotEmpty(t, result.DeviceID)
+		result, err := s.service.Authorize(ctx, &req)
+		assert.NoError(s.T(), err)
+		assert.NotEmpty(s.T(), result.DeviceID)
 	})
 
 	s.T().Run("invalid redirect_uri scheme rejected", func(t *testing.T) {

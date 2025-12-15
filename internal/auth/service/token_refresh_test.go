@@ -10,7 +10,6 @@ import (
 	refreshTokenStore "credo/internal/auth/store/refresh-token"
 	sessionStore "credo/internal/auth/store/session"
 	"credo/internal/platform/middleware"
-	tenant "credo/internal/tenant/models"
 	dErrors "credo/pkg/domain-errors"
 
 	"github.com/google/uuid"
@@ -26,33 +25,9 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 	tenantID := uuid.New()
 	clientID := "client-123"
 	refreshTokenString := "ref_abc123xyz"
-	issuedAccessToken := "new-access-token"
-	issuedAccessTokenJTI := "new-access-token-jti"
-	issuedIDToken := "new-id-token"
-	issuedRefreshToken := "ref_new_token"
 
-	mockClient := &tenant.Client{
-		ID:       clientUUID,
-		TenantID: tenantID,
-		ClientID: clientID,
-		Name:     "Test Client",
-		Status:   "active",
-	}
-
-	mockTenant := &tenant.Tenant{
-		ID:   tenantID,
-		Name: "Test Tenant",
-	}
-
-	mockUser := &models.User{
-		ID:        userID,
-		TenantID:  tenantID,
-		Email:     "user@test.com",
-		FirstName: "Test",
-		LastName:  "User",
-		Verified:  false,
-		Status:    models.UserStatusActive,
-	}
+	mockClient, mockTenant := s.newTestClient(tenantID, clientUUID)
+	mockUser := s.newTestUser(userID, tenantID)
 
 	newReq := func() models.TokenRequest {
 		return models.TokenRequest{
@@ -83,15 +58,6 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		ExpiresAt:      time.Now().Add(23 * time.Hour),
 	}
 
-	expectTokens := func(t *testing.T) {
-		t.Helper()
-		s.mockJWT.EXPECT().GenerateAccessTokenWithJTI(
-			userID, sessionID, clientUUID.String(), validSession.TenantID.String(), []string{"openid", "profile"},
-		).Return(issuedAccessToken, issuedAccessTokenJTI, nil)
-		s.mockJWT.EXPECT().GenerateIDToken(userID, sessionID, clientUUID.String()).Return(issuedIDToken, nil)
-		s.mockJWT.EXPECT().CreateRefreshToken().Return(issuedRefreshToken, nil)
-	}
-
 	s.T().Run("happy path - successful token refresh", func(t *testing.T) {
 		req := newReq()
 		refreshRec := *validRefreshToken
@@ -109,18 +75,18 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		// 4. Inside transaction: consume refresh token, re-find session, generate tokens
 		s.mockRefreshStore.EXPECT().ConsumeRefreshToken(gomock.Any(), refreshTokenString, gomock.Any()).Return(&refreshRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		expectTokens(t)
+		accessToken, accessTokenJTI, idToken, refreshToken := s.expectTokenGeneration(userID, sessionID, clientUUID, tenantID, sess.RequestedScope)
 		// Inside RunInTx: Advance session, create new token
-		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), sess.ID, req.ClientID, gomock.Any(), issuedAccessTokenJTI, sess.DeviceID, sess.DeviceFingerprintHash).DoAndReturn(
+		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), sess.ID, req.ClientID, gomock.Any(), accessTokenJTI, sess.DeviceID, sess.DeviceFingerprintHash).DoAndReturn(
 			func(ctx context.Context, sessionID uuid.UUID, clientID string, ts time.Time, jti string, deviceID string, fingerprint string) (*models.Session, error) {
 				assert.Equal(s.T(), sess.ID, sessionID)
 				assert.False(s.T(), ts.IsZero())
-				assert.Equal(s.T(), issuedAccessTokenJTI, jti)
+				assert.Equal(s.T(), accessTokenJTI, jti)
 				return &sess, nil
 			})
 		s.mockRefreshStore.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(ctx context.Context, token *models.RefreshTokenRecord) error {
-				assert.Equal(s.T(), issuedRefreshToken, token.Token)
+				assert.Equal(s.T(), refreshToken, token.Token)
 				assert.Equal(s.T(), sessionID, token.SessionID)
 				assert.False(s.T(), token.Used)
 				return nil
@@ -129,9 +95,9 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 
 		result, err := s.service.Token(ctx, &req)
 		require.NoError(s.T(), err)
-		assert.Equal(s.T(), issuedAccessToken, result.AccessToken)
-		assert.Equal(s.T(), issuedIDToken, result.IDToken)
-		assert.Equal(s.T(), issuedRefreshToken, result.RefreshToken)
+		assert.Equal(s.T(), accessToken, result.AccessToken)
+		assert.Equal(s.T(), idToken, result.IDToken)
+		assert.Equal(s.T(), refreshToken, result.RefreshToken)
 		assert.Equal(s.T(), "Bearer", result.TokenType)
 		assert.Equal(s.T(), s.service.TokenTTL, result.ExpiresIn)
 	})
@@ -205,8 +171,8 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(mockUser, nil)
 		s.mockRefreshStore.EXPECT().ConsumeRefreshToken(gomock.Any(), refreshTokenString, gomock.Any()).Return(&refreshRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		expectTokens(t)
-		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), sess.ID, req.ClientID, gomock.Any(), issuedAccessTokenJTI, sess.DeviceID, sess.DeviceFingerprintHash).
+		_, accessTokenJTI, _, _ := s.expectTokenGeneration(userID, sessionID, clientUUID, tenantID, sess.RequestedScope)
+		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), sess.ID, req.ClientID, gomock.Any(), accessTokenJTI, sess.DeviceID, sess.DeviceFingerprintHash).
 			Return(nil, sessionStore.ErrSessionRevoked)
 
 		result, err := s.service.Token(context.Background(), &req)
@@ -231,8 +197,8 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(mockUser, nil)
 		s.mockRefreshStore.EXPECT().ConsumeRefreshToken(gomock.Any(), refreshTokenString, gomock.Any()).Return(&refreshRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		expectTokens(t)
-		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), sess.ID, req.ClientID, gomock.Any(), issuedAccessTokenJTI, sess.DeviceID, sess.DeviceFingerprintHash).
+		_, accessTokenJTI, _, _ := s.expectTokenGeneration(userID, sessionID, clientUUID, tenantID, sess.RequestedScope)
+		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), sess.ID, req.ClientID, gomock.Any(), accessTokenJTI, sess.DeviceID, sess.DeviceFingerprintHash).
 			Return(nil, dErrors.New(dErrors.CodeUnauthorized, "client_id mismatch"))
 
 		result, err := s.service.Token(context.Background(), &req)
@@ -311,8 +277,8 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		// Inside transaction
 		s.mockRefreshStore.EXPECT().ConsumeRefreshToken(gomock.Any(), refreshTokenString, gomock.Any()).Return(&refreshRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		expectTokens(t)
-		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), sess.ID, req.ClientID, gomock.Any(), issuedAccessTokenJTI, sess.DeviceID, sess.DeviceFingerprintHash).
+		_, accessTokenJTI, _, _ := s.expectTokenGeneration(userID, sessionID, clientUUID, tenantID, sess.RequestedScope)
+		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), sess.ID, req.ClientID, gomock.Any(), accessTokenJTI, sess.DeviceID, sess.DeviceFingerprintHash).
 			DoAndReturn(func(ctx context.Context, sessionID uuid.UUID, client string, ts time.Time, jti string, deviceID string, fingerprint string) (*models.Session, error) {
 				assert.Equal(s.T(), sess.DeviceID, deviceID)
 				return &sess, nil
