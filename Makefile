@@ -8,7 +8,7 @@ PROTO_FILES := $(wildcard $(PROTO_DIR)/*.proto)
 # === DEFAULT ===
 default: dev
 
-.PHONY: default build run test test-cover test-one e2e e2e-normal e2e-security e2e-report e2e-clean lint fmt imports openapi-lint openapi-build clean docker-clean proto-gen proto-check proto-clean help
+.PHONY: default build run test test-failed test-failures test-cover test-one e2e e2e-normal e2e-security e2e-report e2e-clean lint fmt imports openapi-lint openapi-build clean docker-clean proto-gen proto-check proto-clean help
 
 # === BUILD ===
 build:
@@ -27,7 +27,9 @@ test:
 	fi
 
 test-cover:
-	go test -cover $(PKG)
+	gotestsum -- -coverprofile=cover.out ./...
+	go tool cover -html=cover.out -o cover.html
+	@echo "Coverage report: cover.html"
 
 test-one:
 	@if [ -z "$(t)" ]; then \
@@ -147,6 +149,7 @@ help:
 	@echo "  build          Build the binary"
 	@echo "  run            Run the server"
 	@echo "  test           Run all tests"
+	@echo "  test-failed    Run tests, show only failures (hide skipped)"
 	@echo "  test-cover     Run tests with coverage"
 	@echo "  test-one       Run a single test (use: make test-one t=TestName)"
 	@echo "  e2e            Run E2E tests with godog"
