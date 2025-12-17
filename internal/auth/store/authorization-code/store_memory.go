@@ -7,14 +7,14 @@ import (
 	"time"
 
 	"credo/internal/auth/models"
-	"credo/internal/facts"
+	"credo/internal/sentinel"
 )
 
 // ErrNotFound is returned when a requested record is not found in the store.
 // Services should check for this error using errors.Is(err, store.ErrNotFound).
-var ErrNotFound = facts.ErrNotFound
-var ErrAuthCodeUsed = facts.ErrAlreadyUsed
-var ErrAuthCodeExpired = facts.ErrExpired
+var ErrNotFound = sentinel.ErrNotFound
+var ErrAuthCodeUsed = sentinel.ErrAlreadyUsed
+var ErrAuthCodeExpired = sentinel.ErrExpired
 
 // Error Contract:
 // All store methods follow this error pattern:
@@ -71,7 +71,7 @@ func (s *InMemoryAuthorizationCodeStore) ConsumeAuthCode(_ context.Context, code
 		return nil, fmt.Errorf("authorization code not found: %w", ErrNotFound)
 	}
 	if record.RedirectURI != redirectURI {
-		return record, fmt.Errorf("redirect_uri mismatch: %w", facts.ErrInvalidInput)
+		return record, fmt.Errorf("redirect_uri mismatch: %w", sentinel.ErrInvalidInput)
 	}
 	if now.After(record.ExpiresAt) {
 		return record, fmt.Errorf("authorization code expired: %w", ErrAuthCodeExpired)

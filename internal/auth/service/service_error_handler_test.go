@@ -9,7 +9,7 @@ import (
 	authCodeStore "credo/internal/auth/store/authorization-code"
 	refreshTokenStore "credo/internal/auth/store/refresh-token"
 	sessionStore "credo/internal/auth/store/session"
-	"credo/internal/facts"
+	"credo/internal/sentinel"
 	dErrors "credo/pkg/domain-errors"
 
 	"github.com/stretchr/testify/assert"
@@ -116,7 +116,7 @@ func (s *ServiceSuite) TestHandleTokenError() {
 		// Domain errors
 		{
 			name:           "bad request - redirect_uri mismatch",
-			err:            fmt.Errorf("redirect_uri mismatch: %w", facts.ErrBadRequest),
+			err:            fmt.Errorf("redirect_uri mismatch: %w", sentinel.ErrBadRequest),
 			flow:           TokenFlowCode,
 			expectedCode:   dErrors.CodeBadRequest,
 			expectedMsg:    "redirect_uri mismatch: bad request",

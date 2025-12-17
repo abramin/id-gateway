@@ -22,7 +22,7 @@ DDD is an approach to building software where the code structure and language in
 - **Repository**: Collection-like interface for aggregates/entities (e.g., `UserStore`, `SessionStore`).
 - **Domain Service**: Domain behavior that doesn’t naturally belong on a single entity (e.g., token minting, device binding policy evaluation).
 - **Application Service**: Orchestrates use-cases, manages transactions, calls domain services and repositories (e.g., `internal/auth/service.Service`).
-- **Domain Events**: Facts about something that happened (e.g., “session created”, “token issued”) used for audit/async side effects.
+- **Domain Events**: sentinel about something that happened (e.g., “session created”, “token issued”) used for audit/async side effects.
 
 ---
 
@@ -119,7 +119,7 @@ This is aligned with Credo’s atomic multi-write requirement.
 
 ### 2.7 Domain events / audit (current)
 
-Audit emissions in `internal/auth/service/service.go#logAudit` behave like _domain events_ (facts emitted on lifecycle transitions), but they are not explicitly modeled as domain events in code.
+Audit emissions in `internal/auth/service/service.go#logAudit` behave like _domain events_ (sentinel emitted on lifecycle transitions), but they are not explicitly modeled as domain events in code.
 
 That is acceptable for MVP, but the key DDD intent is: **events are emitted by the service at domain transitions**, not by handlers.
 

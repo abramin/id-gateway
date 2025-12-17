@@ -9,13 +9,13 @@ import (
 
 	"github.com/google/uuid"
 
-	"credo/internal/facts"
+	"credo/internal/sentinel"
 	"credo/internal/tenant/models"
 	tenant "credo/internal/tenant/models"
 )
 
 // ErrNotFound is returned when a tenant or client is not found.
-var ErrNotFound = facts.ErrNotFound
+var ErrNotFound = sentinel.ErrNotFound
 
 // InMemoryTenantStore stores tenants in memory for the demo environment.
 type InMemoryTenantStore struct {
@@ -34,7 +34,7 @@ func (s *InMemoryTenantStore) CreateIfNameAvailable(_ context.Context, t *tenant
 	defer s.mu.Unlock()
 	lower := strings.ToLower(t.Name)
 	if _, exists := s.nameIdx[lower]; exists {
-		return fmt.Errorf("tenant name must be unique: %w", facts.ErrAlreadyUsed)
+		return fmt.Errorf("tenant name must be unique: %w", sentinel.ErrAlreadyUsed)
 	}
 	key := t.ID.String()
 	s.tenants[key] = t

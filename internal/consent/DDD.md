@@ -9,6 +9,7 @@ This document describes the Domain-Driven Design (DDD) approach applied to the `
 **Context:** `internal/consent`
 
 **Purpose:** Manage purpose-based consent lifecycle:
+
 - Users grant consent for specific purposes (login, registry_check, vc_issuance, decision_evaluation)
 - Users revoke consent for specific purposes
 - Services check consent before processing sensitive operations
@@ -20,15 +21,15 @@ This is a distinct bounded context because consent management has its own langua
 
 ## 2) Ubiquitous Language Mapping (code <-> terms)
 
-| Domain Term | Code Location |
-|-------------|---------------|
-| **Purpose** | `models.Purpose` (login, registry_check, vc_issuance, decision_evaluation) |
-| **Consent Record** | `models.Record` (persisted consent decision) |
-| **Status** | `models.Status` (active, expired, revoked) |
-| **Grant** | `service.Grant()` - create or renew consent |
-| **Revoke** | `service.Revoke()` - withdraw consent |
-| **Require** | `service.Require()` - verify consent exists and is active |
-| **Audit Event** | emitted via `audit.Publisher` at lifecycle transitions |
+| Domain Term        | Code Location                                                              |
+| ------------------ | -------------------------------------------------------------------------- |
+| **Purpose**        | `models.Purpose` (login, registry_check, vc_issuance, decision_evaluation) |
+| **Consent Record** | `models.Record` (persisted consent decision)                               |
+| **Status**         | `models.Status` (active, expired, revoked)                                 |
+| **Grant**          | `service.Grant()` - create or renew consent                                |
+| **Revoke**         | `service.Revoke()` - withdraw consent                                      |
+| **Require**        | `service.Require()` - verify consent exists and is active                  |
+| **Audit Event**    | emitted via `audit.Publisher` at lifecycle transitions                     |
 
 ---
 
@@ -37,13 +38,16 @@ This is a distinct bounded context because consent management has its own langua
 This aligns with Credo's `AGENTS.md` rules:
 
 - **Handlers** (`internal/consent/handler/*`)
+
   - HTTP concerns only: decode, validate request, extract context, map responses.
 
 - **Application Service** (`internal/consent/service/*`)
+
   - Orchestration + domain behavior + error mapping.
   - Transaction boundaries via `ConsentStoreTx.RunInTx`.
 
 - **Domain Models** (`internal/consent/models/*`)
+
   - Entities representing persisted consent state (`Record`).
   - Value objects (`Purpose`, `Status`).
   - Request/Response DTOs (`GrantRequest`, `RevokeRequest`, etc.).
@@ -91,6 +95,7 @@ The consent service uses `ConsentStoreTx.RunInTx` to wrap multi-purpose operatio
 This prevents partial state if one purpose fails mid-operation.
 
 Implementation:
+
 - `internal/consent/service/tx.go` - interface definition
 - `internal/consent/service/service.go` - mutex-based implementation for in-memory store
 
@@ -98,16 +103,17 @@ Implementation:
 
 ## 6) Domain Events / Audit
 
-Audit emissions behave like domain events (facts emitted on lifecycle transitions):
+Audit emissions behave like domain events (sentinel emitted on lifecycle transitions):
 
-| Transition | Audit Action | Decision |
-|------------|--------------|----------|
-| Consent granted | `consent_granted` | `granted` |
-| Consent revoked | `consent_revoked` | `revoked` |
+| Transition           | Audit Action           | Decision  |
+| -------------------- | ---------------------- | --------- |
+| Consent granted      | `consent_granted`      | `granted` |
+| Consent revoked      | `consent_revoked`      | `revoked` |
 | Consent check passed | `consent_check_passed` | `granted` |
-| Consent check failed | `consent_check_failed` | `denied` |
+| Consent check failed | `consent_check_failed` | `denied`  |
 
 All events include:
+
 - `user_id`
 - `purpose`
 - `reason` (currently: `user_initiated`)
@@ -127,6 +133,7 @@ The `Store` interface defines error behavior:
 ```
 
 The service maps store errors to domain errors:
+
 - `store.ErrNotFound` -> handled as "missing consent"
 - Other errors -> `CodeInternal`
 
@@ -136,13 +143,14 @@ The service maps store errors to domain errors:
 
 Per `testing.md` and `AGENTS.md`:
 
-| Layer | Location | Purpose |
-|-------|----------|---------|
-| Primary (Gherkin) | `e2e/features/consent_flow.feature` | Published behavior contracts |
-| Secondary (Integration) | `internal/consent/integration_test.go` | Timing-sensitive, state manipulation |
-| Tertiary (Unit) | `internal/consent/service/service_test.go` | Error propagation, validation |
+| Layer                   | Location                                   | Purpose                              |
+| ----------------------- | ------------------------------------------ | ------------------------------------ |
+| Primary (Gherkin)       | `e2e/features/consent_flow.feature`        | Published behavior contracts         |
+| Secondary (Integration) | `internal/consent/integration_test.go`     | Timing-sensitive, state manipulation |
+| Tertiary (Unit)         | `internal/consent/service/service_test.go` | Error propagation, validation        |
 
 Unit tests exist only to:
+
 - Enforce invariants unreachable via integration tests
 - Test error code mapping across boundaries
 - Verify store error propagation
@@ -152,10 +160,12 @@ Unit tests exist only to:
 ## 9) Current Deviations / Future Improvements
 
 1. **Models mix domain and transport concerns**
+
    - `models/models.go` contains both `Record` (domain) and `GrantRequest` (transport)
    - Could split into `models/domain.go` and `models/transport.go`
 
 2. **Invariants not enforced via constructors**
+
    - Entities created via struct literals
    - Could add `NewRecord()` constructor to enforce invariants
 

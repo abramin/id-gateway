@@ -8,12 +8,12 @@ import (
 	"github.com/google/uuid"
 
 	"credo/internal/auth/models"
-	"credo/internal/facts"
+	"credo/internal/sentinel"
 )
 
 // ErrNotFound is returned when a requested record is not found in the store.
 // Services should check for this error using errors.Is(err, store.ErrNotFound).
-var ErrNotFound = facts.ErrNotFound
+var ErrNotFound = sentinel.ErrNotFound
 
 // Error Contract:
 // All store methods follow this error pattern:

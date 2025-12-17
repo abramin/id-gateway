@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"credo/internal/facts"
+	"credo/internal/sentinel"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -209,18 +209,18 @@ func (s *JWTService) ValidateToken(tokenString string) (*AccessTokenClaims, erro
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, fmt.Errorf("token has expired: %w", facts.ErrExpired)
+			return nil, fmt.Errorf("token has expired: %w", sentinel.ErrExpired)
 		}
-		return nil, fmt.Errorf("invalid token: %w", facts.ErrInvalidInput)
+		return nil, fmt.Errorf("invalid token: %w", sentinel.ErrInvalidInput)
 	}
 
 	if !parsed.Valid {
-		return nil, fmt.Errorf("invalid token: %w", facts.ErrInvalidInput)
+		return nil, fmt.Errorf("invalid token: %w", sentinel.ErrInvalidInput)
 	}
 
 	claims, ok := parsed.Claims.(*AccessTokenClaims)
 	if !ok {
-		return nil, fmt.Errorf("invalid token claims: %w", facts.ErrInvalidInput)
+		return nil, fmt.Errorf("invalid token claims: %w", sentinel.ErrInvalidInput)
 	}
 
 	return claims, nil
@@ -236,18 +236,18 @@ func (s *JWTService) ValidateIDToken(tokenString string) (*IDTokenClaims, error)
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, fmt.Errorf("token has expired: %w", facts.ErrExpired)
+			return nil, fmt.Errorf("token has expired: %w", sentinel.ErrExpired)
 		}
-		return nil, fmt.Errorf("invalid token: %w", facts.ErrInvalidInput)
+		return nil, fmt.Errorf("invalid token: %w", sentinel.ErrInvalidInput)
 	}
 
 	if !parsed.Valid {
-		return nil, fmt.Errorf("invalid token: %w", facts.ErrInvalidInput)
+		return nil, fmt.Errorf("invalid token: %w", sentinel.ErrInvalidInput)
 	}
 
 	claims, ok := parsed.Claims.(*IDTokenClaims)
 	if !ok {
-		return nil, fmt.Errorf("invalid token claims: %w", facts.ErrInvalidInput)
+		return nil, fmt.Errorf("invalid token claims: %w", sentinel.ErrInvalidInput)
 	}
 
 	return claims, nil

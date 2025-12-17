@@ -14,8 +14,8 @@ import (
 	"credo/internal/audit"
 	"credo/internal/auth/device"
 	"credo/internal/auth/models"
-	"credo/internal/facts"
 	"credo/internal/platform/middleware"
+	"credo/internal/sentinel"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/email"
 )
@@ -28,12 +28,12 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 	req.Normalize()
 	if err := req.Validate(); err != nil {
 		code := dErrors.CodeValidation
-		if errors.Is(err, facts.ErrBadRequest) {
+		if errors.Is(err, sentinel.ErrBadRequest) {
 			code = dErrors.CodeBadRequest
 		}
 		// Extract just the context message without the sentinel
-		msg := strings.TrimSuffix(err.Error(), ": "+facts.ErrInvalidInput.Error())
-		msg = strings.TrimSuffix(msg, ": "+facts.ErrBadRequest.Error())
+		msg := strings.TrimSuffix(err.Error(), ": "+sentinel.ErrInvalidInput.Error())
+		msg = strings.TrimSuffix(msg, ": "+sentinel.ErrBadRequest.Error())
 		return nil, dErrors.New(code, msg)
 	}
 
