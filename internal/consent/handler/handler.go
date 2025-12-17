@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -15,16 +16,16 @@ import (
 	"credo/internal/transport/httputil"
 	dErrors "credo/pkg/domain-errors"
 	s "credo/pkg/string"
-	"credo/pkg/validation"
 )
 
 // Service defines the interface for consent operations.
+// Returns domain objects, not HTTP response DTOs.
 type Service interface {
-	Grant(ctx context.Context, userID string, purposes []models.Purpose) (*models.GrantResponse, error)
-	Revoke(ctx context.Context, userID string, purposes []models.Purpose) (*models.RevokeResponse, error)
-	RevokeAll(ctx context.Context, userID string) (*models.RevokeResponse, error)
+	Grant(ctx context.Context, userID string, purposes []models.Purpose) ([]*models.Record, error)
+	Revoke(ctx context.Context, userID string, purposes []models.Purpose) ([]*models.Record, error)
+	RevokeAll(ctx context.Context, userID string) (int, error)
 	DeleteAll(ctx context.Context, userID string) error
-	List(ctx context.Context, userID string, filter *models.RecordFilter) (*models.ListResponse, error)
+	List(ctx context.Context, userID string, filter *models.RecordFilter) ([]*models.Record, error)
 }
 
 // Handler handles consent-related endpoints.
@@ -32,11 +33,6 @@ type Handler struct {
 	logger  *slog.Logger
 	consent Service
 	metrics *metrics.Metrics
-}
-
-type listConsentsQueryDTO struct {
-	Status  string `validate:"omitempty,oneof=active expired revoked"`
-	Purpose string `validate:"omitempty,oneof=login registry_check vc_issuance decision_evaluation"`
 }
 
 // New creates a new consent Handler.
@@ -88,16 +84,17 @@ func (h *Handler) handleGrantConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Sanitize(&grantReq)
-	if err := validation.Validate(&grantReq); err != nil {
+	grantReq.Normalize()
+	if err := grantReq.Validate(); err != nil {
 		h.logger.WarnContext(ctx, "invalid grant consent request",
 			"request_id", requestID,
 			"error", err,
 		)
-		httputil.WriteError(w, err)
+		httputil.WriteError(w, mapValidationError(err))
 		return
 	}
 
-	res, err := h.consent.Grant(ctx, userID, grantReq.Purposes)
+	records, err := h.consent.Grant(ctx, userID, grantReq.Purposes)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to grant consent",
 			"request_id", requestID,
@@ -107,7 +104,7 @@ func (h *Handler) handleGrantConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, res)
+	httputil.WriteJSON(w, http.StatusOK, toGrantResponse(records, time.Now()))
 }
 
 func (h *Handler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
@@ -133,16 +130,17 @@ func (h *Handler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Sanitize(&revokeReq)
-	if err := validation.Validate(&revokeReq); err != nil {
+	revokeReq.Normalize()
+	if err := revokeReq.Validate(); err != nil {
 		h.logger.WarnContext(ctx, "invalid revoke consent request",
 			"request_id", requestID,
 			"error", err,
 		)
-		httputil.WriteError(w, err)
+		httputil.WriteError(w, mapValidationError(err))
 		return
 	}
 
-	res, err := h.consent.Revoke(ctx, userID, revokeReq.Purposes)
+	records, err := h.consent.Revoke(ctx, userID, revokeReq.Purposes)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to revoke consent",
 			"request_id", requestID,
@@ -152,7 +150,7 @@ func (h *Handler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, res)
+	httputil.WriteJSON(w, http.StatusOK, toRevokeResponse(records, time.Now()))
 }
 
 func (h *Handler) handleRevokeAllConsents(w http.ResponseWriter, r *http.Request) {
@@ -168,7 +166,7 @@ func (h *Handler) handleRevokeAllConsents(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	res, err := h.consent.RevokeAll(ctx, userID)
+	count, err := h.consent.RevokeAll(ctx, userID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to revoke all consents",
 			"request_id", requestID,
@@ -178,7 +176,10 @@ func (h *Handler) handleRevokeAllConsents(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, res)
+	httputil.WriteJSON(w, http.StatusOK, &models.RevokeResponse{
+		Revoked: nil,
+		Message: formatActionMessage("Consent revoked for %d purpose", count),
+	})
 }
 
 func (h *Handler) handleDeleteAllConsents(w http.ResponseWriter, r *http.Request) {
@@ -221,19 +222,22 @@ func (h *Handler) handleGetConsents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := listConsentsQueryDTO{
-		Status:  r.URL.Query().Get("status"),
-		Purpose: r.URL.Query().Get("purpose"),
+	// Parse and validate query parameters
+	status := r.URL.Query().Get("status")
+	purpose := r.URL.Query().Get("purpose")
+
+	if status != "" && !isValidStatus(status) {
+		httputil.WriteError(w, dErrors.New(dErrors.CodeValidation, "invalid status filter"))
+		return
 	}
-	s.Sanitize(&query)
-	if err := validation.Validate(&query); err != nil {
-		httputil.WriteError(w, err)
+	if purpose != "" && !models.Purpose(purpose).IsValid() {
+		httputil.WriteError(w, dErrors.New(dErrors.CodeValidation, "invalid purpose filter"))
 		return
 	}
 
-	res, err := h.consent.List(ctx, userID, &models.RecordFilter{
-		Purpose: query.Purpose,
-		Status:  query.Status,
+	records, err := h.consent.List(ctx, userID, &models.RecordFilter{
+		Purpose: purpose,
+		Status:  status,
 	})
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to list consent",
@@ -244,5 +248,78 @@ func (h *Handler) handleGetConsents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, res)
+	httputil.WriteJSON(w, http.StatusOK, toListResponse(records, time.Now()))
+}
+
+// Response mapping functions - convert domain objects to HTTP DTOs
+
+func toGrantResponse(records []*models.Record, now time.Time) *models.GrantResponse {
+	granted := make([]*models.Grant, 0, len(records))
+	for _, record := range records {
+		granted = append(granted, &models.Grant{
+			Purpose:   record.Purpose,
+			GrantedAt: record.GrantedAt,
+			ExpiresAt: record.ExpiresAt,
+			Status:    record.ComputeStatus(now),
+		})
+	}
+	return &models.GrantResponse{
+		Granted: granted,
+		Message: formatActionMessage("Consent granted for %d purpose", len(records)),
+	}
+}
+
+func toRevokeResponse(records []*models.Record, now time.Time) *models.RevokeResponse {
+	revoked := make([]*models.Revoked, 0, len(records))
+	for _, record := range records {
+		if record.RevokedAt != nil {
+			revoked = append(revoked, &models.Revoked{
+				Purpose:   record.Purpose,
+				RevokedAt: *record.RevokedAt,
+				Status:    record.ComputeStatus(now),
+			})
+		}
+	}
+	return &models.RevokeResponse{
+		Revoked: revoked,
+		Message: formatActionMessage("Consent revoked for %d purpose", len(revoked)),
+	}
+}
+
+func toListResponse(records []*models.Record, now time.Time) *models.ListResponse {
+	consents := make([]*models.ConsentWithStatus, 0, len(records))
+	for _, record := range records {
+		consents = append(consents, &models.ConsentWithStatus{
+			Consent: models.Consent{
+				ID:        record.ID,
+				Purpose:   record.Purpose,
+				GrantedAt: record.GrantedAt,
+				ExpiresAt: record.ExpiresAt,
+				RevokedAt: record.RevokedAt,
+			},
+			Status: record.ComputeStatus(now),
+		})
+	}
+	return &models.ListResponse{Consents: consents}
+}
+
+// Helper functions
+
+func isValidStatus(status string) bool {
+	return status == string(models.StatusActive) ||
+		status == string(models.StatusExpired) ||
+		status == string(models.StatusRevoked)
+}
+
+func formatActionMessage(template string, count int) string {
+	suffix := "s"
+	if count == 1 {
+		suffix = ""
+	}
+	return fmt.Sprintf(template+"%s", count, suffix)
+}
+
+// mapValidationError converts validation errors to domain errors.
+func mapValidationError(err error) error {
+	return dErrors.New(dErrors.CodeValidation, err.Error())
 }

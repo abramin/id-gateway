@@ -3,11 +3,9 @@ package models
 import (
 	"time"
 
-	pkgerrors "credo/pkg/domain-errors"
+	dErrors "credo/pkg/domain-errors"
 )
 
-// Purpose labels why data is processed. Purpose binding allows selective
-// revocation without affecting other flows.
 // Audit event actions
 const (
 	AuditActionConsentGranted     = "consent_granted"
@@ -28,88 +26,6 @@ const (
 	AuditReasonUserInitiated = "user_initiated"
 )
 
-type Purpose string
-
-type GrantRequest struct {
-	Purposes []Purpose `json:"purposes" validate:"required,min=1,dive,oneof=login registry_check vc_issuance decision_evaluation"`
-}
-
-type GrantResponse struct {
-	Granted []*Grant `json:"granted"`
-	Message string   `json:"message,omitempty"`
-}
-
-type Consent struct {
-	ID        string     `json:"id"`
-	Purpose   Purpose    `json:"purpose"`
-	GrantedAt time.Time  `json:"granted_at"`
-	ExpiresAt *time.Time `json:"expires_at,omitempty"`
-	RevokedAt *time.Time `json:"revoked_at,omitempty"`
-}
-
-type ConsentWithStatus struct {
-	Consent
-	Status Status `json:"status"` // "active", "expired", "revoked"
-}
-
-type Grant struct {
-	Purpose   Purpose    `json:"purpose" validate:"required,oneof=login registry_check vc_issuance decision_evaluation"`
-	GrantedAt time.Time  `json:"granted_at" validate:"required"`
-	ExpiresAt *time.Time `json:"expires_at,omitempty" validate:"omitempty"`
-	Status    Status     `json:"status" validate:"required,oneof=active expired revoked"` // "active" for new grant
-}
-
-// RevokeRequest specifies which purposes to revoke.
-type RevokeRequest struct {
-	Purposes []Purpose `json:"purposes" validate:"required,min=1,dive,oneof=login registry_check vc_issuance decision_evaluation"`
-}
-
-// RevokeResponse matches PRD-002 spec - only revoked records
-type RevokeResponse struct {
-	Revoked []*Revoked `json:"revoked"`
-	Message string     `json:"message,omitempty"`
-}
-
-type Revoked struct {
-	Purpose   Purpose   `json:"purpose" validate:"required,oneof=login registry_check vc_issuance decision_evaluation"`
-	RevokedAt time.Time `json:"revoked_at" validate:"required"`
-	Status    Status    `json:"status" validate:"required,oneof=active expired revoked"` // "revoked" for revoked consent
-}
-
-// ListResponse matches PRD-002 spec - uses "consents" not "consent_records"
-type ListResponse struct {
-	Consents []*ConsentWithStatus `json:"consents"`
-}
-
-type Status string
-
-const (
-	StatusActive  Status = "active"
-	StatusExpired Status = "expired"
-	StatusRevoked Status = "revoked"
-)
-
-// RecordFilter allows filtering consent records by purpose and status.
-type RecordFilter struct {
-	Purpose string
-	Status  string
-}
-
-const (
-	PurposeLogin         Purpose = "login"
-	PurposeRegistryCheck Purpose = "registry_check"
-	PurposeVCIssuance    Purpose = "vc_issuance"
-	PurposeDecision      Purpose = "decision_evaluation"
-)
-
-// ValidPurposes is the single source of truth for all valid consent purposes.
-var ValidPurposes = map[Purpose]bool{
-	PurposeLogin:         true,
-	PurposeRegistryCheck: true,
-	PurposeVCIssuance:    true,
-	PurposeDecision:      true,
-}
-
 // Record captures a user's decision for a specific purpose.
 type Record struct {
 	ID        string     `json:"id"`
@@ -118,6 +34,29 @@ type Record struct {
 	GrantedAt time.Time  `json:"granted_at"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 	RevokedAt *time.Time `json:"revoked_at,omitempty"`
+}
+
+// NewRecord creates a Record with domain invariant checks.
+func NewRecord(id, userID string, purpose Purpose, grantedAt time.Time, expiresAt *time.Time) (*Record, error) {
+	if id == "" {
+		return nil, dErrors.New(dErrors.CodeInvariantViolation, "consent ID cannot be empty")
+	}
+	if userID == "" {
+		return nil, dErrors.New(dErrors.CodeInvariantViolation, "user ID cannot be empty")
+	}
+	if !purpose.IsValid() {
+		return nil, dErrors.New(dErrors.CodeInvariantViolation, "invalid consent purpose")
+	}
+	if expiresAt != nil && expiresAt.Before(grantedAt) {
+		return nil, dErrors.New(dErrors.CodeInvariantViolation, "expiry must be after grant time")
+	}
+	return &Record{
+		ID:        id,
+		UserID:    userID,
+		Purpose:   purpose,
+		GrantedAt: grantedAt,
+		ExpiresAt: expiresAt,
+	}, nil
 }
 
 // IsActive returns true when consent is currently valid.
@@ -131,7 +70,7 @@ func (c Record) IsActive(now time.Time) bool {
 	return true
 }
 
-// Status reports the consent lifecycle state at the provided time.
+// ComputeStatus reports the consent lifecycle state at the provided time.
 func (c Record) ComputeStatus(now time.Time) Status {
 	if c.RevokedAt != nil {
 		return StatusRevoked
@@ -142,6 +81,12 @@ func (c Record) ComputeStatus(now time.Time) Status {
 	return StatusActive
 }
 
+// RecordFilter allows filtering consent records by purpose and status.
+type RecordFilter struct {
+	Purpose string
+	Status  string
+}
+
 // Ensure enforces that consent exists and is active for the given purpose.
 func Ensure(consents []*Record, purpose Purpose, now time.Time) error {
 	for _, c := range consents {
@@ -149,10 +94,5 @@ func Ensure(consents []*Record, purpose Purpose, now time.Time) error {
 			return nil
 		}
 	}
-	return pkgerrors.New(pkgerrors.CodeMissingConsent, "consent not granted for required purpose")
-}
-
-// IsValid checks if the consent purpose is one of the supported enum values.
-func (cp Purpose) IsValid() bool {
-	return ValidPurposes[cp]
+	return dErrors.New(dErrors.CodeMissingConsent, "consent not granted for required purpose")
 }

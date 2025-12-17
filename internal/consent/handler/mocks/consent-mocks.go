@@ -41,66 +41,6 @@ func (m *MockService) EXPECT() *MockServiceMockRecorder {
 	return m.recorder
 }
 
-// Grant mocks base method.
-func (m *MockService) Grant(ctx context.Context, userID string, purposes []models.Purpose) (*models.GrantResponse, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Grant", ctx, userID, purposes)
-	ret0, _ := ret[0].(*models.GrantResponse)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Grant indicates an expected call of Grant.
-func (mr *MockServiceMockRecorder) Grant(ctx, userID, purposes any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Grant", reflect.TypeOf((*MockService)(nil).Grant), ctx, userID, purposes)
-}
-
-// List mocks base method.
-func (m *MockService) List(ctx context.Context, userID string, filter *models.RecordFilter) (*models.ListResponse, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "List", ctx, userID, filter)
-	ret0, _ := ret[0].(*models.ListResponse)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// List indicates an expected call of List.
-func (mr *MockServiceMockRecorder) List(ctx, userID, filter any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockService)(nil).List), ctx, userID, filter)
-}
-
-// Revoke mocks base method.
-func (m *MockService) Revoke(ctx context.Context, userID string, purposes []models.Purpose) (*models.RevokeResponse, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Revoke", ctx, userID, purposes)
-	ret0, _ := ret[0].(*models.RevokeResponse)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Revoke indicates an expected call of Revoke.
-func (mr *MockServiceMockRecorder) Revoke(ctx, userID, purposes any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Revoke", reflect.TypeOf((*MockService)(nil).Revoke), ctx, userID, purposes)
-}
-
-// RevokeAll mocks base method.
-func (m *MockService) RevokeAll(ctx context.Context, userID string) (*models.RevokeResponse, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RevokeAll", ctx, userID)
-	ret0, _ := ret[0].(*models.RevokeResponse)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// RevokeAll indicates an expected call of RevokeAll.
-func (mr *MockServiceMockRecorder) RevokeAll(ctx, userID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokeAll", reflect.TypeOf((*MockService)(nil).RevokeAll), ctx, userID)
-}
-
 // DeleteAll mocks base method.
 func (m *MockService) DeleteAll(ctx context.Context, userID string) error {
 	m.ctrl.T.Helper()
@@ -113,4 +53,64 @@ func (m *MockService) DeleteAll(ctx context.Context, userID string) error {
 func (mr *MockServiceMockRecorder) DeleteAll(ctx, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAll", reflect.TypeOf((*MockService)(nil).DeleteAll), ctx, userID)
+}
+
+// Grant mocks base method.
+func (m *MockService) Grant(ctx context.Context, userID string, purposes []models.Purpose) ([]*models.Record, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Grant", ctx, userID, purposes)
+	ret0, _ := ret[0].([]*models.Record)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Grant indicates an expected call of Grant.
+func (mr *MockServiceMockRecorder) Grant(ctx, userID, purposes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Grant", reflect.TypeOf((*MockService)(nil).Grant), ctx, userID, purposes)
+}
+
+// List mocks base method.
+func (m *MockService) List(ctx context.Context, userID string, filter *models.RecordFilter) ([]*models.Record, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "List", ctx, userID, filter)
+	ret0, _ := ret[0].([]*models.Record)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// List indicates an expected call of List.
+func (mr *MockServiceMockRecorder) List(ctx, userID, filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockService)(nil).List), ctx, userID, filter)
+}
+
+// Revoke mocks base method.
+func (m *MockService) Revoke(ctx context.Context, userID string, purposes []models.Purpose) ([]*models.Record, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Revoke", ctx, userID, purposes)
+	ret0, _ := ret[0].([]*models.Record)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Revoke indicates an expected call of Revoke.
+func (mr *MockServiceMockRecorder) Revoke(ctx, userID, purposes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Revoke", reflect.TypeOf((*MockService)(nil).Revoke), ctx, userID, purposes)
+}
+
+// RevokeAll mocks base method.
+func (m *MockService) RevokeAll(ctx context.Context, userID string) (int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RevokeAll", ctx, userID)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RevokeAll indicates an expected call of RevokeAll.
+func (mr *MockServiceMockRecorder) RevokeAll(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokeAll", reflect.TypeOf((*MockService)(nil).RevokeAll), ctx, userID)
 }
