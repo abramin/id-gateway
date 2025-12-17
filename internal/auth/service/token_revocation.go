@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"credo/internal/auth/models"
 	sessionStore "credo/internal/auth/store/session"
+	dErrors "credo/pkg/domain-errors"
 )
 
 const (
@@ -20,6 +22,16 @@ const (
 // RevokeToken revokes an access token or refresh token, effectively logging out the user.
 // Implements FR-3: Token Revocation (Logout) from PRD-016.
 func (s *Service) RevokeToken(ctx context.Context, token string, tokenTypeHint string) error {
+	token = strings.TrimSpace(token)
+	tokenTypeHint = strings.TrimSpace(tokenTypeHint)
+
+	if token == "" {
+		return dErrors.New(dErrors.CodeValidation, "token is required")
+	}
+	if tokenTypeHint != "" && tokenTypeHint != TokenHintAccessToken && tokenTypeHint != TokenHintRefreshToken {
+		return dErrors.New(dErrors.CodeValidation, "token_type_hint must be 'access_token' or 'refresh_token'")
+	}
+
 	// Determine token type and extract session
 	var session *models.Session
 	var jti string
@@ -31,7 +43,7 @@ func (s *Service) RevokeToken(ctx context.Context, token string, tokenTypeHint s
 		if err == nil {
 			outcome, err := s.revokeSessionInternal(ctx, session, jti)
 			if err != nil {
-				return err
+				return dErrors.Wrap(err, dErrors.CodeInternal, "failed to revoke session")
 			}
 			if outcome == revokeSessionOutcomeAlreadyRevoked {
 				s.logAudit(ctx, "token_revocation_noop",
@@ -53,7 +65,7 @@ func (s *Service) RevokeToken(ctx context.Context, token string, tokenTypeHint s
 		if err == nil {
 			outcome, err := s.revokeSessionInternal(ctx, session, "")
 			if err != nil {
-				return err
+				return dErrors.Wrap(err, dErrors.CodeInternal, "failed to revoke session")
 			}
 			if outcome == revokeSessionOutcomeAlreadyRevoked {
 				s.logAudit(ctx, "token_revocation_noop",

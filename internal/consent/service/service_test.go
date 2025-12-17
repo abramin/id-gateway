@@ -396,7 +396,7 @@ func (s *ServiceSuite) TestRevoke() {
 		assert.Len(t, revoked.Revoked, 0)
 	})
 
-	s.T().Run("returns bad request for expired consent", func(t *testing.T) {
+	s.T().Run("skips expired consent", func(t *testing.T) {
 		now := time.Now()
 		expired := now.Add(-time.Hour)
 		existing := &models.Record{
@@ -410,8 +410,8 @@ func (s *ServiceSuite) TestRevoke() {
 			Return(existing, nil)
 
 		revoked, err := s.service.Revoke(context.Background(), "user123", []models.Purpose{models.PurposeLogin})
-		assert.True(t, dErrors.Is(err, dErrors.CodeBadRequest))
-		assert.Nil(t, revoked)
+		assert.NoError(t, err)
+		assert.Len(t, revoked.Revoked, 0)
 	})
 
 	s.T().Run("skips non-existent consent", func(t *testing.T) {

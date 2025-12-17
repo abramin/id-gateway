@@ -33,7 +33,7 @@ type Option func(*Service)
 
 const (
 	defaultConsentTTL             = 365 * 24 * time.Hour // 1 year
-	defaultGrantIdempotencyWindow = 1 * time.Second
+	defaultGrantIdempotencyWindow = 5 * time.Minute
 )
 
 // Service persists consent decisions and enforces lifecycle rules per PRD-002.
@@ -219,7 +219,8 @@ func (s *Service) Revoke(ctx context.Context, userID string, purposes []models.P
 			continue
 		}
 		if record.ExpiresAt != nil && record.ExpiresAt.Before(time.Now()) {
-			return nil, pkgerrors.New(pkgerrors.CodeBadRequest, fmt.Sprintf("cannot revoke expired consent for purpose %s", purpose))
+			// Expired consents are effectively inactive; skip to keep revoke idempotent.
+			continue
 		}
 		now := time.Now()
 		revokedRecord, err := s.store.RevokeByUserAndPurpose(ctx, userID, record.Purpose, now)

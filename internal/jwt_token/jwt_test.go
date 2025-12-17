@@ -1,7 +1,6 @@
 package jwttoken
 
 import (
-	dErrors "credo/pkg/domain-errors"
 	"testing"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 var userID = uuid.New()
 var sessionID = uuid.New()
 var clientID = "test-client"
+var tenantID = "test-tenant"
 var expiresIn = time.Second * 1
 
 var jwtService = NewJWTService(
@@ -23,7 +23,7 @@ var jwtService = NewJWTService(
 )
 
 func Test_GenerateAccessToken(t *testing.T) {
-	token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, []string{"read", "write"})
+	token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, tenantID, []string{"read", "write"})
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
 	claims, err := jwtService.ValidateToken(token)
@@ -37,20 +37,20 @@ func Test_GenerateAccessToken(t *testing.T) {
 
 func Test_ValidateToken_InvalidToken(t *testing.T) {
 	_, err := jwtService.ValidateToken("invalid-token-string")
-	require.ErrorIs(t, err, dErrors.New(dErrors.CodeUnauthorized, "invalid token"))
+	require.ErrorContains(t, err, "invalid token")
 }
 
 func Test_ValidateToken_ExpiredToken(t *testing.T) {
-	token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, []string{"read", "write"})
+	token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, tenantID, []string{"read", "write"})
 	time.Sleep(expiresIn + time.Second)
 	require.NoError(t, err)
 
 	_, err = jwtService.ValidateToken(token)
-	require.ErrorIs(t, err, dErrors.New(dErrors.CodeUnauthorized, "token has expired"))
+	require.ErrorContains(t, err, "token has expired")
 }
 
 func Test_ValidateToken_ValidTokent(t *testing.T) {
-	token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, []string{"read", "write"})
+	token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, tenantID, []string{"read", "write"})
 	require.NoError(t, err)
 
 	claims, err := jwtService.ValidateToken(token)
@@ -62,7 +62,7 @@ func Test_ValidateToken_ValidTokent(t *testing.T) {
 }
 
 func Test_GenerateIDToken(t *testing.T) {
-	token, err := jwtService.GenerateIDToken(userID, sessionID, clientID)
+	token, err := jwtService.GenerateIDToken(userID, sessionID, clientID, tenantID)
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
 	claims, err := jwtService.ValidateIDToken(token)
@@ -75,7 +75,7 @@ func Test_GenerateIDToken(t *testing.T) {
 }
 func Test_ParseTokenSkipClaimsValidation(t *testing.T) {
 	t.Run("valid token", func(t *testing.T) {
-		token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, []string{"read", "write"})
+		token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, tenantID, []string{"read", "write"})
 		require.NoError(t, err)
 
 		claims, err := jwtService.ParseTokenSkipClaimsValidation(token)
@@ -87,7 +87,7 @@ func Test_ParseTokenSkipClaimsValidation(t *testing.T) {
 	})
 
 	t.Run("expired token still parses", func(t *testing.T) {
-		token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, []string{"read", "write"})
+		token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, tenantID, []string{"read", "write"})
 		require.NoError(t, err)
 		time.Sleep(expiresIn + time.Second)
 
@@ -120,7 +120,7 @@ func Test_ParseTokenSkipClaimsValidation(t *testing.T) {
 			{
 				name: "invalid signature",
 				tokenFunc: func() string {
-					token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, []string{"read"})
+					token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, tenantID, []string{"read"})
 					require.NoError(t, err)
 					return token
 				},
@@ -144,5 +144,74 @@ func Test_ParseTokenSkipClaimsValidation(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.expectedErr)
 			})
 		}
+	})
+}
+
+func Test_BuildIssuer(t *testing.T) {
+	service := NewJWTService("key", "https://auth.example.com", "audience", time.Hour)
+
+	t.Run("builds per-tenant issuer", func(t *testing.T) {
+		tenantID := "550e8400-e29b-41d4-a716-446655440000"
+		issuer := service.BuildIssuer(tenantID)
+		assert.Equal(t, "https://auth.example.com/tenants/550e8400-e29b-41d4-a716-446655440000", issuer)
+	})
+
+	t.Run("returns base URL for empty tenant", func(t *testing.T) {
+		issuer := service.BuildIssuer("")
+		assert.Equal(t, "https://auth.example.com", issuer)
+	})
+}
+
+func Test_ExtractTenantFromIssuer(t *testing.T) {
+	service := NewJWTService("key", "https://auth.example.com", "audience", time.Hour)
+
+	t.Run("extracts tenant from valid issuer", func(t *testing.T) {
+		tenantID, err := service.ExtractTenantFromIssuer("https://auth.example.com/tenants/550e8400-e29b-41d4-a716-446655440000")
+		require.NoError(t, err)
+		assert.Equal(t, "550e8400-e29b-41d4-a716-446655440000", tenantID)
+	})
+
+	t.Run("returns empty for base URL issuer", func(t *testing.T) {
+		tenantID, err := service.ExtractTenantFromIssuer("https://auth.example.com")
+		require.NoError(t, err)
+		assert.Equal(t, "", tenantID)
+	})
+
+	t.Run("returns error for invalid issuer format", func(t *testing.T) {
+		_, err := service.ExtractTenantFromIssuer("https://other.domain.com/tenants/xyz")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid issuer format")
+	})
+
+	t.Run("returns error for malformed issuer", func(t *testing.T) {
+		_, err := service.ExtractTenantFromIssuer("not-a-url")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid issuer format")
+	})
+}
+
+func Test_PerTenantIssuerInToken(t *testing.T) {
+	service := NewJWTService("signing-key", "https://auth.example.com", "audience", time.Hour)
+	testTenantID := "tenant-abc-123"
+
+	t.Run("access token has per-tenant issuer", func(t *testing.T) {
+		token, err := service.GenerateAccessToken(userID, sessionID, clientID, testTenantID, []string{"openid"})
+		require.NoError(t, err)
+
+		claims, err := service.ValidateToken(token)
+		require.NoError(t, err)
+
+		assert.Equal(t, "https://auth.example.com/tenants/tenant-abc-123", claims.Issuer)
+		assert.Equal(t, testTenantID, claims.TenantID)
+	})
+
+	t.Run("ID token has per-tenant issuer", func(t *testing.T) {
+		token, err := service.GenerateIDToken(userID, sessionID, clientID, testTenantID)
+		require.NoError(t, err)
+
+		claims, err := service.ValidateIDToken(token)
+		require.NoError(t, err)
+
+		assert.Equal(t, "https://auth.example.com/tenants/tenant-abc-123", claims.Issuer)
 	})
 }

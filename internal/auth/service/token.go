@@ -2,15 +2,30 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"credo/internal/auth/models"
+	"credo/internal/facts"
+	tenant "credo/internal/tenant/models"
 	dErrors "credo/pkg/domain-errors"
 )
 
 func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {
-	if err := s.validateTokenRequest(req); err != nil {
-		return nil, err
+	if req == nil {
+		return nil, dErrors.New(dErrors.CodeBadRequest, "request is required")
+	}
+
+	req.Normalize()
+	if err := req.Validate(); err != nil {
+		code := dErrors.CodeValidation
+		if errors.Is(err, facts.ErrBadRequest) {
+			code = dErrors.CodeBadRequest
+		}
+		// Extract just the context message without the sentinel
+		msg := strings.TrimSuffix(err.Error(), ": "+facts.ErrInvalidInput.Error())
+		msg = strings.TrimSuffix(msg, ": "+facts.ErrBadRequest.Error())
+		return nil, dErrors.New(code, msg)
 	}
 
 	switch req.GrantType {
@@ -23,33 +38,42 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 	}
 }
 
-func (s *Service) validateTokenRequest(req *models.TokenRequest) error {
-	if req == nil {
-		return dErrors.New(dErrors.CodeBadRequest, "invalid request")
+func (s *Service) resolveTokenContext(
+	ctx context.Context,
+	session *models.Session,
+	clientID string,
+) (*tokenContext, error) {
+
+	client, tenant, err := s.clientResolver.ResolveClient(ctx, clientID)
+	if err != nil {
+		return nil, err
 	}
-	if strings.TrimSpace(req.GrantType) == "" {
-		return dErrors.New(dErrors.CodeValidation, "grant_type is required")
+	if client.ID != session.ClientID {
+		return nil, dErrors.New(dErrors.CodeInvalidGrant, "client mismatch")
 	}
-	if strings.TrimSpace(req.ClientID) == "" {
-		return dErrors.New(dErrors.CodeValidation, "client_id is required")
+	if tenant.ID != session.TenantID {
+		return nil, dErrors.New(dErrors.CodeInvalidGrant, "tenant mismatch")
 	}
 
-	switch req.GrantType {
-	case string(models.GrantAuthorizationCode):
-		if strings.TrimSpace(req.Code) == "" {
-			return dErrors.New(dErrors.CodeValidation, "code is required")
-		}
-		if strings.TrimSpace(req.RedirectURI) == "" {
-			return dErrors.New(dErrors.CodeValidation, "redirect_uri is required")
-		}
-	case string(models.GrantRefreshToken):
-		if strings.TrimSpace(req.RefreshToken) == "" {
-			return dErrors.New(dErrors.CodeValidation, "refresh_token is required")
-		}
-	default:
-		// OAuth 2.0: unsupported_grant_type
-		return dErrors.New(dErrors.CodeBadRequest, "unsupported grant_type")
+	user, err := s.users.FindByID(ctx, session.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if user.Status != models.UserStatusActive {
+		return nil, dErrors.New(dErrors.CodeForbidden, "user inactive")
 	}
 
-	return nil
+	return &tokenContext{
+		Session: session,
+		Client:  client,
+		Tenant:  tenant,
+		User:    user,
+	}, nil
+}
+
+type tokenContext struct {
+	Session *models.Session
+	Client  *tenant.Client
+	Tenant  *tenant.Tenant
+	User    *models.User
 }

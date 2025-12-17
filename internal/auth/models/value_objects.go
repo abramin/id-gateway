@@ -28,3 +28,31 @@ const (
 	// ScopeEmail grants access to user email and email_verified claims
 	ScopeEmail Scope = "email"
 )
+
+type TokenType string
+
+const (
+	TokenTypeAccess  TokenType = "access_token"
+	TokenTypeRefresh TokenType = "refresh_token"
+)
+
+type UserStatus string
+
+const (
+	UserStatusActive   UserStatus = "active"
+	UserStatusInactive UserStatus = "inactive"
+)
+
+type ClientStatus string
+
+const (
+	ClientStatusActive   ClientStatus = "active"
+	ClientStatusInactive ClientStatus = "inactive"
+)
+
+type TenantStatus string
+
+const (
+	TenantStatusActive   TenantStatus = "active"
+	TenantStatusInactive TenantStatus = "inactive"
+)

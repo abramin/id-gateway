@@ -9,20 +9,21 @@ import (
 	dErrors "credo/pkg/domain-errors"
 )
 
-// User captures the primary identity tracked by the gateway. Storage of the
-// actual user record lives behind the UserStore interface.
 type User struct {
-	ID        uuid.UUID `json:"id"`
-	Email     string    `json:"email"`
-	FirstName string    `json:"first_name"`
-	LastName  string    `json:"last_name"`
-	Verified  bool      `json:"verified"`
+	ID        uuid.UUID  `json:"id"`
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	Email     string     `json:"email"`
+	FirstName string     `json:"first_name"`
+	LastName  string     `json:"last_name"`
+	Verified  bool       `json:"verified"`
+	Status    UserStatus `json:"status"` // "active", "inactive"
 }
 
 type Session struct {
 	ID             uuid.UUID `json:"id"`
 	UserID         uuid.UUID `json:"user_id"`
-	ClientID       string    `json:"client_id"`
+	ClientID       uuid.UUID `json:"client_id"`
+	TenantID       uuid.UUID `json:"tenant_id"`
 	RequestedScope []string  `json:"requested_scope"`
 	Status         string    `json:"status"` // "active", "revoked", "pending_consent"
 
@@ -68,32 +69,40 @@ type RefreshTokenRecord struct {
 }
 
 // NewUser creates a User with domain invariant checks.
-func NewUser(id uuid.UUID, email, firstName, lastName string, verified bool) (*User, error) {
+func NewUser(id uuid.UUID, tenantID uuid.UUID, email, firstName, lastName string, verified bool) (*User, error) {
 	if id == uuid.Nil {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "user ID cannot be nil")
+	}
+	if tenantID == uuid.Nil {
+		return nil, dErrors.New(dErrors.CodeInvariantViolation, "user tenant ID cannot be nil")
 	}
 	if email == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "user email cannot be empty")
 	}
 	return &User{
 		ID:        id,
+		TenantID:  tenantID,
 		Email:     email,
 		FirstName: firstName,
 		LastName:  lastName,
 		Verified:  verified,
+		Status:    UserStatusActive,
 	}, nil
 }
 
 // NewSession creates a Session with domain invariant checks.
-func NewSession(id, userID uuid.UUID, clientID string, scopes []string, status string, createdAt, expiresAt, lastSeenAt time.Time) (*Session, error) {
+func NewSession(id, userID uuid.UUID, clientID uuid.UUID, tenantID uuid.UUID, scopes []string, status string, createdAt, expiresAt, lastSeenAt time.Time) (*Session, error) {
 	if id == uuid.Nil {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "session ID cannot be nil")
 	}
 	if userID == uuid.Nil {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "user ID cannot be nil")
 	}
-	if clientID == "" {
+	if clientID == uuid.Nil {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "client ID cannot be empty")
+	}
+	if tenantID == uuid.Nil {
+		return nil, dErrors.New(dErrors.CodeInvariantViolation, "tenant ID cannot be nil")
 	}
 	if len(scopes) == 0 {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "scopes cannot be empty")
@@ -108,6 +117,7 @@ func NewSession(id, userID uuid.UUID, clientID string, scopes []string, status s
 		ID:             id,
 		UserID:         userID,
 		ClientID:       clientID,
+		TenantID:       tenantID,
 		RequestedScope: scopes,
 		Status:         status,
 		CreatedAt:      createdAt,

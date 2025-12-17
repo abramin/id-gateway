@@ -142,7 +142,7 @@ func (s *InMemorySessionStoreSuite) TestAdvanceLastSeen() {
 	session := &models.Session{
 		ID:         uuid.New(),
 		UserID:     uuid.New(),
-		ClientID:   "client-1",
+		ClientID:   uuid.New(),
 		Status:     "pending_consent",
 		CreatedAt:  now.Add(-time.Hour),
 		ExpiresAt:  now.Add(time.Hour),
@@ -150,7 +150,7 @@ func (s *InMemorySessionStoreSuite) TestAdvanceLastSeen() {
 	}
 	require.NoError(s.T(), s.store.Create(ctx, session))
 
-	updated, err := s.store.AdvanceLastSeen(ctx, session.ID, session.ClientID, now, "jti-1", true, "device-1", "fp-1")
+	updated, err := s.store.AdvanceLastSeen(ctx, session.ID, session.ClientID.String(), now, "jti-1", true, "device-1", "fp-1")
 	require.NoError(s.T(), err)
 	assert.Equal(s.T(), "active", updated.Status)
 	assert.Equal(s.T(), "jti-1", updated.LastAccessTokenJTI)
@@ -160,7 +160,7 @@ func (s *InMemorySessionStoreSuite) TestAdvanceLastSeen() {
 
 	// Monotonic update should retain the newer timestamp
 	older := now.Add(-time.Minute)
-	updated, err = s.store.AdvanceLastSeen(ctx, session.ID, session.ClientID, older, "jti-2", false, "", "")
+	updated, err = s.store.AdvanceLastSeen(ctx, session.ID, session.ClientID.String(), older, "jti-2", false, "", "")
 	require.NoError(s.T(), err)
 	assert.Equal(s.T(), now, updated.LastSeenAt)
 	assert.Equal(s.T(), "jti-2", updated.LastAccessTokenJTI)
@@ -172,7 +172,7 @@ func (s *InMemorySessionStoreSuite) TestAdvanceLastSeenRejectsInvalid() {
 	session := &models.Session{
 		ID:         uuid.New(),
 		UserID:     uuid.New(),
-		ClientID:   "client-1",
+		ClientID:   uuid.New(),
 		Status:     "revoked",
 		CreatedAt:  now.Add(-time.Hour),
 		ExpiresAt:  now.Add(time.Hour),
@@ -180,7 +180,7 @@ func (s *InMemorySessionStoreSuite) TestAdvanceLastSeenRejectsInvalid() {
 	}
 	require.NoError(s.T(), s.store.Create(ctx, session))
 
-	_, err := s.store.AdvanceLastSeen(ctx, session.ID, session.ClientID, now, "", false, "", "")
+	_, err := s.store.AdvanceLastSeen(ctx, session.ID, session.ClientID.String(), now, "", false, "", "")
 	assert.ErrorIs(s.T(), err, ErrSessionRevoked)
 }
 
@@ -190,7 +190,7 @@ func (s *InMemorySessionStoreSuite) TestAdvanceLastRefreshed() {
 	session := &models.Session{
 		ID:         uuid.New(),
 		UserID:     uuid.New(),
-		ClientID:   "client-1",
+		ClientID:   uuid.New(),
 		Status:     "active",
 		CreatedAt:  now.Add(-time.Hour),
 		ExpiresAt:  now.Add(time.Hour),
@@ -198,7 +198,7 @@ func (s *InMemorySessionStoreSuite) TestAdvanceLastRefreshed() {
 	}
 	require.NoError(s.T(), s.store.Create(ctx, session))
 
-	updated, err := s.store.AdvanceLastRefreshed(ctx, session.ID, session.ClientID, now, "jti-1", "", "")
+	updated, err := s.store.AdvanceLastRefreshed(ctx, session.ID, session.ClientID.String(), now, "jti-1", "", "")
 	require.NoError(s.T(), err)
 	require.NotNil(s.T(), updated.LastRefreshedAt)
 	assert.Equal(s.T(), now, *updated.LastRefreshedAt)
@@ -207,7 +207,7 @@ func (s *InMemorySessionStoreSuite) TestAdvanceLastRefreshed() {
 
 	// Older timestamps should not move the fields backwards
 	past := now.Add(-time.Minute)
-	updated, err = s.store.AdvanceLastRefreshed(ctx, session.ID, session.ClientID, past, "jti-2", "", "")
+	updated, err = s.store.AdvanceLastRefreshed(ctx, session.ID, session.ClientID.String(), past, "jti-2", "", "")
 	require.NoError(s.T(), err)
 	assert.Equal(s.T(), now, *updated.LastRefreshedAt)
 	assert.Equal(s.T(), "jti-2", updated.LastAccessTokenJTI)

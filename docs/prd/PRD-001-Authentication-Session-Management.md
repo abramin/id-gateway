@@ -1,6 +1,6 @@
 # PRD-001: Authentication & Session Management
 
-**Status:** Implementation Required
+**Status:** Complete
 **Priority:** P0 (Critical)
 **Owner:** Engineering Team
 **Last Updated:** 2025-12-12
@@ -155,7 +155,12 @@ This implementation follows the standard **OAuth 2.0 Authorization Code Flow** (
 
 - 400 Bad Request: Invalid email format
 - 400 Bad Request: Invalid redirect_uri format
+- 400 Bad Request: Unknown client_id (RFC 6749 §4.1.2.1 - MUST NOT redirect)
+- 400 Bad Request: Inactive client (`invalid_client`)
+- 400 Bad Request: redirect_uri not in client's registered URIs (RFC 6749 §4.1.2.1 - MUST NOT redirect)
 - 500 Internal Server Error: Store failure
+
+**Note (RFC 6749 §4.1.2.1):** If the request fails due to a missing, invalid, or mismatching redirect_uri, or if the client_id is missing or invalid, the server MUST NOT redirect the user-agent. Instead, return an error response directly.
 
 ---
 
@@ -213,16 +218,18 @@ This implementation follows the standard **OAuth 2.0 Authorization Code Flow** (
 18. Save updated session
 19. Return access_token, id_token, and refresh_token
 
-**Error Cases:**
+**Error Cases (RFC 6749 §5.2):**
 
-- 400 Bad Request: Missing required fields (grant_type, code, redirect_uri, client_id)
-- 400 Bad Request: Unsupported grant_type (must be "authorization_code")
-- 401 Unauthorized: Invalid authorization code (not found)
-- 401 Unauthorized: Authorization code expired (> 10 minutes old)
-- 401 Unauthorized: Authorization code already used (replay attack prevention)
-- 400 Bad Request: redirect_uri mismatch (doesn't match authorize request)
-- 400 Bad Request: client_id mismatch (doesn't match authorize request)
+- 400 Bad Request: Missing required fields (`invalid_request`)
+- 400 Bad Request: Unsupported grant_type (`unsupported_grant_type`)
+- 400 Bad Request: Invalid authorization code - not found (`invalid_grant`)
+- 400 Bad Request: Authorization code expired (`invalid_grant`)
+- 400 Bad Request: Authorization code already used (`invalid_grant`)
+- 400 Bad Request: redirect_uri mismatch (`invalid_grant`)
+- 400 Bad Request: client_id mismatch (`invalid_client`)
 - 500 Internal Server Error: Store failure
+
+**Note (RFC 6749 §5.2):** Token endpoint errors return HTTP 400 with an `error` field. HTTP 401 is only used when client authentication fails via HTTP Authorization header (not applicable for JSON body authentication).
 
 ---
 
@@ -465,13 +472,25 @@ func (h *Handler) handleUserInfo(w http.ResponseWriter, r *http.Request)
 
 ### Token Format
 
-**Access Token:** JWT (HS256) containing `user_id`, `session_id`, `client_id`, `iss`, `aud`, `iat`, `exp`, and optional `env`. Lifetime = Token TTL (default 15m via `TOKEN_TTL`).
+**Access Token:** JWT (HS256) containing `user_id`, `session_id`, `client_id`, `tenant_id`, `iss`, `aud`, `iat`, `exp`, and optional `env`. Lifetime = Token TTL (default 15m via `TOKEN_TTL`).
 
 **ID Token:** JWT (HS256) containing `sub` (user_id), `sid` (session_id), `azp` (client_id), `iss`, `aud`, `iat`, `exp`, optional `env`. Lifetime = Token TTL (default 15m).
 
 **Session Lifetime:** Session records persist for Session TTL (default 24h via `SESSION_TTL`) and are used to validate codes, tokens, and userinfo. Code lifetime is fixed at 10 minutes.
 
 **Token Type:** Bearer
+
+**Issuer Format (RFC 8414 Compliance):**
+
+Per RFC 8414 (Authorization Server Metadata), each tenant has a unique issuer URL:
+
+```
+{base_url}/tenants/{tenant_id}
+```
+
+Example: `https://auth.credo.io/tenants/550e8400-e29b-41d4-a716-446655440000`
+
+The `iss` claim in both access tokens and ID tokens uses this per-tenant issuer format. The tenant ID can be derived from parsing the issuer URL, but `tenant_id` is also included as a custom claim in access tokens for client convenience.
 
 ### Error Response Format
 
@@ -642,7 +661,7 @@ curl -X POST http://localhost:8080/auth/token \
     "client_id": "demo-client"
   }'
 
-# Expected: 401 Unauthorized (code already used)
+# Expected: 400 Bad Request (invalid_grant - code already used)
 
 # 4b. Try with wrong redirect_uri (should fail)
 curl -X POST http://localhost:8080/auth/token \
@@ -789,6 +808,7 @@ curl -X POST http://localhost:8080/auth/token \
 ## 12. Future Enhancements (Out of Scope)
 
 - Real JWT signing with RS256/ES256
+- Per-tenant signing keys (currently global key used across all tenants)
 - Token refresh flow implementation (see PRD-016)
 - Session revocation endpoint (see PRD-016)
 - Session management endpoints (see PRD-016)
@@ -796,14 +816,22 @@ curl -X POST http://localhost:8080/auth/token \
 - Password authentication
 - Multi-factor authentication
 - Rate limiting per user/IP
-- OIDC discovery endpoint (/.well-known/openid-configuration)
+- OIDC discovery endpoint per tenant: `GET /tenants/{tenant_id}/.well-known/openid-configuration`
+- JWKS endpoint per tenant: `GET /tenants/{tenant_id}/.well-known/jwks.json`
 - PKCE support for public clients
 
 **Note:** Refresh token issuance is included in this PRD as foundation for PRD-016 (Token Lifecycle & Revocation), which implements the full refresh flow and revocation capabilities.
 
 ---
 
-## 13. Open Questions
+## 13. Deferred Tenant & Client Integration
+
+Authentication flows currently accept and validate client_id directly.
+Tenant resolution via client_id will be delegated to Tenant & Client Management (PRD-026A) once integrated.
+
+Until then, auth behavior remains unchanged to avoid cross-PRD coupling during MVP implementation.
+
+## 14. Open Questions
 
 1. **User Auto-Creation:** Should we auto-create users on first auth?
 
@@ -817,7 +845,7 @@ curl -X POST http://localhost:8080/auth/token \
 
 ---
 
-## 14. References
+## 15. References
 
 - [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html)
 - [OAuth 2.0 RFC 6749](https://datatracker.ietf.org/doc/html/rfc6749)
@@ -850,3 +878,13 @@ curl -X POST http://localhost:8080/auth/token \
 |         |            |              | - Added jti claim to access tokens for future revocation support                                                 |
 |         |            |              | - Updated storage interfaces to reflect separated stores                                                         |
 |         |            |              | - Updated acceptance criteria and testing requirements                                                           |
+| 1.5     | 2025-12-14 | Engineering  | Add new section 13 for tenant flow integration                                                                   |
+| 1.6     | 2025-12-17 | Engineering  | RFC 6749 compliance: Updated error codes for authorize and token endpoints                                       |
+|         |            |              | - Authorize: Added missing error cases (unknown client_id, inactive client, redirect_uri mismatch)               |
+|         |            |              | - Token: Changed 401 → 400 for invalid_grant errors (invalid/expired/used code, redirect_uri mismatch)           |
+|         |            |              | - Added RFC section references and OAuth error codes (invalid_grant, invalid_client, invalid_request)            |
+| 1.7     | 2025-12-17 | Engineering  | RFC 8414 compliance: Per-tenant issuer implementation                                                            |
+|         |            |              | - Added issuer format: `{base_url}/tenants/{tenant_id}`                                                          |
+|         |            |              | - Updated Token Format section with issuer documentation                                                         |
+|         |            |              | - Added tenant_id to access token claims                                                                         |
+|         |            |              | - Documented future work: per-tenant OIDC discovery and JWKS endpoints                                           |

@@ -33,11 +33,12 @@ Credo is a **regulated identity and authorization system** that:
 | PRD                                                       | Feature                             | Status         | Est. Time | Dependencies |
 | --------------------------------------------------------- | ----------------------------------- | -------------- | --------- | ------------ |
 | [PRD-001](./PRD-001-Authentication-Session-Management.md) | Authentication & Session Management | 🟢 Done        | 13-14h    | None         |
-| [PRD-001B](./PRD-001B-Admin-User-Deletion.md) | Admin - User Deletion | 🟢 Done        | 1h    | None         |
-| [PRD-016](./PRD-016-Token-Lifecycle-Revocation.md) 🆕     | Token Lifecycle & Revocation        | 🟢 Done | 6-8h      | PRD-001      |
-| [PRD-026A](./PRD-026A-Tenant-Client-Management.md) 🆕    | Tenant & Client Management (MVP)    | 🔵 Not Started | 8-10h     | PRD-001, 016 |
+| [PRD-001B](./PRD-001B-Admin-User-Deletion.md) | Admin - User Deletion | 🟢 Done        | 1h    | PRD-001         |
+| [PRD-016](./PRD-016-Token-Lifecycle-Revocation.md) 🆕     | Token Lifecycle & Revocation        | ⚠️ Mostly Done | 6-8h      | PRD-001      |
+| [PRD-026A](./PRD-026A-Tenant-Client-Management.md) 🆕    | Tenant & Client Management (MVP)    | 🟢 Done | 8-10h     | PRD-001, 016 |
 | [PRD-017](./PRD-017-Rate-Limiting-Abuse-Prevention.md) 🆕 | Rate Limiting & Abuse Prevention    | 🔵 Not Started | 8-10h     | PRD-001, 016 |
 | [PRD-002](./PRD-002-Consent-Management.md)                | Consent Management System           | 🟢 Done  | 5-7h      | PRD-001      |
+| ↳ TR-6 (Projections)                                      | Consent projection/read-model perf  | ⏩ Defer | 6-8h      | PRD-002, A2 (Postgres) |
 
 **Phase 0 Total:** ~32-39 hours (4-5 days)
 
@@ -151,7 +152,7 @@ Credo is a **regulated identity and authorization system** that:
 **Goal:** Production-ready core identity system with operational prerequisites
 
 **Phase 0: Foundation (4-5 days)**
-Establish authentication, token management, security controls, and consent:
+Establish authentication, token management, security controls, and consent (projections deferred to later perf phase):
 
 - PRD-001: Full authentication flow (login, sessions, OIDC-lite)
 - PRD-016: Token refresh, revocation, session management

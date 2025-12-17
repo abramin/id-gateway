@@ -2,20 +2,21 @@ package refreshtoken
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 
 	"credo/internal/auth/models"
-	dErrors "credo/pkg/domain-errors"
+	"credo/internal/facts"
 )
 
 // ErrNotFound is returned when a requested record is not found in the store.
 // Services should check for this error using errors.Is(err, store.ErrNotFound).
-var ErrNotFound = dErrors.New(dErrors.CodeNotFound, "record not found")
-var ErrRefreshTokenUsed = dErrors.New(dErrors.CodeUnauthorized, "refresh token already used")
-var ErrRefreshTokenExpired = dErrors.New(dErrors.CodeUnauthorized, "refresh token expired")
+var ErrNotFound = facts.ErrNotFound
+var ErrRefreshTokenUsed = facts.ErrAlreadyUsed
+var ErrRefreshTokenExpired = facts.ErrExpired
 
 // Error Contract:
 // All store methods follow this error pattern:
@@ -44,10 +45,10 @@ func (s *InMemoryRefreshTokenStore) Create(_ context.Context, token *models.Refr
 func (s *InMemoryRefreshTokenStore) Find(_ context.Context, token string) (*models.RefreshTokenRecord, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if t, ok := s.tokens[token]; ok {
-		return t, nil
+	if record, ok := s.tokens[token]; ok {
+		return record, nil
 	}
-	return nil, ErrNotFound
+	return nil, fmt.Errorf("refresh token not found: %w", ErrNotFound)
 }
 
 func (s *InMemoryRefreshTokenStore) FindBySessionID(_ context.Context, id uuid.UUID) (*models.RefreshTokenRecord, error) {
@@ -71,7 +72,7 @@ func (s *InMemoryRefreshTokenStore) FindBySessionID(_ context.Context, id uuid.U
 		}
 	}
 	if best == nil {
-		return nil, ErrNotFound
+		return nil, fmt.Errorf("refresh token not found: %w", ErrNotFound)
 	}
 	return best, nil
 }
@@ -98,13 +99,13 @@ func (s *InMemoryRefreshTokenStore) ConsumeRefreshToken(_ context.Context, token
 
 	record, ok := s.tokens[token]
 	if !ok {
-		return nil, ErrNotFound
+		return nil, fmt.Errorf("refresh token not found: %w", ErrNotFound)
 	}
 	if now.After(record.ExpiresAt) {
-		return nil, ErrRefreshTokenExpired
+		return nil, fmt.Errorf("refresh token expired: %w", ErrRefreshTokenExpired)
 	}
 	if record.Used {
-		return nil, ErrRefreshTokenUsed
+		return nil, fmt.Errorf("refresh token already used: %w", ErrRefreshTokenUsed)
 	}
 
 	if record.LastRefreshedAt == nil || now.After(*record.LastRefreshedAt) {

@@ -131,6 +131,7 @@ V2+ consists of THREE parallel tracks that can be pursued simultaneously:
 - Use schema migrations with **golang-migrate/migrate**
 - Write SQL queries with **sqlc** for type safety
 - Keep in-memory implementations for testing
+- Defer consent projection/TR-6 work until after Postgres is in place (Phase 3 perf/hardening)
 
 **Stores to Migrate:**
 
@@ -801,9 +802,217 @@ Add Week 5-6 for:
 
 ---
 
+# System Evolution Phases
+
+> *Merged from SYSTEM_DESIGN_ROADMAP.md*
+
+This section describes how Credo will evolve from a secure, correct core into a fully articulated system-design showcase. Each phase highlights specific engineering principles: scalability, resilience, performance, observability, and operational clarity.
+
+## Phase 1: Core Gateway (Security and Correctness)
+
+See main [Architecture document](architecture.md)
+
+## Phase 2: Modular Service Boundaries
+
+The next step introduces internal decomposition. Identity systems grow easier to reason about when concerns are separated.
+
+### Planned Components
+
+- **auth-service**: login, consent, code issuance
+- **token-service**: exchange, introspection, refresh
+- **session-store**: sessions, device binding
+- **audit-log-service**: append-only security events
+
+### Design Focus
+
+- Clearly documented internal APIs (OpenAPI)
+- Sync vs async communication choices
+- Start using a lightweight event bus for audit and session-change events
+
+This phase demonstrates boundary design, blast radius control, and the rationale behind dividing services.
+
+## Phase 3: High-Load Read Path and Caching Strategy
+
+Token verification and session introspection are the highest-volume operations for an ID gateway. This phase showcases performance reasoning.
+
+### Additions
+
+- Fast introspection endpoint
+- Local in-memory caching for token and session reads
+- Optional distributed cache (Redis) for shared state
+
+### Tradeoffs to Document
+
+- Latency vs correctness
+- Cache invalidation strategies
+- Memory footprint vs throughput
+- Handling partial failures (cache miss storms, Redis failover)
+
+## Phase 4: Storage Architecture and Consistency Model
+
+Identity systems mix durable identity data with ephemeral authorization data.
+
+### Storage Model
+
+- **Postgres**: identity records requiring strong consistency
+- **Redis**: volatile, high-throughput token/session state
+
+### Design Notes
+
+- Schema design and migrations
+- Rationale for separating durable vs ephemeral storage
+- Failure-mode analysis: what happens when Redis fails, or Postgres fails over
+- Consistency guarantees and where they matter
+
+## Phase 5: Containerization and Multi-Service Runtime
+
+At this point, the gateway splits into multiple running services.
+
+### Deliverables
+
+- Docker Compose environment running all components
+- Health and readiness checks
+- Reverse proxy or API gateway layer for routing and rate limiting
+
+### Design Topics
+
+- Readiness vs liveness semantics
+- Graceful shutdown and in-flight request handling
+- Local dev parity with future Kubernetes deployments
+
+## Phase 6: Kubernetes + Terraform
+
+The system moves into a realistic orchestration model.
+
+### Kubernetes Additions
+
+- Deployments and Services per component
+- Ingress controller for routing
+- HPA configuration with reasoning (CPU, RPS, token ops)
+- StatefulSet for Postgres
+- Secret management strategy (sealed-secrets or external-secrets)
+
+### Terraform
+
+- Infrastructure as code for cluster, network, storage and IAM primitives
+- Modular structure reflecting cloud-native design
+
+## Phase 7: Observability and Reliability Engineering
+
+An identity service must be observable and measurable.
+
+### Additions
+
+- Prometheus metrics (auth success rate, latency distribution, token refresh behaviour)
+- Structured logs with correlation IDs
+- Grafana dashboards visualising flow health
+- Defined SLOs and error budgets
+- Simple chaos experiments (kill a pod, observe recovery)
+
+## Phase 8: Final Architectural Narrative
+
+The project concludes with a formal system design document for architecture reviews and stakeholder communication.
+
+### Document Sections
+
+- Architecture overview and key decision rationale
+- Scaling model and capacity estimate
+- Caching and consistency analysis
+- Failure modes and mitigations
+- Security model and threat analysis
+- Testing strategy (BDD, contract tests, attack-path demos)
+- Deployment evolution from local to k8s
+- Extension roadmap (OIDC federation, MFA, device identity)
+
+---
+
+# Module Adoption Guide
+
+> *Merged from MODULE_BUNDLES.md*
+
+This section explains how to consume the platform as composable modules while keeping a cohesive identity/evidence core.
+
+## Core Identity Plane (MVP)
+
+**Phase 0-2: Foundation → Operational Baseline**
+
+- PRD-001: Authentication & Session Management
+- PRD-016: Token Lifecycle & Revocation
+- PRD-017: Rate Limiting & Abuse Prevention
+- PRD-002: Consent Management
+- PRD-003: Registry Integration (evidence orchestrator, provider chains)
+- PRD-004 / 004B: Verifiable Credentials issuance/validation
+- PRD-005: Decision Engine
+- PRD-006: Audit & Compliance Baseline
+- PRD-007: User Data Rights (GDPR)
+
+**Use when:** You need the foundational identity workflow end-to-end.
+
+## Infrastructure Layer (Production Prerequisites)
+
+**Phase 0-3: Operational readiness and security**
+
+- PRD-017: Rate Limiting & Abuse Prevention
+- PRD-018: Notification Service (Email/SMS/Webhooks)
+- PRD-019: API Versioning & Lifecycle Management
+- PRD-020: Operational Readiness & SRE
+- PRD-021: Multi-Factor Authentication
+- PRD-022: Account Recovery & Credential Management
+- PRD-015: Credo Policy Engine (Internal PDP)
+- PRD-005B: Cerbos Authorization (External PDP)
+
+**Use when:** Deploying to production, need operational maturity and security hardening.
+
+## Assurance Pack (Risk & Compliance)
+
+**Phase 4: Regulated industries, high-assurance requirements**
+
+- PRD-013: Biometric Verification
+- PRD-023: Fraud Detection & Security Intelligence
+- PRD-006B: Cryptographic Audit (Merkle trees)
+- PRD-007B: ML Risk Scoring
+- PRD-008: GDPR/CCPA Automation
+- PRD-024: Data Residency & Sovereignty
+
+**Use when:** You need higher assurance, fraud/risk scoring, and automated compliance.
+
+## Decentralized Identity Pack
+
+**Phase 5: Web3, privacy-preserving identity**
+
+- PRD-004B: Enhanced VCs (BBS+, Status List)
+- PRD-009: Decentralized Identifiers (DIDs)
+- PRD-010: Zero-Knowledge Proofs
+
+**Use when:** Your trust model requires DIDs/ZKPs or privacy-preserving proofs.
+
+## Integrations & Developer Experience Pack
+
+**Phase 6: Ecosystem, partner integrations, operations UI**
+
+- PRD-011: Internal TCP Event Ingester
+- PRD-012: Cloud Connectors / Audit & Identity Event Export
+- PRD-014: Client SDKs & Platform Integration
+- PRD-025: Developer Sandbox & Testing
+- PRD-026: Admin Dashboard & Operations UI
+
+**Use when:** Building partner ecosystem, improving developer experience, or need operations tooling.
+
+## Adoption Timeline
+
+| Milestone | Timeline | PRDs |
+|-----------|----------|------|
+| Minimal Viable Product | 9-12 days | Core Identity Plane |
+| Production Baseline | 15-20 days | + Infrastructure Layer |
+| Full Production | 22-30 days | + Assurance Pack |
+| Advanced Features | 30-46 days | + Decentralized + Integrations |
+
+---
+
 # Revision History
 
 | Version | Date       | Author       | Changes                                                               |
 | ------- | ---------- | ------------ | --------------------------------------------------------------------- |
 | 1.0     | 2025-12-03 | Product Team | Initial V2 Roadmap                                                    |
 | 2.0     | 2025-12-06 | Product Team | Reorganized into tracks, added advanced features (DIDs, ZK, ML, GDPR) |
+| 3.0     | 2025-12-17 | Engineering  | Consolidated: merged SYSTEM_DESIGN_ROADMAP.md and MODULE_BUNDLES.md   |

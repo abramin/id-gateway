@@ -20,13 +20,13 @@ import (
 func (s *ServiceSuite) TestRevokeToken() {
 	sessionID := uuid.New()
 	userID := uuid.New()
-	clientID := "client-123"
+	clientUUID := uuid.New()
 	jti := "access-token-jti-123"
 
 	validSession := &models.Session{
 		ID:                 sessionID,
 		UserID:             userID,
-		ClientID:           clientID,
+		ClientID:           clientUUID,
 		Status:             string(models.SessionStatusActive),
 		LastAccessTokenJTI: jti,
 		CreatedAt:          time.Now().Add(-1 * time.Hour),
@@ -42,7 +42,7 @@ func (s *ServiceSuite) TestRevokeToken() {
 		sess.LastAccessTokenJTI = tokenJTI
 
 		// Mock JWT parsing to return valid claims
-		claims := &jwttoken.Claims{
+		claims := &jwttoken.AccessTokenClaims{
 			UserID:    userID.String(),
 			SessionID: sessionID.String(),
 			RegisteredClaims: jwt.RegisteredClaims{
@@ -114,7 +114,7 @@ func (s *ServiceSuite) TestRevokeToken() {
 		sess.LastAccessTokenJTI = tokenJTI
 		sess.Status = "revoked"
 
-		claims := &jwttoken.Claims{
+		claims := &jwttoken.AccessTokenClaims{
 			UserID:    userID.String(),
 			SessionID: sessionID.String(),
 			RegisteredClaims: jwt.RegisteredClaims{
@@ -159,7 +159,7 @@ func (s *ServiceSuite) TestRevokeToken() {
 		sess.LastAccessTokenJTI = expiredJTI
 
 		// Mock parsing returns expired token claims
-		claims := &jwttoken.Claims{
+		claims := &jwttoken.AccessTokenClaims{
 			UserID:    userID.String(),
 			SessionID: sessionID.String(),
 			RegisteredClaims: jwt.RegisteredClaims{
@@ -187,7 +187,7 @@ func (s *ServiceSuite) TestRevokeToken() {
 		sess := *validSession
 		sess.LastAccessTokenJTI = tokenJTI
 
-		claims := &jwttoken.Claims{
+		claims := &jwttoken.AccessTokenClaims{
 			UserID:    userID.String(),
 			SessionID: sessionID.String(),
 			RegisteredClaims: jwt.RegisteredClaims{
@@ -215,7 +215,7 @@ func (s *ServiceSuite) TestRevokeToken() {
 		sess := *validSession
 		sess.LastAccessTokenJTI = tokenJTI
 
-		claims := &jwttoken.Claims{
+		claims := &jwttoken.AccessTokenClaims{
 			UserID:    userID.String(),
 			SessionID: sessionID.String(),
 			RegisteredClaims: jwt.RegisteredClaims{
@@ -244,7 +244,7 @@ func (s *ServiceSuite) TestRevokeToken() {
 		sess := *validSession
 		sess.LastAccessTokenJTI = tokenJTI
 
-		claims := &jwttoken.Claims{
+		claims := &jwttoken.AccessTokenClaims{
 			UserID:    userID.String(),
 			SessionID: sessionID.String(),
 			RegisteredClaims: jwt.RegisteredClaims{
@@ -270,12 +270,12 @@ func (s *ServiceSuite) TestRevokeToken() {
 func (s *ServiceSuite) TestExtractSessionFromAccessToken() {
 	sessionID := uuid.New()
 	userID := uuid.New()
-	clientID := "client-123"
+	clientUUID := uuid.New()
 
 	validSession := &models.Session{
 		ID:        sessionID,
 		UserID:    userID,
-		ClientID:  clientID,
+		ClientID:  clientUUID,
 		Status:    string(models.SessionStatusActive),
 		CreatedAt: time.Now().Add(-1 * time.Hour),
 		ExpiresAt: time.Now().Add(23 * time.Hour),
@@ -286,7 +286,7 @@ func (s *ServiceSuite) TestExtractSessionFromAccessToken() {
 		accessToken := "valid-jwt-token"
 		tokenJTI := "jti-123"
 
-		claims := &jwttoken.Claims{
+		claims := &jwttoken.AccessTokenClaims{
 			UserID:    userID.String(),
 			SessionID: sessionID.String(),
 			RegisteredClaims: jwt.RegisteredClaims{
@@ -350,7 +350,7 @@ func (s *ServiceSuite) TestExtractSessionFromAccessToken() {
 		expiredJTI := "expired-jti"
 
 		// Expired tokens should still parse successfully
-		claims := &jwttoken.Claims{
+		claims := &jwttoken.AccessTokenClaims{
 			UserID:    userID.String(),
 			SessionID: sessionID.String(),
 			RegisteredClaims: jwt.RegisteredClaims{
@@ -370,7 +370,7 @@ func (s *ServiceSuite) TestExtractSessionFromAccessToken() {
 		ctx := context.Background()
 		accessToken := "token-with-invalid-session-id"
 
-		claims := &jwttoken.Claims{
+		claims := &jwttoken.AccessTokenClaims{
 			UserID:    userID.String(),
 			SessionID: "not-a-valid-uuid",
 			RegisteredClaims: jwt.RegisteredClaims{
@@ -391,7 +391,7 @@ func (s *ServiceSuite) TestExtractSessionFromAccessToken() {
 		accessToken := "token-for-nonexistent-session"
 		tokenJTI := "jti-456"
 
-		claims := &jwttoken.Claims{
+		claims := &jwttoken.AccessTokenClaims{
 			UserID:    userID.String(),
 			SessionID: sessionID.String(),
 			RegisteredClaims: jwt.RegisteredClaims{

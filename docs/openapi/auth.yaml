@@ -8,6 +8,15 @@ info:
     The API follows an OAuth2-style authorization code flow (OIDC-lite) with
     endpoints for initiating authorization, exchanging authorization codes for
     tokens, and fetching user information for an authenticated session.
+
+    **Per-Tenant Issuer (RFC 8414 Compliance):**
+
+    Each tenant has a unique issuer URL following the format: `{base_url}/tenants/{tenant_id}`
+
+    Example: `https://auth.credo.io/tenants/550e8400-e29b-41d4-a716-446655440000`
+
+    The `iss` claim in access tokens and ID tokens uses this per-tenant issuer format.
+    The `tenant_id` is also included as a custom claim in access tokens for client convenience.
 servers:
   - url: http://localhost:8080
     description: Local development server
@@ -20,6 +29,14 @@ paths:
         Starts an authorization session for a user. If the email does not exist
         the user record is created automatically. Returns an authorization code
         and the redirect URI that should be used by the caller.
+
+        **Error Handling (RFC 6749 §4.1.2.1):**
+        Per RFC 6749, if client_id is unknown/invalid or redirect_uri is mismatched,
+        the server MUST NOT redirect and should return an error directly:
+        - Unknown client_id → 400 `invalid_client`
+        - Inactive client → 400 `invalid_client`
+        - redirect_uri not in registered URIs → 400 `bad_request`
+        - Inactive tenant → 400 `access_denied`
       requestBody:
         required: true
         content:
@@ -48,9 +65,28 @@ paths:
                     code: authz_cafedeadbeef
                     redirect_uri: https://app.example.com/callback
         "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
+          description: |
+            Authorization error (RFC 6749 §4.1.2.1). Check the `error` field:
+            - `invalid_client`: Unknown or inactive client_id
+            - `access_denied`: Tenant is inactive
+            - `bad_request`: Invalid email, redirect_uri format, or redirect_uri not registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalid_client:
+                  value:
+                    error: invalid_client
+                    error_description: Unknown client_id
+                access_denied:
+                  value:
+                    error: access_denied
+                    error_description: Tenant is inactive
+                bad_request:
+                  value:
+                    error: bad_request
+                    error_description: redirect_uri not in client's registered URIs
         "500":
           $ref: "#/components/responses/InternalError"
   /auth/token:
@@ -62,6 +98,14 @@ paths:
         for new tokens. For authorization code exchange, the `redirect_uri`
         and `client_id` must match the authorize request. For refresh grant,
         provide a valid refresh token and the `client_id`.
+
+        **Error Handling (RFC 6749 §5.2):**
+        - Invalid/expired/used authorization code → 400 `invalid_grant`
+        - Invalid/expired/used refresh token → 400 `invalid_grant`
+        - redirect_uri mismatch → 400 `invalid_grant`
+        - Unknown or inactive client → 400 `invalid_client`
+        - Missing required fields → 400 `invalid_request`
+        - Unsupported grant_type → 400 `unsupported_grant_type`
       requestBody:
         required: true
         content:
@@ -99,9 +143,25 @@ paths:
                     expires_in: 3600
                     scope: openid profile
         "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
+          description: |
+            OAuth error (RFC 6749 §5.2). Check the `error` field:
+            - `invalid_grant`: Invalid/expired/used code or token, redirect_uri mismatch
+            - `invalid_client`: Unknown or inactive client
+            - `invalid_request`: Missing required fields
+            - `unsupported_grant_type`: Grant type not supported
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalid_grant:
+                  value:
+                    error: invalid_grant
+                    error_description: Authorization code expired
+                invalid_client:
+                  value:
+                    error: invalid_client
+                    error_description: Unknown client_id
         "500":
           $ref: "#/components/responses/InternalError"
   /auth/revoke:
@@ -309,14 +369,25 @@ components:
           description: OAuth client identifier
     TokenResponse:
       type: object
+      description: |
+        Token response containing access token, ID token, and optionally refresh token.
+
+        **Token Claims:**
+        Both access tokens and ID tokens include:
+        - `iss`: Per-tenant issuer URL in format `{base_url}/tenants/{tenant_id}`
+        - `aud`: Audience (client identifier)
+        - `exp`, `iat`: Expiration and issued-at timestamps
+
+        Access tokens additionally include:
+        - `user_id`, `session_id`, `client_id`, `tenant_id`, `scope`, `jti`
       required: [access_token, id_token, expires_in]
       properties:
         access_token:
           type: string
-          description: Access token for authenticated requests
+          description: JWT access token for authenticated requests. Contains per-tenant issuer (`iss`) claim.
         id_token:
           type: string
-          description: ID token containing authenticated user claims
+          description: JWT ID token containing authenticated user claims. Contains per-tenant issuer (`iss`) claim.
         refresh_token:
           type: string
           description: New refresh token when using refresh grant (rotation); also issued on initial exchange
@@ -340,6 +411,9 @@ components:
         token:
           type: string
           description: Token to revoke (access or refresh)
+        client_id:
+          type: string
+          description: OAuth client identifier (optional per RFC 7009, required for public clients)
         token_type_hint:
           type: string
           enum: [access_token, refresh_token]
@@ -364,14 +438,24 @@ components:
       properties:
         session_id:
           type: string
-        device_display_name:
+          description: Unique session identifier
+        device:
           type: string
           description: Display-safe device label
-        approximate_location:
+        location:
           type: string
           description: Display-safe approximate location
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the session was created
+        last_activity:
+          type: string
+          format: date-time
+          description: Timestamp of last session activity
         is_current:
           type: boolean
+          description: True if this is the session making the request
     RevokeSessionResponse:
       type: object
       properties:
@@ -434,6 +518,12 @@ components:
               missing_consent,
               policy_violation,
               registry_timeout,
+              # OAuth 2.0 error codes (RFC 6749 §5.2)
+              invalid_grant,
+              invalid_client,
+              unsupported_grant_type,
+              invalid_request,
+              access_denied,
             ]
         error_description:
           type: string
@@ -471,3 +561,78 @@ components:
             generic:
               value:
                 error: internal_error
+    # OAuth 2.0 error responses (RFC 6749 §5.2)
+    InvalidGrant:
+      description: |
+        The provided authorization grant or refresh token is invalid, expired,
+        revoked, was issued to another client, or does not match the redirect URI.
+        Per RFC 6749 §5.2, returns HTTP 400 with error code `invalid_grant`.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            invalid_code:
+              summary: Authorization code not found
+              value:
+                error: invalid_grant
+                error_description: Invalid authorization code
+            expired_code:
+              summary: Authorization code expired
+              value:
+                error: invalid_grant
+                error_description: Authorization code expired
+            code_reused:
+              summary: Authorization code already used
+              value:
+                error: invalid_grant
+                error_description: Authorization code already used
+            redirect_uri_mismatch:
+              summary: Redirect URI mismatch
+              value:
+                error: invalid_grant
+                error_description: redirect_uri does not match the authorization request
+            invalid_refresh:
+              summary: Invalid refresh token
+              value:
+                error: invalid_grant
+                error_description: Invalid or expired refresh token
+            refresh_reused:
+              summary: Refresh token already used
+              value:
+                error: invalid_grant
+                error_description: Refresh token has already been used
+    InvalidClient:
+      description: |
+        Client authentication failed. The client_id is unknown, inactive, or the
+        client_secret is invalid. Per RFC 6749 §5.2, returns HTTP 400 with error
+        code `invalid_client` (401 only when using HTTP Authorization header).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            unknown_client:
+              summary: Client not found
+              value:
+                error: invalid_client
+                error_description: Unknown client_id
+            inactive_client:
+              summary: Client is inactive
+              value:
+                error: invalid_client
+                error_description: Client is inactive
+    AccessDenied:
+      description: |
+        The resource owner or authorization server denied the request.
+        Per RFC 6749, returns HTTP 400 with error code `access_denied`.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            tenant_inactive:
+              summary: Tenant is inactive
+              value:
+                error: access_denied
+                error_description: Tenant is inactive

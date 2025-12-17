@@ -60,7 +60,7 @@ func (s *ServiceSuite) TestService_RevokeSession() {
 		session := &models.Session{
 			ID:                 sessionID,
 			UserID:             userID,
-			ClientID:           "demo-client",
+			ClientID:           uuid.New(),
 			Status:             string(models.SessionStatusActive),
 			LastAccessTokenJTI: jti,
 		}

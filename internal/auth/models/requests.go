@@ -1,10 +1,12 @@
 package models
 
 import (
+	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 
-	dErrors "credo/pkg/domain-errors"
+	"credo/internal/facts"
 	"credo/pkg/email"
 )
 
@@ -50,50 +52,45 @@ func trimAndDedupScopes(scopes []string) []string {
 	return normalized
 }
 
-// Validate checks API input rules.
 func (r *AuthorizationRequest) Validate() error {
 	if r == nil {
-		return dErrors.New(dErrors.CodeBadRequest, "request is required")
+		return fmt.Errorf("request is required: %w", facts.ErrBadRequest)
 	}
 	if r.Email == "" {
-		return dErrors.New(dErrors.CodeValidation, "email is required")
+		return fmt.Errorf("email is required: %w", facts.ErrInvalidInput)
 	}
 	if !email.IsValidEmail(r.Email) {
-		return dErrors.New(dErrors.CodeValidation, "email must be valid")
+		return fmt.Errorf("email must be valid: %w", facts.ErrInvalidInput)
 	}
 	if len(r.Email) > 255 {
-		return dErrors.New(dErrors.CodeValidation, "email must be 255 characters or less")
+		return fmt.Errorf("email must be 255 characters or less: %w", facts.ErrInvalidInput)
 	}
 	if r.ClientID == "" {
-		return dErrors.New(dErrors.CodeValidation, "client_id is required")
+		return fmt.Errorf("client_id is required: %w", facts.ErrInvalidInput)
 	}
 	if len(r.ClientID) < 3 {
-		return dErrors.New(dErrors.CodeValidation, "client_id must be at least 3 characters")
+		return fmt.Errorf("client_id must be at least 3 characters: %w", facts.ErrInvalidInput)
 	}
 	if len(r.ClientID) > 100 {
-		return dErrors.New(dErrors.CodeValidation, "client_id must be 100 characters or less")
+		return fmt.Errorf("client_id must be 100 characters or less: %w", facts.ErrInvalidInput)
 	}
-	if len(r.Scopes) == 0 {
-		return dErrors.New(dErrors.CodeValidation, "scopes are required")
-	}
-	for _, scope := range r.Scopes {
-		if scope == "" {
-			return dErrors.New(dErrors.CodeValidation, "scopes cannot contain empty strings")
+	if len(r.Scopes) > 0 {
+		if slices.Contains(r.Scopes, "") {
+			return fmt.Errorf("scopes cannot contain empty strings: %w", facts.ErrInvalidInput)
 		}
 	}
 	if r.RedirectURI == "" {
-		return dErrors.New(dErrors.CodeValidation, "redirect_uri is required")
+		return fmt.Errorf("redirect_uri is required: %w", facts.ErrInvalidInput)
 	}
 	if len(r.RedirectURI) > 2048 {
-		return dErrors.New(dErrors.CodeValidation, "redirect_uri must be 2048 characters or less")
+		return fmt.Errorf("redirect_uri must be 2048 characters or less: %w", facts.ErrInvalidInput)
 	}
-	// Validate URL format - must have scheme and host
 	parsed, err := url.Parse(r.RedirectURI)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return dErrors.New(dErrors.CodeValidation, "redirect_uri must be a valid URL")
+		return fmt.Errorf("redirect_uri must be a valid URL: %w", facts.ErrInvalidInput)
 	}
 	if len(r.State) > 500 {
-		return dErrors.New(dErrors.CodeValidation, "state must be 500 characters or less")
+		return fmt.Errorf("state must be 500 characters or less: %w", facts.ErrInvalidInput)
 	}
 	return nil
 }
@@ -107,29 +104,77 @@ type TokenRequest struct {
 	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
-// Validate checks API input rules.
+func (r *TokenRequest) Normalize() {
+	if r == nil {
+		return
+	}
+	r.GrantType = strings.TrimSpace(r.GrantType)
+	r.ClientID = strings.TrimSpace(r.ClientID)
+	r.Code = strings.TrimSpace(r.Code)
+	r.RedirectURI = strings.TrimSpace(r.RedirectURI)
+	r.RefreshToken = strings.TrimSpace(r.RefreshToken)
+}
+
 func (r *TokenRequest) Validate() error {
 	if r == nil {
-		return dErrors.New(dErrors.CodeBadRequest, "request is required")
+		return fmt.Errorf("request is required: %w", facts.ErrBadRequest)
 	}
 	if r.GrantType == "" {
-		return dErrors.New(dErrors.CodeValidation, "grant_type is required")
+		return fmt.Errorf("grant_type is required: %w", facts.ErrInvalidInput)
 	}
 	if r.GrantType != string(GrantAuthorizationCode) && r.GrantType != string(GrantRefreshToken) {
-		return dErrors.New(dErrors.CodeValidation, "grant_type must be authorization_code or refresh_token")
+		return fmt.Errorf("unsupported grant_type: %w", facts.ErrBadRequest)
 	}
 	if r.ClientID == "" {
-		return dErrors.New(dErrors.CodeValidation, "client_id is required")
+		return fmt.Errorf("client_id is required: %w", facts.ErrInvalidInput)
 	}
 	// Validate based on grant type
 	if r.GrantType == string(GrantAuthorizationCode) {
 		if r.Code == "" {
-			return dErrors.New(dErrors.CodeValidation, "code is required for authorization_code grant")
+			return fmt.Errorf("code is required for authorization_code grant: %w", facts.ErrInvalidInput)
+		}
+		if r.RedirectURI == "" {
+			return fmt.Errorf("redirect_uri is required: %w", facts.ErrInvalidInput)
 		}
 	} else if r.GrantType == string(GrantRefreshToken) {
 		if r.RefreshToken == "" {
-			return dErrors.New(dErrors.CodeValidation, "refresh_token is required for refresh_token grant")
+			return fmt.Errorf("refresh_token is required for refresh_token grant: %w", facts.ErrInvalidInput)
 		}
 	}
 	return nil
+}
+
+type RevokeTokenRequest struct {
+	Token         string `json:"token"`
+	ClientID      string `json:"client_id"`
+	TokenTypeHint string `json:"token_type_hint,omitempty"`
+}
+
+func (r *RevokeTokenRequest) Validate() error {
+	if r == nil {
+		return fmt.Errorf("request is required: %w", facts.ErrBadRequest)
+	}
+	if r.Token == "" {
+		return fmt.Errorf("token is required: %w", facts.ErrInvalidInput)
+	}
+	// client_id is optional per RFC 7009 (only required for public clients)
+	if r.TokenTypeHint != "" {
+		allowed := map[string]struct{}{
+			string(TokenTypeAccess):  {},
+			string(TokenTypeRefresh): {},
+		}
+		if _, ok := allowed[r.TokenTypeHint]; !ok {
+			return fmt.Errorf("token_type_hint must be access_token or refresh_token if provided: %w", facts.ErrInvalidInput)
+		}
+	}
+	return nil
+}
+
+func (r *RevokeTokenRequest) Normalize() {
+	if r == nil {
+		return
+	}
+	r.Token = strings.TrimSpace(r.Token)
+	r.ClientID = strings.TrimSpace(r.ClientID)
+	r.TokenTypeHint = strings.TrimSpace(r.TokenTypeHint)
 }

@@ -4,7 +4,7 @@ import (
 	"credo/internal/platform/middleware"
 )
 
-func ToMiddlewareClaims(claims *Claims) *middleware.JWTClaims {
+func ToMiddlewareClaims(claims *AccessTokenClaims) *middleware.JWTClaims {
 	return &middleware.JWTClaims{
 		UserID:    claims.UserID,
 		SessionID: claims.SessionID,

@@ -25,7 +25,7 @@ func TestCleanupService_RunOnce_Integration(t *testing.T) {
 	expiredSession := &models.Session{
 		ID:         expiredSessionID,
 		UserID:     uuid.New(),
-		ClientID:   "client-123",
+		ClientID:   uuid.New(),
 		Status:     "active",
 		CreatedAt:  time.Now().Add(-48 * time.Hour),
 		ExpiresAt:  time.Now().Add(-1 * time.Hour),

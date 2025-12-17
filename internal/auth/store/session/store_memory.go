@@ -2,19 +2,20 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 
 	"credo/internal/auth/models"
-	dErrors "credo/pkg/domain-errors"
+	"credo/internal/facts"
 )
 
 // ErrNotFound is returned when a requested record is not found in the store.
 // Services should check for this error using errors.Is(err, store.ErrNotFound).
-var ErrNotFound = dErrors.New(dErrors.CodeNotFound, "record not found")
-var ErrSessionRevoked = dErrors.New(dErrors.CodeUnauthorized, "session has been revoked")
+var ErrNotFound = facts.ErrNotFound
+var ErrSessionRevoked = fmt.Errorf("session has been revoked: %w", facts.ErrInvalidState)
 
 // Error Contract:
 // All store methods follow this error pattern:
@@ -46,7 +47,7 @@ func (s *InMemorySessionStore) FindByID(_ context.Context, id uuid.UUID) (*model
 	if session, ok := s.sessions[id.String()]; ok {
 		return session, nil
 	}
-	return nil, ErrNotFound
+	return nil, fmt.Errorf("session not found: %w", ErrNotFound)
 }
 
 func (s *InMemorySessionStore) ListByUser(_ context.Context, userID uuid.UUID) ([]*models.Session, error) {
@@ -68,7 +69,7 @@ func (s *InMemorySessionStore) UpdateSession(_ context.Context, session *models.
 	defer s.mu.Unlock()
 	key := session.ID.String()
 	if _, ok := s.sessions[key]; !ok {
-		return ErrNotFound
+		return fmt.Errorf("session not found: %w", ErrNotFound)
 	}
 	s.sessions[key] = session
 	return nil
@@ -87,7 +88,7 @@ func (s *InMemorySessionStore) DeleteSessionsByUser(_ context.Context, userID uu
 	}
 
 	if !found {
-		return ErrNotFound
+		return fmt.Errorf("session not found: %w", ErrNotFound)
 	}
 
 	return nil
@@ -153,19 +154,19 @@ func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, id uuid.UUID, 
 
 	session, ok := s.sessions[id.String()]
 	if !ok {
-		return nil, ErrNotFound
+		return nil, fmt.Errorf("session not found: %w", ErrNotFound)
 	}
-	if session.ClientID != clientID {
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "client_id mismatch")
+	if session.ClientID.String() != clientID {
+		return nil, fmt.Errorf("client_id mismatch: %w", facts.ErrInvalidInput)
 	}
 	if session.Status == "revoked" {
 		return nil, ErrSessionRevoked
 	}
 	if session.Status != "pending_consent" && session.Status != "active" {
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "session in invalid state")
+		return nil, fmt.Errorf("session in invalid state: %w", facts.ErrInvalidState)
 	}
 	if at.After(session.ExpiresAt) {
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "session expired")
+		return nil, fmt.Errorf("session expired: %w", facts.ErrExpired)
 	}
 
 	if at.After(session.LastSeenAt) {
@@ -194,19 +195,19 @@ func (s *InMemorySessionStore) AdvanceLastRefreshed(_ context.Context, id uuid.U
 
 	session, ok := s.sessions[id.String()]
 	if !ok {
-		return nil, ErrNotFound
+		return nil, fmt.Errorf("session not found: %w", ErrNotFound)
 	}
-	if session.ClientID != clientID {
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "client_id mismatch")
+	if session.ClientID.String() != clientID {
+		return nil, fmt.Errorf("client_id mismatch: %w", facts.ErrInvalidInput)
 	}
 	if session.Status == "revoked" {
 		return nil, ErrSessionRevoked
 	}
 	if session.Status != "active" {
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "session in invalid state")
+		return nil, fmt.Errorf("session in invalid state: %w", facts.ErrInvalidState)
 	}
 	if at.After(session.ExpiresAt) {
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "session expired")
+		return nil, fmt.Errorf("session expired: %w", facts.ErrExpired)
 	}
 
 	if session.LastRefreshedAt == nil || at.After(*session.LastRefreshedAt) {

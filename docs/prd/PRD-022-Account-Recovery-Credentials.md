@@ -3,7 +3,7 @@
 **Status:** Not Started
 **Priority:** P1 (High)
 **Owner:** Engineering Team
-**Dependencies:** PRD-001 (Authentication), PRD-018 (Notifications)
+**Dependencies:** PRD-001 (Authentication), PRD-018 (Notifications), PRD-016 (Token Lifecycle - partial completion)
 **Last Updated:** 2025-12-12
 
 ## 1. Overview
@@ -38,6 +38,14 @@ Users cannot recover locked/lost accounts, leading to poor retention and support
 - [ ] Reset links expire after 24 hours
 - [ ] Account auto-unlocks after cooldown
 - [ ] Email verification required before sensitive ops
+- [ ] Password change triggers global session revocation (completes PRD-016 FR-6)
+
+## Related PRDs
+
+**PRD-016 Completion:** When implementing password change/reset, also implement:
+- Global session revocation on password change (PRD-016 acceptance criterion)
+
+See [PRD-016](./PRD-016-Token-Lifecycle-Revocation.md) Section 6 Acceptance Criteria.
 
 ## Revision History
 | Version | Date       | Author       | Changes     |

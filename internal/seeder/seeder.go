@@ -160,7 +160,7 @@ func (s *Seeder) seedSessions(ctx context.Context, users []*models.User) error {
 		session := &models.Session{
 			ID:                  uuid.New(),
 			UserID:              users[sess.userIdx].ID,
-			ClientID:            "demo-client",
+			ClientID:            uuid.New(),
 			RequestedScope:      []string{"openid", "profile"},
 			Status:              sess.status,
 			DeviceID:            fmt.Sprintf("device_%s", uuid.New().String()),

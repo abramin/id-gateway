@@ -19,58 +19,65 @@ type Metrics struct {
 	ConsentCheckPassed    *prometheus.CounterVec
 	ConsentCheckFailed    *prometheus.CounterVec
 	ConsentGrantLatency   prometheus.Histogram
+
+	// Tenant metrics
+	TenantCreated prometheus.Counter
 }
 
 // New creates and registers all Prometheus metrics
 func New() *Metrics {
 	return &Metrics{
 		UsersCreated: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "id_gateway_users_created_total",
-			Help: "Total number of users created in the system",
+			Name: "credo_users_created_total",
+			Help: "Total number of users created",
+		}),
+		TenantCreated: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "credo_tenants_created_total",
+			Help: "Total number of tenants created",
 		}),
 		ActiveSessions: promauto.NewGauge(prometheus.GaugeOpts{
-			Name: "id_gateway_active_sessions",
+			Name: "credo_active_sessions",
 			Help: "Current number of active sessions",
 		}),
 		// 		- Token requests per minute (rate)
 		TokenRequests: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "id_gateway_token_requests_total",
+			Name: "credo_token_requests_total",
 			Help: "Total number of token requests",
 		}),
 		// - Auth failures per minute (rate)
 		AuthFailures: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "id_gateway_auth_failures_total",
+			Name: "credo_auth_failures_total",
 			Help: "Total number of authentication failures",
 		}),
 		// - Latency per endpoint (histogram)
 		EndpointLatency: promauto.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "id_gateway_endpoint_latency_seconds",
+			Name:    "credo_endpoint_latency_seconds",
 			Help:    "Latency of endpoints in seconds",
 			Buckets: prometheus.DefBuckets,
 		}, []string{"endpoint"}),
 		// Consent metrics
 		ConsentsGranted: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "id_gateway_consents_granted_total",
+			Name: "credo_consents_granted_total",
 			Help: "Total number of consents granted, labeled by purpose",
 		}, []string{"purpose"}),
 		ConsentsRevoked: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "id_gateway_consents_revoked_total",
+			Name: "credo_consents_revoked_total",
 			Help: "Total number of consents revoked, labeled by purpose",
 		}, []string{"purpose"}),
 		ActiveConsentsPerUser: promauto.NewGauge(prometheus.GaugeOpts{
-			Name: "id_gateway_active_consents_per_user",
+			Name: "credo_active_consents_per_user",
 			Help: "Current number of active consents per user",
 		}),
 		ConsentCheckPassed: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "id_gateway_consent_checks_passed_total",
+			Name: "credo_consent_checks_passed_total",
 			Help: "Total number of consent checks that passed, labeled by purpose",
 		}, []string{"purpose"}),
 		ConsentCheckFailed: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "id_gateway_consent_checks_failed_total",
+			Name: "credo_consent_checks_failed_total",
 			Help: "Total number of consent checks that failed, labeled by purpose",
 		}, []string{"purpose"}),
 		ConsentGrantLatency: promauto.NewHistogram(prometheus.HistogramOpts{
-			Name:    "id_gateway_consent_grant_latency_seconds",
+			Name:    "credo_consent_grant_latency_seconds",
 			Help:    "Latency of consent grant operations in seconds",
 			Buckets: prometheus.DefBuckets,
 		}),

@@ -2,8 +2,11 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,12 +14,29 @@ import (
 	"credo/internal/audit"
 	"credo/internal/auth/device"
 	"credo/internal/auth/models"
+	"credo/internal/facts"
 	"credo/internal/platform/middleware"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/email"
 )
 
 func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationRequest) (*models.AuthorizationResult, error) {
+	if req == nil {
+		return nil, dErrors.New(dErrors.CodeBadRequest, "request is required")
+	}
+
+	req.Normalize()
+	if err := req.Validate(); err != nil {
+		code := dErrors.CodeValidation
+		if errors.Is(err, facts.ErrBadRequest) {
+			code = dErrors.CodeBadRequest
+		}
+		// Extract just the context message without the sentinel
+		msg := strings.TrimSuffix(err.Error(), ": "+facts.ErrInvalidInput.Error())
+		msg = strings.TrimSuffix(msg, ": "+facts.ErrBadRequest.Error())
+		return nil, dErrors.New(code, msg)
+	}
+
 	parsedURI, err := url.Parse(req.RedirectURI)
 	if err != nil {
 		return nil, dErrors.New(dErrors.CodeBadRequest, "invalid redirect_uri")
@@ -27,9 +47,6 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 
 	now := time.Now()
 	scopes := req.Scopes
-	if len(scopes) == 0 {
-		scopes = []string{string(models.ScopeOpenID)}
-	}
 
 	userAgent := middleware.GetUserAgent(ctx)
 	deviceDisplayName := device.ParseUserAgent(userAgent)
@@ -44,23 +61,42 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 		}
 	}
 
-	deviceFingerprint := s.deviceService.ComputeFingerprint(userAgent)
+	// Fingerprint is now pre-computed by Device middleware
+	deviceFingerprint := middleware.GetDeviceFingerprint(ctx)
 
 	var user *models.User
 	var authCode *models.AuthorizationCodeRecord
 	var session *models.Session
 	userWasCreated := false
 
+	client, tenant, err := s.clientResolver.ResolveClient(ctx, req.ClientID)
+	if err != nil {
+		// RFC 6749 §4.1.2.1: invalid client_id is a bad request, not "not found"
+		if dErrors.Is(err, dErrors.CodeNotFound) {
+			return nil, dErrors.New(dErrors.CodeBadRequest, "invalid client_id")
+		}
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "failed to resolve client")
+	}
+
+	if req.RedirectURI != "" {
+		if !slices.Contains(client.RedirectURIs, req.RedirectURI) {
+			return nil, dErrors.New(dErrors.CodeBadRequest, "redirect_uri not allowed")
+		}
+	}
+
 	// Wrap user+code+session creation in transaction for atomicity
 	txErr := s.tx.RunInTx(ctx, func(stores TxAuthStores) error {
 		firstName, lastName := email.DeriveNameFromEmail(req.Email)
-		newUser, err := models.NewUser(uuid.New(), req.Email, firstName, lastName, false)
+		newUser, err := models.NewUser(uuid.New(), tenant.ID, req.Email, firstName, lastName, false)
 		if err != nil {
 			return dErrors.Wrap(err, dErrors.CodeInternal, "failed to create user")
 		}
-		user, err = stores.Users.FindOrCreateByEmail(ctx, req.Email, newUser)
+		user, err = stores.Users.FindOrCreateByTenantAndEmail(ctx, tenant.ID, req.Email, newUser)
 		if err != nil {
 			return dErrors.Wrap(err, dErrors.CodeInternal, "failed to find or create user")
+		}
+		if user.Status != models.UserStatusActive {
+			return dErrors.New(dErrors.CodeForbidden, "user is inactive")
 		}
 		userWasCreated = (user.ID == newUser.ID)
 
@@ -84,7 +120,8 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 		session, err = models.NewSession(
 			authCode.SessionID,
 			user.ID,
-			req.ClientID,
+			client.ID,
+			tenant.ID,
 			scopes,
 			string(models.SessionStatusPendingConsent),
 			now,

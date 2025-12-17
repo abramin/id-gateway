@@ -9,6 +9,7 @@ import (
 	"credo/internal/audit"
 	"credo/internal/auth/models"
 	jwttoken "credo/internal/jwt_token"
+	tenant "credo/internal/tenant/models"
 )
 
 // UserStore defines the persistence interface for user data.
@@ -17,7 +18,7 @@ type UserStore interface {
 	Save(ctx context.Context, user *models.User) error
 	FindByID(ctx context.Context, id uuid.UUID) (*models.User, error)
 	FindByEmail(ctx context.Context, email string) (*models.User, error)
-	FindOrCreateByEmail(ctx context.Context, email string, user *models.User) (*models.User, error)
+	FindOrCreateByTenantAndEmail(ctx context.Context, tenantID uuid.UUID, email string, user *models.User) (*models.User, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -52,15 +53,19 @@ type RefreshTokenStore interface {
 }
 
 type TokenGenerator interface {
-	GenerateAccessToken(userID uuid.UUID, sessionID uuid.UUID, clientID string, scopes []string) (string, error)
-	GenerateAccessTokenWithJTI(userID uuid.UUID, sessionID uuid.UUID, clientID string, scopes []string) (string, string, error)
-	GenerateIDToken(userID uuid.UUID, sessionID uuid.UUID, clientID string) (string, error)
+	GenerateAccessToken(userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string, scopes []string) (string, error)
+	GenerateAccessTokenWithJTI(userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string, scopes []string) (string, string, error)
+	GenerateIDToken(userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string) (string, error)
 	CreateRefreshToken() (string, error)
 	// ParseTokenSkipClaimsValidation parses a JWT with signature verification but skips claims validation (e.g., expiration)
 	// This is used for token revocation where we need to verify the signature but accept expired tokens
-	ParseTokenSkipClaimsValidation(token string) (*jwttoken.Claims, error)
+	ParseTokenSkipClaimsValidation(token string) (*jwttoken.AccessTokenClaims, error)
 }
 
 type AuditPublisher interface {
 	Emit(ctx context.Context, base audit.Event) error
+}
+
+type ClientResolver interface {
+	ResolveClient(ctx context.Context, clientID string) (*tenant.Client, *tenant.Tenant, error)
 }

@@ -20,6 +20,13 @@ const (
 	CodePolicyViolation    Code = "policy_violation"
 	CodeTimeout            Code = "timeout"
 	CodeInvariantViolation Code = "invariant_violation"
+
+	// OAuth 2.0 error codes (RFC 6749 §5.2)
+	CodeInvalidGrant          Code = "invalid_grant"           // Invalid/expired/used authorization code or refresh token
+	CodeInvalidClient         Code = "invalid_client"          // Client authentication failed
+	CodeUnsupportedGrantType  Code = "unsupported_grant_type"  // Grant type not supported
+	CodeInvalidRequest        Code = "invalid_request"         // Missing required parameter or malformed request
+	CodeAccessDenied          Code = "access_denied"           // Resource owner or server denied request
 )
 
 // DomainError wraps domain or infrastructure failures with a stable code.
@@ -48,6 +55,14 @@ func New(code Code, msg string) DomainError {
 
 // Wrap creates a new DomainError wrapping an existing error.
 func Wrap(err error, code Code, msg string) DomainError {
+	// Preserve an existing domain code if the cause is already a DomainError
+	var de DomainError
+	if errors.As(err, &de) {
+		de.Message = msg
+		de.Err = err
+		return de
+	}
+
 	return DomainError{Code: code, Message: msg, Err: err}
 }
 

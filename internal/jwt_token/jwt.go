@@ -8,17 +8,18 @@ import (
 	"fmt"
 	"time"
 
-	dErrors "credo/pkg/domain-errors"
+	"credo/internal/facts"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
-// Claims represents the JWT claims for our access tokens
-type Claims struct {
+// AccessTokenClaims represents the JWT claims for our access tokens
+type AccessTokenClaims struct {
 	UserID    string   `json:"user_id"`
 	SessionID string   `json:"session_id"`
 	ClientID  string   `json:"client_id"`
+	TenantID  string   `json:"tenant_id,omitempty"`
 	Env       string   `json:"env,omitempty"`
 	Scope     []string `json:"scope"`
 	jwt.RegisteredClaims
@@ -35,40 +36,64 @@ type IDTokenClaims struct {
 
 // JWTService handles JWT creation and validation
 type JWTService struct {
-	signingKey []byte
-	issuer     string
-	audience   string
-	tokenTTL   time.Duration
-	env        string
+	signingKey    []byte
+	issuerBaseURL string // Base URL for per-tenant issuers (RFC 8414)
+	audience      string
+	tokenTTL      time.Duration
+	env           string
 }
 
-func NewJWTService(signingKey string, issuer string, audience string, tokenTTL time.Duration) *JWTService {
+func NewJWTService(signingKey string, issuerBaseURL string, audience string, tokenTTL time.Duration) *JWTService {
 	return &JWTService{
-		signingKey: []byte(signingKey),
-		issuer:     issuer,
-		audience:   audience,
-		tokenTTL:   tokenTTL,
+		signingKey:    []byte(signingKey),
+		issuerBaseURL: issuerBaseURL,
+		audience:      audience,
+		tokenTTL:      tokenTTL,
 	}
+}
+
+// BuildIssuer constructs a per-tenant issuer URL following RFC 8414 format.
+// Format: {baseURL}/tenants/{tenantID}
+func (s *JWTService) BuildIssuer(tenantID string) string {
+	if tenantID == "" {
+		return s.issuerBaseURL
+	}
+	return fmt.Sprintf("%s/tenants/%s", s.issuerBaseURL, tenantID)
+}
+
+// ExtractTenantFromIssuer parses a tenant ID from a per-tenant issuer URL.
+// Returns the tenant ID if the issuer matches the expected format, or an error otherwise.
+func (s *JWTService) ExtractTenantFromIssuer(issuer string) (string, error) {
+	prefix := s.issuerBaseURL + "/tenants/"
+	if len(issuer) > len(prefix) && issuer[:len(prefix)] == prefix {
+		return issuer[len(prefix):], nil
+	}
+	// Fallback: if issuer equals base URL exactly (no tenant), return empty
+	if issuer == s.issuerBaseURL {
+		return "", nil
+	}
+	return "", fmt.Errorf("invalid issuer format: %s", issuer)
 }
 
 func (s *JWTService) GenerateAccessTokenWithJTI(
 	userID uuid.UUID,
 	sessionID uuid.UUID,
 	clientID string,
+	tenantID string,
 	scopes []string,
 ) (string, string, error) {
-	newToken, err := s.GenerateAccessToken(userID, sessionID, clientID, scopes)
+	newToken, err := s.GenerateAccessToken(userID, sessionID, clientID, tenantID, scopes)
 	if err != nil {
 		return "", "", err
 	}
 	// Extract the JTI from the token
-	parsed, err := jwt.ParseWithClaims(newToken, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+	parsed, err := jwt.ParseWithClaims(newToken, &AccessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 		return s.signingKey, nil
 	})
 	if err != nil {
 		return "", "", err
 	}
-	claims, ok := parsed.Claims.(*Claims)
+	claims, ok := parsed.Claims.(*AccessTokenClaims)
 	if !ok {
 		return "", "", errors.New("invalid token claims")
 	}
@@ -79,6 +104,7 @@ func (s *JWTService) GenerateAccessToken(
 	userID uuid.UUID,
 	sessionID uuid.UUID,
 	clientID string,
+	tenantID string,
 	scopes []string,
 ) (string, error) {
 	b := make([]byte, 16)
@@ -88,16 +114,17 @@ func (s *JWTService) GenerateAccessToken(
 	}
 	jti := hex.EncodeToString(b)
 
-	newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, Claims{
+	newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, AccessTokenClaims{
 		UserID:    userID.String(),
 		SessionID: sessionID.String(),
 		ClientID:  clientID,
+		TenantID:  tenantID,
 		Env:       s.env,
 		Scope:     scopes,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(s.tokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Issuer:    s.issuer,
+			Issuer:    s.BuildIssuer(tenantID),
 			Audience:  []string{s.audience},
 			ID:        jti,
 		},
@@ -110,12 +137,12 @@ func (s *JWTService) GenerateAccessToken(
 	return signedToken, nil
 }
 
-func (s *JWTService) ParseTokenSkipClaimsValidation(tokenString string) (*Claims, error) {
+func (s *JWTService) ParseTokenSkipClaimsValidation(tokenString string) (*AccessTokenClaims, error) {
 	if tokenString == "" {
 		return nil, errors.New("empty token")
 	}
 
-	claims := new(Claims)
+	claims := new(AccessTokenClaims)
 
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (any, error) {
 		if t.Method.Alg() != jwt.SigningMethodHS256.Alg() {
@@ -142,7 +169,8 @@ func (s *JWTService) ParseTokenSkipClaimsValidation(tokenString string) (*Claims
 func (s *JWTService) GenerateIDToken(
 	userID uuid.UUID,
 	sessionID uuid.UUID,
-	clientID string) (string, error) {
+	clientID string,
+	tenantID string) (string, error) {
 	now := time.Now()
 	newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, IDTokenClaims{
 		SessionID: sessionID.String(),
@@ -152,7 +180,7 @@ func (s *JWTService) GenerateIDToken(
 			Subject:   userID.String(), // OIDC sub
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.tokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(now),
-			Issuer:    s.issuer,
+			Issuer:    s.BuildIssuer(tenantID),
 			Audience:  []string{s.audience},
 			ID:        uuid.NewString(),
 		},
@@ -170,9 +198,9 @@ func (s *JWTService) SetEnv(env string) {
 	s.env = env
 }
 
-func (s *JWTService) ValidateToken(tokenString string) (*Claims, error) {
+func (s *JWTService) ValidateToken(tokenString string) (*AccessTokenClaims, error) {
 	var err error
-	parsed, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+	parsed, err := jwt.ParseWithClaims(tokenString, &AccessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, jwt.ErrTokenUnverifiable
 		}
@@ -181,18 +209,18 @@ func (s *JWTService) ValidateToken(tokenString string) (*Claims, error) {
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, dErrors.New(dErrors.CodeUnauthorized, "token has expired")
+			return nil, fmt.Errorf("token has expired: %w", facts.ErrExpired)
 		}
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid token")
+		return nil, fmt.Errorf("invalid token: %w", facts.ErrInvalidInput)
 	}
 
 	if !parsed.Valid {
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid token")
+		return nil, fmt.Errorf("invalid token: %w", facts.ErrInvalidInput)
 	}
 
-	claims, ok := parsed.Claims.(*Claims)
+	claims, ok := parsed.Claims.(*AccessTokenClaims)
 	if !ok {
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid token claims")
+		return nil, fmt.Errorf("invalid token claims: %w", facts.ErrInvalidInput)
 	}
 
 	return claims, nil
@@ -208,18 +236,18 @@ func (s *JWTService) ValidateIDToken(tokenString string) (*IDTokenClaims, error)
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, dErrors.New(dErrors.CodeUnauthorized, "token has expired")
+			return nil, fmt.Errorf("token has expired: %w", facts.ErrExpired)
 		}
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid token")
+		return nil, fmt.Errorf("invalid token: %w", facts.ErrInvalidInput)
 	}
 
 	if !parsed.Valid {
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid token")
+		return nil, fmt.Errorf("invalid token: %w", facts.ErrInvalidInput)
 	}
 
 	claims, ok := parsed.Claims.(*IDTokenClaims)
 	if !ok {
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid token claims")
+		return nil, fmt.Errorf("invalid token claims: %w", facts.ErrInvalidInput)
 	}
 
 	return claims, nil
@@ -229,7 +257,7 @@ func (s *JWTService) CreateRefreshToken() (string, error) {
 	randomBytes := make([]byte, 32)
 	_, err := rand.Read(randomBytes)
 	if err != nil {
-		return "", dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate refresh token")
+		return "", fmt.Errorf("failed to generate refresh token: %w", err)
 	}
 
 	base64Token := base64.RawURLEncoding.EncodeToString(randomBytes)

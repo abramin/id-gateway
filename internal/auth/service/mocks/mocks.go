@@ -14,6 +14,7 @@ import (
 	audit "credo/internal/audit"
 	models "credo/internal/auth/models"
 	jwttoken "credo/internal/jwt_token"
+	models0 "credo/internal/tenant/models"
 	reflect "reflect"
 	time "time"
 
@@ -89,19 +90,19 @@ func (mr *MockUserStoreMockRecorder) FindByID(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByID", reflect.TypeOf((*MockUserStore)(nil).FindByID), ctx, id)
 }
 
-// FindOrCreateByEmail mocks base method.
-func (m *MockUserStore) FindOrCreateByEmail(ctx context.Context, email string, user *models.User) (*models.User, error) {
+// FindOrCreateByTenantAndEmail mocks base method.
+func (m *MockUserStore) FindOrCreateByTenantAndEmail(ctx context.Context, tenantID uuid.UUID, email string, user *models.User) (*models.User, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FindOrCreateByEmail", ctx, email, user)
+	ret := m.ctrl.Call(m, "FindOrCreateByTenantAndEmail", ctx, tenantID, email, user)
 	ret0, _ := ret[0].(*models.User)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// FindOrCreateByEmail indicates an expected call of FindOrCreateByEmail.
-func (mr *MockUserStoreMockRecorder) FindOrCreateByEmail(ctx, email, user any) *gomock.Call {
+// FindOrCreateByTenantAndEmail indicates an expected call of FindOrCreateByTenantAndEmail.
+func (mr *MockUserStoreMockRecorder) FindOrCreateByTenantAndEmail(ctx, tenantID, email, user any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindOrCreateByEmail", reflect.TypeOf((*MockUserStore)(nil).FindOrCreateByEmail), ctx, email, user)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindOrCreateByTenantAndEmail", reflect.TypeOf((*MockUserStore)(nil).FindOrCreateByTenantAndEmail), ctx, tenantID, email, user)
 }
 
 // Save mocks base method.
@@ -506,24 +507,24 @@ func (mr *MockTokenGeneratorMockRecorder) CreateRefreshToken() *gomock.Call {
 }
 
 // GenerateAccessToken mocks base method.
-func (m *MockTokenGenerator) GenerateAccessToken(userID, sessionID uuid.UUID, clientID string, scopes []string) (string, error) {
+func (m *MockTokenGenerator) GenerateAccessToken(userID, sessionID uuid.UUID, clientID, tenantID string, scopes []string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GenerateAccessToken", userID, sessionID, clientID, scopes)
+	ret := m.ctrl.Call(m, "GenerateAccessToken", userID, sessionID, clientID, tenantID, scopes)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GenerateAccessToken indicates an expected call of GenerateAccessToken.
-func (mr *MockTokenGeneratorMockRecorder) GenerateAccessToken(userID, sessionID, clientID, scopes any) *gomock.Call {
+func (mr *MockTokenGeneratorMockRecorder) GenerateAccessToken(userID, sessionID, clientID, tenantID, scopes any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateAccessToken", reflect.TypeOf((*MockTokenGenerator)(nil).GenerateAccessToken), userID, sessionID, clientID, scopes)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateAccessToken", reflect.TypeOf((*MockTokenGenerator)(nil).GenerateAccessToken), userID, sessionID, clientID, tenantID, scopes)
 }
 
 // GenerateAccessTokenWithJTI mocks base method.
-func (m *MockTokenGenerator) GenerateAccessTokenWithJTI(userID, sessionID uuid.UUID, clientID string, scopes []string) (string, string, error) {
+func (m *MockTokenGenerator) GenerateAccessTokenWithJTI(userID, sessionID uuid.UUID, clientID, tenantID string, scopes []string) (string, string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GenerateAccessTokenWithJTI", userID, sessionID, clientID, scopes)
+	ret := m.ctrl.Call(m, "GenerateAccessTokenWithJTI", userID, sessionID, clientID, tenantID, scopes)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
@@ -531,31 +532,31 @@ func (m *MockTokenGenerator) GenerateAccessTokenWithJTI(userID, sessionID uuid.U
 }
 
 // GenerateAccessTokenWithJTI indicates an expected call of GenerateAccessTokenWithJTI.
-func (mr *MockTokenGeneratorMockRecorder) GenerateAccessTokenWithJTI(userID, sessionID, clientID, scopes any) *gomock.Call {
+func (mr *MockTokenGeneratorMockRecorder) GenerateAccessTokenWithJTI(userID, sessionID, clientID, tenantID, scopes any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateAccessTokenWithJTI", reflect.TypeOf((*MockTokenGenerator)(nil).GenerateAccessTokenWithJTI), userID, sessionID, clientID, scopes)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateAccessTokenWithJTI", reflect.TypeOf((*MockTokenGenerator)(nil).GenerateAccessTokenWithJTI), userID, sessionID, clientID, tenantID, scopes)
 }
 
 // GenerateIDToken mocks base method.
-func (m *MockTokenGenerator) GenerateIDToken(userID, sessionID uuid.UUID, clientID string) (string, error) {
+func (m *MockTokenGenerator) GenerateIDToken(userID, sessionID uuid.UUID, clientID string, tenantID string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GenerateIDToken", userID, sessionID, clientID)
+	ret := m.ctrl.Call(m, "GenerateIDToken", userID, sessionID, clientID, tenantID)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GenerateIDToken indicates an expected call of GenerateIDToken.
-func (mr *MockTokenGeneratorMockRecorder) GenerateIDToken(userID, sessionID, clientID any) *gomock.Call {
+func (mr *MockTokenGeneratorMockRecorder) GenerateIDToken(userID, sessionID, clientID, tenantID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateIDToken", reflect.TypeOf((*MockTokenGenerator)(nil).GenerateIDToken), userID, sessionID, clientID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateIDToken", reflect.TypeOf((*MockTokenGenerator)(nil).GenerateIDToken), userID, sessionID, clientID, tenantID)
 }
 
 // ParseTokenSkipClaimsValidation mocks base method.
-func (m *MockTokenGenerator) ParseTokenSkipClaimsValidation(token string) (*jwttoken.Claims, error) {
+func (m *MockTokenGenerator) ParseTokenSkipClaimsValidation(token string) (*jwttoken.AccessTokenClaims, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ParseTokenSkipClaimsValidation", token)
-	ret0, _ := ret[0].(*jwttoken.Claims)
+	ret0, _ := ret[0].(*jwttoken.AccessTokenClaims)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -602,4 +603,44 @@ func (m *MockAuditPublisher) Emit(ctx context.Context, base audit.Event) error {
 func (mr *MockAuditPublisherMockRecorder) Emit(ctx, base any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Emit", reflect.TypeOf((*MockAuditPublisher)(nil).Emit), ctx, base)
+}
+
+// MockClientResolver is a mock of ClientResolver interface.
+type MockClientResolver struct {
+	ctrl     *gomock.Controller
+	recorder *MockClientResolverMockRecorder
+	isgomock struct{}
+}
+
+// MockClientResolverMockRecorder is the mock recorder for MockClientResolver.
+type MockClientResolverMockRecorder struct {
+	mock *MockClientResolver
+}
+
+// NewMockClientResolver creates a new mock instance.
+func NewMockClientResolver(ctrl *gomock.Controller) *MockClientResolver {
+	mock := &MockClientResolver{ctrl: ctrl}
+	mock.recorder = &MockClientResolverMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockClientResolver) EXPECT() *MockClientResolverMockRecorder {
+	return m.recorder
+}
+
+// ResolveClient mocks base method.
+func (m *MockClientResolver) ResolveClient(ctx context.Context, clientID string) (*models0.Client, *models0.Tenant, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveClient", ctx, clientID)
+	ret0, _ := ret[0].(*models0.Client)
+	ret1, _ := ret[1].(*models0.Tenant)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ResolveClient indicates an expected call of ResolveClient.
+func (mr *MockClientResolverMockRecorder) ResolveClient(ctx, clientID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveClient", reflect.TypeOf((*MockClientResolver)(nil).ResolveClient), ctx, clientID)
 }

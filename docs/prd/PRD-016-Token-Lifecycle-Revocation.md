@@ -1,6 +1,6 @@
 # PRD-016: Token Lifecycle & Revocation
 
-**Status:** Not Started
+**Status:** Mostly Complete
 **Priority:** P0 (Critical)
 **Owner:** Engineering Team
 **Dependencies:** PRD-001 (Authentication & Session Management)
@@ -164,15 +164,18 @@ This is a **critical blocker** for production deployment.
 12. Emit audit event: `token_refreshed`
 13. Return new tokens
 
-**Error Cases:**
+**Error Cases (RFC 6749 §5.2):**
 
-- 400 Bad Request: Missing required fields
-- 400 Bad Request: Invalid grant_type (must be "refresh_token")
-- 401 Unauthorized: Invalid or expired refresh token
-- 401 Unauthorized: Refresh token already used (rotation violation - possible replay attack)
-- 401 Unauthorized: Session revoked
-- 401 Unauthorized: Device mismatch (device ID cookie doesn't match session)
+- 400 Bad Request: Missing required fields (`invalid_request`)
+- 400 Bad Request: Invalid grant_type (`unsupported_grant_type`)
+- 400 Bad Request: Invalid refresh token - not found (`invalid_grant`)
+- 400 Bad Request: Expired refresh token (`invalid_grant`)
+- 400 Bad Request: Refresh token already used - rotation violation (`invalid_grant`)
+- 400 Bad Request: Session revoked (`invalid_grant`)
+- 400 Bad Request: Device mismatch (`invalid_grant` with additional context)
 - 500 Internal Server Error: Store failure
+
+**Note (RFC 6749 §5.2):** All grant-related errors return HTTP 400 with the appropriate OAuth error code. HTTP 401 is reserved for client authentication failures via HTTP Authorization header.
 
 **Security - Token Rotation:**
 
@@ -232,10 +235,13 @@ This is a **critical blocker** for production deployment.
 - TTL: Same as token expiry (no need to store expired tokens)
 - Check TRL on every authenticated request via middleware
 
-**Error Cases:**
+**Error Cases (RFC 7009 §2.2):**
 
-- 400 Bad Request: Missing token
+- 400 Bad Request: Missing token (`invalid_request`)
+- 200 OK: Token invalid, unknown, or already revoked (idempotent per RFC 7009)
 - 500 Internal Server Error: Store failure
+
+**Note (RFC 7009 §2.2):** The revocation endpoint returns HTTP 200 even if the token was already invalid, expired, or revoked. This ensures idempotent behavior.
 
 ---
 
@@ -634,10 +640,25 @@ type AccessTokenClaims struct {
     UserID    string   `json:"user_id"`
     SessionID string   `json:"session_id"`
     ClientID  string   `json:"client_id"`
+    TenantID  string   `json:"tenant_id"` // Tenant identifier for multi-tenant support
     Scope     []string `json:"scope"`
     JTI       string   `json:"jti"` // Unique token identifier for revocation
 }
 ```
+
+**Per-Tenant Issuer Format (RFC 8414 Compliance):**
+
+The `iss` claim uses a per-tenant issuer URL format:
+```
+{base_url}/tenants/{tenant_id}
+```
+
+Example: `https://auth.credo.io/tenants/550e8400-e29b-41d4-a716-446655440000`
+
+Token validation must:
+1. Verify the issuer URL matches the expected base URL pattern
+2. Extract tenant ID from the issuer URL and validate it exists
+3. The `tenant_id` claim is also included for client convenience (avoids parsing the issuer URL)
 
 ### TR-4: Middleware - Revocation Check
 
@@ -904,11 +925,13 @@ func (s *CleanupService) performCleanup(ctx context.Context) {
 - [x] Revoked tokens fail authentication checks
 - [x] Users can list all active sessions
 - [x] Users can revoke individual sessions
-- [x] Users can revoke all sessions at once
-- [ ] Password change triggers global session revocation
+- [ ] Users can revoke all sessions at once (FR-6: POST /auth/logout-all)
+- [ ] Password change triggers global session revocation (requires PRD-022)
 - [x] Token revocation list uses TTL (no memory leak)
 - [x] All token lifecycle events emit audit events
 - [ ] Concurrent session limits enforced (optional)
+
+**Note:** The "password change triggers global session revocation" criterion requires password support from [PRD-022](./PRD-022-Account-Recovery-Credentials.md). This criterion will be completed alongside PRD-022 implementation in Phase 3.
 
 ---
 
@@ -1050,6 +1073,14 @@ curl -X POST http://localhost:8080/auth/logout-all?except_current=true \
 
 | Version | Date       | Author       | Changes                                                                                                                           |
 | ------- | ---------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| 1.4     | 2025-12-17 | Engineering  | RFC 8414 compliance: Per-tenant issuer implementation                                                                             |
+|         |            |              | - Added per-tenant issuer format: `{base_url}/tenants/{tenant_id}`                                                                |
+|         |            |              | - Added TenantID to AccessTokenClaims struct                                                                                      |
+|         |            |              | - Documented issuer validation requirements                                                                                       |
+| 1.3     | 2025-12-17 | Engineering  | RFC compliance: Updated error codes for token and revocation endpoints                                                            |
+|         |            |              | - Token (refresh grant): Changed 401 → 400 for invalid_grant errors per RFC 6749 §5.2                                             |
+|         |            |              | - Revoke: Added explicit RFC 7009 §2.2 reference for idempotent 200 OK behavior                                                   |
+|         |            |              | - Added OAuth error codes (invalid_grant, invalid_request, unsupported_grant_type)                                                |
 | 1.2     | 2025-12-13 | Engineering  | remove IP Address from List sessions response                                                                                     |
 | 1.1     | 2025-12-13 | Engineering  | Updated device binding to reference DEVICE_BINDING.md; changed to layered security model (device ID + fingerprint, no IP binding) |
 | 1.0     | 2025-12-12 | Product Team | Initial PRD                                                                                                                       |

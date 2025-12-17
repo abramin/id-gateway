@@ -11,6 +11,7 @@ import (
 
 	"credo/internal/admin"
 	"credo/internal/audit"
+	"credo/internal/auth/device"
 	authHandler "credo/internal/auth/handler"
 	authService "credo/internal/auth/service"
 	authCodeStore "credo/internal/auth/store/authorization-code"
@@ -29,17 +30,21 @@ import (
 	"credo/internal/platform/metrics"
 	"credo/internal/platform/middleware"
 	"credo/internal/seeder"
+	tenantHandler "credo/internal/tenant/handler"
+	tenantService "credo/internal/tenant/service"
+	tenantStore "credo/internal/tenant/store"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type infraBundle struct {
-	Cfg          *config.Server
-	Log          *slog.Logger
-	Metrics      *metrics.Metrics
-	JWTService   *jwttoken.JWTService
-	JWTValidator *jwttoken.JWTServiceAdapter
+	Cfg           *config.Server
+	Log           *slog.Logger
+	Metrics       *metrics.Metrics
+	JWTService    *jwttoken.JWTService
+	JWTValidator  *jwttoken.JWTServiceAdapter
+	DeviceService *device.Service
 }
 
 type authModule struct {
@@ -59,6 +64,13 @@ type consentModule struct {
 	Handler *consentHandler.Handler
 }
 
+type tenantModule struct {
+	Service *tenantService.Service
+	Handler *tenantHandler.Handler
+	Tenants *tenantStore.InMemoryTenantStore
+	Clients *tenantStore.InMemoryClientStore
+}
+
 func main() {
 	infra, err := buildInfra()
 	if err != nil {
@@ -67,8 +79,8 @@ func main() {
 
 	appCtx, cancelApp := context.WithCancel(context.Background())
 	defer cancelApp()
-
-	authMod, err := buildAuthModule(appCtx, infra)
+	tenantMod := buildTenantModule(infra)
+	authMod, err := buildAuthModule(appCtx, infra, tenantMod.Service)
 	if err != nil {
 		infra.Log.Error("failed to initialize auth module", "error", err)
 		os.Exit(1)
@@ -77,15 +89,15 @@ func main() {
 
 	startCleanupWorker(appCtx, infra.Log, authMod.Cleanup)
 
-	r := setupRouter(infra.Log, infra.Metrics)
-	registerRoutes(r, infra, authMod, consentMod)
+	r := setupRouter(infra)
+	registerRoutes(r, infra, authMod, consentMod, tenantMod)
 
 	mainSrv := httpserver.New(infra.Cfg.Addr, r)
 	startServer(mainSrv, infra.Log, "main API")
 
 	var adminSrv *http.Server
 	if infra.Cfg.Security.AdminAPIToken != "" {
-		adminRouter := setupAdminRouter(infra.Log, authMod.AdminSvc, infra.Cfg)
+		adminRouter := setupAdminRouter(infra.Log, authMod.AdminSvc, tenantMod.Handler, infra.Cfg)
 		adminSrv = httpserver.New(":8081", adminRouter)
 		startServer(adminSrv, infra.Log, "admin")
 	}
@@ -109,23 +121,25 @@ func buildInfra() (*infraBundle, error) {
 	if cfg.DemoMode {
 		log.Info("CRENE_ENV=demo — starting isolated demo environment",
 			"stores", "in-memory",
-			"issuer", cfg.Auth.JWTIssuer,
+			"issuer_base_url", cfg.Auth.JWTIssuerBaseURL,
 		)
 	}
 
 	m := metrics.New()
 	jwtService, jwtValidator := initializeJWTService(&cfg)
+	deviceSvc := device.NewService(cfg.Auth.DeviceBindingEnabled)
 
 	return &infraBundle{
-		Cfg:          &cfg,
-		Log:          log,
-		Metrics:      m,
-		JWTService:   jwtService,
-		JWTValidator: jwtValidator,
+		Cfg:           &cfg,
+		Log:           log,
+		Metrics:       m,
+		JWTService:    jwtService,
+		JWTValidator:  jwtValidator,
+		DeviceService: deviceSvc,
 	}, nil
 }
 
-func buildAuthModule(ctx context.Context, infra *infraBundle) (*authModule, error) {
+func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *tenantService.Service) (*authModule, error) {
 	users := userStore.NewInMemoryUserStore()
 	sessions := sessionStore.NewInMemorySessionStore()
 	codes := authCodeStore.NewInMemoryAuthorizationCodeStore()
@@ -159,6 +173,8 @@ func buildAuthModule(ctx context.Context, infra *infraBundle) (*authModule, erro
 		authService.WithLogger(infra.Log),
 		authService.WithJWTService(infra.JWTService),
 		authService.WithTRL(trl),
+		authService.WithAuditPublisher(audit.NewPublisher(auditStore)),
+		authService.WithClientResolver(tenantService),
 	)
 	if err != nil {
 		return nil, err
@@ -203,6 +219,22 @@ func buildConsentModule(infra *infraBundle) *consentModule {
 	}
 }
 
+func buildTenantModule(infra *infraBundle) *tenantModule {
+	tenants := tenantStore.NewInMemoryTenantStore()
+	clients := tenantStore.NewInMemoryClientStore()
+	service := tenantService.New(tenants, clients, nil)
+
+	// Bootstrap a default tenant/client for backward compatibility with existing flows.
+	tenantStore.SeedBootstrapTenant(tenants, clients)
+
+	return &tenantModule{
+		Service: service,
+		Handler: tenantHandler.New(service, infra.Log),
+		Tenants: tenants,
+		Clients: clients,
+	}
+}
+
 func startCleanupWorker(ctx context.Context, log *slog.Logger, cleanupSvc *cleanupWorker.CleanupService) {
 	go func() {
 		if err := cleanupSvc.Start(ctx); err != nil && err != context.Canceled {
@@ -215,8 +247,8 @@ func startCleanupWorker(ctx context.Context, log *slog.Logger, cleanupSvc *clean
 func initializeJWTService(cfg *config.Server) (*jwttoken.JWTService, *jwttoken.JWTServiceAdapter) {
 	jwtService := jwttoken.NewJWTService(
 		cfg.Auth.JWTSigningKey,
-		cfg.Auth.JWTIssuer,
-		"credo-client",
+		cfg.Auth.JWTIssuerBaseURL,
+		cfg.Auth.JWTAudience,
 		cfg.Auth.TokenTTL,
 	)
 	if cfg.DemoMode {
@@ -227,17 +259,21 @@ func initializeJWTService(cfg *config.Server) (*jwttoken.JWTService, *jwttoken.J
 }
 
 // setupRouter creates a new router and configures common middleware
-func setupRouter(log *slog.Logger, m *metrics.Metrics) *chi.Mux {
+func setupRouter(infra *infraBundle) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Common middleware for all routes (must be defined before routes)
 	r.Use(middleware.ClientMetadata)
-	r.Use(middleware.Recovery(log))
+	r.Use(middleware.Device(&middleware.DeviceConfig{
+		CookieName:    infra.Cfg.Auth.DeviceCookieName,
+		FingerprintFn: infra.DeviceService.ComputeFingerprint,
+	}))
+	r.Use(middleware.Recovery(infra.Log))
 	r.Use(middleware.RequestID)
-	r.Use(middleware.Logger(log))
+	r.Use(middleware.Logger(infra.Log))
 	r.Use(middleware.Timeout(30 * time.Second)) // TODO: make configurable
 	r.Use(middleware.ContentTypeJSON)
-	r.Use(middleware.LatencyMiddleware(m))
+	r.Use(middleware.LatencyMiddleware(infra.Metrics))
 
 	// Add Prometheus metrics endpoint (no auth required)
 	r.Handle("/metrics", promhttp.Handler())
@@ -250,14 +286,14 @@ func setupRouter(log *slog.Logger, m *metrics.Metrics) *chi.Mux {
 }
 
 // registerRoutes wires HTTP handlers to the shared router
-func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consentMod *consentModule) {
+func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consentMod *consentModule, tenantMod *tenantModule) {
 	if infra.Cfg.DemoMode {
 		r.Get("/demo/info", func(w http.ResponseWriter, _ *http.Request) {
 			resp := map[string]any{
-				"env":        "demo",
-				"users":      []string{"alice", "bob", "charlie"},
-				"jwt_issuer": infra.Cfg.Auth.JWTIssuer,
-				"data_store": "in-memory",
+				"env":             "demo",
+				"users":           []string{"alice", "bob", "charlie"},
+				"jwt_issuer_base": infra.Cfg.Auth.JWTIssuerBaseURL,
+				"data_store":      "in-memory",
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(resp)
@@ -280,12 +316,13 @@ func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consent
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAdminToken(infra.Cfg.Security.AdminAPIToken, infra.Log))
 			authMod.Handler.RegisterAdmin(r)
+			tenantMod.Handler.Register(r)
 		})
 	}
 }
 
 // setupAdminRouter creates a router for the admin server
-func setupAdminRouter(log *slog.Logger, adminSvc *admin.Service, cfg *config.Server) *chi.Mux {
+func setupAdminRouter(log *slog.Logger, adminSvc *admin.Service, tenantHandler *tenantHandler.Handler, cfg *config.Server) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Common middleware for all routes
@@ -317,6 +354,7 @@ func setupAdminRouter(log *slog.Logger, adminSvc *admin.Service, cfg *config.Ser
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAdminToken(cfg.Security.AdminAPIToken, log))
 		adminHandler.Register(r)
+		tenantHandler.Register(r)
 	})
 
 	return r

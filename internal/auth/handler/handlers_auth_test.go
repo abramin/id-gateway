@@ -21,12 +21,18 @@ import (
 
 	"credo/internal/auth/handler/mocks"
 	"credo/internal/auth/models"
-	authModel "credo/internal/auth/models"
 	"credo/internal/platform/middleware"
 	dErrors "credo/pkg/domain-errors"
 )
 
 //go:generate mockgen -source=handler.go -destination=mocks/auth-mocks.go -package=mocks Service
+
+// AuthHandlerSuite tests handler-specific behavior.
+// NOTE: Happy paths and input validation scenarios are covered by Cucumber E2E tests
+// in e2e/features/auth_*.feature. These unit tests focus on handler-specific logic:
+// - JSON parsing errors
+// - Context value extraction
+// - Internal error mapping to 500 responses
 type AuthHandlerSuite struct {
 	suite.Suite
 	ctx context.Context
@@ -37,45 +43,30 @@ func (s *AuthHandlerSuite) SetupSuite() {
 }
 
 func (s *AuthHandlerSuite) TestHandler_Authorize() {
-	var validRequest = &authModel.AuthorizationRequest{
+	var validRequest = &models.AuthorizationRequest{
 		Email:       "user@example.com",
 		ClientID:    "test-client-id",
 		Scopes:      []string{"scope1", "scope2"},
 		RedirectURI: "https://example.com/redirect",
 		State:       "test-state",
 	}
-	s.T().Run("scopes default to openid when omitted", func(t *testing.T) {
+
+	s.T().Run("forwards authorize request to service when scopes omitted", func(t *testing.T) {
 		mockService, router := s.newHandler(t, nil)
 		requestBody := `{"email":"user@example.com","client_id":"test-client-id","redirect_uri":"https://example.com/redirect"}`
-		expectedReq := &authModel.AuthorizationRequest{
+		expectedReq := &models.AuthorizationRequest{
 			Email:       "user@example.com",
 			ClientID:    "test-client-id",
-			Scopes:      []string{"openid"},
 			RedirectURI: "https://example.com/redirect",
 			State:       "",
 		}
-		expectedResp := &authModel.AuthorizationResult{
+		expectedResp := &models.AuthorizationResult{
 			Code:        "authz_code_123",
 			RedirectURI: expectedReq.RedirectURI,
 		}
 		mockService.EXPECT().Authorize(gomock.Any(), expectedReq).Return(expectedResp, nil)
 
 		status, got, errBody := s.doAuthRequest(t, router, requestBody)
-
-		s.assertSuccessResponse(t, status, got, errBody)
-		assert.Equal(t, expectedResp.Code, got.Code)
-		assert.Equal(t, expectedResp.RedirectURI, got.RedirectURI)
-	})
-
-	s.T().Run("user is found and authorized - 200", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
-		expectedResp := &authModel.AuthorizationResult{
-			Code:        "authz_code_123",
-			RedirectURI: validRequest.RedirectURI,
-		}
-		mockService.EXPECT().Authorize(gomock.Any(), validRequest).Return(expectedResp, nil)
-
-		status, got, errBody := s.doAuthRequest(t, router, s.mustMarshal(validRequest, t))
 
 		s.assertSuccessResponse(t, status, got, errBody)
 		assert.Equal(t, expectedResp.Code, got.Code)
@@ -92,63 +83,6 @@ func (s *AuthHandlerSuite) TestHandler_Authorize() {
 		s.assertErrorResponse(t, status, got, errBody, http.StatusBadRequest, string(dErrors.CodeBadRequest))
 	})
 
-	s.T().Run("400 error scenarios - invalid input", func(t *testing.T) {
-		tests := []struct {
-			name    string
-			request *authModel.AuthorizationRequest
-			body    string
-		}{
-			{
-				name: "invalid email",
-				request: &authModel.AuthorizationRequest{
-					Email:       "invalid-email",
-					ClientID:    "test-client-id",
-					Scopes:      []string{"scope1", "scope2"},
-					RedirectURI: "https://example.com/redirect",
-					State:       "test-state",
-				},
-			},
-			{
-				name: "invalid redirect URI",
-				request: &authModel.AuthorizationRequest{
-					Email:       "user@example.com",
-					ClientID:    "test-client-id",
-					Scopes:      []string{"scope1", "scope2"},
-					RedirectURI: "invalid-uri",
-					State:       "test-state",
-				},
-			},
-			{
-				name: "missing client ID",
-				request: &authModel.AuthorizationRequest{
-					Email:       "user@example.com",
-					ClientID:    "",
-					Scopes:      []string{"scope1", "scope2"},
-					RedirectURI: "https://example.com/redirect",
-					State:       "test-state",
-				},
-			},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				mockService, router := s.newHandler(t, nil)
-				mockService.EXPECT().Authorize(gomock.Any(), gomock.Any()).Times(0)
-
-				var body string
-				if tt.body != "" {
-					body = tt.body
-				} else {
-					body = s.mustMarshal(tt.request, t)
-				}
-
-				status, got, errBody := s.doAuthRequest(t, router, body)
-
-				s.assertErrorResponse(t, status, got, errBody, http.StatusBadRequest, string(dErrors.CodeBadRequest))
-			})
-		}
-	})
-
 	s.T().Run("returns 500 when service fails", func(t *testing.T) {
 		mockService, router := s.newHandler(t, nil)
 		mockService.EXPECT().Authorize(gomock.Any(), validRequest).Return(nil, errors.New("boom"))
@@ -160,39 +94,16 @@ func (s *AuthHandlerSuite) TestHandler_Authorize() {
 }
 
 func (s *AuthHandlerSuite) TestHandler_Token() {
-	validRequest := &authModel.TokenRequest{
+	validRequest := &models.TokenRequest{
 		GrantType:   string(models.GrantAuthorizationCode),
 		Code:        "authz_code_123",
 		RedirectURI: "https://example.com/callback",
 		ClientID:    "some-client-id",
 	}
-	s.T().Run("happy path - tokens exchanged", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
-		expectedResp := &authModel.TokenResult{
-			AccessToken: "access-token-123",
-			IDToken:     "id-token-123",
-			ExpiresIn:   3600,
-		}
-		mockService.EXPECT().Token(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(ctx context.Context, req *authModel.TokenRequest) (*authModel.TokenResult, error) {
-				assert.Equal(t, validRequest.GrantType, req.GrantType)
-				assert.Equal(t, validRequest.Code, req.Code)
-				assert.Equal(t, validRequest.RedirectURI, req.RedirectURI)
-				assert.Equal(t, validRequest.ClientID, req.ClientID)
-				return expectedResp, nil
-			})
-
-		status, got, errBody := s.doTokenRequest(t, router, s.mustMarshal(validRequest, t))
-
-		s.assertSuccessResponse(t, status, got, errBody)
-		assert.Equal(t, expectedResp.AccessToken, got.AccessToken)
-		assert.Equal(t, expectedResp.IDToken, got.IDToken)
-		assert.Equal(t, expectedResp.ExpiresIn, got.ExpiresIn)
-	})
 
 	s.T().Run("token response includes token_type", func(t *testing.T) {
 		mockService, router := s.newHandler(t, nil)
-		expectedResp := &authModel.TokenResult{
+		expectedResp := &models.TokenResult{
 			AccessToken: "access-token-123",
 			IDToken:     "id-token-123",
 			ExpiresIn:   3600,
@@ -207,85 +118,6 @@ func (s *AuthHandlerSuite) TestHandler_Token() {
 		assert.Equal(t, "Bearer", raw["token_type"])
 	})
 
-	//- 400 Bad Request: Missing required fields (grant_type, code, redirect_uri, client_id)
-	s.T().Run("missing required fields - 400", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
-		mockService.EXPECT().Token(gomock.Any(), gomock.Any()).Times(0)
-		missing := *validRequest
-		missing.ClientID = ""
-
-		status, got, errBody := s.doTokenRequest(t, router, s.mustMarshal(&missing, t))
-
-		s.assertErrorResponse(t, status, got, errBody, http.StatusBadRequest, string(dErrors.CodeBadRequest))
-	})
-
-	// - 400 Bad Request: Unsupported grant_type (must be "authorization_code")
-	s.T().Run("unsupported grant_type - 400", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
-		invalid := *validRequest
-		invalid.GrantType = "invalid_grant"
-		mockService.EXPECT().Token(gomock.Any(), gomock.Any()).Times(0)
-
-		status, got, errBody := s.doTokenRequest(t, router, s.mustMarshal(&invalid, t))
-
-		s.assertErrorResponse(t, status, got, errBody, http.StatusBadRequest, string(dErrors.CodeBadRequest))
-	})
-	// - 401 Unauthorized: Invalid authorization code (not found)
-	// - 401 Unauthorized: Authorization code expired (> 10 minutes old)
-	// - 401 Unauthorized: Authorization code already used (replay attack prevention)
-	s.T().Run("unauthorized scenarios - 401", func(t *testing.T) {
-		tests := []struct {
-			name       string
-			serviceErr error
-		}{
-			{
-				name:       "invalid authorization code",
-				serviceErr: dErrors.New(dErrors.CodeUnauthorized, "invalid authorization code"),
-			},
-			{
-				name:       "authorization code expired",
-				serviceErr: dErrors.New(dErrors.CodeUnauthorized, "authorization code expired"),
-			},
-			{
-				name:       "authorization code already used",
-				serviceErr: dErrors.New(dErrors.CodeUnauthorized, "authorization code already used"),
-			},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				mockService, router := s.newHandler(t, nil)
-				mockService.EXPECT().Token(gomock.Any(), gomock.Any()).Return(nil, tt.serviceErr)
-
-				status, got, errBody := s.doTokenRequest(t, router, s.mustMarshal(validRequest, t))
-
-				s.assertErrorResponse(t, status, got, errBody, http.StatusUnauthorized, string(dErrors.CodeUnauthorized))
-			})
-		}
-	})
-
-	// - 400 Bad Request: redirect_uri mismatch (doesn't match authorize request)
-	s.T().Run("redirect_uri mismatch - 400", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
-		serviceErr := dErrors.New(dErrors.CodeBadRequest, "redirect_uri mismatch")
-		mockService.EXPECT().Token(gomock.Any(), gomock.Any()).Return(nil, serviceErr)
-
-		status, got, errBody := s.doTokenRequest(t, router, s.mustMarshal(validRequest, t))
-
-		s.assertErrorResponse(t, status, got, errBody, http.StatusBadRequest, string(dErrors.CodeBadRequest))
-	})
-
-	// - 400 Bad Request: client_id mismatch (doesn't match authorize request)
-	s.T().Run("client_id mismatch - 400", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
-		serviceErr := dErrors.New(dErrors.CodeBadRequest, "client_id mismatch")
-		mockService.EXPECT().Token(gomock.Any(), gomock.Any()).Return(nil, serviceErr)
-
-		status, got, errBody := s.doTokenRequest(t, router, s.mustMarshal(validRequest, t))
-
-		s.assertErrorResponse(t, status, got, errBody, http.StatusBadRequest, string(dErrors.CodeBadRequest))
-	})
-	// - 500 Internal Server Error: Store failure
 	s.T().Run("internal server failure - 500", func(t *testing.T) {
 		mockService, router := s.newHandler(t, nil)
 		mockService.EXPECT().Token(gomock.Any(), gomock.Any()).Return(nil, errors.New("database error"))
@@ -297,30 +129,7 @@ func (s *AuthHandlerSuite) TestHandler_Token() {
 
 func (s *AuthHandlerSuite) TestHandler_UserInfo() {
 	validSessionID := uuid.New()
-	s.T().Run("happy path - user info returned", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
-		expectedResp := &authModel.UserInfoResult{
-			Sub:           "user-123",
-			Email:         "user@example.com",
-			EmailVerified: true,
-			GivenName:     "Ahmed",
-			FamilyName:    "Mustafa",
-			Name:          "Ahmed Mustafa",
-		}
-		mockService.EXPECT().UserInfo(gomock.Any(), validSessionID.String()).Return(expectedResp, nil)
 
-		status, got, errBody := s.doUserInfoRequest(t, router, validSessionID.String())
-
-		s.assertSuccessResponse(t, status, got, errBody)
-		assert.Equal(t, expectedResp.Sub, got.Sub)
-		assert.Equal(t, expectedResp.Email, got.Email)
-		assert.Equal(t, expectedResp.EmailVerified, got.EmailVerified)
-		assert.Equal(t, expectedResp.GivenName, got.GivenName)
-		assert.Equal(t, expectedResp.FamilyName, got.FamilyName)
-		assert.Equal(t, expectedResp.Name, got.Name)
-	})
-
-	// 	- 401 Unauthorized: Missing or invalid Authorization header
 	s.T().Run("missing or invalid authorization header - 401", func(t *testing.T) {
 		mockService, router := s.newHandler(t, nil)
 		mockService.EXPECT().UserInfo(gomock.Any(), "").Return(nil, dErrors.New(dErrors.CodeUnauthorized, "missing or invalid session"))
@@ -340,28 +149,6 @@ func (s *AuthHandlerSuite) TestHandler_UserInfo() {
 		s.assertErrorResponse(t, status, got, errBody, http.StatusUnauthorized, string(dErrors.CodeUnauthorized))
 	})
 
-	// - 401 Unauthorized: session not found or expired
-	s.T().Run("session not found or expired - 401", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
-		serviceErr := dErrors.New(dErrors.CodeUnauthorized, "session not found or expired")
-		mockService.EXPECT().UserInfo(gomock.Any(), validSessionID.String()).Return(nil, serviceErr)
-
-		status, got, errBody := s.doUserInfoRequest(t, router, validSessionID.String())
-
-		s.assertErrorResponse(t, status, got, errBody, http.StatusUnauthorized, string(dErrors.CodeUnauthorized))
-	})
-
-	// - 401 Unauthorized: User not found
-	s.T().Run("user not found - 401", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
-		serviceErr := dErrors.New(dErrors.CodeUnauthorized, "user not found")
-		mockService.EXPECT().UserInfo(gomock.Any(), validSessionID.String()).Return(nil, serviceErr)
-
-		status, got, errBody := s.doUserInfoRequest(t, router, validSessionID.String())
-
-		s.assertErrorResponse(t, status, got, errBody, http.StatusUnauthorized, string(dErrors.CodeUnauthorized))
-	})
-
 	s.T().Run("internal server failure - 500", func(t *testing.T) {
 		mockService, router := s.newHandler(t, nil)
 		mockService.EXPECT().UserInfo(gomock.Any(), validSessionID.String()).Return(nil, errors.New("database error"))
@@ -375,30 +162,6 @@ func (s *AuthHandlerSuite) TestHandler_UserInfo() {
 func (s *AuthHandlerSuite) TestHandler_ListSessions() {
 	userID := uuid.New()
 	currentSessionID := uuid.New()
-
-	s.T().Run("happy path - lists sessions", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
-		expected := &authModel.SessionsResult{
-			Sessions: []authModel.SessionSummary{
-				{
-					SessionID: currentSessionID.String(),
-					Device:    "Chrome on macOS",
-					IsCurrent: true,
-				},
-			},
-		}
-
-		mockService.EXPECT().
-			ListSessions(gomock.Any(), userID, currentSessionID).
-			Return(expected, nil)
-
-		status, got, errBody := s.doListSessionsRequest(t, router, userID.String(), currentSessionID.String())
-		s.assertSuccessResponse(t, status, got, errBody)
-		require.NotNil(t, got)
-		require.Len(t, got.Sessions, 1)
-		assert.Equal(t, currentSessionID.String(), got.Sessions[0].SessionID)
-		assert.True(t, got.Sessions[0].IsCurrent)
-	})
 
 	s.T().Run("invalid user id in context - 401", func(t *testing.T) {
 		mockService, router := s.newHandler(t, nil)
@@ -432,16 +195,6 @@ func (s *AuthHandlerSuite) TestHandler_RevokeSession() {
 	sessionID := uuid.New()
 	path := "/auth/sessions/" + sessionID.String()
 
-	s.T().Run("happy path - revokes session", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
-		mockService.EXPECT().RevokeSession(gomock.Any(), userID, sessionID).Return(nil)
-
-		status, got, errBody := s.doRevokeSessionRequest(t, router, path, userID.String())
-		s.assertSuccessResponse(t, status, got, errBody)
-		assert.True(t, got.Revoked)
-		assert.Equal(t, sessionID.String(), got.SessionID)
-	})
-
 	s.T().Run("invalid user id in context - 401", func(t *testing.T) {
 		mockService, router := s.newHandler(t, nil)
 		mockService.EXPECT().RevokeSession(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
@@ -462,26 +215,6 @@ func (s *AuthHandlerSuite) TestHandler_RevokeSession() {
 func (s *AuthHandlerSuite) TestHandler_AdminDeleteUser() {
 	userID := uuid.New()
 	validPath := "/admin/auth/users/" + userID.String()
-
-	s.T().Run("deletes user", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockService := mocks.NewMockService(ctrl)
-		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-		handler := New(mockService, logger, "__Secure-Device-ID", 31536000)
-
-		r := chi.NewRouter()
-		handler.RegisterAdmin(r)
-
-		mockService.EXPECT().DeleteUser(gomock.Any(), userID).Return(nil)
-
-		req := httptest.NewRequest(http.MethodDelete, validPath, nil)
-		req.Header.Set("X-Admin-Token", "demo-admin-token")
-		recorder := httptest.NewRecorder()
-
-		r.ServeHTTP(recorder, req)
-
-		assert.Equal(t, http.StatusNoContent, recorder.Code)
-	})
 
 	s.T().Run("invalid user id", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -541,7 +274,7 @@ func (s *AuthHandlerSuite) newHandler(t *testing.T, allowedSchemes *[]string) (*
 	return mockService, r
 }
 
-func (s *AuthHandlerSuite) doUserInfoRequest(t *testing.T, router *chi.Mux, sessionID string) (int, *authModel.UserInfoResult, map[string]string) {
+func (s *AuthHandlerSuite) doUserInfoRequest(t *testing.T, router *chi.Mux, sessionID string) (int, *models.UserInfoResult, map[string]string) {
 	t.Helper()
 	httpReq := httptest.NewRequest(http.MethodGet, "/auth/userinfo", nil)
 
@@ -559,7 +292,7 @@ func (s *AuthHandlerSuite) doUserInfoRequest(t *testing.T, router *chi.Mux, sess
 	require.NoError(t, err)
 
 	if rr.Code == http.StatusOK {
-		var res authModel.UserInfoResult
+		var res models.UserInfoResult
 		require.NoError(t, json.Unmarshal(raw, &res))
 		return rr.Code, &res, nil
 	} else {
@@ -569,7 +302,7 @@ func (s *AuthHandlerSuite) doUserInfoRequest(t *testing.T, router *chi.Mux, sess
 	}
 }
 
-func (s *AuthHandlerSuite) doListSessionsRequest(t *testing.T, router *chi.Mux, userID string, sessionID string) (int, *authModel.SessionsResult, map[string]string) {
+func (s *AuthHandlerSuite) doListSessionsRequest(t *testing.T, router *chi.Mux, userID string, sessionID string) (int, *models.SessionsResult, map[string]string) {
 	t.Helper()
 	httpReq := httptest.NewRequest(http.MethodGet, "/auth/sessions", nil)
 
@@ -589,7 +322,7 @@ func (s *AuthHandlerSuite) doListSessionsRequest(t *testing.T, router *chi.Mux, 
 	require.NoError(t, err)
 
 	if rr.Code == http.StatusOK {
-		var res authModel.SessionsResult
+		var res models.SessionsResult
 		require.NoError(t, json.Unmarshal(raw, &res))
 		return rr.Code, &res, nil
 	}
@@ -599,7 +332,7 @@ func (s *AuthHandlerSuite) doListSessionsRequest(t *testing.T, router *chi.Mux, 
 	return rr.Code, nil, errBody
 }
 
-func (s *AuthHandlerSuite) doRevokeSessionRequest(t *testing.T, router *chi.Mux, path string, userID string) (int, *authModel.SessionRevocationResult, map[string]string) {
+func (s *AuthHandlerSuite) doRevokeSessionRequest(t *testing.T, router *chi.Mux, path string, userID string) (int, *models.SessionRevocationResult, map[string]string) {
 	t.Helper()
 	httpReq := httptest.NewRequest(http.MethodDelete, path, nil)
 
@@ -616,7 +349,7 @@ func (s *AuthHandlerSuite) doRevokeSessionRequest(t *testing.T, router *chi.Mux,
 	require.NoError(t, err)
 
 	if rr.Code == http.StatusOK {
-		var res authModel.SessionRevocationResult
+		var res models.SessionRevocationResult
 		require.NoError(t, json.Unmarshal(raw, &res))
 		return rr.Code, &res, nil
 	}
@@ -626,7 +359,7 @@ func (s *AuthHandlerSuite) doRevokeSessionRequest(t *testing.T, router *chi.Mux,
 	return rr.Code, nil, errBody
 }
 
-func (s *AuthHandlerSuite) doAuthRequest(t *testing.T, router *chi.Mux, body string) (int, *authModel.AuthorizationResult, map[string]string) {
+func (s *AuthHandlerSuite) doAuthRequest(t *testing.T, router *chi.Mux, body string) (int, *models.AuthorizationResult, map[string]string) {
 	t.Helper()
 	httpReq := httptest.NewRequest(http.MethodPost, "/auth/authorize", strings.NewReader(body))
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -638,7 +371,7 @@ func (s *AuthHandlerSuite) doAuthRequest(t *testing.T, router *chi.Mux, body str
 	require.NoError(t, err)
 
 	if rr.Code == http.StatusOK {
-		var res authModel.AuthorizationResult
+		var res models.AuthorizationResult
 		require.NoError(t, json.Unmarshal(raw, &res))
 		return rr.Code, &res, nil
 	} else {
@@ -648,7 +381,7 @@ func (s *AuthHandlerSuite) doAuthRequest(t *testing.T, router *chi.Mux, body str
 	}
 }
 
-func (s *AuthHandlerSuite) doTokenRequest(t *testing.T, router *chi.Mux, body string) (int, *authModel.TokenResult, map[string]string) {
+func (s *AuthHandlerSuite) doTokenRequest(t *testing.T, router *chi.Mux, body string) (int, *models.TokenResult, map[string]string) {
 	t.Helper()
 	httpReq := httptest.NewRequest(http.MethodPost, "/auth/token", strings.NewReader(body))
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -659,7 +392,7 @@ func (s *AuthHandlerSuite) doTokenRequest(t *testing.T, router *chi.Mux, body st
 	require.NoError(t, err)
 
 	if rr.Code == http.StatusOK {
-		var res authModel.TokenResult
+		var res models.TokenResult
 		require.NoError(t, json.Unmarshal(raw, &res))
 		return rr.Code, &res, nil
 	} else {
@@ -669,7 +402,7 @@ func (s *AuthHandlerSuite) doTokenRequest(t *testing.T, router *chi.Mux, body st
 	}
 }
 
-func (s *AuthHandlerSuite) doTokenRequestRaw(t *testing.T, router *chi.Mux, body string) (int, *authModel.TokenResult, map[string]string, map[string]any) {
+func (s *AuthHandlerSuite) doTokenRequestRaw(t *testing.T, router *chi.Mux, body string) (int, *models.TokenResult, map[string]string, map[string]any) {
 	t.Helper()
 	httpReq := httptest.NewRequest(http.MethodPost, "/auth/token", strings.NewReader(body))
 	httpReq.Header.Set("Content-Type", "application/json")

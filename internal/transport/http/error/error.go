@@ -53,6 +53,9 @@ func DomainCodeToHTTPStatus(code dErrors.Code) int {
 		return http.StatusGatewayTimeout
 	case dErrors.CodeInternal:
 		return http.StatusInternalServerError
+	// OAuth 2.0 error codes (RFC 6749 §5.2) - all return 400 Bad Request
+	case dErrors.CodeInvalidGrant, dErrors.CodeInvalidClient, dErrors.CodeUnsupportedGrantType, dErrors.CodeInvalidRequest, dErrors.CodeAccessDenied:
+		return http.StatusBadRequest
 	default:
 		return http.StatusInternalServerError
 	}
@@ -85,6 +88,17 @@ func DomainCodeToHTTPCode(code dErrors.Code) string {
 		return "registry_timeout"
 	case dErrors.CodeInternal:
 		return "internal_error"
+	// OAuth 2.0 error codes (RFC 6749 §5.2) - return standard OAuth error strings
+	case dErrors.CodeInvalidGrant:
+		return "invalid_grant"
+	case dErrors.CodeInvalidClient:
+		return "invalid_client"
+	case dErrors.CodeUnsupportedGrantType:
+		return "unsupported_grant_type"
+	case dErrors.CodeInvalidRequest:
+		return "invalid_request"
+	case dErrors.CodeAccessDenied:
+		return "access_denied"
 	default:
 		return "internal_error"
 	}

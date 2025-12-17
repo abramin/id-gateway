@@ -2,18 +2,19 @@ package authorizationcode
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"credo/internal/auth/models"
-	dErrors "credo/pkg/domain-errors"
+	"credo/internal/facts"
 )
 
 // ErrNotFound is returned when a requested record is not found in the store.
 // Services should check for this error using errors.Is(err, store.ErrNotFound).
-var ErrNotFound = dErrors.New(dErrors.CodeNotFound, "record not found")
-var ErrAuthCodeUsed = dErrors.New(dErrors.CodeUnauthorized, "authorization code already used")
-var ErrAuthCodeExpired = dErrors.New(dErrors.CodeUnauthorized, "authorization code expired")
+var ErrNotFound = facts.ErrNotFound
+var ErrAuthCodeUsed = facts.ErrAlreadyUsed
+var ErrAuthCodeExpired = facts.ErrExpired
 
 // Error Contract:
 // All store methods follow this error pattern:
@@ -48,7 +49,7 @@ func (s *InMemoryAuthorizationCodeStore) FindByCode(_ context.Context, code stri
 	if authCode, ok := s.authCodes[code]; ok {
 		return authCode, nil
 	}
-	return nil, ErrNotFound
+	return nil, fmt.Errorf("authorization code not found: %w", ErrNotFound)
 }
 
 func (s *InMemoryAuthorizationCodeStore) MarkUsed(_ context.Context, code string) error {
@@ -58,7 +59,7 @@ func (s *InMemoryAuthorizationCodeStore) MarkUsed(_ context.Context, code string
 		record.Used = true
 		return nil
 	}
-	return ErrNotFound
+	return fmt.Errorf("authorization code not found: %w", ErrNotFound)
 }
 
 func (s *InMemoryAuthorizationCodeStore) ConsumeAuthCode(_ context.Context, code string, redirectURI string, now time.Time) (*models.AuthorizationCodeRecord, error) {
@@ -67,16 +68,16 @@ func (s *InMemoryAuthorizationCodeStore) ConsumeAuthCode(_ context.Context, code
 
 	record, ok := s.authCodes[code]
 	if !ok {
-		return nil, ErrNotFound
+		return nil, fmt.Errorf("authorization code not found: %w", ErrNotFound)
 	}
 	if record.RedirectURI != redirectURI {
-		return record, dErrors.New(dErrors.CodeBadRequest, "redirect_uri mismatch")
+		return record, fmt.Errorf("redirect_uri mismatch: %w", facts.ErrInvalidInput)
 	}
 	if now.After(record.ExpiresAt) {
-		return record, ErrAuthCodeExpired
+		return record, fmt.Errorf("authorization code expired: %w", ErrAuthCodeExpired)
 	}
 	if record.Used {
-		return record, ErrAuthCodeUsed
+		return record, fmt.Errorf("authorization code already used: %w", ErrAuthCodeUsed)
 	}
 
 	record.Used = true
