@@ -131,6 +131,7 @@ V2+ consists of THREE parallel tracks that can be pursued simultaneously:
 - Use schema migrations with **golang-migrate/migrate**
 - Write SQL queries with **sqlc** for type safety
 - Keep in-memory implementations for testing
+- Defer consent projection/TR-6 work until after Postgres is in place (Phase 3 perf/hardening)
 
 **Stores to Migrate:**
 

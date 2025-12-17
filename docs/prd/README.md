@@ -38,6 +38,7 @@ Credo is a **regulated identity and authorization system** that:
 | [PRD-026A](./PRD-026A-Tenant-Client-Management.md) 🆕    | Tenant & Client Management (MVP)    | 🟢 Done | 8-10h     | PRD-001, 016 |
 | [PRD-017](./PRD-017-Rate-Limiting-Abuse-Prevention.md) 🆕 | Rate Limiting & Abuse Prevention    | 🔵 Not Started | 8-10h     | PRD-001, 016 |
 | [PRD-002](./PRD-002-Consent-Management.md)                | Consent Management System           | 🟢 Done  | 5-7h      | PRD-001      |
+| ↳ TR-6 (Projections)                                      | Consent projection/read-model perf  | ⏩ Defer | 6-8h      | PRD-002, A2 (Postgres) |
 
 **Phase 0 Total:** ~32-39 hours (4-5 days)
 
@@ -151,7 +152,7 @@ Credo is a **regulated identity and authorization system** that:
 **Goal:** Production-ready core identity system with operational prerequisites
 
 **Phase 0: Foundation (4-5 days)**
-Establish authentication, token management, security controls, and consent:
+Establish authentication, token management, security controls, and consent (projections deferred to later perf phase):
 
 - PRD-001: Full authentication flow (login, sessions, OIDC-lite)
 - PRD-016: Token refresh, revocation, session management
