@@ -39,8 +39,8 @@ func (s *Service) applyDeviceBinding(ctx context.Context, session *models.Sessio
 		}
 	}
 
-	userAgent := middleware.GetUserAgent(ctx)
-	currentFingerprint := s.deviceService.ComputeFingerprint(userAgent)
+	// Fingerprint is now pre-computed by Device middleware
+	currentFingerprint := middleware.GetDeviceFingerprint(ctx)
 	_, driftDetected := s.deviceService.CompareFingerprints(session.DeviceFingerprintHash, currentFingerprint)
 	if session.DeviceFingerprintHash == "" && currentFingerprint != "" {
 		session.DeviceFingerprintHash = currentFingerprint

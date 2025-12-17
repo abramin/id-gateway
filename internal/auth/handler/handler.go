@@ -90,10 +90,7 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract device ID cookie (if present) for device binding.
-	if cookie, err := r.Cookie(h.deviceCookieName); err == nil && cookie != nil {
-		ctx = middleware.WithDeviceID(ctx, cookie.Value)
-	}
+	// Device ID is now extracted by Device middleware - no manual extraction needed
 
 	res, err := h.auth.Authorize(ctx, &req)
 	if err != nil {
@@ -111,8 +108,8 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		"client_id", req.ClientID,
 	)
 
-	// TODO: Should this be done in middleware or service layer?
 	// Set device ID cookie (Phase 1: soft launch — generate cookie, no enforcement).
+	// Note: Cookie EXTRACTION is handled by Device middleware; cookie SETTING must remain here.
 	if res.DeviceID != "" {
 		http.SetCookie(w, &http.Cookie{
 			Name:     h.deviceCookieName,
@@ -133,10 +130,7 @@ func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
 
-	// Extract device ID from cookie for device binding validation.
-	if cookie, err := r.Cookie(h.deviceCookieName); err == nil && cookie != nil {
-		ctx = middleware.WithDeviceID(ctx, cookie.Value)
-	}
+	// Device ID is now extracted by Device middleware - no manual extraction needed
 
 	var req models.TokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

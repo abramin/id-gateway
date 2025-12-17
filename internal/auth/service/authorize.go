@@ -61,7 +61,8 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 		}
 	}
 
-	deviceFingerprint := s.deviceService.ComputeFingerprint(userAgent)
+	// Fingerprint is now pre-computed by Device middleware
+	deviceFingerprint := middleware.GetDeviceFingerprint(ctx)
 
 	var user *models.User
 	var authCode *models.AuthorizationCodeRecord

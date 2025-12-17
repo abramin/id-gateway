@@ -139,6 +139,7 @@ func LatencyMiddleware(m *metrics.Metrics) func(http.Handler) http.Handler {
 type contextKeyClientIP struct{}
 type contextKeyUserAgent struct{}
 type contextKeyDeviceID struct{}
+type contextKeyDeviceFingerprint struct{}
 
 // ClientMetadata extracts client IP address and User-Agent from the request
 // and adds them to the context for use by handlers and services.
@@ -192,6 +193,20 @@ func WithClientMetadata(ctx context.Context, clientIP, userAgent string) context
 // Useful for service unit tests that don't run the full HTTP middleware chain.
 func WithDeviceID(ctx context.Context, deviceID string) context.Context {
 	return context.WithValue(ctx, contextKeyDeviceID{}, deviceID)
+}
+
+// GetDeviceFingerprint retrieves the pre-computed device fingerprint from the context.
+func GetDeviceFingerprint(ctx context.Context) string {
+	if fp, ok := ctx.Value(contextKeyDeviceFingerprint{}).(string); ok {
+		return fp
+	}
+	return ""
+}
+
+// WithDeviceFingerprint injects a device fingerprint into a context.
+// Useful for service unit tests that don't run the full HTTP middleware chain.
+func WithDeviceFingerprint(ctx context.Context, fingerprint string) context.Context {
+	return context.WithValue(ctx, contextKeyDeviceFingerprint{}, fingerprint)
 }
 
 // getClientIP extracts the real client IP from the request, handling proxies and load balancers.

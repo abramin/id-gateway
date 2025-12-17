@@ -11,6 +11,7 @@ import (
 
 	"credo/internal/admin"
 	"credo/internal/audit"
+	"credo/internal/auth/device"
 	authHandler "credo/internal/auth/handler"
 	authService "credo/internal/auth/service"
 	authCodeStore "credo/internal/auth/store/authorization-code"
@@ -38,11 +39,12 @@ import (
 )
 
 type infraBundle struct {
-	Cfg          *config.Server
-	Log          *slog.Logger
-	Metrics      *metrics.Metrics
-	JWTService   *jwttoken.JWTService
-	JWTValidator *jwttoken.JWTServiceAdapter
+	Cfg           *config.Server
+	Log           *slog.Logger
+	Metrics       *metrics.Metrics
+	JWTService    *jwttoken.JWTService
+	JWTValidator  *jwttoken.JWTServiceAdapter
+	DeviceService *device.Service
 }
 
 type authModule struct {
@@ -87,7 +89,7 @@ func main() {
 
 	startCleanupWorker(appCtx, infra.Log, authMod.Cleanup)
 
-	r := setupRouter(infra.Log, infra.Metrics)
+	r := setupRouter(infra)
 	registerRoutes(r, infra, authMod, consentMod, tenantMod)
 
 	mainSrv := httpserver.New(infra.Cfg.Addr, r)
@@ -125,13 +127,15 @@ func buildInfra() (*infraBundle, error) {
 
 	m := metrics.New()
 	jwtService, jwtValidator := initializeJWTService(&cfg)
+	deviceSvc := device.NewService(cfg.Auth.DeviceBindingEnabled)
 
 	return &infraBundle{
-		Cfg:          &cfg,
-		Log:          log,
-		Metrics:      m,
-		JWTService:   jwtService,
-		JWTValidator: jwtValidator,
+		Cfg:           &cfg,
+		Log:           log,
+		Metrics:       m,
+		JWTService:    jwtService,
+		JWTValidator:  jwtValidator,
+		DeviceService: deviceSvc,
 	}, nil
 }
 
@@ -255,17 +259,21 @@ func initializeJWTService(cfg *config.Server) (*jwttoken.JWTService, *jwttoken.J
 }
 
 // setupRouter creates a new router and configures common middleware
-func setupRouter(log *slog.Logger, m *metrics.Metrics) *chi.Mux {
+func setupRouter(infra *infraBundle) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Common middleware for all routes (must be defined before routes)
 	r.Use(middleware.ClientMetadata)
-	r.Use(middleware.Recovery(log))
+	r.Use(middleware.Device(&middleware.DeviceConfig{
+		CookieName:    infra.Cfg.Auth.DeviceCookieName,
+		FingerprintFn: infra.DeviceService.ComputeFingerprint,
+	}))
+	r.Use(middleware.Recovery(infra.Log))
 	r.Use(middleware.RequestID)
-	r.Use(middleware.Logger(log))
+	r.Use(middleware.Logger(infra.Log))
 	r.Use(middleware.Timeout(30 * time.Second)) // TODO: make configurable
 	r.Use(middleware.ContentTypeJSON)
-	r.Use(middleware.LatencyMiddleware(m))
+	r.Use(middleware.LatencyMiddleware(infra.Metrics))
 
 	// Add Prometheus metrics endpoint (no auth required)
 	r.Handle("/metrics", promhttp.Handler())
