@@ -91,7 +91,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		// Token exchange now calls resolveTokenContext which needs client, tenant, and user
 		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientUUID.String()).Return(mockClient, mockTenant, nil)
+		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientID).Return(mockClient, mockTenant, nil)
 		s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(mockUser, nil)
 
 		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, nil)
@@ -118,7 +118,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		// Add resolveTokenContext expectations
 		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientUUID.String()).Return(mockClient, mockTenant, nil)
+		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientID).Return(mockClient, mockTenant, nil)
 		s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(mockUser, nil)
 
 		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, nil)
@@ -258,7 +258,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 				// resolveTokenContext mocks
 				s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
 				s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-				s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientUUID.String()).Return(mockClient, mockTenant, nil)
+				s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientID).Return(mockClient, mockTenant, nil)
 				s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(mockUser, nil)
 
 				// Transaction mocks
@@ -275,4 +275,3 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		}
 	})
 }
-

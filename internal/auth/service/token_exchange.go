@@ -28,7 +28,7 @@ func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.Tok
 	if err != nil {
 		return nil, s.handleTokenError(ctx, err, req.ClientID, &sessionID, TokenFlowCode)
 	}
-	tc, err := s.resolveTokenContext(ctx, session)
+	tc, err := s.resolveTokenContext(ctx, session, req.ClientID)
 	if err != nil {
 		return nil, s.handleTokenError(ctx, err, req.ClientID, &sessionID, TokenFlowCode)
 	}

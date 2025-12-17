@@ -68,7 +68,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		// 2. Find session (non-transactional, for validation)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
 		// 3. Validate client and user status (PRD-026A FR-4.5.4)
-		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientUUID.String()).Return(mockClient, mockTenant, nil)
+		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientID).Return(mockClient, mockTenant, nil)
 		s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(mockUser, nil)
 		// 4. Inside transaction: consume refresh token, re-find session, generate tokens
 		s.mockRefreshStore.EXPECT().ConsumeRefreshToken(gomock.Any(), refreshTokenString, gomock.Any()).Return(&refreshRec, nil)
@@ -112,16 +112,13 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		}
 		refreshRec := *validRefreshToken
 		sess := *validSession
+		otherClient := *mockClient
+		otherClient.ID = uuid.New()
+		otherClient.ClientID = req.ClientID
 
 		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(&refreshRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientUUID.String()).Return(mockClient, mockTenant, nil)
-		s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(mockUser, nil)
-		s.mockRefreshStore.EXPECT().ConsumeRefreshToken(gomock.Any(), refreshTokenString, gomock.Any()).Return(&refreshRec, nil)
-		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		_, accessTokenJTI, _, _ := s.expectTokenGeneration(userID, sessionID, clientUUID, tenantID, sess.RequestedScope)
-		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), sess.ID, req.ClientID, gomock.Any(), accessTokenJTI, sess.DeviceID, sess.DeviceFingerprintHash).
-			Return(nil, dErrors.New(dErrors.CodeInvalidGrant, "client_id mismatch"))
+		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), req.ClientID).Return(&otherClient, mockTenant, nil)
 
 		result, err := s.service.Token(context.Background(), &req)
 		assert.Error(s.T(), err)
@@ -141,7 +138,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		// Validation happens before transaction
 		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(&refreshRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientUUID.String()).Return(&inactiveClient, mockTenant, nil)
+		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientID).Return(&inactiveClient, mockTenant, nil)
 		s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(mockUser, nil)
 		// Transaction should NOT be entered because validation fails
 
@@ -163,7 +160,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		// Validation happens before transaction
 		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(&refreshRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientUUID.String()).Return(mockClient, mockTenant, nil)
+		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientID).Return(mockClient, mockTenant, nil)
 		s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(&inactiveUser, nil)
 		// Transaction should NOT be entered because validation fails
 
@@ -195,7 +192,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		// Validation before transaction
 		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(&refreshRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientUUID.String()).Return(mockClient, mockTenant, nil)
+		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientID).Return(mockClient, mockTenant, nil)
 		s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(mockUser, nil)
 		// Inside transaction
 		s.mockRefreshStore.EXPECT().ConsumeRefreshToken(gomock.Any(), refreshTokenString, gomock.Any()).Return(&refreshRec, nil)
@@ -215,4 +212,3 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		assert.Equal(s.T(), "session-device", sess.DeviceID)
 	})
 }
-

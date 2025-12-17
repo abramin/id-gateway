@@ -31,7 +31,7 @@ func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.Token
 	}
 
 	// Validate client and user status before issuing new tokens (PRD-026A FR-4.5.4)
-	tc, err := s.resolveTokenContext(ctx, session)
+	tc, err := s.resolveTokenContext(ctx, session, req.ClientID)
 	if err != nil {
 		return nil, s.handleTokenError(ctx, err, req.ClientID, &sessionID, TokenFlowRefresh)
 	}

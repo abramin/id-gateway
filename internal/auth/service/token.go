@@ -41,11 +41,18 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 func (s *Service) resolveTokenContext(
 	ctx context.Context,
 	session *models.Session,
+	clientID string,
 ) (*tokenContext, error) {
 
-	client, tenant, err := s.clientResolver.ResolveClient(ctx, session.ClientID.String())
+	client, tenant, err := s.clientResolver.ResolveClient(ctx, clientID)
 	if err != nil {
 		return nil, err
+	}
+	if client.ID != session.ClientID {
+		return nil, dErrors.New(dErrors.CodeInvalidGrant, "client mismatch")
+	}
+	if tenant.ID != session.TenantID {
+		return nil, dErrors.New(dErrors.CodeInvalidGrant, "tenant mismatch")
 	}
 
 	user, err := s.users.FindByID(ctx, session.UserID)

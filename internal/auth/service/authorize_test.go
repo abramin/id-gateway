@@ -139,7 +139,8 @@ func (s *ServiceSuite) TestAuthorize() {
 		prevBinding := s.service.DeviceBindingEnabled
 		prevDeviceSvc := s.service.deviceService
 		s.service.DeviceBindingEnabled = true
-		s.service.deviceService = device.NewService(true)
+		deviceSvc := device.NewService(true)
+		s.service.deviceService = deviceSvc
 		t.Cleanup(func() {
 			s.service.DeviceBindingEnabled = prevBinding
 			s.service.deviceService = prevDeviceSvc
@@ -147,7 +148,10 @@ func (s *ServiceSuite) TestAuthorize() {
 
 		req := baseReq
 		req.State = "xyz"
-		ctx := middleware.WithClientMetadata(context.Background(), "192.168.1.1", "Mozilla/5.0")
+		userAgent := "Mozilla/5.0"
+		ctx := middleware.WithClientMetadata(context.Background(), "192.168.1.1", userAgent)
+		// Inject pre-computed fingerprint (as Device middleware would)
+		ctx = middleware.WithDeviceFingerprint(ctx, deviceSvc.ComputeFingerprint(userAgent))
 
 		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), req.ClientID).Return(mockClient, mockTenant, nil)
 
