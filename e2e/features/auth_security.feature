@@ -1,7 +1,26 @@
-Feature: OAuth2 Security - Attack Path Simulations
+Feature: OAuth2 Security - Client and Tenant Validation
     As a security engineer
-    I want to document known attack vectors
-    So that future implementations address these threats
+    I want to validate that unknown and invalid clients are rejected
+    So that the authorization server only serves registered clients
+
+  Background:
+    Given the ID Gateway is running
+
+    @security @client-validation
+  Scenario: Unknown client_id rejected (RFC 6749 §4.1.2.1)
+    When I request authorization with unknown client_id "unknown-client-xyz"
+    Then the response status should be 400
+    And the response field "error" should equal "bad_request"
+
+    @security @client-validation
+  Scenario: Empty client_id rejected
+    When I request authorization with empty client_id
+    Then the response status should be 400
+    And the response field "error" should equal "bad_request"
+
+    # ============================================================
+    # SECURITY SIMULATIONS (Documentation of known attack vectors)
+    # ============================================================
 
     @security @simulation
   Scenario: PKCE not yet implemented

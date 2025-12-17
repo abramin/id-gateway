@@ -68,6 +68,8 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc TestContext) {
 	ctx.Step(`^I POST to "([^"]*)" with invalid email "([^"]*)"$`, steps.postWithInvalidEmail)
 	ctx.Step(`^I POST to "([^"]*)" with grant_type "([^"]*)"$`, steps.postWithGrantType)
 	ctx.Step(`^I GET "([^"]*)" with invalid token "([^"]*)"$`, steps.getWithInvalidToken)
+	ctx.Step(`^I request authorization with unknown client_id "([^"]*)"$`, steps.requestAuthWithUnknownClientID)
+	ctx.Step(`^I request authorization with empty client_id$`, steps.requestAuthWithEmptyClientID)
 
 	// Admin steps
 	ctx.Step(`^I save the user ID from the userinfo response$`, steps.saveUserIDFromUserInfo)
@@ -149,6 +151,28 @@ func (s *authSteps) getWithInvalidToken(ctx context.Context, path, token string)
 	return s.tc.GET(path, map[string]string{
 		"Authorization": "Bearer " + token,
 	})
+}
+
+func (s *authSteps) requestAuthWithUnknownClientID(ctx context.Context, clientID string) error {
+	body := map[string]interface{}{
+		"email":        "test@example.com",
+		"client_id":    clientID,
+		"scopes":       []string{"openid"},
+		"redirect_uri": s.tc.GetRedirectURI(),
+		"state":        "test-state-123",
+	}
+	return s.tc.POST("/auth/authorize", body)
+}
+
+func (s *authSteps) requestAuthWithEmptyClientID(ctx context.Context) error {
+	body := map[string]interface{}{
+		"email":        "test@example.com",
+		"client_id":    "",
+		"scopes":       []string{"openid"},
+		"redirect_uri": s.tc.GetRedirectURI(),
+		"state":        "test-state-123",
+	}
+	return s.tc.POST("/auth/authorize", body)
 }
 
 func (s *authSteps) requestUserInfo(ctx context.Context) error {

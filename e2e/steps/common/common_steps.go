@@ -43,6 +43,8 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc TestContext) {
 	ctx.Step(`^implicit flow leaks tokens in browser history$`, func(context.Context) error { return nil })
 	ctx.Step(`^authorization codes should be single-use$`, func(context.Context) error { return nil })
 	ctx.Step(`^public clients cannot keep secrets$`, func(context.Context) error { return nil })
+	ctx.Step(`^client status validation is enforced on token refresh$`, func(context.Context) error { return nil })
+	ctx.Step(`^user status validation is enforced on token refresh$`, func(context.Context) error { return nil })
 	ctx.Step(`^log "([^"]*)"$`, steps.logMessage)
 }
 
