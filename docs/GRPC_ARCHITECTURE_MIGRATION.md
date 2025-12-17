@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-Credo has been upgraded to use **hexagonal architecture** (ports-and-adapters) with clear module boundaries. The system currently runs as a monolith with in-process adapters, but the architecture is ready for future migration to gRPC microservices with minimal code changes.
+The system currently runs as a monolith with in-process adapters. Credo will be upgraded to use **hexagonal architecture** (ports-and-adapters) with clear module boundaries. GRPC will be used for interservice communication.
 
 ### Key Changes
 
@@ -39,7 +39,7 @@ Registry Service
 - Cannot extract services to microservices
 - Circular dependency risks
 
-### After: Hexagonal Architecture with In-Process Adapters (Current - Phase 0)
+### After: Hexagonal Architecture with In-Process Adapters (Phase 0)
 
 ```
 Registry Service (Domain)
