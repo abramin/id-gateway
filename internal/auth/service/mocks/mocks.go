@@ -538,18 +538,18 @@ func (mr *MockTokenGeneratorMockRecorder) GenerateAccessTokenWithJTI(userID, ses
 }
 
 // GenerateIDToken mocks base method.
-func (m *MockTokenGenerator) GenerateIDToken(userID, sessionID uuid.UUID, clientID string) (string, error) {
+func (m *MockTokenGenerator) GenerateIDToken(userID, sessionID uuid.UUID, clientID string, tenantID string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GenerateIDToken", userID, sessionID, clientID)
+	ret := m.ctrl.Call(m, "GenerateIDToken", userID, sessionID, clientID, tenantID)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GenerateIDToken indicates an expected call of GenerateIDToken.
-func (mr *MockTokenGeneratorMockRecorder) GenerateIDToken(userID, sessionID, clientID any) *gomock.Call {
+func (mr *MockTokenGeneratorMockRecorder) GenerateIDToken(userID, sessionID, clientID, tenantID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateIDToken", reflect.TypeOf((*MockTokenGenerator)(nil).GenerateIDToken), userID, sessionID, clientID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateIDToken", reflect.TypeOf((*MockTokenGenerator)(nil).GenerateIDToken), userID, sessionID, clientID, tenantID)
 }
 
 // ParseTokenSkipClaimsValidation mocks base method.

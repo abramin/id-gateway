@@ -119,7 +119,7 @@ func buildInfra() (*infraBundle, error) {
 	if cfg.DemoMode {
 		log.Info("CRENE_ENV=demo — starting isolated demo environment",
 			"stores", "in-memory",
-			"issuer", cfg.Auth.JWTIssuer,
+			"issuer_base_url", cfg.Auth.JWTIssuerBaseURL,
 		)
 	}
 
@@ -243,7 +243,7 @@ func startCleanupWorker(ctx context.Context, log *slog.Logger, cleanupSvc *clean
 func initializeJWTService(cfg *config.Server) (*jwttoken.JWTService, *jwttoken.JWTServiceAdapter) {
 	jwtService := jwttoken.NewJWTService(
 		cfg.Auth.JWTSigningKey,
-		cfg.Auth.JWTIssuer,
+		cfg.Auth.JWTIssuerBaseURL,
 		"credo-client", // TODO: make configurable
 		cfg.Auth.TokenTTL,
 	)
@@ -282,10 +282,10 @@ func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consent
 	if infra.Cfg.DemoMode {
 		r.Get("/demo/info", func(w http.ResponseWriter, _ *http.Request) {
 			resp := map[string]any{
-				"env":        "demo",
-				"users":      []string{"alice", "bob", "charlie"},
-				"jwt_issuer": infra.Cfg.Auth.JWTIssuer,
-				"data_store": "in-memory",
+				"env":              "demo",
+				"users":            []string{"alice", "bob", "charlie"},
+				"jwt_issuer_base":  infra.Cfg.Auth.JWTIssuerBaseURL,
+				"data_store":       "in-memory",
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(resp)

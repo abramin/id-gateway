@@ -313,7 +313,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 				setupMocks: func(t *testing.T) {
 					s.mockJWT.EXPECT().GenerateAccessTokenWithJTI(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 						Return("access-token", "access-token-jti", nil)
-					s.mockJWT.EXPECT().GenerateIDToken(gomock.Any(), gomock.Any(), gomock.Any()).
+					s.mockJWT.EXPECT().GenerateIDToken(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 						Return("", errors.New("jwt error"))
 				},
 				expectedErr: "failed to generate tokens",
@@ -323,7 +323,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 				setupMocks: func(t *testing.T) {
 					s.mockJWT.EXPECT().GenerateAccessTokenWithJTI(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 						Return("access-token", "access-token-jti", nil)
-					s.mockJWT.EXPECT().GenerateIDToken(gomock.Any(), gomock.Any(), gomock.Any()).
+					s.mockJWT.EXPECT().GenerateIDToken(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 						Return("mock-id", nil)
 					s.mockJWT.EXPECT().CreateRefreshToken().
 						Return("", errors.New("jwt error"))

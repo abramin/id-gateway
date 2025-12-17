@@ -22,11 +22,12 @@ func (s *ServiceSuite) TestAuthorize() {
 	clientID := uuid.New()
 
 	mockClient := &tenant.Client{
-		ID:       clientID,
-		TenantID: tenantID,
-		ClientID: "client-123",
-		Name:     "Test Client",
-		Status:   "active",
+		ID:           clientID,
+		TenantID:     tenantID,
+		ClientID:     "client-123",
+		Name:         "Test Client",
+		Status:       "active",
+		RedirectURIs: []string{"https://client.app/callback"},
 	}
 
 	mockTenant := &tenant.Tenant{

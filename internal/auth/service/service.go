@@ -338,7 +338,7 @@ func (s *Service) generateTokenArtifacts(session *models.Session) (*tokenArtifac
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate access token")
 	}
 
-	idToken, err := s.jwt.GenerateIDToken(session.UserID, session.ID, session.ClientID.String())
+	idToken, err := s.jwt.GenerateIDToken(session.UserID, session.ID, session.ClientID.String(), session.TenantID.String())
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate ID token")
 	}

@@ -640,10 +640,25 @@ type AccessTokenClaims struct {
     UserID    string   `json:"user_id"`
     SessionID string   `json:"session_id"`
     ClientID  string   `json:"client_id"`
+    TenantID  string   `json:"tenant_id"` // Tenant identifier for multi-tenant support
     Scope     []string `json:"scope"`
     JTI       string   `json:"jti"` // Unique token identifier for revocation
 }
 ```
+
+**Per-Tenant Issuer Format (RFC 8414 Compliance):**
+
+The `iss` claim uses a per-tenant issuer URL format:
+```
+{base_url}/tenants/{tenant_id}
+```
+
+Example: `https://auth.credo.io/tenants/550e8400-e29b-41d4-a716-446655440000`
+
+Token validation must:
+1. Verify the issuer URL matches the expected base URL pattern
+2. Extract tenant ID from the issuer URL and validate it exists
+3. The `tenant_id` claim is also included for client convenience (avoids parsing the issuer URL)
 
 ### TR-4: Middleware - Revocation Check
 
@@ -1056,6 +1071,10 @@ curl -X POST http://localhost:8080/auth/logout-all?except_current=true \
 
 | Version | Date       | Author       | Changes                                                                                                                           |
 | ------- | ---------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| 1.4     | 2025-12-17 | Engineering  | RFC 8414 compliance: Per-tenant issuer implementation                                                                             |
+|         |            |              | - Added per-tenant issuer format: `{base_url}/tenants/{tenant_id}`                                                                |
+|         |            |              | - Added TenantID to AccessTokenClaims struct                                                                                      |
+|         |            |              | - Documented issuer validation requirements                                                                                       |
 | 1.3     | 2025-12-17 | Engineering  | RFC compliance: Updated error codes for token and revocation endpoints                                                            |
 |         |            |              | - Token (refresh grant): Changed 401 → 400 for invalid_grant errors per RFC 6749 §5.2                                             |
 |         |            |              | - Revoke: Added explicit RFC 7009 §2.2 reference for idempotent 200 OK behavior                                                   |

@@ -55,7 +55,7 @@ type RefreshTokenStore interface {
 type TokenGenerator interface {
 	GenerateAccessToken(userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string, scopes []string) (string, error)
 	GenerateAccessTokenWithJTI(userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string, scopes []string) (string, string, error)
-	GenerateIDToken(userID uuid.UUID, sessionID uuid.UUID, clientID string) (string, error)
+	GenerateIDToken(userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string) (string, error)
 	CreateRefreshToken() (string, error)
 	// ParseTokenSkipClaimsValidation parses a JWT with signature verification but skips claims validation (e.g., expiration)
 	// This is used for token revocation where we need to verify the signature but accept expired tokens

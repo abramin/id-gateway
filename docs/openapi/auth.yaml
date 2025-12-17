@@ -8,6 +8,15 @@ info:
     The API follows an OAuth2-style authorization code flow (OIDC-lite) with
     endpoints for initiating authorization, exchanging authorization codes for
     tokens, and fetching user information for an authenticated session.
+
+    **Per-Tenant Issuer (RFC 8414 Compliance):**
+
+    Each tenant has a unique issuer URL following the format: `{base_url}/tenants/{tenant_id}`
+
+    Example: `https://auth.credo.io/tenants/550e8400-e29b-41d4-a716-446655440000`
+
+    The `iss` claim in access tokens and ID tokens uses this per-tenant issuer format.
+    The `tenant_id` is also included as a custom claim in access tokens for client convenience.
 servers:
   - url: http://localhost:8080
     description: Local development server
@@ -360,14 +369,25 @@ components:
           description: OAuth client identifier
     TokenResponse:
       type: object
+      description: |
+        Token response containing access token, ID token, and optionally refresh token.
+
+        **Token Claims:**
+        Both access tokens and ID tokens include:
+        - `iss`: Per-tenant issuer URL in format `{base_url}/tenants/{tenant_id}`
+        - `aud`: Audience (client identifier)
+        - `exp`, `iat`: Expiration and issued-at timestamps
+
+        Access tokens additionally include:
+        - `user_id`, `session_id`, `client_id`, `tenant_id`, `scope`, `jti`
       required: [access_token, id_token, expires_in]
       properties:
         access_token:
           type: string
-          description: Access token for authenticated requests
+          description: JWT access token for authenticated requests. Contains per-tenant issuer (`iss`) claim.
         id_token:
           type: string
-          description: ID token containing authenticated user claims
+          description: JWT ID token containing authenticated user claims. Contains per-tenant issuer (`iss`) claim.
         refresh_token:
           type: string
           description: New refresh token when using refresh grant (rotation); also issued on initial exchange

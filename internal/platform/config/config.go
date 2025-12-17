@@ -26,7 +26,8 @@ type Server struct {
 // AuthConfig holds authentication and session configuration
 type AuthConfig struct {
 	JWTSigningKey                  string
-	JWTIssuer                      string
+	JWTIssuerBaseURL               string // Base URL for per-tenant issuers (RFC 8414)
+	JWTAudience                    string
 	TokenTTL                       time.Duration
 	SessionTTL                     time.Duration
 	TokenRevocationCleanupInterval time.Duration
@@ -62,9 +63,8 @@ var (
 	DefaultAuthCleanupInterval            = 5 * time.Minute
 	DefaultConsentTTL                     = 365 * 24 * time.Hour
 	DefaultConsentGrantWindow             = 5 * time.Minute
-	DefaultRegistryCacheTTL               = 5 * time.Minute
-	DefaultJWTIssuer                      = "credo"
-	DefaultDeviceCookieName               = "__Secure-Device-ID"
+	DefaultRegistryCacheTTL   = 5 * time.Minute
+	DefaultDeviceCookieName   = "__Secure-Device-ID"
 	DefaultDeviceCookieMaxAge             = 31536000 // 1 year
 )
 
@@ -94,18 +94,20 @@ func FromEnv() (Server, error) {
 
 func loadAuthConfig(env string, demoMode bool) AuthConfig {
 	jwtSigningKey := os.Getenv("JWT_SIGNING_KEY")
-	jwtIssuer := getEnv("JWT_ISSUER", DefaultJWTIssuer)
+	jwtIssuerBaseURL := getEnv("JWT_ISSUER_BASE_URL", "http://localhost:8080")
+	jwtAudience := getEnv("JWT_AUDIENCE", "credo-client")
 
 	if demoMode {
 		jwtSigningKey = "demo-signing-key-change-me-locally"
-		jwtIssuer = "credo-demo"
+		jwtIssuerBaseURL = "http://localhost:8080"
 	} else if jwtSigningKey == "" {
 		jwtSigningKey = "dev-secret-key-change-in-production"
 	}
 
 	return AuthConfig{
 		JWTSigningKey:                  jwtSigningKey,
-		JWTIssuer:                      jwtIssuer,
+		JWTIssuerBaseURL:               jwtIssuerBaseURL,
+		JWTAudience:                    jwtAudience,
 		TokenTTL:                       parseDuration("TOKEN_TTL", DefaultTokenTTL),
 		SessionTTL:                     parseDuration("SESSION_TTL", DefaultSessionTTL),
 		TokenRevocationCleanupInterval: parseDuration("TOKEN_REVOCATION_CLEANUP_INTERVAL", DefaultTokenRevocationCleanupInterval),

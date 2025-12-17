@@ -298,6 +298,38 @@ At most, it consumes a **read-only counter interface**.
 
 - Existing auth endpoints remain but now require `client_id`. A default bootstrap tenant/client may be seeded for demo environments to avoid breaking existing tests.
 
+### FR-10: Issuer Management (RFC 8414 Compliance)
+
+Per RFC 8414 (Authorization Server Metadata) and OpenID Connect Core 1.0, each tenant has a unique issuer URL.
+
+**Issuer Format:**
+```
+{base_url}/tenants/{tenant_id}
+```
+
+Example: `https://auth.credo.io/tenants/550e8400-e29b-41d4-a716-446655440000`
+
+**Token Claims:**
+- The `iss` claim in access tokens and ID tokens uses the per-tenant issuer format
+- The `tenant_id` is also included as a custom claim in access tokens for client convenience
+- Downstream services can derive tenant from the issuer URL or use the explicit claim
+
+**Implementation Notes:**
+- Issuer base URL configured via `JWT_ISSUER_BASE_URL` environment variable
+- Default: `http://localhost:8080` for development
+- JWT service dynamically builds issuer using `{base_url}/tenants/{tenant_id}`
+- Global signing key used across all tenants (per-tenant keys are future work)
+
+**Future Enhancements (Out of Scope):**
+- Per-tenant signing keys for key isolation
+- OIDC Discovery per tenant: `GET /tenants/{tenant_id}/.well-known/openid-configuration`
+- JWKS per tenant: `GET /tenants/{tenant_id}/.well-known/jwks.json`
+- Per-tenant audience values
+
+**References:**
+- RFC 8414: Authorization Server Metadata
+- OpenID Connect Core 1.0, Section 2 (Issuer Identifier)
+
 ---
 
 ## 4. Data Model (Minimal)
@@ -494,3 +526,7 @@ These capabilities may be introduced in a future PRD once tenant and client prim
 | 1.0     | 2025-12-13 | Product Team     | Initial PRD                                                            |
 | 1.1     | 2025-12-14 | Engineering Team | Add notes on integration with other modules                            |
 | 1.2     | 2025-12-17 | Engineering Team | RFC compliance: Added explicit HTTP status codes (400) for error cases |
+| 1.3     | 2025-12-17 | Engineering Team | RFC 8414 compliance: Added FR-10 Issuer Management                     |
+|         |            |                  | - Per-tenant issuer format: `{base_url}/tenants/{tenant_id}`           |
+|         |            |                  | - Updated FR-7 Claims & Scopes to include issuer format                |
+|         |            |                  | - Documented future work: OIDC discovery and JWKS per tenant           |

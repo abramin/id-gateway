@@ -472,13 +472,25 @@ func (h *Handler) handleUserInfo(w http.ResponseWriter, r *http.Request)
 
 ### Token Format
 
-**Access Token:** JWT (HS256) containing `user_id`, `session_id`, `client_id`, `iss`, `aud`, `iat`, `exp`, and optional `env`. Lifetime = Token TTL (default 15m via `TOKEN_TTL`).
+**Access Token:** JWT (HS256) containing `user_id`, `session_id`, `client_id`, `tenant_id`, `iss`, `aud`, `iat`, `exp`, and optional `env`. Lifetime = Token TTL (default 15m via `TOKEN_TTL`).
 
 **ID Token:** JWT (HS256) containing `sub` (user_id), `sid` (session_id), `azp` (client_id), `iss`, `aud`, `iat`, `exp`, optional `env`. Lifetime = Token TTL (default 15m).
 
 **Session Lifetime:** Session records persist for Session TTL (default 24h via `SESSION_TTL`) and are used to validate codes, tokens, and userinfo. Code lifetime is fixed at 10 minutes.
 
 **Token Type:** Bearer
+
+**Issuer Format (RFC 8414 Compliance):**
+
+Per RFC 8414 (Authorization Server Metadata), each tenant has a unique issuer URL:
+
+```
+{base_url}/tenants/{tenant_id}
+```
+
+Example: `https://auth.credo.io/tenants/550e8400-e29b-41d4-a716-446655440000`
+
+The `iss` claim in both access tokens and ID tokens uses this per-tenant issuer format. The tenant ID can be derived from parsing the issuer URL, but `tenant_id` is also included as a custom claim in access tokens for client convenience.
 
 ### Error Response Format
 
@@ -796,6 +808,7 @@ curl -X POST http://localhost:8080/auth/token \
 ## 12. Future Enhancements (Out of Scope)
 
 - Real JWT signing with RS256/ES256
+- Per-tenant signing keys (currently global key used across all tenants)
 - Token refresh flow implementation (see PRD-016)
 - Session revocation endpoint (see PRD-016)
 - Session management endpoints (see PRD-016)
@@ -803,7 +816,8 @@ curl -X POST http://localhost:8080/auth/token \
 - Password authentication
 - Multi-factor authentication
 - Rate limiting per user/IP
-- OIDC discovery endpoint (/.well-known/openid-configuration)
+- OIDC discovery endpoint per tenant: `GET /tenants/{tenant_id}/.well-known/openid-configuration`
+- JWKS endpoint per tenant: `GET /tenants/{tenant_id}/.well-known/jwks.json`
 - PKCE support for public clients
 
 **Note:** Refresh token issuance is included in this PRD as foundation for PRD-016 (Token Lifecycle & Revocation), which implements the full refresh flow and revocation capabilities.
@@ -869,3 +883,8 @@ Until then, auth behavior remains unchanged to avoid cross-PRD coupling during M
 |         |            |              | - Authorize: Added missing error cases (unknown client_id, inactive client, redirect_uri mismatch)               |
 |         |            |              | - Token: Changed 401 → 400 for invalid_grant errors (invalid/expired/used code, redirect_uri mismatch)           |
 |         |            |              | - Added RFC section references and OAuth error codes (invalid_grant, invalid_client, invalid_request)            |
+| 1.7     | 2025-12-17 | Engineering  | RFC 8414 compliance: Per-tenant issuer implementation                                                            |
+|         |            |              | - Added issuer format: `{base_url}/tenants/{tenant_id}`                                                          |
+|         |            |              | - Updated Token Format section with issuer documentation                                                         |
+|         |            |              | - Added tenant_id to access token claims                                                                         |
+|         |            |              | - Documented future work: per-tenant OIDC discovery and JWKS endpoints                                           |

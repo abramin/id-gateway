@@ -36,20 +36,43 @@ type IDTokenClaims struct {
 
 // JWTService handles JWT creation and validation
 type JWTService struct {
-	signingKey []byte
-	issuer     string
-	audience   string
-	tokenTTL   time.Duration
-	env        string
+	signingKey    []byte
+	issuerBaseURL string // Base URL for per-tenant issuers (RFC 8414)
+	audience      string
+	tokenTTL      time.Duration
+	env           string
 }
 
-func NewJWTService(signingKey string, issuer string, audience string, tokenTTL time.Duration) *JWTService {
+func NewJWTService(signingKey string, issuerBaseURL string, audience string, tokenTTL time.Duration) *JWTService {
 	return &JWTService{
-		signingKey: []byte(signingKey),
-		issuer:     issuer,
-		audience:   audience,
-		tokenTTL:   tokenTTL,
+		signingKey:    []byte(signingKey),
+		issuerBaseURL: issuerBaseURL,
+		audience:      audience,
+		tokenTTL:      tokenTTL,
 	}
+}
+
+// BuildIssuer constructs a per-tenant issuer URL following RFC 8414 format.
+// Format: {baseURL}/tenants/{tenantID}
+func (s *JWTService) BuildIssuer(tenantID string) string {
+	if tenantID == "" {
+		return s.issuerBaseURL
+	}
+	return fmt.Sprintf("%s/tenants/%s", s.issuerBaseURL, tenantID)
+}
+
+// ExtractTenantFromIssuer parses a tenant ID from a per-tenant issuer URL.
+// Returns the tenant ID if the issuer matches the expected format, or an error otherwise.
+func (s *JWTService) ExtractTenantFromIssuer(issuer string) (string, error) {
+	prefix := s.issuerBaseURL + "/tenants/"
+	if len(issuer) > len(prefix) && issuer[:len(prefix)] == prefix {
+		return issuer[len(prefix):], nil
+	}
+	// Fallback: if issuer equals base URL exactly (no tenant), return empty
+	if issuer == s.issuerBaseURL {
+		return "", nil
+	}
+	return "", fmt.Errorf("invalid issuer format: %s", issuer)
 }
 
 func (s *JWTService) GenerateAccessTokenWithJTI(
@@ -101,7 +124,7 @@ func (s *JWTService) GenerateAccessToken(
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(s.tokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Issuer:    s.issuer,
+			Issuer:    s.BuildIssuer(tenantID),
 			Audience:  []string{s.audience},
 			ID:        jti,
 		},
@@ -146,7 +169,8 @@ func (s *JWTService) ParseTokenSkipClaimsValidation(tokenString string) (*Access
 func (s *JWTService) GenerateIDToken(
 	userID uuid.UUID,
 	sessionID uuid.UUID,
-	clientID string) (string, error) {
+	clientID string,
+	tenantID string) (string, error) {
 	now := time.Now()
 	newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, IDTokenClaims{
 		SessionID: sessionID.String(),
@@ -156,7 +180,7 @@ func (s *JWTService) GenerateIDToken(
 			Subject:   userID.String(), // OIDC sub
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.tokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(now),
-			Issuer:    s.issuer,
+			Issuer:    s.BuildIssuer(tenantID),
 			Audience:  []string{s.audience},
 			ID:        uuid.NewString(),
 		},
