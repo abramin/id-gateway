@@ -37,3 +37,58 @@ Modern digital identity systems sit at the intersection of evolving threats and 
 - Trust through verifiable evidence: decisions, audits, and biometric bindings are provable via structured evidence and tamper-evident logs.
 
 By layering these capabilities, the platform delivers a defensible trust foundation suited to regulated identity workloads while remaining auditable and adaptable as threats evolve.
+
+---
+
+## 6. Strategic Differentiation (Phase 7)
+
+Beyond foundational security and compliance, Credo's Phase 7 introduces **unique market differentiators** that no competitor offers:
+
+### Differentiation Features
+
+| PRD | Feature | Competitive Advantage |
+|-----|---------|----------------------|
+| PRD-029 | Consent-as-a-Service | Multi-tenant consent delegation - no competitor offers this |
+| PRD-030 | Portable Trust Score | ZKP-provable reputation across services |
+| PRD-031 | Compliance Templates | One-click GDPR/CCPA/HIPAA/PCI setup |
+| PRD-032 | Privacy Analytics | Differential privacy for business insights |
+| PRD-033 | Federated Trust Network | Web of trust with privacy-preserving vouching |
+
+### Competitive Positioning
+
+| Capability | Auth0/Okta | Keycloak | **Credo** |
+|------------|------------|----------|-----------|
+| Authentication | ✅ | ✅ | ✅ |
+| Identity Verification | ❌ | ❌ | ✅ |
+| Purpose-based Consent | ❌ | ❌ | ✅ |
+| Compliance Templates | ❌ | ❌ | ✅ |
+| Trust Score | ❌ | ❌ | ✅ |
+| Privacy Analytics | ❌ | ❌ | ✅ |
+| Trust Network | ❌ | ❌ | ✅ |
+| Self-Sovereign (DID) | ❌ | ❌ | ✅ |
+
+### Implementation Strategy
+
+**Early Start Options (post-Phase 2):**
+- PRD-029 (Consent-as-a-Service) - extends consent model, no ZKP dependency
+- PRD-031 (Compliance Templates) - config-driven, immediate enterprise value
+
+**Phase 5 Prerequisites:**
+- PRD-030 (Trust Score) - requires ZKP infrastructure
+- PRD-032 (Privacy Analytics) - requires ZKP for advanced proofs
+- PRD-033 (Trust Network) - requires DIDs and ZKP for vouching
+
+### Target Markets
+
+1. **Regulated Platforms:** Fintech, healthcare, government - need compliance templates and audit
+2. **Privacy-Conscious Apps:** Web3, GDPR-focused - need trust scores and analytics
+3. **Platform Operators:** Multi-tenant SaaS - need consent-as-a-service
+
+---
+
+## Revision History
+
+| Version | Date       | Changes |
+| ------- | ---------- | ------- |
+| 1.1     | 2025-12-17 | Added Phase 7 strategic differentiation section |
+| 1.0     | 2025-12-16 | Initial strategic analysis |

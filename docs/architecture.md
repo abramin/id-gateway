@@ -265,6 +265,18 @@ The hexagonal architecture enables zero-downtime migration:
 8. **Admin Service**
    Administrative operations, user management, session controls, system administration.
 
+9. **Trust Score Service** (Phase 7)
+   Privacy-preserving reputation scoring, score calculation from verification/credentials/history, ZKP-provable score proofs, cross-service score sharing.
+
+10. **Compliance Service** (Phase 7)
+    Compliance-as-code templates (GDPR, CCPA, HIPAA, PCI-DSS, SOC2), template application and composition, compliance status tracking.
+
+11. **Analytics Service** (Phase 7)
+    Privacy-preserving analytics with differential privacy, aggregate queries without PII access, privacy budget management, query audit trails.
+
+12. **Trust Network Service** (Phase 7)
+    Federated web of trust, peer vouching with weighted trust, ZKP vouches for privacy-preserving vouching, fraud detection (circular vouching, velocity limits).
+
 ---
 
 ## Package Layout
@@ -394,6 +406,35 @@ internal/
       handlers_decision.go
       handlers_me.go
       shared/                   # shared HTTP helpers
+
+  # Phase 7: Differentiation Pack (Planned)
+  trust-score/                  # PRD-030: Portable Trust Score
+    handler/                    # HTTP handlers for trust score endpoints
+    service/                    # Score calculation, ZKP proofs, decay
+    models/                     # Trust score domain models
+    store/                      # Score storage and caching
+  compliance/                   # PRD-031: Compliance Templates
+    templates/                  # YAML template definitions (GDPR, CCPA, HIPAA, PCI-DSS, SOC2)
+    handler/                    # Admin endpoints for template management
+    service/                    # Template loader, merger, validator
+    models/                     # Compliance configuration models
+    store/                      # Tenant compliance state
+  analytics/                    # PRD-032: Privacy Analytics
+    handler/                    # Query endpoints with differential privacy
+    service/                    # Query execution, noise injection, budget tracking
+    models/                     # Query DSL, privacy budget models
+    store/                      # Query audit, touchpoint tracking
+  trust-network/                # PRD-033: Federated Trust Network
+    handler/                    # Vouch, proof, verification endpoints
+    service/                    # Vouch management, weight calculation, fraud detection
+    models/                     # Vouch, trust score, proof models
+    store/                      # Vouch storage, graph queries
+  consent-delegation/           # PRD-029: Consent-as-a-Service (extends consent/)
+    handler/                    # Delegation API endpoints
+    service/                    # Multi-tenant delegation, cross-service revocation
+    models/                     # Delegation, connected app models
+    store/                      # Delegation state
+
 cmd/
   server/
     main.go                     # wires everything together (DI container)
@@ -1402,6 +1443,13 @@ Key improvements to harden this design:
    - `tenant` service (multi-tenancy, client management)
    - `admin` service (administrative operations)
 
+   **Phase 7 Services (Strategic Differentiation):**
+   - `trust-score` service (reputation scoring, ZKP proofs)
+   - `compliance` service (compliance templates, configuration)
+   - `analytics` service (differential privacy queries, budget management)
+   - `trust-network` service (vouching, web of trust)
+   - `consent-delegation` service (multi-tenant consent hub)
+
    Each can be deployed independently with its own database and scaling policy.
 
 8. **Streaming, Caching, and Resilience Patterns** (Detailed in [Storage and Caching Architecture](#storage-and-caching-architecture))
@@ -1475,3 +1523,4 @@ The codebase currently has:
 | 2.2     | 2025-12-12 | Engineering Team | Add section 8 to production roadmap                                                                                                                                                                                                                                 |
 | 2.3     | 2025-12-12 | Engineering Team | Integrate CQRS/event streaming architecture; expand Consent, Decision, and Audit sections with production evolution patterns; add Storage and Caching Architecture section; update production roadmap with event bus, policy engine (PRD-015), and CQRS read models |
 | 2.4     | 2025-12-17 | Engineering Team | Align with implemented PRDs: add Rate Limiting (PRD-017), Tenant Management (PRD-026A), Admin (PRD-001B), Device Binding modules; update package layout; add API Routes section; update middleware and implementation status |
+| 2.5     | 2025-12-17 | Engineering Team | Added Phase 7 Differentiation Pack services and package layout: Trust Score, Compliance Templates, Privacy Analytics, Trust Network, Consent-as-a-Service |
