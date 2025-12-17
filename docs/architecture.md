@@ -17,6 +17,9 @@ The runtime is a single process (modular monolith), but internal packages are st
   - [Evidence](#evidence)
   - [Decision](#decision)
   - [Audit](#audit)
+  - [Rate Limiting](#rate-limiting)
+  - [Tenant](#tenant)
+  - [Admin](#admin)
   - [Transport HTTP](#transport-http)
   - [Platform](#platform)
 
@@ -27,6 +30,7 @@ The runtime is a single process (modular monolith), but internal packages are st
   - [Decision Evaluation](#decision-evaluation)
   - [Data Export and Deletion](#data-export-and-deletion)
 
+- [API Routes](#api-routes)
 - [Data Model Overview](#data-model-overview)
 - [Regulated Mode Behaviour](#regulated-mode-behaviour)
 - [Productionisation Considerations](#productionisation-considerations)
@@ -749,6 +753,113 @@ type Event struct {
 
 ---
 
+### Rate Limiting
+
+**Responsibilities** (PRD-017)
+
+- Enforce per-IP rate limits by endpoint class (auth, sensitive, read, write).
+- Enforce per-user rate limits for authenticated endpoints.
+- Manage allowlists for bypassing rate limits.
+- Track partner API quotas for monthly usage.
+- Provide global throttling for DDoS protection.
+
+**Key types**
+
+```go
+type RateLimitClass string
+
+const (
+    ClassAuth      RateLimitClass = "auth"      // 10 req/min
+    ClassSensitive RateLimitClass = "sensitive" // 30 req/min
+    ClassRead      RateLimitClass = "read"      // 100 req/min
+    ClassWrite     RateLimitClass = "write"     // 50 req/min
+)
+
+type AllowlistEntry struct {
+    Type       string    // "ip" or "user"
+    Identifier string    // IP address or user ID
+    Reason     string    // Why allowlisted
+    ExpiresAt  time.Time // When allowlist expires
+}
+```
+
+**Components**
+
+- `service/` - Rate limiting logic and orchestration
+- `middleware/` - HTTP middleware for enforcement
+- `store/bucket/` - Sliding window counters (in-memory, Redis)
+- `store/allowlist/` - Allowlist entries
+- `handler/` - Admin endpoints for allowlist management
+
+**Response Headers**
+
+```
+X-RateLimit-Limit: 10
+X-RateLimit-Remaining: 7
+X-RateLimit-Reset: 1735934400
+Retry-After: 45  (when rate limited)
+```
+
+---
+
+### Tenant
+
+**Responsibilities** (PRD-026A)
+
+- Manage multi-tenant isolation.
+- Handle client registration and API key management.
+- Enforce tenant-scoped access controls.
+
+**Key types**
+
+```go
+type Tenant struct {
+    ID        string
+    Name      string
+    Status    string    // "active", "suspended"
+    CreatedAt time.Time
+}
+
+type Client struct {
+    ID        string
+    TenantID  string
+    Name      string
+    Secret    string    // Hashed client secret
+    Status    string    // "active", "revoked"
+    CreatedAt time.Time
+}
+```
+
+**Components**
+
+- `service/` - Tenant and client orchestration
+- `handler/` - HTTP handlers for admin endpoints
+- `store/` - In-memory tenant/client storage
+- `models/` - Domain models
+
+---
+
+### Admin
+
+**Responsibilities** (PRD-001B)
+
+- Handle administrative operations.
+- Manage user deletion with cascade.
+- Control session management across users.
+
+**Components**
+
+- `handler.go` - HTTP handlers for admin endpoints
+- `service.go` - Admin business logic
+
+**Admin Operations**
+
+- Delete user and cascade all related data (sessions, consents, tokens)
+- List and revoke user sessions
+- System-wide administrative controls
+
+---
+
 ### Transport HTTP
 
 **Responsibilities**
@@ -803,6 +914,14 @@ Key handlers grouped by file, for example:
 - `ContentTypeJSON` - Validates Content-Type header for POST/PUT/PATCH requests
 - `LatencyMiddleware(metrics)` - Tracks endpoint latency in Prometheus histogram
 - `RequireAuth(validator, logger)` - Validates JWT tokens and populates user_id, session_id, client_id in context
+- `RequireAdminToken(token, logger)` - Validates admin API token for administrative endpoints (port 8081)
+- `DeviceFingerprint(service, logger)` - Extracts and validates device fingerprint from requests for device binding
+- `Metadata` - Extracts request metadata (IP, user-agent) into context
+
+**Rate Limiting Middleware** (PRD-017):
+
+- `RateLimit(class)` - Enforces per-IP rate limits by endpoint class (auth, sensitive, read, write)
+- `RateLimitAuthenticated(class)` - Enforces per-user rate limits for authenticated endpoints
 
 All middleware supports context propagation and includes request_id for distributed tracing.
 
@@ -1030,6 +1149,66 @@ sequenceDiagram
 
 ---
 
+## API Routes
+
+The system exposes two HTTP servers:
+
+### Public API (Port 8080)
+
+**Unauthenticated Routes:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/auth/authorize` | OAuth 2.0 authorization code issuance |
+| POST | `/auth/token` | Token exchange (code → access/refresh tokens) |
+| POST | `/auth/revoke` | Token revocation (RFC 7009) |
+| GET | `/health` | Health check endpoint |
+| GET | `/metrics` | Prometheus metrics |
+| GET | `/demo/info` | Demo metadata (demo mode only) |
+
+**Authenticated Routes** (require valid JWT):
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/auth/userinfo` | User profile information |
+| GET | `/auth/sessions` | List user's active sessions |
+| DELETE | `/auth/sessions/{session_id}` | Revoke a specific session |
+| POST | `/consent` | Grant consent for purposes |
+| POST | `/consent/revoke` | Revoke consent for purposes |
+| GET | `/consent` | List user's consents |
+
+### Admin API (Port 8081)
+
+Requires `X-Admin-Token` header for authentication.
+
+**User Management (PRD-001B):**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| DELETE | `/admin/users/{user_id}` | Delete user and cascade all data |
+| GET | `/admin/users/{user_id}/sessions` | List user's sessions |
+| DELETE | `/admin/users/{user_id}/sessions` | Revoke all user sessions |
+
+**Rate Limiting (PRD-017):**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/admin/rate-limit/allowlist` | Add IP/user to allowlist |
+| DELETE | `/admin/rate-limit/allowlist` | Remove from allowlist |
+| POST | `/admin/rate-limit/reset` | Reset rate limit counter |
+
+**Tenant Management (PRD-026A):**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/admin/tenants` | Create tenant |
+| GET | `/admin/tenants` | List tenants |
+| GET | `/admin/tenants/{tenant_id}` | Get tenant details |
+| POST | `/admin/tenants/{tenant_id}/clients` | Create client for tenant |
+| GET | `/admin/tenants/{tenant_id}/clients` | List tenant's clients |
+
+---
+
 ## Data Model Overview
 
 High level entities across services:
@@ -1132,18 +1311,25 @@ Having the code structured by services makes these toggles easier to reason abou
 - ✅ Config loading from environment
 - ✅ OAuth 2.0 Authorization Code Flow (RFC 6749 compliant)
 - ✅ Context-aware structured logging with slog
-- ✅ HTTP middleware stack (recovery, request ID, logging, timeout, content-type)
+- ✅ HTTP middleware stack (recovery, request ID, logging, timeout, content-type, device, admin)
 - ✅ Prometheus metrics collection and `/metrics` endpoint
 - ✅ Comprehensive test coverage (unit, handler, integration tests)
 - ✅ Basic audit event models
 - ✅ JWT token generation and validation with HS256
 - ✅ JWT authentication middleware (RequireAuth)
+- ✅ Auth handlers fully implemented (authorize, token, userinfo, sessions, revoke)
+- ✅ Consent handlers implemented (grant, revoke, list) (PRD-002)
+- ✅ Token lifecycle with refresh and revocation (PRD-016)
+- ✅ Admin user deletion (PRD-001B)
+- ✅ Device binding service for session security (PRD-001)
+- ✅ Tenant and client management (PRD-026A)
+- ✅ Rate limiting module structure (PRD-017)
 
 **What's Partially Implemented:**
 
-- ✅ Auth handlers fully implemented (authorize, token, userinfo)
-- ⚠️ JWT integration with auth service (skeleton created, needs implementation)
-- ⚠️ Consent, Evidence, Decision, and User Data Rights handlers (501 Not Implemented)
+- ⚠️ Rate limiting service logic and Redis backend (PRD-017 - structure bootstrapped, needs completion)
+- ⚠️ Evidence and Decision handlers (501 Not Implemented)
+- ⚠️ User Data Rights handlers (501 Not Implemented)
 - ⚠️ Real VC credential ID generation
 - ⚠️ Async audit worker (worker.go exists but not wired)
 
@@ -1170,10 +1356,10 @@ Key improvements to harden this design:
 3. **Authentication**
 
    - ✅ JWT signing with HS256 (implemented)
+   - ✅ Refresh token support (PRD-016)
+   - ✅ Token revocation list (PRD-016)
    - ⚠️ Replace HS256 with RS256/ES256 for production (asymmetric keys)
    - ⚠️ Replace OIDC-lite with real OIDC provider (e.g., Ory Fosite, Keycloak)
-   - ⚠️ Add refresh token support
-   - ⚠️ Implement token revocation list
 
 4. **Observability** (Partially Complete)
 
@@ -1196,12 +1382,13 @@ Key improvements to harden this design:
 
 6. **Security Hardening**
 
-   - Add rate limiting per user/IP (Redis-backed sliding window)
-   - Implement circuit breakers for registry calls (hystrix-go or similar)
-   - Add request signing/verification for interservice calls
-   - Implement API key management for partner integrations
-   - Add CORS configuration for browser-based clients
-   - Feature flags & kill switches for regulated-mode, cache bypasses, and upstream toggles
+   - ✅ Rate limiting module structure bootstrapped (PRD-017) - needs Redis backend
+   - ⚠️ Complete rate limiting with Redis-backed sliding window
+   - ⚠️ Implement circuit breakers for registry calls (hystrix-go or similar)
+   - ⚠️ Add request signing/verification for interservice calls
+   - ⚠️ Implement API key management for partner integrations
+   - ⚠️ Add CORS configuration for browser-based clients
+   - ⚠️ Feature flags & kill switches for regulated-mode, cache bypasses, and upstream toggles
 
 7. **Microservices Split**
    The boundaries already match likely service splits:
@@ -1211,6 +1398,9 @@ Key improvements to harden this design:
    - `evidence` service (registry + VC, cache warmers)
    - `decision` service (rule evaluation, policy engine)
    - `audit` service (event streaming, indexing, compliance queries)
+   - `ratelimit` service (rate limiting, abuse prevention)
+   - `tenant` service (multi-tenancy, client management)
+   - `admin` service (administrative operations)
 
    Each can be deployed independently with its own database and scaling policy.
 
@@ -1284,3 +1474,4 @@ The codebase currently has:
 | 2.1     | 2025-12-11 | Engineering Team | Documented provider abstraction architecture for registry module, added orchestration layer details, error taxonomy, capability negotiation, and contract testing framework                                                                                         |
 | 2.2     | 2025-12-12 | Engineering Team | Add section 8 to production roadmap                                                                                                                                                                                                                                 |
 | 2.3     | 2025-12-12 | Engineering Team | Integrate CQRS/event streaming architecture; expand Consent, Decision, and Audit sections with production evolution patterns; add Storage and Caching Architecture section; update production roadmap with event bus, policy engine (PRD-015), and CQRS read models |
+| 2.4     | 2025-12-17 | Engineering Team | Align with implemented PRDs: add Rate Limiting (PRD-017), Tenant Management (PRD-026A), Admin (PRD-001B), Device Binding modules; update package layout; add API Routes section; update middleware and implementation status |
