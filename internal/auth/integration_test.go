@@ -38,14 +38,16 @@ type stubClientResolver struct {
 
 func (r *stubClientResolver) ResolveClient(ctx context.Context, clientID string) (*tenantModels.Client, *tenantModels.Tenant, error) {
 	return &tenantModels.Client{
-			ID:       r.defaultClientID,
-			TenantID: r.defaultTenantID,
-			ClientID: clientID,
-			Name:     "Test Client",
-			Status:   "active",
+			ID:           r.defaultClientID,
+			TenantID:     r.defaultTenantID,
+			ClientID:     clientID,
+			Name:         "Test Client",
+			Status:       "active",
+			RedirectURIs: []string{"https://client.app/callback"},
 		}, &tenantModels.Tenant{
-			ID:   r.defaultTenantID,
-			Name: "Test Tenant",
+			ID:     r.defaultTenantID,
+			Name:   "Test Tenant",
+			Status: "active",
 		}, nil
 }
 

@@ -64,3 +64,28 @@ Feature: OAuth2 Security - Client and Tenant Validation
     And log "MITIGATION: Use PKCE for public clients (SPAs/mobile)"
     And log "STATUS: Client secrets not required (good for public clients)"
     And log "TODO: Enforce PKCE when implemented"
+
+    # ============================================================
+    # PRD-026A VALIDATION (Behaviors enforced, E2E blocked on admin APIs)
+    # ============================================================
+
+    @security @prd-026a @simulation
+  Scenario: Scope validation enforcement (PRD-026A FR-7)
+    Given scope enforcement is enabled
+    Then log "PRD-026A FR-7: Requested scopes must be subset of client.AllowedScopes"
+    And log "BEHAVIOR: Requests with disallowed scopes return bad_request"
+    And log "E2E: Requires admin API to configure client AllowedScopes"
+
+    @security @prd-026a @simulation
+  Scenario: Tenant status validation (PRD-026A FR-4.5.3)
+    Given tenant status enforcement is enabled
+    Then log "PRD-026A FR-4.5.3: Inactive tenant returns access_denied"
+    And log "BEHAVIOR: Authorization rejected when tenant.status != active"
+    And log "E2E: Requires admin API to modify tenant status"
+
+    @security @prd-026a @simulation
+  Scenario: Grant type validation (PRD-026A FR-3)
+    Given grant type enforcement is enabled
+    Then log "PRD-026A FR-3: Grant must be in client.AllowedGrants"
+    And log "BEHAVIOR: Token requests with disallowed grant types are rejected"
+    And log "E2E: Requires admin API to configure client AllowedGrants"

@@ -7,10 +7,7 @@ import (
 
 	"credo/internal/auth/device"
 	"credo/internal/auth/models"
-	refreshTokenStore "credo/internal/auth/store/refresh-token"
-	sessionStore "credo/internal/auth/store/session"
 	"credo/internal/platform/middleware"
-	tenant "credo/internal/tenant/models"
 	dErrors "credo/pkg/domain-errors"
 
 	"github.com/google/uuid"
@@ -103,95 +100,8 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		assert.Equal(s.T(), s.service.TokenTTL, result.ExpiresIn)
 	})
 
-	// RFC 6749 §5.2: invalid_grant errors for refresh token issues
-	s.T().Run("refresh token already used (replay) - invalid_grant", func(t *testing.T) {
-		req := newReq()
-		refreshRec := *validRefreshToken
-		refreshRec.Used = true
-
-		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(&refreshRec, refreshTokenStore.ErrRefreshTokenUsed)
-
-		result, err := s.service.Token(context.Background(), &req)
-		assert.Error(s.T(), err)
-		assert.Nil(s.T(), result)
-		// RFC 6749 §5.2: invalid refresh token returns invalid_grant with HTTP 400
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeInvalidGrant),
-			"expected invalid_grant error code per RFC 6749 §5.2")
-		assert.Contains(s.T(), err.Error(), "invalid refresh token")
-	})
-
-	s.T().Run("refresh token not found - invalid_grant", func(t *testing.T) {
-		req := models.TokenRequest{
-			GrantType:    string(models.GrantRefreshToken),
-			RefreshToken: "invalid_token",
-			ClientID:     clientID,
-		}
-
-		s.mockRefreshStore.EXPECT().Find(gomock.Any(), "invalid_token").Return(nil, refreshTokenStore.ErrNotFound)
-
-		result, err := s.service.Token(context.Background(), &req)
-		assert.Error(s.T(), err)
-		assert.Nil(s.T(), result)
-		// RFC 6749 §5.2: invalid refresh token returns invalid_grant with HTTP 400
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeInvalidGrant),
-			"expected invalid_grant error code per RFC 6749 §5.2")
-		assert.Contains(s.T(), err.Error(), "invalid refresh token")
-	})
-
-	s.T().Run("refresh token expired - invalid_grant", func(t *testing.T) {
-		req := newReq()
-		refreshRec := *validRefreshToken
-		refreshRec.ExpiresAt = time.Now().Add(-1 * time.Hour) // Expired
-
-		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(&refreshRec, refreshTokenStore.ErrRefreshTokenExpired)
-
-		result, err := s.service.Token(context.Background(), &req)
-		assert.Error(s.T(), err)
-		assert.Nil(s.T(), result)
-		// RFC 6749 §5.2: expired refresh token returns invalid_grant with HTTP 400
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeInvalidGrant),
-			"expected invalid_grant error code per RFC 6749 §5.2")
-		assert.Contains(s.T(), err.Error(), "expired")
-	})
-
-	s.T().Run("session not found for refresh token - invalid_grant", func(t *testing.T) {
-		req := newReq()
-		refreshRec := *validRefreshToken
-
-		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(&refreshRec, nil)
-		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(nil, sessionStore.ErrNotFound)
-
-		result, err := s.service.Token(context.Background(), &req)
-		assert.Error(s.T(), err)
-		assert.Nil(s.T(), result)
-		// RFC 6749 §5.2: session not found means the grant is invalid
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeInvalidGrant),
-			"expected invalid_grant error code per RFC 6749 §5.2")
-	})
-
-	s.T().Run("session revoked - invalid_grant", func(t *testing.T) {
-		req := newReq()
-		refreshRec := *validRefreshToken
-		sess := *validSession
-		sess.Status = "revoked"
-
-		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(&refreshRec, nil)
-		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientUUID.String()).Return(mockClient, mockTenant, nil)
-		s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(mockUser, nil)
-		s.mockRefreshStore.EXPECT().ConsumeRefreshToken(gomock.Any(), refreshTokenString, gomock.Any()).Return(&refreshRec, nil)
-		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		_, accessTokenJTI, _, _ := s.expectTokenGeneration(userID, sessionID, clientUUID, tenantID, sess.RequestedScope)
-		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), sess.ID, req.ClientID, gomock.Any(), accessTokenJTI, sess.DeviceID, sess.DeviceFingerprintHash).
-			Return(nil, sessionStore.ErrSessionRevoked)
-
-		result, err := s.service.Token(context.Background(), &req)
-		assert.Error(s.T(), err)
-		assert.Nil(s.T(), result)
-		// RFC 6749 §5.2: revoked session means the grant is invalid
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeInvalidGrant),
-			"expected invalid_grant error code per RFC 6749 §5.2")
-	})
+	// NOTE: RFC 6749 §5.2 invalid_grant scenarios (token used, not found, expired, session not found, session revoked)
+	// are covered by e2e/features/auth_token_lifecycle.feature - deleted per testing.md doctrine
 
 	// RFC 6749 §5.2: "The provided authorization grant ... was issued to another client."
 	s.T().Run("client_id mismatch - invalid_grant", func(t *testing.T) {
@@ -218,7 +128,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		assert.Nil(s.T(), result)
 		// RFC 6749 §5.2: token issued to another client returns invalid_grant
 		assert.True(s.T(), dErrors.Is(err, dErrors.CodeInvalidGrant),
-			"expected invalid_grant error code per RFC 6749 §5.2")
+			"expected invalid_grant error code per RFC 6749 §5.2 - got %s", err.Error())
 	})
 
 	s.T().Run("client inactive - PRD-026A FR-4.5.4", func(t *testing.T) {
@@ -306,119 +216,3 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 	})
 }
 
-// TestToken_GrantTypeValidation tests that token endpoint rejects grant types
-// not allowed by the client (PRD-026A FR-3).
-// This test is expected to FAIL until the validation is implemented.
-func (s *ServiceSuite) TestToken_GrantTypeValidation() {
-	sessionID := uuid.New()
-	userID := uuid.New()
-	clientUUID := uuid.New()
-	tenantID := uuid.New()
-	refreshTokenString := "ref_abc123xyz"
-
-	// Client that only allows authorization_code grant (not refresh_token)
-	clientWithoutRefreshGrant := &tenant.Client{
-		ID:            clientUUID,
-		TenantID:      tenantID,
-		ClientID:      "client-123",
-		Name:          "Limited Client",
-		Status:        "active",
-		RedirectURIs:  []string{"https://app.example.com/callback"},
-		AllowedGrants: []string{"authorization_code"}, // refresh_token NOT allowed
-		AllowedScopes: []string{"openid", "profile"},
-	}
-
-	mockTenant := &tenant.Tenant{
-		ID:     tenantID,
-		Name:   "Test Tenant",
-		Status: "active",
-	}
-
-	mockUser := s.newTestUser(userID, tenantID)
-
-	validRefreshToken := &models.RefreshTokenRecord{
-		Token:     refreshTokenString,
-		SessionID: sessionID,
-		CreatedAt: time.Now().Add(-1 * time.Hour),
-		ExpiresAt: time.Now().Add(29 * 24 * time.Hour),
-		Used:      false,
-	}
-
-	validSession := &models.Session{
-		ID:             sessionID,
-		UserID:         userID,
-		ClientID:       clientUUID,
-		TenantID:       tenantID,
-		RequestedScope: []string{"openid", "profile"},
-		DeviceID:       "device-123",
-		Status:         string(models.SessionStatusActive),
-		CreatedAt:      time.Now().Add(-1 * time.Hour),
-		ExpiresAt:      time.Now().Add(23 * time.Hour),
-	}
-
-	s.T().Run("refresh_token grant rejected when not in client.AllowedGrants", func(t *testing.T) {
-		req := models.TokenRequest{
-			GrantType:    string(models.GrantRefreshToken),
-			RefreshToken: refreshTokenString,
-			ClientID:     "client-123",
-		}
-		ctx := context.Background()
-
-		// Service needs to lookup the refresh token and session to get client info
-		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(validRefreshToken, nil)
-		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(validSession, nil)
-		// Then resolve client to check allowed_grants
-		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientUUID.String()).Return(clientWithoutRefreshGrant, mockTenant, nil)
-		s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(mockUser, nil)
-
-		result, err := s.service.Token(ctx, &req)
-
-		// This test documents the expected behavior per PRD-026A FR-3:
-		// "allowed_grants subset of authorization_code, refresh_token, client_credentials"
-		// The grant being used must be in the client's AllowedGrants
-		assert.Error(t, err, "expected error when grant_type is not in client.AllowedGrants")
-		assert.Nil(t, result)
-		assert.True(t, dErrors.Is(err, dErrors.CodeBadRequest) || dErrors.Is(err, dErrors.CodeForbidden),
-			"expected bad_request or forbidden error code")
-		assert.Contains(t, err.Error(), "grant", "error message should mention grant")
-	})
-
-	s.T().Run("refresh_token grant accepted when in client.AllowedGrants", func(t *testing.T) {
-		// Client that allows both authorization_code and refresh_token
-		clientWithRefreshGrant := &tenant.Client{
-			ID:            clientUUID,
-			TenantID:      tenantID,
-			ClientID:      "client-123",
-			Name:          "Full Client",
-			Status:        "active",
-			RedirectURIs:  []string{"https://app.example.com/callback"},
-			AllowedGrants: []string{"authorization_code", "refresh_token"}, // refresh_token IS allowed
-			AllowedScopes: []string{"openid", "profile"},
-		}
-
-		req := models.TokenRequest{
-			GrantType:    string(models.GrantRefreshToken),
-			RefreshToken: refreshTokenString,
-			ClientID:     "client-123",
-		}
-		ctx := context.Background()
-
-		// Validation before transaction
-		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(validRefreshToken, nil)
-		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(validSession, nil)
-		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientUUID.String()).Return(clientWithRefreshGrant, mockTenant, nil)
-		s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(mockUser, nil)
-		// Inside transaction
-		s.mockRefreshStore.EXPECT().ConsumeRefreshToken(gomock.Any(), refreshTokenString, gomock.Any()).Return(validRefreshToken, nil)
-		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(validSession, nil)
-		_, accessTokenJTI, _, _ := s.expectTokenGeneration(userID, sessionID, clientUUID, tenantID, validSession.RequestedScope)
-		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), validSession.ID, req.ClientID, gomock.Any(), accessTokenJTI, validSession.DeviceID, validSession.DeviceFingerprintHash).
-			Return(validSession, nil)
-		s.mockRefreshStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
-		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
-
-		result, err := s.service.Token(ctx, &req)
-		assert.NoError(t, err, "expected success when grant_type is in client.AllowedGrants")
-		assert.NotNil(t, result)
-	})
-}

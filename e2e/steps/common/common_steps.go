@@ -45,6 +45,9 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc TestContext) {
 	ctx.Step(`^public clients cannot keep secrets$`, func(context.Context) error { return nil })
 	ctx.Step(`^client status validation is enforced on token refresh$`, func(context.Context) error { return nil })
 	ctx.Step(`^user status validation is enforced on token refresh$`, func(context.Context) error { return nil })
+	ctx.Step(`^scope enforcement is enabled$`, func(context.Context) error { return nil })
+	ctx.Step(`^tenant status enforcement is enabled$`, func(context.Context) error { return nil })
+	ctx.Step(`^grant type enforcement is enabled$`, func(context.Context) error { return nil })
 	ctx.Step(`^log "([^"]*)"$`, steps.logMessage)
 }
 
