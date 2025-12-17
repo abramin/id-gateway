@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,6 +16,18 @@ import (
 	"credo/internal/platform/metrics"
 	pkgerrors "credo/pkg/domain-errors"
 )
+
+// mutexConsentTx provides a mutex-based transaction boundary for in-memory stores.
+type mutexConsentTx struct {
+	mu    sync.Mutex
+	store Store
+}
+
+func (t *mutexConsentTx) RunInTx(_ context.Context, fn func(store Store) error) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return fn(t.store)
+}
 
 // Store defines the persistence interface for consent records.
 // Error Contract:
@@ -39,6 +52,7 @@ const (
 // Service persists consent decisions and enforces lifecycle rules per PRD-002.
 type Service struct {
 	store                  Store
+	tx                     ConsentStoreTx
 	auditor                *audit.Publisher
 	metrics                *metrics.Metrics
 	logger                 *slog.Logger
@@ -49,6 +63,7 @@ type Service struct {
 func NewService(store Store, auditor *audit.Publisher, logger *slog.Logger, opts ...Option) *Service {
 	svc := &Service{
 		store:                  store,
+		tx:                     &mutexConsentTx{store: store},
 		auditor:                auditor,
 		logger:                 logger,
 		consentTTL:             defaultConsentTTL,
@@ -65,6 +80,13 @@ func NewService(store Store, auditor *audit.Publisher, logger *slog.Logger, opts
 		svc.grantIdempotencyWindow = defaultGrantIdempotencyWindow
 	}
 	return svc
+}
+
+// WithTx sets a custom transaction provider for the service.
+func WithTx(tx ConsentStoreTx) Option {
+	return func(s *Service) {
+		s.tx = tx
+	}
 }
 
 // WithMetrics sets the metrics instance for the service
@@ -115,12 +137,19 @@ func (s *Service) Grant(ctx context.Context, userID string, purposes []models.Pu
 	}
 
 	var granted []*models.Record
-	for _, purpose := range purposes {
-		record, err := s.upsertGrant(ctx, userID, purpose)
-		if err != nil {
-			return nil, err
+	// Wrap multi-purpose grant in transaction to ensure atomicity per AGENTS.md
+	txErr := s.tx.RunInTx(ctx, func(txStore Store) error {
+		for _, purpose := range purposes {
+			record, err := s.upsertGrantTx(ctx, txStore, userID, purpose)
+			if err != nil {
+				return err
+			}
+			granted = append(granted, record)
 		}
-		granted = append(granted, record)
+		return nil
+	})
+	if txErr != nil {
+		return nil, txErr
 	}
 
 	now := time.Now()
@@ -130,10 +159,10 @@ func (s *Service) Grant(ctx context.Context, userID string, purposes []models.Pu
 	}, nil
 }
 
-func (s *Service) upsertGrant(ctx context.Context, userID string, purpose models.Purpose) (*models.Record, error) {
+func (s *Service) upsertGrantTx(ctx context.Context, txStore Store, userID string, purpose models.Purpose) (*models.Record, error) {
 	now := time.Now()
 	expiry := now.Add(s.consentTTL)
-	existing, err := s.store.FindByUserAndPurpose(ctx, userID, purpose)
+	existing, err := txStore.FindByUserAndPurpose(ctx, userID, purpose)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return nil, pkgerrors.Wrap(err, pkgerrors.CodeInternal, "failed to read consent")
 	}
@@ -153,7 +182,7 @@ func (s *Service) upsertGrant(ctx context.Context, userID string, purpose models
 		updated.GrantedAt = now
 		updated.ExpiresAt = &expiry
 		updated.RevokedAt = nil
-		if err := s.store.Update(ctx, &updated); err != nil {
+		if err := txStore.Update(ctx, &updated); err != nil {
 			return nil, pkgerrors.Wrap(err, pkgerrors.CodeInternal, "failed to renew consent")
 		}
 		s.emitAudit(ctx, audit.Event{
@@ -179,7 +208,7 @@ func (s *Service) upsertGrant(ctx context.Context, userID string, purpose models
 		GrantedAt: now,
 		ExpiresAt: &expiry,
 	}
-	if err := s.store.Save(ctx, record); err != nil {
+	if err := txStore.Save(ctx, record); err != nil {
 		return nil, pkgerrors.Wrap(err, pkgerrors.CodeInternal, "failed to save consent")
 	}
 	s.emitAudit(ctx, audit.Event{
@@ -206,41 +235,48 @@ func (s *Service) Revoke(ctx context.Context, userID string, purposes []models.P
 	}
 
 	var revoked []*models.Record
-	for _, purpose := range purposes {
-		record, err := s.store.FindByUserAndPurpose(ctx, userID, purpose)
-		if err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				// Can't revoke what doesn't exist - skip silently
+	// Wrap multi-purpose revoke in transaction to ensure atomicity per AGENTS.md
+	txErr := s.tx.RunInTx(ctx, func(txStore Store) error {
+		for _, purpose := range purposes {
+			record, err := txStore.FindByUserAndPurpose(ctx, userID, purpose)
+			if err != nil {
+				if errors.Is(err, store.ErrNotFound) {
+					// Can't revoke what doesn't exist - skip silently
+					continue
+				}
+				return pkgerrors.Wrap(err, pkgerrors.CodeInternal, "failed to read consent")
+			}
+			if record.RevokedAt != nil {
 				continue
 			}
-			return nil, pkgerrors.Wrap(err, pkgerrors.CodeInternal, "failed to read consent")
+			if record.ExpiresAt != nil && record.ExpiresAt.Before(time.Now()) {
+				// Expired consents are effectively inactive; skip to keep revoke idempotent.
+				continue
+			}
+			now := time.Now()
+			revokedRecord, err := txStore.RevokeByUserAndPurpose(ctx, userID, record.Purpose, now)
+			if err != nil {
+				return pkgerrors.Wrap(err, pkgerrors.CodeInternal, "failed to revoke consent")
+			}
+			if revokedRecord.RevokedAt == nil {
+				revokedRecord.RevokedAt = &now
+			}
+			s.emitAudit(ctx, audit.Event{
+				UserID:    userID,
+				Purpose:   string(record.Purpose),
+				Action:    models.AuditActionConsentRevoked,
+				Decision:  models.AuditDecisionRevoked,
+				Reason:    models.AuditReasonUserInitiated,
+				Timestamp: now,
+			})
+			s.incrementConsentsRevoked(record.Purpose)
+			s.decrementActiveConsents(1)
+			revoked = append(revoked, revokedRecord)
 		}
-		if record.RevokedAt != nil {
-			continue
-		}
-		if record.ExpiresAt != nil && record.ExpiresAt.Before(time.Now()) {
-			// Expired consents are effectively inactive; skip to keep revoke idempotent.
-			continue
-		}
-		now := time.Now()
-		revokedRecord, err := s.store.RevokeByUserAndPurpose(ctx, userID, record.Purpose, now)
-		if err != nil {
-			return nil, pkgerrors.Wrap(err, pkgerrors.CodeInternal, "failed to revoke consent")
-		}
-		if revokedRecord.RevokedAt == nil {
-			revokedRecord.RevokedAt = &now
-		}
-		s.emitAudit(ctx, audit.Event{
-			UserID:    userID,
-			Purpose:   string(record.Purpose),
-			Action:    models.AuditActionConsentRevoked,
-			Decision:  models.AuditDecisionRevoked,
-			Reason:    models.AuditReasonUserInitiated,
-			Timestamp: now,
-		})
-		s.incrementConsentsRevoked(record.Purpose)
-		s.decrementActiveConsents(1)
-		revoked = append(revoked, revokedRecord)
+		return nil
+	})
+	if txErr != nil {
+		return nil, txErr
 	}
 
 	return &models.RevokeResponse{

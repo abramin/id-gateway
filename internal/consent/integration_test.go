@@ -1,3 +1,28 @@
+// Package handler contains integration tests for consent module.
+//
+// These tests exercise the full stack (handler -> service -> store) with real
+// components. They complement the e2e/features/consent_flow.feature scenarios
+// by testing behaviors that cannot be expressed in Gherkin:
+//
+// 1. TestConsentIntegrationFlow: Multi-step workflow including manual expiry
+//    manipulation (not expressible in Gherkin without time control). Tests the
+//    full lifecycle: grant -> list -> revoke -> expire -> re-grant with
+//    internal state verification.
+//
+// 2. TestConsentIdempotencyWindow: Tests the 5-minute idempotency window
+//    behavior including manual timestamp manipulation and verification of
+//    audit event counts (timing-sensitive, not Gherkin-friendly). Validates
+//    that rapid repeated grants are idempotent while grants outside the window
+//    properly update timestamps.
+//
+// Why these are not Gherkin scenarios:
+// - Require direct store manipulation (expiry times, grant timestamps)
+// - Verify internal audit event counts (not externally observable)
+// - Test timing-sensitive idempotency window behavior
+// - Need sub-second timing control not available in e2e tests
+//
+// Per Credo testing doctrine (testing.md, AGENTS.md): these are SECONDARY tests
+// that exist because the behavior cannot be expressed in Gherkin feature files.
 package handler
 
 import (

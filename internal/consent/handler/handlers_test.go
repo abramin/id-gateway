@@ -1,5 +1,16 @@
 package handler
 
+// Handler tests for consent module following Credo testing doctrine (AGENTS.md, testing.md).
+//
+// Per testing doctrine, these unit tests exist to verify:
+// - HTTP status code mapping from domain errors (CodeUnauthorized -> 401, etc.)
+// - Error response format consistency
+// - Handler-level validation (query params, request body parsing)
+//
+// Happy-path behavior (200 OK responses) is tested via:
+// - Primary: e2e/features/consent_flow.feature (Gherkin scenarios)
+// - Secondary: internal/consent/integration_test.go
+
 import (
 	"bytes"
 	"context"
@@ -9,7 +20,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -24,6 +34,7 @@ import (
 )
 
 //go:generate mockgen -source=handler.go -destination=mocks/consent-mocks.go -package=mocks Service
+
 type ConsentHandlerSuite struct {
 	suite.Suite
 	ctx context.Context
@@ -37,45 +48,16 @@ func TestConsentHandlerSuite(t *testing.T) {
 	suite.Run(t, new(ConsentHandlerSuite))
 }
 
-func (s *ConsentHandlerSuite) TestHandleGrantConsent() {
-	s.T().Run("200 - grant consent for single purpose", func(t *testing.T) {
-		handler, mockService := newTestHandler(t)
-		grantTime := time.Date(2025, 12, 3, 10, 0, 0, 0, time.UTC)
-		expiry := grantTime.Add(365 * 24 * time.Hour)
+// =============================================================================
+// Grant Consent Tests - Error Mapping
+// =============================================================================
 
-		mockService.EXPECT().Grant(
-			gomock.Any(),
-			"user123",
-			[]consentModel.Purpose{consentModel.PurposeLogin},
-		).Return(&consentModel.GrantResponse{
-			Granted: []*consentModel.Grant{{
-				Purpose:   consentModel.PurposeLogin,
-				GrantedAt: grantTime,
-				ExpiresAt: &expiry,
-				Status:    consentModel.StatusActive,
-			}},
-			Message: "Consent granted for 1 purpose",
-		}, nil)
-
-		req, err := newRequestWithBody(http.MethodPost, "/auth/consent",
-			consentModel.GrantRequest{Purposes: []consentModel.Purpose{consentModel.PurposeLogin}},
-			"user123")
-		require.NoError(t, err)
-
-		w := httptest.NewRecorder()
-		handler.handleGrantConsent(w, req)
-
-		assert.Equal(t, http.StatusOK, w.Code)
-		var resp consentModel.GrantResponse
-		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-		granted := resp.Granted[0]
-		assert.Equal(t, consentModel.PurposeLogin, granted.Purpose)
-		assert.Equal(t, consentModel.StatusActive, granted.Status)
-		assert.Equal(t, grantTime, granted.GrantedAt)
-		assert.Equal(t, expiry, *granted.ExpiresAt)
-	})
-
-	s.T().Run("401 unauthorized - missing bearer token", func(t *testing.T) {
+// TestHandleGrantConsent_ErrorMapping verifies HTTP error mapping for grant endpoint.
+// Reason not a feature test: Feature tests verify HTTP status codes via end-to-end requests;
+// these tests verify handler-level error code mapping in isolation.
+func (s *ConsentHandlerSuite) TestHandleGrantConsent_ErrorMapping() {
+	s.T().Run("missing user context returns 500", func(t *testing.T) {
+		// Handler extracts user from context; missing = internal error
 		handler, _ := newTestHandler(t)
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent",
 			consentModel.GrantRequest{Purposes: []consentModel.Purpose{consentModel.PurposeLogin}}, "")
@@ -87,7 +69,7 @@ func (s *ConsentHandlerSuite) TestHandleGrantConsent() {
 		assertStatusAndError(t, w, http.StatusInternalServerError, string(dErrors.CodeInternal))
 	})
 
-	s.T().Run("400 bad request - empty purposes array", func(t *testing.T) {
+	s.T().Run("empty purposes array returns 400", func(t *testing.T) {
 		handler, _ := newTestHandler(t)
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent",
 			consentModel.GrantRequest{Purposes: []consentModel.Purpose{}}, "user123")
@@ -99,7 +81,7 @@ func (s *ConsentHandlerSuite) TestHandleGrantConsent() {
 		assertStatusAndError(t, w, http.StatusBadRequest, "bad_request")
 	})
 
-	s.T().Run("400 bad request - invalid purpose value", func(t *testing.T) {
+	s.T().Run("invalid purpose value returns 400", func(t *testing.T) {
 		handler, _ := newTestHandler(t)
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent",
 			consentModel.GrantRequest{Purposes: []consentModel.Purpose{"invalid_purpose"}}, "user123")
@@ -111,7 +93,7 @@ func (s *ConsentHandlerSuite) TestHandleGrantConsent() {
 		assertStatusAndError(t, w, http.StatusBadRequest, "bad_request")
 	})
 
-	s.T().Run("500 internal server error - store failure", func(t *testing.T) {
+	s.T().Run("service CodeInternal error returns 500", func(t *testing.T) {
 		handler, mockService := newTestHandler(t)
 		mockService.EXPECT().Grant(
 			gomock.Any(),
@@ -131,69 +113,13 @@ func (s *ConsentHandlerSuite) TestHandleGrantConsent() {
 	})
 }
 
-func (s *ConsentHandlerSuite) TestHandleGetConsent_WithFilters() {
-	s.T().Run("200 - get consent records with no filter", func(t *testing.T) {
-		handler, mockService := newTestHandler(t)
-		mockService.EXPECT().List(
-			gomock.Any(),
-			"user123",
-			gomock.Any(),
-		).Return(&consentModel.ListResponse{
-			Consents: []*consentModel.ConsentWithStatus{
-				newMockRecord(consentModel.PurposeLogin, consentModel.StatusActive, nil),
-				newMockRecord(consentModel.PurposeRegistryCheck, consentModel.StatusRevoked, ptrTime(time.Date(2025, 3, 1, 10, 0, 0, 0, time.UTC))),
-			},
-		}, nil)
+// =============================================================================
+// Get Consents Tests - Error Mapping & Validation
+// =============================================================================
 
-		req, err := newRequestWithBody(http.MethodGet, "/auth/consent", nil, "user123")
-		require.NoError(t, err)
-
-		w := httptest.NewRecorder()
-		handler.handleGetConsents(w, req)
-
-		var resp consentModel.ListResponse
-		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-
-		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Equal(t, 2, len(resp.Consents))
-		assert.Equal(t, consentModel.PurposeLogin, resp.Consents[0].Purpose)
-		assert.Equal(t, consentModel.StatusActive, resp.Consents[0].Status)
-		assert.Equal(t, consentModel.PurposeRegistryCheck, resp.Consents[1].Purpose)
-		assert.Equal(t, consentModel.StatusRevoked, resp.Consents[1].Status)
-		assert.NotNil(t, resp.Consents[1].RevokedAt)
-	})
-
-	s.T().Run("200 - get consent records with filter", func(t *testing.T) {
-		handler, mockService := newTestHandler(t)
-		mockService.EXPECT().List(
-			gomock.Any(),
-			"user123",
-			&consentModel.RecordFilter{
-				Purpose: string(consentModel.PurposeLogin),
-				Status:  string(consentModel.StatusActive),
-			},
-		).Return(&consentModel.ListResponse{
-			Consents: []*consentModel.ConsentWithStatus{
-				newMockRecord(consentModel.PurposeLogin, consentModel.StatusActive, nil),
-			},
-		}, nil)
-
-		req := httptest.NewRequest(http.MethodGet, "/auth/consent?purpose=login&status=active", nil)
-		ctx := context.WithValue(req.Context(), middleware.ContextKeyUserID, "user123")
-		req = req.WithContext(ctx)
-
-		w := httptest.NewRecorder()
-		handler.handleGetConsents(w, req)
-
-		var resp consentModel.ListResponse
-		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Equal(t, 1, len(resp.Consents))
-		assert.Equal(t, consentModel.PurposeLogin, resp.Consents[0].Purpose)
-		assert.Equal(t, consentModel.StatusActive, resp.Consents[0].Status)
-	})
-
-	s.T().Run("401 unauthorized - missing bearer token", func(t *testing.T) {
+// TestHandleGetConsents_ErrorMapping verifies HTTP error mapping for list endpoint.
+func (s *ConsentHandlerSuite) TestHandleGetConsents_ErrorMapping() {
+	s.T().Run("missing user context returns 500", func(t *testing.T) {
 		handler, _ := newTestHandler(t)
 		req := httptest.NewRequest(http.MethodGet, "/auth/consent", nil)
 		w := httptest.NewRecorder()
@@ -203,7 +129,7 @@ func (s *ConsentHandlerSuite) TestHandleGetConsent_WithFilters() {
 		assertStatusAndError(t, w, http.StatusInternalServerError, string(dErrors.CodeInternal))
 	})
 
-	s.T().Run("500 internal server error - store failure", func(t *testing.T) {
+	s.T().Run("service CodeInternal error returns 500", func(t *testing.T) {
 		handler, mockService := newTestHandler(t)
 		mockService.EXPECT().List(gomock.Any(), "user123", gomock.Any()).
 			Return(nil, dErrors.New(dErrors.CodeInternal, "storage system unavailable"))
@@ -218,7 +144,8 @@ func (s *ConsentHandlerSuite) TestHandleGetConsent_WithFilters() {
 		assertStatusAndError(t, w, http.StatusInternalServerError, string(dErrors.CodeInternal))
 	})
 
-	s.T().Run("400 bad request - invalid status filter", func(t *testing.T) {
+	s.T().Run("invalid status filter returns 400", func(t *testing.T) {
+		// Handler-level validation of query param
 		handler, _ := newTestHandler(t)
 		req := httptest.NewRequest(http.MethodGet, "/auth/consent?status=unknown", nil)
 		ctx := context.WithValue(req.Context(), middleware.ContextKeyUserID, "user123")
@@ -231,38 +158,13 @@ func (s *ConsentHandlerSuite) TestHandleGetConsent_WithFilters() {
 	})
 }
 
-func (s *ConsentHandlerSuite) TestHandleRevokeConsent() {
-	s.T().Run("200 - revoke consent", func(t *testing.T) {
-		handler, mockService := newTestHandler(t)
-		revokedAt := time.Now()
-		mockService.EXPECT().Revoke(
-			gomock.Any(),
-			"user123",
-			[]consentModel.Purpose{consentModel.PurposeLogin},
-		).Return(&consentModel.RevokeResponse{
-			Revoked: []*consentModel.Revoked{{
-				Purpose:   consentModel.PurposeLogin,
-				RevokedAt: revokedAt,
-				Status:    consentModel.StatusRevoked,
-			}},
-			Message: "Consent revoked for 1 purpose",
-		}, nil)
+// =============================================================================
+// Revoke Consent Tests - Error Mapping
+// =============================================================================
 
-		req, err := newRequestWithBody(http.MethodPost, "/auth/consent/revoke",
-			consentModel.RevokeRequest{Purposes: []consentModel.Purpose{consentModel.PurposeLogin}},
-			"user123")
-		require.NoError(t, err)
-
-		w := httptest.NewRecorder()
-		handler.handleRevokeConsent(w, req)
-
-		assert.Equal(t, http.StatusOK, w.Code)
-		var resp consentModel.RevokeResponse
-		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-		assert.Len(t, resp.Revoked, 1)
-	})
-
-	s.T().Run("401 unauthorized - missing bearer token", func(t *testing.T) {
+// TestHandleRevokeConsent_ErrorMapping verifies HTTP error mapping for revoke endpoint.
+func (s *ConsentHandlerSuite) TestHandleRevokeConsent_ErrorMapping() {
+	s.T().Run("missing user context returns 500", func(t *testing.T) {
 		handler, _ := newTestHandler(t)
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent/revoke",
 			consentModel.RevokeRequest{Purposes: []consentModel.Purpose{consentModel.PurposeLogin}}, "")
@@ -274,7 +176,7 @@ func (s *ConsentHandlerSuite) TestHandleRevokeConsent() {
 		assertStatusAndError(t, w, http.StatusInternalServerError, string(dErrors.CodeInternal))
 	})
 
-	s.T().Run("400 bad request - empty purposes array", func(t *testing.T) {
+	s.T().Run("empty purposes array returns 400", func(t *testing.T) {
 		handler, _ := newTestHandler(t)
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent/revoke",
 			consentModel.RevokeRequest{Purposes: []consentModel.Purpose{}}, "user123")
@@ -286,7 +188,7 @@ func (s *ConsentHandlerSuite) TestHandleRevokeConsent() {
 		assertStatusAndError(t, w, http.StatusBadRequest, "bad_request")
 	})
 
-	s.T().Run("500 internal server error - store failure", func(t *testing.T) {
+	s.T().Run("service CodeInternal error returns 500", func(t *testing.T) {
 		handler, mockService := newTestHandler(t)
 		mockService.EXPECT().Revoke(gomock.Any(), "user123", []consentModel.Purpose{consentModel.PurposeLogin}).
 			Return(nil, dErrors.New(dErrors.CodeInternal, "storage system unavailable"))
@@ -301,6 +203,10 @@ func (s *ConsentHandlerSuite) TestHandleRevokeConsent() {
 		assertStatusAndError(t, w, http.StatusInternalServerError, string(dErrors.CodeInternal))
 	})
 }
+
+// =============================================================================
+// Test Helpers
+// =============================================================================
 
 func newTestHandler(t *testing.T) (*Handler, *mocks.MockService) {
 	t.Helper()
@@ -343,25 +249,4 @@ func assertStatusAndError(t *testing.T, w *httptest.ResponseRecorder, expectedSt
 	t.Helper()
 	assert.Equal(t, expectedStatus, w.Code)
 	assertErrorResponse(t, w, expectedCode)
-}
-
-// newMockRecord creates a ConsentWithStatus for testing.
-func newMockRecord(purpose consentModel.Purpose, status consentModel.Status, revokedAt *time.Time) *consentModel.ConsentWithStatus {
-	grantedAt := time.Date(2025, 1, 1, 10, 0, 0, 0, time.UTC)
-	expiresAt := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
-	return &consentModel.ConsentWithStatus{
-		Consent: consentModel.Consent{
-			ID:        "consent_" + string(purpose),
-			Purpose:   purpose,
-			GrantedAt: grantedAt,
-			ExpiresAt: ptrTime(expiresAt),
-			RevokedAt: revokedAt,
-		},
-		Status: status,
-	}
-}
-
-// ptrTime returns a pointer to the given time value
-func ptrTime(t time.Time) *time.Time {
-	return &t
 }
