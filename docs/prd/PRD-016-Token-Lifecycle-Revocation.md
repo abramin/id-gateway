@@ -164,15 +164,18 @@ This is a **critical blocker** for production deployment.
 12. Emit audit event: `token_refreshed`
 13. Return new tokens
 
-**Error Cases:**
+**Error Cases (RFC 6749 §5.2):**
 
-- 400 Bad Request: Missing required fields
-- 400 Bad Request: Invalid grant_type (must be "refresh_token")
-- 401 Unauthorized: Invalid or expired refresh token
-- 401 Unauthorized: Refresh token already used (rotation violation - possible replay attack)
-- 401 Unauthorized: Session revoked
-- 401 Unauthorized: Device mismatch (device ID cookie doesn't match session)
+- 400 Bad Request: Missing required fields (`invalid_request`)
+- 400 Bad Request: Invalid grant_type (`unsupported_grant_type`)
+- 400 Bad Request: Invalid refresh token - not found (`invalid_grant`)
+- 400 Bad Request: Expired refresh token (`invalid_grant`)
+- 400 Bad Request: Refresh token already used - rotation violation (`invalid_grant`)
+- 400 Bad Request: Session revoked (`invalid_grant`)
+- 400 Bad Request: Device mismatch (`invalid_grant` with additional context)
 - 500 Internal Server Error: Store failure
+
+**Note (RFC 6749 §5.2):** All grant-related errors return HTTP 400 with the appropriate OAuth error code. HTTP 401 is reserved for client authentication failures via HTTP Authorization header.
 
 **Security - Token Rotation:**
 
@@ -232,10 +235,13 @@ This is a **critical blocker** for production deployment.
 - TTL: Same as token expiry (no need to store expired tokens)
 - Check TRL on every authenticated request via middleware
 
-**Error Cases:**
+**Error Cases (RFC 7009 §2.2):**
 
-- 400 Bad Request: Missing token
+- 400 Bad Request: Missing token (`invalid_request`)
+- 200 OK: Token invalid, unknown, or already revoked (idempotent per RFC 7009)
 - 500 Internal Server Error: Store failure
+
+**Note (RFC 7009 §2.2):** The revocation endpoint returns HTTP 200 even if the token was already invalid, expired, or revoked. This ensures idempotent behavior.
 
 ---
 
@@ -1050,6 +1056,10 @@ curl -X POST http://localhost:8080/auth/logout-all?except_current=true \
 
 | Version | Date       | Author       | Changes                                                                                                                           |
 | ------- | ---------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| 1.3     | 2025-12-17 | Engineering  | RFC compliance: Updated error codes for token and revocation endpoints                                                            |
+|         |            |              | - Token (refresh grant): Changed 401 → 400 for invalid_grant errors per RFC 6749 §5.2                                             |
+|         |            |              | - Revoke: Added explicit RFC 7009 §2.2 reference for idempotent 200 OK behavior                                                   |
+|         |            |              | - Added OAuth error codes (invalid_grant, invalid_request, unsupported_grant_type)                                                |
 | 1.2     | 2025-12-13 | Engineering  | remove IP Address from List sessions response                                                                                     |
 | 1.1     | 2025-12-13 | Engineering  | Updated device binding to reference DEVICE_BINDING.md; changed to layered security model (device ID + fingerprint, no IP binding) |
 | 1.0     | 2025-12-12 | Product Team | Initial PRD                                                                                                                       |

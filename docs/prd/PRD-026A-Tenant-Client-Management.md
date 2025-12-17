@@ -184,11 +184,13 @@ Behavior:
 4. Enforce `tenant.status == active`
 5. Return `(client, tenant)`
 
-Errors:
+Errors (RFC 6749 compliant):
 
-- unknown client → `invalid_client`
-- inactive client → `invalid_client`
-- inactive tenant → `access_denied`
+- unknown client → 400 Bad Request with `invalid_client`
+- inactive client → 400 Bad Request with `invalid_client`
+- inactive tenant → 400 Bad Request with `access_denied`
+
+**Note:** These errors occur during OAuth flows (authorize/token) and follow RFC 6749 error response format.
 
 This method is the **only supported way** for auth to derive tenant context.
 
@@ -487,7 +489,8 @@ These capabilities may be introduced in a future PRD once tenant and client prim
 
 ## Revision History
 
-| Version | Date       | Author           | Changes                                     |
-| ------- | ---------- | ---------------- | ------------------------------------------- |
-| 1.0     | 2025-12-13 | Product Team     | Initial PRD                                 |
-| 1.1     | 2025-12-14 | Engineering Team | Add notes on integration with other modules |
+| Version | Date       | Author           | Changes                                                                |
+| ------- | ---------- | ---------------- | ---------------------------------------------------------------------- |
+| 1.0     | 2025-12-13 | Product Team     | Initial PRD                                                            |
+| 1.1     | 2025-12-14 | Engineering Team | Add notes on integration with other modules                            |
+| 1.2     | 2025-12-17 | Engineering Team | RFC compliance: Added explicit HTTP status codes (400) for error cases |

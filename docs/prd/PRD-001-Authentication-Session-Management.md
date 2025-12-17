@@ -155,7 +155,12 @@ This implementation follows the standard **OAuth 2.0 Authorization Code Flow** (
 
 - 400 Bad Request: Invalid email format
 - 400 Bad Request: Invalid redirect_uri format
+- 400 Bad Request: Unknown client_id (RFC 6749 §4.1.2.1 - MUST NOT redirect)
+- 400 Bad Request: Inactive client (`invalid_client`)
+- 400 Bad Request: redirect_uri not in client's registered URIs (RFC 6749 §4.1.2.1 - MUST NOT redirect)
 - 500 Internal Server Error: Store failure
+
+**Note (RFC 6749 §4.1.2.1):** If the request fails due to a missing, invalid, or mismatching redirect_uri, or if the client_id is missing or invalid, the server MUST NOT redirect the user-agent. Instead, return an error response directly.
 
 ---
 
@@ -213,16 +218,18 @@ This implementation follows the standard **OAuth 2.0 Authorization Code Flow** (
 18. Save updated session
 19. Return access_token, id_token, and refresh_token
 
-**Error Cases:**
+**Error Cases (RFC 6749 §5.2):**
 
-- 400 Bad Request: Missing required fields (grant_type, code, redirect_uri, client_id)
-- 400 Bad Request: Unsupported grant_type (must be "authorization_code")
-- 401 Unauthorized: Invalid authorization code (not found)
-- 401 Unauthorized: Authorization code expired (> 10 minutes old)
-- 401 Unauthorized: Authorization code already used (replay attack prevention)
-- 400 Bad Request: redirect_uri mismatch (doesn't match authorize request)
-- 400 Bad Request: client_id mismatch (doesn't match authorize request)
+- 400 Bad Request: Missing required fields (`invalid_request`)
+- 400 Bad Request: Unsupported grant_type (`unsupported_grant_type`)
+- 400 Bad Request: Invalid authorization code - not found (`invalid_grant`)
+- 400 Bad Request: Authorization code expired (`invalid_grant`)
+- 400 Bad Request: Authorization code already used (`invalid_grant`)
+- 400 Bad Request: redirect_uri mismatch (`invalid_grant`)
+- 400 Bad Request: client_id mismatch (`invalid_client`)
 - 500 Internal Server Error: Store failure
+
+**Note (RFC 6749 §5.2):** Token endpoint errors return HTTP 400 with an `error` field. HTTP 401 is only used when client authentication fails via HTTP Authorization header (not applicable for JSON body authentication).
 
 ---
 
@@ -642,7 +649,7 @@ curl -X POST http://localhost:8080/auth/token \
     "client_id": "demo-client"
   }'
 
-# Expected: 401 Unauthorized (code already used)
+# Expected: 400 Bad Request (invalid_grant - code already used)
 
 # 4b. Try with wrong redirect_uri (should fail)
 curl -X POST http://localhost:8080/auth/token \
@@ -858,3 +865,7 @@ Until then, auth behavior remains unchanged to avoid cross-PRD coupling during M
 |         |            |              | - Updated storage interfaces to reflect separated stores                                                         |
 |         |            |              | - Updated acceptance criteria and testing requirements                                                           |
 | 1.5     | 2025-12-14 | Engineering  | Add new section 13 for tenant flow integration                                                                   |
+| 1.6     | 2025-12-17 | Engineering  | RFC 6749 compliance: Updated error codes for authorize and token endpoints                                       |
+|         |            |              | - Authorize: Added missing error cases (unknown client_id, inactive client, redirect_uri mismatch)               |
+|         |            |              | - Token: Changed 401 → 400 for invalid_grant errors (invalid/expired/used code, redirect_uri mismatch)           |
+|         |            |              | - Added RFC section references and OAuth error codes (invalid_grant, invalid_client, invalid_request)            |

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -70,6 +71,12 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 	client, tenant, err := s.clientResolver.ResolveClient(ctx, req.ClientID)
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "failed to resolve client")
+	}
+
+	if req.RedirectURI != "" {
+		if !slices.Contains(client.RedirectURIs, req.RedirectURI) {
+			return nil, dErrors.New(dErrors.CodeBadRequest, "redirect_uri not allowed")
+		}
 	}
 
 	// Wrap user+code+session creation in transaction for atomicity
