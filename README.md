@@ -2,7 +2,7 @@
 
 _Modular identity and evidence platform covering auth, consent, registry evidence, VCs, policy, and audit._
 
-![Credo logo](https://github.com/user-attachments/assets/cc9f2d5a-6b70-4f92-a9e7-8f3ab1315181)
+<img width="120" height="120" alt="credo" src="https://github.com/user-attachments/assets/cc9f2d5a-6b70-4f92-a9e7-8f3ab1315181" />
 
 ## What is it?
 - OIDC-lite auth: users, sessions, token issuance/refresh/revocation, device binding, admin deletion.
