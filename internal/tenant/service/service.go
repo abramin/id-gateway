@@ -169,7 +169,7 @@ func (s *Service) CreateClient(ctx context.Context, req *models.CreateClientRequ
 		RedirectURIs:     req.RedirectURIs,
 		AllowedGrants:    req.AllowedGrants,
 		AllowedScopes:    req.AllowedScopes,
-		Status:           clientStatusActive,
+		Status:           string(models.ClientStatusActive),
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
@@ -279,7 +279,7 @@ func (s *Service) ResolveClient(ctx context.Context, clientID string) (*models.C
 		}
 		return nil, nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to resolve client")
 	}
-	if client.Status != clientStatusActive {
+	if client.Status != string(models.ClientStatusActive) {
 		return nil, nil, dErrors.New(dErrors.CodeForbidden, "client is inactive")
 	}
 
