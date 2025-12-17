@@ -160,7 +160,7 @@ func (s *ServiceSuite) TestHandleTokenError() {
 			result := s.service.handleTokenError(ctx, tt.err, clientID, &recordID, tt.flow)
 
 			assert.Error(t, result)
-			assert.True(t, dErrors.Is(result, tt.expectedCode))
+			assert.True(t, dErrors.HasCode(result, tt.expectedCode))
 			assert.Contains(t, result.Error(), tt.expectedMsg)
 		})
 	}

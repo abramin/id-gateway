@@ -187,7 +187,7 @@ func (s *ServiceSuite) TestAuthorize() {
 		result, err := s.service.Authorize(context.Background(), &req)
 		assert.Error(s.T(), err)
 		assert.Nil(s.T(), result)
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeBadRequest))
+		assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeBadRequest))
 		assert.Contains(s.T(), err.Error(), "redirect_uri scheme")
 	})
 
@@ -240,7 +240,7 @@ func (s *ServiceSuite) TestAuthorizeClientValidation() {
 		// Returns 400 Bad Request with invalid_client error
 		assert.Error(t, err, "expected error when client_id is unknown")
 		assert.Nil(t, result)
-		assert.True(t, dErrors.Is(err, dErrors.CodeInvalidClient),
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeInvalidClient),
 			"expected invalid_client error code per RFC 6749")
 	})
 
@@ -262,7 +262,7 @@ func (s *ServiceSuite) TestAuthorizeClientValidation() {
 		// PRD-026A FR-4.5.3: inactive client returns invalid_client
 		assert.Error(t, err, "expected error when client is inactive")
 		assert.Nil(t, result)
-		assert.True(t, dErrors.Is(err, dErrors.CodeInvalidClient),
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeInvalidClient),
 			"expected invalid_client error code")
 	})
 }
@@ -308,7 +308,7 @@ func (s *ServiceSuite) TestAuthorizeRedirectURIValidation() {
 		// "Redirect URI Matching: Exact match against registered URIs"
 		assert.Error(t, err, "expected error when redirect_uri is not in client.RedirectURIs")
 		assert.Nil(t, result)
-		assert.True(t, dErrors.Is(err, dErrors.CodeBadRequest), "expected bad_request error code")
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeBadRequest), "expected bad_request error code")
 		assert.Contains(t, err.Error(), "redirect_uri", "error message should mention redirect_uri")
 	})
 

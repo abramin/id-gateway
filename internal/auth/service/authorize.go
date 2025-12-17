@@ -72,7 +72,7 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 	client, tenant, err := s.clientResolver.ResolveClient(ctx, req.ClientID)
 	if err != nil {
 		// RFC 6749 §4.1.2.1: invalid client_id is a bad request, not "not found"
-		if dErrors.Is(err, dErrors.CodeNotFound) {
+		if dErrors.HasCode(err, dErrors.CodeNotFound) {
 			return nil, dErrors.New(dErrors.CodeBadRequest, "invalid client_id")
 		}
 		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "failed to resolve client")

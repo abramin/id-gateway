@@ -74,19 +74,19 @@ func (s *ServiceSuite) TestGrant_ValidationErrors() {
 	s.T().Run("missing userID returns CodeUnauthorized", func(t *testing.T) {
 		_, err := s.service.Grant(context.Background(), "", []models.Purpose{models.PurposeLogin})
 		require.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeUnauthorized), "expected CodeUnauthorized for missing userID")
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeUnauthorized), "expected CodeUnauthorized for missing userID")
 	})
 
 	s.T().Run("empty purposes returns CodeBadRequest", func(t *testing.T) {
 		_, err := s.service.Grant(context.Background(), "user123", []models.Purpose{})
 		require.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeBadRequest), "expected CodeBadRequest for empty purposes")
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeBadRequest), "expected CodeBadRequest for empty purposes")
 	})
 
 	s.T().Run("invalid purpose returns CodeBadRequest", func(t *testing.T) {
 		_, err := s.service.Grant(context.Background(), "user123", []models.Purpose{"invalid_purpose"})
 		require.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeBadRequest), "expected CodeBadRequest for invalid purpose")
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeBadRequest), "expected CodeBadRequest for invalid purpose")
 	})
 }
 
@@ -101,7 +101,7 @@ func (s *ServiceSuite) TestGrant_StoreErrorPropagation() {
 
 		_, err := s.service.Grant(context.Background(), "user123", []models.Purpose{models.PurposeLogin})
 		require.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeInternal), "expected CodeInternal for store find error")
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeInternal), "expected CodeInternal for store find error")
 	})
 
 	s.T().Run("store error on save propagates as CodeInternal", func(t *testing.T) {
@@ -115,7 +115,7 @@ func (s *ServiceSuite) TestGrant_StoreErrorPropagation() {
 
 		_, err := s.service.Grant(context.Background(), "user123", []models.Purpose{models.PurposeLogin})
 		require.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeInternal), "expected CodeInternal for store save error")
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeInternal), "expected CodeInternal for store save error")
 	})
 }
 
@@ -130,13 +130,13 @@ func (s *ServiceSuite) TestRevoke_ValidationErrors() {
 	s.T().Run("missing userID returns CodeUnauthorized", func(t *testing.T) {
 		_, err := s.service.Revoke(context.Background(), "", []models.Purpose{models.PurposeLogin})
 		require.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeUnauthorized), "expected CodeUnauthorized for missing userID")
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeUnauthorized), "expected CodeUnauthorized for missing userID")
 	})
 
 	s.T().Run("invalid purpose returns CodeBadRequest", func(t *testing.T) {
 		_, err := s.service.Revoke(context.Background(), "user123", []models.Purpose{"invalid_purpose"})
 		require.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeBadRequest), "expected CodeBadRequest for invalid purpose")
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeBadRequest), "expected CodeBadRequest for invalid purpose")
 	})
 }
 
@@ -151,7 +151,7 @@ func (s *ServiceSuite) TestRevoke_StoreErrorPropagation() {
 
 		_, err := s.service.Revoke(context.Background(), "user123", []models.Purpose{models.PurposeLogin})
 		require.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeInternal), "expected CodeInternal for store find error")
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeInternal), "expected CodeInternal for store find error")
 	})
 
 	s.T().Run("store error on revoke propagates as CodeInternal", func(t *testing.T) {
@@ -170,7 +170,7 @@ func (s *ServiceSuite) TestRevoke_StoreErrorPropagation() {
 
 		_, err := s.service.Revoke(context.Background(), "user123", []models.Purpose{models.PurposeLogin})
 		require.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeInternal), "expected CodeInternal for store revoke error")
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeInternal), "expected CodeInternal for store revoke error")
 	})
 }
 
@@ -188,13 +188,13 @@ func (s *ServiceSuite) TestRequire_ValidationErrors() {
 	s.T().Run("missing userID returns CodeUnauthorized", func(t *testing.T) {
 		err := s.service.Require(context.Background(), "", models.PurposeVCIssuance)
 		require.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeUnauthorized), "expected CodeUnauthorized for missing userID")
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeUnauthorized), "expected CodeUnauthorized for missing userID")
 	})
 
 	s.T().Run("invalid purpose returns CodeBadRequest", func(t *testing.T) {
 		err := s.service.Require(context.Background(), "user123", "invalid_purpose")
 		require.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeBadRequest), "expected CodeBadRequest for invalid purpose")
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeBadRequest), "expected CodeBadRequest for invalid purpose")
 	})
 }
 
@@ -213,7 +213,7 @@ func (s *ServiceSuite) TestRequire_ConsentStates() {
 
 		err := s.service.Require(context.Background(), "user123", models.PurposeVCIssuance)
 		require.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeMissingConsent), "expected CodeMissingConsent for missing consent")
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeMissingConsent), "expected CodeMissingConsent for missing consent")
 	})
 
 	s.T().Run("revoked consent returns CodeInvalidConsent", func(t *testing.T) {
@@ -229,7 +229,7 @@ func (s *ServiceSuite) TestRequire_ConsentStates() {
 
 		err := s.service.Require(context.Background(), "user123", models.PurposeVCIssuance)
 		require.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeInvalidConsent), "expected CodeInvalidConsent for revoked consent")
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeInvalidConsent), "expected CodeInvalidConsent for revoked consent")
 	})
 
 	s.T().Run("expired consent returns CodeInvalidConsent", func(t *testing.T) {
@@ -245,7 +245,7 @@ func (s *ServiceSuite) TestRequire_ConsentStates() {
 
 		err := s.service.Require(context.Background(), "user123", models.PurposeVCIssuance)
 		require.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeInvalidConsent), "expected CodeInvalidConsent for expired consent")
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeInvalidConsent), "expected CodeInvalidConsent for expired consent")
 	})
 
 	s.T().Run("active consent returns nil", func(t *testing.T) {
@@ -274,6 +274,6 @@ func (s *ServiceSuite) TestRequire_StoreErrorPropagation() {
 
 		err := s.service.Require(context.Background(), "user123", models.PurposeVCIssuance)
 		require.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeInternal), "expected CodeInternal for store error")
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeInternal), "expected CodeInternal for store error")
 	})
 }

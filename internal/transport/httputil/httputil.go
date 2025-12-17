@@ -20,8 +20,8 @@ func WriteJSON(w http.ResponseWriter, status int, response any) {
 // WriteError centralizes domain error translation to HTTP responses.
 // It translates transport-agnostic domain errors into HTTP status codes and error responses.
 func WriteError(w http.ResponseWriter, err error) {
-	// Try domain error first (new approach)
-	var domainErr dErrors.DomainError
+	// Try domain error first
+	var domainErr *dErrors.Error
 	if errors.As(err, &domainErr) {
 		status := DomainCodeToHTTPStatus(domainErr.Code)
 		code := DomainCodeToHTTPCode(domainErr.Code)

@@ -59,14 +59,14 @@ func (s *ServiceSuite) TestCreateTenantValidation() {
 	s.T().Run("validates empty name", func(t *testing.T) {
 		_, err := s.service.CreateTenant(context.Background(), "")
 		require.Error(s.T(), err)
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeValidation))
+		assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeValidation))
 	})
 
 	s.T().Run("validates name length", func(t *testing.T) {
 		longName := make([]byte, 129)
 		_, err := s.service.CreateTenant(context.Background(), string(longName))
 		require.Error(s.T(), err)
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeValidation))
+		assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeValidation))
 	})
 }
 
@@ -138,7 +138,7 @@ func (s *ServiceSuite) TestValidationErrors() {
 	s.T().Run("create client with missing fields", func(t *testing.T) {
 		_, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{TenantID: uuid.New()})
 		require.Error(s.T(), err)
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeValidation) || dErrors.Is(err, dErrors.CodeNotFound))
+		assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeValidation) || dErrors.HasCode(err, dErrors.CodeNotFound))
 	})
 
 	s.T().Run("update client with invalid redirect uri", func(t *testing.T) {
@@ -182,7 +182,7 @@ func (s *ServiceSuite) TestPublicClientValidation() {
 		Public:        true,
 	})
 	require.Error(s.T(), err)
-	assert.True(s.T(), dErrors.Is(err, dErrors.CodeValidation), "expected validation error for public client with client_credentials")
+	assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeValidation), "expected validation error for public client with client_credentials")
 }
 
 func (s *ServiceSuite) TestRedirectURIRequiresHost() {
@@ -196,7 +196,7 @@ func (s *ServiceSuite) TestRedirectURIRequiresHost() {
 		AllowedScopes: []string{"openid"},
 	})
 	require.Error(s.T(), err)
-	assert.True(s.T(), dErrors.Is(err, dErrors.CodeValidation), "expected validation error for redirect without host")
+	assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeValidation), "expected validation error for redirect without host")
 }
 
 func (s *ServiceSuite) TestTenantScopedClientAccess() {
@@ -206,7 +206,7 @@ func (s *ServiceSuite) TestTenantScopedClientAccess() {
 
 	_, err := s.service.GetClientForTenant(context.Background(), t2.ID, created.ID)
 	require.Error(s.T(), err)
-	assert.True(s.T(), dErrors.Is(err, dErrors.CodeNotFound), "expected not found when tenant mismatched")
+	assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeNotFound), "expected not found when tenant mismatched")
 }
 
 func (s *ServiceSuite) TestResolveClient() {

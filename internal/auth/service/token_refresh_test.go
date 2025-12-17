@@ -125,7 +125,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		assert.Error(s.T(), err)
 		assert.Nil(s.T(), result)
 		// RFC 6749 §5.2: token issued to another client returns invalid_grant
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeInvalidGrant),
+		assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeInvalidGrant),
 			"expected invalid_grant error code per RFC 6749 §5.2 - got %s", err.Error())
 	})
 
@@ -147,7 +147,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		assert.Error(s.T(), err)
 		assert.Nil(s.T(), result)
 		// Should get forbidden error for inactive client (client validation is after token context)
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeForbidden))
+		assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeForbidden))
 		assert.Contains(s.T(), err.Error(), "client is not active")
 	})
 
@@ -169,7 +169,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		assert.Error(s.T(), err)
 		assert.Nil(s.T(), result)
 		// User inactive propagates as Forbidden from token context
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeForbidden))
+		assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeForbidden))
 		assert.Contains(s.T(), err.Error(), "user inactive")
 	})
 

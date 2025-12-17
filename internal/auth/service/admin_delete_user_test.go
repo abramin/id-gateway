@@ -28,7 +28,7 @@ func (s *ServiceSuite) TestDeleteUser() {
 
 		err := s.service.DeleteUser(ctx, userID)
 		require.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeInternal))
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeInternal))
 	})
 
 	s.T().Run("user not found", func(t *testing.T) {
@@ -36,7 +36,7 @@ func (s *ServiceSuite) TestDeleteUser() {
 
 		err := s.service.DeleteUser(ctx, userID)
 		require.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeNotFound))
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeNotFound))
 	})
 
 	s.T().Run("session delete fails", func(t *testing.T) {
@@ -45,7 +45,7 @@ func (s *ServiceSuite) TestDeleteUser() {
 
 		err := s.service.DeleteUser(ctx, userID)
 		require.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeInternal))
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeInternal))
 	})
 
 	s.T().Run("user delete fails", func(t *testing.T) {
@@ -56,6 +56,6 @@ func (s *ServiceSuite) TestDeleteUser() {
 
 		err := s.service.DeleteUser(ctx, userID)
 		require.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeInternal))
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeInternal))
 	})
 }

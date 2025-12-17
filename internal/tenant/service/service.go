@@ -93,7 +93,7 @@ func (s *Service) CreateTenant(ctx context.Context, name string) (*models.Tenant
 
 	t := &models.Tenant{ID: uuid.New(), Name: name, Status: string(models.TenantStatusActive), CreatedAt: time.Now()}
 	if err := s.tenants.CreateIfNameAvailable(ctx, t); err != nil {
-		if dErrors.Is(err, dErrors.CodeConflict) {
+		if dErrors.HasCode(err, dErrors.CodeConflict) {
 			return nil, dErrors.New(dErrors.CodeConflict, "tenant name must be unique")
 		}
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to create tenant")

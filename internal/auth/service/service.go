@@ -309,7 +309,7 @@ func (s *Service) handleTokenError(ctx context.Context, err error, clientID stri
 	}
 
 	// Pass through existing domain errors
-	var de dErrors.DomainError
+	var de *dErrors.Error
 	if errors.As(err, &de) {
 		s.authFailure(ctx, string(de.Code), false, attrs...)
 		return err
