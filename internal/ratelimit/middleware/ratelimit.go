@@ -9,7 +9,7 @@ import (
 
 	platformMW "credo/internal/platform/middleware"
 	"credo/internal/ratelimit/models"
-	jsonResponse "credo/internal/transport/http/json"
+	"credo/internal/transport/httputil"
 )
 
 // RateLimiter defines the interface for rate limit checking.
@@ -205,7 +205,7 @@ func writeRateLimitExceeded(w http.ResponseWriter, result *models.RateLimitResul
 	w.Header().Set("Retry-After", strconv.Itoa(result.RetryAfter))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusTooManyRequests)
-	jsonResponse.WriteJSON(w, http.StatusTooManyRequests, &models.RateLimitExceededResponse{
+	httputil.WriteJSON(w, http.StatusTooManyRequests, &models.RateLimitExceededResponse{
 		Error:      "rate_limit_exceeded",
 		Message:    "Too many requests from this IP address. Please try again later.",
 		RetryAfter: result.RetryAfter,
@@ -220,7 +220,7 @@ func writeUserRateLimitExceeded(w http.ResponseWriter, result *models.RateLimitR
 	w.Header().Set("Retry-After", strconv.Itoa(result.RetryAfter))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusTooManyRequests)
-	jsonResponse.WriteJSON(w, http.StatusTooManyRequests, &models.UserRateLimitExceededResponse{
+	httputil.WriteJSON(w, http.StatusTooManyRequests, &models.UserRateLimitExceededResponse{
 		Error:          "user_rate_limit_exceeded",
 		Message:        "You have exceeded your request quota for this operation.",
 		QuotaLimit:     result.Limit,
@@ -237,7 +237,7 @@ func writeServiceOverloaded(w http.ResponseWriter) {
 	w.Header().Set("Retry-After", "60")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusServiceUnavailable)
-	jsonResponse.WriteJSON(w, http.StatusServiceUnavailable, &models.ServiceOverloadedResponse{
+	httputil.WriteJSON(w, http.StatusServiceUnavailable, &models.ServiceOverloadedResponse{
 		Error:      "service_unavailable",
 		Message:    "Service is temporarily overloaded. Please try again later.",
 		RetryAfter: 60,

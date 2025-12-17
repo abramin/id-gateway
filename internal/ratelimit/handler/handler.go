@@ -10,8 +10,7 @@ import (
 
 	"credo/internal/platform/middleware"
 	"credo/internal/ratelimit/models"
-	httpError "credo/internal/transport/http/error"
-	jsonResponse "credo/internal/transport/http/json"
+	"credo/internal/transport/httputil"
 	dErrors "credo/pkg/domain-errors"
 )
 
@@ -73,7 +72,7 @@ func (h *Handler) HandleAddAllowlist(w http.ResponseWriter, r *http.Request) {
 			"error", err,
 			"request_id", requestID,
 		)
-		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
+		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
 		return
 	}
 
@@ -81,9 +80,9 @@ func (h *Handler) HandleAddAllowlist(w http.ResponseWriter, r *http.Request) {
 	// adminUserID := middleware.GetUserID(ctx)
 	// entry, err := h.service.AddToAllowlist(ctx, &req, adminUserID)
 	// if err != nil { ... }
-	// jsonResponse.WriteJSON(w, http.StatusOK, &models.AllowlistEntryResponse{...})
+	// httputil.WriteJSON(w, http.StatusOK, &models.AllowlistEntryResponse{...})
 
-	httpError.WriteError(w, dErrors.New(dErrors.CodeInternal, "not implemented"))
+	httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "not implemented"))
 }
 
 // HandleRemoveAllowlist implements DELETE /admin/rate-limit/allowlist.
@@ -103,7 +102,7 @@ func (h *Handler) HandleRemoveAllowlist(w http.ResponseWriter, r *http.Request) 
 			"error", err,
 			"request_id", requestID,
 		)
-		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
+		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
 		return
 	}
 
@@ -112,7 +111,7 @@ func (h *Handler) HandleRemoveAllowlist(w http.ResponseWriter, r *http.Request) 
 	// if err != nil { ... }
 	// w.WriteHeader(http.StatusNoContent)
 
-	httpError.WriteError(w, dErrors.New(dErrors.CodeInternal, "not implemented"))
+	httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "not implemented"))
 }
 
 // HandleListAllowlist implements GET /admin/rate-limit/allowlist.
@@ -128,10 +127,10 @@ func (h *Handler) HandleListAllowlist(w http.ResponseWriter, r *http.Request) {
 	// TODO: Implement
 	// entries, err := h.service.ListAllowlist(ctx)
 	// if err != nil { ... }
-	// jsonResponse.WriteJSON(w, http.StatusOK, entries)
+	// httputil.WriteJSON(w, http.StatusOK, entries)
 
 	h.logger.InfoContext(ctx, "list allowlist called", "request_id", requestID)
-	httpError.WriteError(w, dErrors.New(dErrors.CodeInternal, "not implemented"))
+	httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "not implemented"))
 }
 
 // HandleResetRateLimit implements POST /admin/rate-limit/reset.
@@ -151,7 +150,7 @@ func (h *Handler) HandleResetRateLimit(w http.ResponseWriter, r *http.Request) {
 			"error", err,
 			"request_id", requestID,
 		)
-		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
+		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
 		return
 	}
 
@@ -160,10 +159,10 @@ func (h *Handler) HandleResetRateLimit(w http.ResponseWriter, r *http.Request) {
 	// if err != nil { ... }
 	// w.WriteHeader(http.StatusNoContent)
 
-	httpError.WriteError(w, dErrors.New(dErrors.CodeInternal, "not implemented"))
+	httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "not implemented"))
 }
 
 // Ensure Handler has no unused imports
 var (
-	_ = jsonResponse.WriteJSON
+	_ = httputil.WriteJSON
 )

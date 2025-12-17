@@ -12,8 +12,7 @@ import (
 
 	"credo/internal/auth/models"
 	"credo/internal/platform/middleware"
-	httpError "credo/internal/transport/http/error"
-	jsonResponse "credo/internal/transport/http/json"
+	"credo/internal/transport/httputil"
 	dErrors "credo/pkg/domain-errors"
 )
 
@@ -86,7 +85,7 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 			"error", err,
 			"request_id", requestID,
 		)
-		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
+		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
 		return
 	}
 
@@ -99,7 +98,7 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 			"request_id", requestID,
 			"client_id", req.ClientID,
 		)
-		httpError.WriteError(w, err)
+		httputil.WriteError(w, err)
 		return
 	}
 
@@ -122,7 +121,7 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	jsonResponse.WriteJSON(w, http.StatusOK, res)
+	httputil.WriteJSON(w, http.StatusOK, res)
 }
 
 // HandleToken exchanges authorization code for tokens
@@ -138,7 +137,7 @@ func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 			"error", err,
 			"request_id", requestID,
 		)
-		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
+		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
 		return
 	}
 
@@ -149,7 +148,7 @@ func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 			"request_id", requestID,
 			"client_id", req.ClientID,
 		)
-		httpError.WriteError(w, err)
+		httputil.WriteError(w, err)
 		return
 	}
 
@@ -158,7 +157,7 @@ func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 		"client_id", req.ClientID,
 	)
 
-	jsonResponse.WriteJSON(w, http.StatusOK, res)
+	httputil.WriteJSON(w, http.StatusOK, res)
 }
 
 // HandleUserInfo returns authenticated user information
@@ -174,7 +173,7 @@ func (h *Handler) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
 			"request_id", requestID,
 			"session_id", sessionIDStr,
 		)
-		httpError.WriteError(w, err)
+		httputil.WriteError(w, err)
 		return
 	}
 
@@ -183,7 +182,7 @@ func (h *Handler) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
 		"session_id", sessionIDStr,
 	)
 
-	jsonResponse.WriteJSON(w, http.StatusOK, res)
+	httputil.WriteJSON(w, http.StatusOK, res)
 }
 
 // HandleListSessions implements GET /auth/sessions per PRD-016 FR-4.
@@ -200,7 +199,7 @@ func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 			"user_id", userIDStr,
 			"request_id", requestID,
 		)
-		httpError.WriteError(w, dErrors.New(dErrors.CodeUnauthorized, "invalid token"))
+		httputil.WriteError(w, dErrors.New(dErrors.CodeUnauthorized, "invalid token"))
 		return
 	}
 
@@ -210,7 +209,7 @@ func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 			"session_id", sessionIDStr,
 			"request_id", requestID,
 		)
-		httpError.WriteError(w, dErrors.New(dErrors.CodeUnauthorized, "invalid token"))
+		httputil.WriteError(w, dErrors.New(dErrors.CodeUnauthorized, "invalid token"))
 		return
 	}
 
@@ -221,11 +220,11 @@ func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 			"request_id", requestID,
 			"user_id", userIDStr,
 		)
-		httpError.WriteError(w, err)
+		httputil.WriteError(w, err)
 		return
 	}
 
-	jsonResponse.WriteJSON(w, http.StatusOK, res)
+	httputil.WriteJSON(w, http.StatusOK, res)
 }
 
 // HandleRevokeSession implements DELETE /auth/sessions/{session_id} per PRD-016 FR-5.
@@ -240,7 +239,7 @@ func (h *Handler) HandleRevokeSession(w http.ResponseWriter, r *http.Request) {
 			"error", err,
 			"request_id", requestID,
 		)
-		httpError.WriteError(w, dErrors.New(dErrors.CodeUnauthorized, "invalid user"))
+		httputil.WriteError(w, dErrors.New(dErrors.CodeUnauthorized, "invalid user"))
 		return
 	}
 
@@ -251,7 +250,7 @@ func (h *Handler) HandleRevokeSession(w http.ResponseWriter, r *http.Request) {
 			"error", err,
 			"request_id", requestID,
 		)
-		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid session_id"))
+		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid session_id"))
 		return
 	}
 
@@ -261,11 +260,11 @@ func (h *Handler) HandleRevokeSession(w http.ResponseWriter, r *http.Request) {
 			"request_id", requestID,
 			"session_id", sessionIDStr,
 		)
-		httpError.WriteError(w, err)
+		httputil.WriteError(w, err)
 		return
 	}
 
-	jsonResponse.WriteJSON(w, http.StatusOK, &models.SessionRevocationResult{
+	httputil.WriteJSON(w, http.StatusOK, &models.SessionRevocationResult{
 		Revoked:   true,
 		SessionID: sessionIDStr,
 		Message:   "Session revoked successfully",
@@ -282,7 +281,7 @@ func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) 
 			"user_id", userIDParam,
 			"request_id", requestID,
 		)
-		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid user_id"))
+		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid user_id"))
 		return
 	}
 
@@ -292,7 +291,7 @@ func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) 
 			"user_id", userID.String(),
 			"request_id", requestID,
 		)
-		httpError.WriteError(w, err)
+		httputil.WriteError(w, err)
 		return
 	}
 
@@ -327,7 +326,7 @@ func (h *Handler) HandleRevoke(w http.ResponseWriter, r *http.Request) {
 			"error", err,
 			"request_id", requestID,
 		)
-		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
+		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
 		return
 	}
 
@@ -336,7 +335,7 @@ func (h *Handler) HandleRevoke(w http.ResponseWriter, r *http.Request) {
 			"error", err,
 			"request_id", requestID,
 		)
-		httpError.WriteError(w, err)
+		httputil.WriteError(w, err)
 		return
 	}
 
@@ -346,7 +345,7 @@ func (h *Handler) HandleRevoke(w http.ResponseWriter, r *http.Request) {
 	)
 
 	// RFC 7009 Section 2.2: Return 200 even if token was already revoked (idempotent)
-	jsonResponse.WriteJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"revoked": true,
 		"message": "Token revoked successfully",
 	})

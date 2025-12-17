@@ -12,8 +12,7 @@ import (
 	"credo/internal/consent/models"
 	"credo/internal/platform/metrics"
 	"credo/internal/platform/middleware"
-	httpError "credo/internal/transport/http/error"
-	respond "credo/internal/transport/http/json"
+	"credo/internal/transport/httputil"
 	dErrors "credo/pkg/domain-errors"
 	s "credo/pkg/string"
 	"credo/pkg/validation"
@@ -75,7 +74,7 @@ func (h *Handler) handleGrantConsent(w http.ResponseWriter, r *http.Request) {
 		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
 			"request_id", requestID,
 		)
-		httpError.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
+		httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
 		return
 	}
 
@@ -85,7 +84,7 @@ func (h *Handler) handleGrantConsent(w http.ResponseWriter, r *http.Request) {
 			"request_id", requestID,
 			"error", err,
 		)
-		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid request body"))
+		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid request body"))
 		return
 	}
 	s.Sanitize(&grantReq)
@@ -94,7 +93,7 @@ func (h *Handler) handleGrantConsent(w http.ResponseWriter, r *http.Request) {
 			"request_id", requestID,
 			"error", err,
 		)
-		httpError.WriteError(w, err)
+		httputil.WriteError(w, err)
 		return
 	}
 
@@ -104,11 +103,11 @@ func (h *Handler) handleGrantConsent(w http.ResponseWriter, r *http.Request) {
 			"request_id", requestID,
 			"error", err,
 		)
-		httpError.WriteError(w, err)
+		httputil.WriteError(w, err)
 		return
 	}
 
-	respond.WriteJSON(w, http.StatusOK, res)
+	httputil.WriteJSON(w, http.StatusOK, res)
 }
 
 func (h *Handler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
@@ -120,7 +119,7 @@ func (h *Handler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
 			"request_id", requestID,
 		)
-		httpError.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
+		httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
 		return
 	}
 
@@ -130,7 +129,7 @@ func (h *Handler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 			"request_id", requestID,
 			"error", err,
 		)
-		httpError.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid request body"))
+		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid request body"))
 		return
 	}
 	s.Sanitize(&revokeReq)
@@ -139,7 +138,7 @@ func (h *Handler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 			"request_id", requestID,
 			"error", err,
 		)
-		httpError.WriteError(w, err)
+		httputil.WriteError(w, err)
 		return
 	}
 
@@ -149,11 +148,11 @@ func (h *Handler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 			"request_id", requestID,
 			"error", err,
 		)
-		httpError.WriteError(w, err)
+		httputil.WriteError(w, err)
 		return
 	}
 
-	respond.WriteJSON(w, http.StatusOK, res)
+	httputil.WriteJSON(w, http.StatusOK, res)
 }
 
 func (h *Handler) handleRevokeAllConsents(w http.ResponseWriter, r *http.Request) {
@@ -165,7 +164,7 @@ func (h *Handler) handleRevokeAllConsents(w http.ResponseWriter, r *http.Request
 		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
 			"request_id", requestID,
 		)
-		httpError.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
+		httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
 		return
 	}
 
@@ -175,11 +174,11 @@ func (h *Handler) handleRevokeAllConsents(w http.ResponseWriter, r *http.Request
 			"request_id", requestID,
 			"error", err,
 		)
-		httpError.WriteError(w, err)
+		httputil.WriteError(w, err)
 		return
 	}
 
-	respond.WriteJSON(w, http.StatusOK, res)
+	httputil.WriteJSON(w, http.StatusOK, res)
 }
 
 func (h *Handler) handleDeleteAllConsents(w http.ResponseWriter, r *http.Request) {
@@ -191,7 +190,7 @@ func (h *Handler) handleDeleteAllConsents(w http.ResponseWriter, r *http.Request
 		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
 			"request_id", requestID,
 		)
-		httpError.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
+		httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
 		return
 	}
 
@@ -200,11 +199,11 @@ func (h *Handler) handleDeleteAllConsents(w http.ResponseWriter, r *http.Request
 			"request_id", requestID,
 			"error", err,
 		)
-		httpError.WriteError(w, err)
+		httputil.WriteError(w, err)
 		return
 	}
 
-	respond.WriteJSON(w, http.StatusOK, map[string]string{
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{
 		"message": "All consents deleted",
 	})
 }
@@ -218,7 +217,7 @@ func (h *Handler) handleGetConsents(w http.ResponseWriter, r *http.Request) {
 		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
 			"request_id", requestID,
 		)
-		httpError.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
+		httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
 		return
 	}
 
@@ -228,7 +227,7 @@ func (h *Handler) handleGetConsents(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Sanitize(&query)
 	if err := validation.Validate(&query); err != nil {
-		httpError.WriteError(w, err)
+		httputil.WriteError(w, err)
 		return
 	}
 
@@ -241,9 +240,9 @@ func (h *Handler) handleGetConsents(w http.ResponseWriter, r *http.Request) {
 			"request_id", requestID,
 			"error", err,
 		)
-		httpError.WriteError(w, err)
+		httputil.WriteError(w, err)
 		return
 	}
 
-	respond.WriteJSON(w, http.StatusOK, res)
+	httputil.WriteJSON(w, http.StatusOK, res)
 }
