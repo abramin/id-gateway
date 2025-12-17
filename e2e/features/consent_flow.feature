@@ -104,3 +104,104 @@ Feature: Consent Management
     Then the response status should be 200
     And the consent should have a new "granted_at" timestamp
     And the consent should have a new "expires_at" timestamp
+
+  # ============================================================================
+  # Filter Tests (PRD-002 FR-3: Query Parameters)
+  # ============================================================================
+
+      @consent @filter
+  Scenario: Filter consents by status - active only
+    Given I grant consent for purposes "login,registry_check"
+    And I revoke consent for purposes "registry_check"
+    When I list my consents filtered by status "active"
+    Then the response status should be 200
+    And all consents should have status "active"
+    And the response should contain 1 consent records
+
+      @consent @filter
+  Scenario: Filter consents by status - revoked only
+    Given I grant consent for purposes "login,registry_check"
+    And I revoke consent for purposes "registry_check"
+    When I list my consents filtered by status "revoked"
+    Then the response status should be 200
+    And all consents should have status "revoked"
+    And the response should contain 1 consent records
+
+      @consent @filter
+  Scenario: Filter consents by purpose
+    Given I grant consent for purposes "login,registry_check,vc_issuance"
+    When I list my consents filtered by purpose "login"
+    Then the response status should be 200
+    And all consents should have purpose "login"
+    And the response should contain 1 consent records
+
+      @consent @filter
+  Scenario: Filter consents by status and purpose combined
+    Given I grant consent for purposes "login,registry_check"
+    And I revoke consent for purposes "login"
+    When I list my consents filtered by status "active" and purpose "registry_check"
+    Then the response status should be 200
+    And all consents should have status "active"
+    And all consents should have purpose "registry_check"
+
+      @consent @filter @validation
+  Scenario: Filter with invalid status returns error
+    When I list my consents filtered by status "invalid_status"
+    Then the response status should be 400
+    And the response field "error" should equal "bad_request"
+
+      @consent @filter @validation
+  Scenario: Filter with invalid purpose returns error
+    When I list my consents filtered by purpose "invalid_purpose"
+    Then the response status should be 400
+    And the response field "error" should equal "bad_request"
+
+  # ============================================================================
+  # All Consent Purposes Coverage (PRD-002 TR-1)
+  # ============================================================================
+
+      @consent @purposes
+  Scenario: Grant consent for all four purposes
+    When I grant consent for purposes "login,registry_check,vc_issuance,decision_evaluation"
+    Then the response status should be 200
+    And the response field "message" should contain "Consent granted for 4 purposes"
+    And the consent for purpose "login" should have status "active"
+    And the consent for purpose "registry_check" should have status "active"
+    And the consent for purpose "vc_issuance" should have status "active"
+    And the consent for purpose "decision_evaluation" should have status "active"
+
+      @consent @purposes
+  Scenario: Grant and revoke decision_evaluation consent
+    Given I grant consent for purposes "decision_evaluation"
+    When I revoke consent for purposes "decision_evaluation"
+    Then the response status should be 200
+    And the revoked consent should have "status" equal to "revoked"
+    When I list my consents
+    Then the consent for purpose "decision_evaluation" should have status "revoked"
+
+      @consent @purposes
+  Scenario: Re-grant decision_evaluation after revocation
+    Given I grant consent for purposes "decision_evaluation"
+    And I revoke consent for purposes "decision_evaluation"
+    When I grant consent for purposes "decision_evaluation"
+    Then the response status should be 200
+    And the consent for purpose "decision_evaluation" should have status "active"
+
+  # ============================================================================
+  # Edge Cases
+  # ============================================================================
+
+      @consent @edge
+  Scenario: Revoke non-existent consent is idempotent
+    When I revoke consent for purposes "vc_issuance"
+    Then the response status should be 200
+    # Should not error, just return empty revoked list
+
+      @consent @edge
+  Scenario: List consents when none granted returns empty array
+    # Note: Using a fresh user to ensure no prior consents
+    Given I am authenticated as "fresh-consent-user@example.com"
+    When I list my consents
+    Then the response status should be 200
+    And the response should contain "consents"
+    And the response should contain 0 consent records
