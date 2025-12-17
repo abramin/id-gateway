@@ -1,4 +1,5 @@
-# Credo <img width="120" height="120" alt="credo" src="https://github.com/user-attachments/assets/cc9f2d5a-6b70-4f92-a9e7-8f3ab1315181" />
+# Credo 
+<img width="160" height="160" alt="credo" src="https://github.com/user-attachments/assets/cc9f2d5a-6b70-4f92-a9e7-8f3ab1315181" />
 
 _Modular identity and evidence platform covering auth, consent, registry evidence, VCs, policy, and audit._
 
