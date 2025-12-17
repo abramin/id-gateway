@@ -7,7 +7,7 @@ Feature: Token lifecycle and session management (PRD-016)
     Given the ID Gateway is running
 
     @token @refresh
-  Scenario: Refresh token rotation rejects reuse
+  Scenario: Refresh token rotation rejects reuse (RFC 6749 §5.2)
     When I initiate authorization with email "rotate@example.com" and scopes "openid"
     Then the response status should be 200
     And I save the authorization code
@@ -23,11 +23,12 @@ Feature: Token lifecycle and session management (PRD-016)
     And the new refresh token should differ from the previous one
 
     When I attempt to refresh with the previous refresh token
-    Then the response status should be 401
-    And the response field "error" should equal "unauthorized"
+    # RFC 6749 §5.2: reused refresh token returns 400 with invalid_grant
+    Then the response status should be 400
+    And the response field "error" should equal "invalid_grant"
 
     @token @revocation
-  Scenario: Refresh token revocation blocks future refresh
+  Scenario: Refresh token revocation blocks future refresh (RFC 6749 §5.2)
     When I initiate authorization with email "revoke-refresh@example.com" and scopes "openid"
     Then the response status should be 200
     And I save the authorization code
@@ -41,8 +42,9 @@ Feature: Token lifecycle and session management (PRD-016)
     And the response field "revoked" should equal "true"
 
     When I refresh tokens with the saved refresh token
-    Then the response status should be 401
-    And the response field "error" should equal "unauthorized"
+    # RFC 6749 §5.2: revoked refresh token returns 400 with invalid_grant
+    Then the response status should be 400
+    And the response field "error" should equal "invalid_grant"
 
     @token @revocation
   Scenario: Access token revocation invalidates the session

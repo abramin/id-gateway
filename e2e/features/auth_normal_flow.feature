@@ -40,10 +40,11 @@ Feature: OAuth2 Authorization Code Flow - Normal Path
     And the response field "error" should equal "bad_request"
 
     @normal @validation
-  Scenario: Token exchange validation - invalid authorization code
+  Scenario: Token exchange validation - invalid authorization code (RFC 6749 §5.2)
     When I exchange invalid authorization code "invalid-code-12345"
-    Then the response status should be 401
-    And the response field "error" should equal "unauthorized"
+    # RFC 6749 §5.2: invalid authorization code returns 400 with invalid_grant
+    Then the response status should be 400
+    And the response field "error" should equal "invalid_grant"
 
     @normal @validation
   Scenario: Token exchange validation - invalid grant type
@@ -52,17 +53,18 @@ Feature: OAuth2 Authorization Code Flow - Normal Path
     And the response field "error" should equal "bad_request"
 
     @normal @validation
-  Scenario: Authorization code reuse prevention
+  Scenario: Authorization code reuse prevention (RFC 6749 §5.2)
     When I initiate authorization with email "reuse-test@example.com" and scopes "openid"
     Then the response status should be 200
     And I save the authorization code
-    
+
     When I exchange the authorization code for tokens
     Then the response status should be 200
-    
+
     When I attempt to reuse the same authorization code
-    Then the response status should be 401
-    And the response field "error" should equal "unauthorized"
+    # RFC 6749 §5.2: reused authorization code returns 400 with invalid_grant
+    Then the response status should be 400
+    And the response field "error" should equal "invalid_grant"
 
     @normal @validation
   Scenario: UserInfo endpoint - missing authorization header
