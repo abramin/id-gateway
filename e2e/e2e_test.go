@@ -17,12 +17,22 @@ var opts = godog.Options{
 	Output: colors.Colored(os.Stdout),
 }
 
+// sharedClientID stores the client_id created during setup, shared across all scenarios
+var sharedClientID string
+var sharedTenantID string
+
 func init() {
 	godog.BindCommandLineFlags("godog.", &opts)
 }
 
 func TestMain(m *testing.M) {
 	flag.Parse()
+
+	// Set up tenant and client once before all tests
+	if err := setupTestInfrastructure(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to set up test infrastructure: %v\n", err)
+		os.Exit(1)
+	}
 
 	suite := godog.TestSuite{
 		ScenarioInitializer: InitializeScenario,
@@ -40,11 +50,27 @@ func TestMain(m *testing.M) {
 	os.Exit(status)
 }
 
+// setupTestInfrastructure creates a tenant and client via admin API before tests run
+func setupTestInfrastructure() error {
+	tc := NewTestContext()
+	if err := tc.EnsureTestClient(); err != nil {
+		return err
+	}
+	sharedClientID = tc.ClientID
+	sharedTenantID = tc.TenantID
+	fmt.Printf("Test infrastructure ready: tenant_id=%s, client_id=%s\n", sharedTenantID, sharedClientID)
+	return nil
+}
+
 func InitializeScenario(sc *godog.ScenarioContext) {
 	tc := NewTestContext()
+	tc.ClientID = sharedClientID
+	tc.TenantID = sharedTenantID
 
 	sc.Before(func(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
 		tc = NewTestContext()
+		tc.ClientID = sharedClientID
+		tc.TenantID = sharedTenantID
 		return ctx, nil
 	})
 

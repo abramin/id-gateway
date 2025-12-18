@@ -15,6 +15,7 @@ import (
 // TestContext holds state between test steps
 type TestContext struct {
 	BaseURL              string
+	AdminBaseURL         string
 	HTTPClient           *http.Client
 	LastResponse         *http.Response
 	LastResponseBody     []byte
@@ -28,6 +29,7 @@ type TestContext struct {
 	RedirectURI          string
 	UserID               string
 	AdminToken           string
+	TenantID             string
 	AccessTokens         map[string]string
 	RefreshTokens        map[string]string
 	SessionIDs           map[string]string
@@ -40,20 +42,26 @@ func NewTestContext() *TestContext {
 		baseURL = "http://localhost:8080"
 	}
 
+	adminBaseURL := os.Getenv("ADMIN_BASE_URL")
+	if adminBaseURL == "" {
+		adminBaseURL = "http://localhost:8081"
+	}
+
 	adminToken := os.Getenv("ADMIN_API_TOKEN")
 	if adminToken == "" {
 		adminToken = "demo-admin-token"
 	}
 
 	return &TestContext{
-		BaseURL: baseURL,
+		BaseURL:       baseURL,
+		AdminBaseURL:  adminBaseURL,
 		HTTPClient: &http.Client{
 			Timeout: 10 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
 		},
-		ClientID:      "test-client",
+		ClientID:      "", // Will be set by EnsureTestClient
 		RedirectURI:   "http://localhost:3000/callback",
 		AdminToken:    adminToken,
 		AccessTokens:  make(map[string]string),
@@ -283,4 +291,108 @@ func (tc *TestContext) SetSessionIDFor(name, id string) {
 
 func (tc *TestContext) GetSessionIDFor(name string) string {
 	return tc.SessionIDs[name]
+}
+
+// EnsureTestClient creates a tenant and client via the admin API if not already set up.
+// This should be called once before running tests.
+// Uses a unique identifier per test run to avoid conflicts with stale data.
+func (tc *TestContext) EnsureTestClient() error {
+	if tc.ClientID != "" {
+		return nil // Already set up
+	}
+
+	// Use a unique tenant name per test run to avoid conflicts
+	runID := time.Now().UnixNano()
+	tenantName := fmt.Sprintf("e2e-test-tenant-%d", runID)
+
+	// Step 1: Create a tenant
+	tenantReq := map[string]interface{}{
+		"name": tenantName,
+	}
+	tenantData, err := json.Marshal(tenantReq)
+	if err != nil {
+		return fmt.Errorf("failed to marshal tenant request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), "POST", tc.BaseURL+"/admin/tenants", bytes.NewReader(tenantData))
+	if err != nil {
+		return fmt.Errorf("failed to create tenant request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Admin-Token", tc.AdminToken)
+
+	resp, err := tc.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to create tenant: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read tenant response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("failed to create tenant, status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var tenantResp map[string]interface{}
+	if err := json.Unmarshal(body, &tenantResp); err != nil {
+		return fmt.Errorf("failed to parse tenant response: %w", err)
+	}
+
+	tenantID, ok := tenantResp["tenant_id"].(string)
+	if !ok {
+		return fmt.Errorf("tenant_id not found in response: %s", string(body))
+	}
+	tc.TenantID = tenantID
+
+	// Step 2: Create a client under the tenant
+	clientReq := map[string]interface{}{
+		"tenant_id":      tenantID,
+		"name":           "E2E Test Client",
+		"redirect_uris":  []string{"http://localhost:3000/callback"},
+		"allowed_grants": []string{"authorization_code", "refresh_token"},
+		"allowed_scopes": []string{"openid", "profile", "email"},
+		"public_client":  true,
+	}
+	clientData, err := json.Marshal(clientReq)
+	if err != nil {
+		return fmt.Errorf("failed to marshal client request: %w", err)
+	}
+
+	req, err = http.NewRequestWithContext(context.Background(), "POST", tc.BaseURL+"/admin/clients", bytes.NewReader(clientData))
+	if err != nil {
+		return fmt.Errorf("failed to create client request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Admin-Token", tc.AdminToken)
+
+	resp, err = tc.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to create client: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read client response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("failed to create client, status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var clientResp map[string]interface{}
+	if err := json.Unmarshal(body, &clientResp); err != nil {
+		return fmt.Errorf("failed to parse client response: %w", err)
+	}
+
+	clientID, ok := clientResp["client_id"].(string)
+	if !ok {
+		return fmt.Errorf("client_id not found in response: %s", string(body))
+	}
+	tc.ClientID = clientID
+
+	return nil
 }
