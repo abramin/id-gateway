@@ -142,7 +142,7 @@
       <!-- Story Content -->
       <div class="story-container">
         <!-- Intro -->
-        <div class="story-intro" x-show="currentStepIndex === -1">
+        <div class="story-intro" x-show="!currentStepId">
           <div class="intro-icon" :class="perspective === 'attacker' ? 'intro-icon-attacker' : 'intro-icon-defender'">
             <template x-if="perspective === 'attacker'">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

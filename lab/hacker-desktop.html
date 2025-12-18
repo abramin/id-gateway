@@ -242,7 +242,7 @@
         <h4 class="step-title" x-text="$store.flow.currentStep?.title"></h4>
         <p class="step-description" x-text="$store.flow.currentStep?.description"></p>
         <div class="step-request" x-show="$store.flow.currentStep?.request">
-          <code x-text="$store.flow.currentStep?.request"></code>
+          <code x-text="typeof $store.flow.currentStep?.request === 'object' ? $store.flow.currentStep?.request.url : $store.flow.currentStep?.request"></code>
         </div>
       </div>
     </div>
