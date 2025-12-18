@@ -12,6 +12,8 @@ import (
 type TestContext interface {
 	POST(path string, body interface{}) error
 	POSTWithHeaders(path string, body interface{}, headers map[string]string) error
+	PUT(path string, body interface{}) error
+	PUTWithHeaders(path string, body interface{}, headers map[string]string) error
 	GET(path string, headers map[string]string) error
 	GetResponseField(field string) (interface{}, error)
 	ResponseContains(text string) bool
