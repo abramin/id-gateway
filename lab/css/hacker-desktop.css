@@ -128,6 +128,23 @@
   animation: pulse-danger 1s infinite;
 }
 
+.help-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  transition: all var(--transition-fast);
+  margin-left: 0.5rem;
+}
+
+.help-link:hover {
+  background: var(--bg-tertiary);
+  color: var(--accent-primary);
+}
+
 @keyframes pulse-danger {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }

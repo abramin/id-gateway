@@ -280,8 +280,8 @@
           </div>
 
           <!-- Navigation (when no choices or after config check) -->
-          <div class="step-navigation" x-show="(!currentStep?.choices || showConfigResult) && !isLastStep">
-            <button class="btn btn-primary" @click="nextStep" :disabled="currentStep?.configCheck && !showConfigResult">
+          <div class="step-navigation" x-show="(!currentStep?.choices || showConfigResult) && (!isLastStep || (currentStep?.configCheck && !showConfigResult))">
+            <button class="btn btn-primary" @click="nextStep" :disabled="showConfigResult && !isConfigSecure && currentStep?.configCheck">
               <template x-if="currentStep?.configCheck && !showConfigResult">
                 <span>Check Configuration</span>
               </template>
@@ -295,7 +295,7 @@
           </div>
 
           <!-- Completion -->
-          <div class="completion-box" x-show="isLastStep && showConfigResult">
+          <div class="completion-box" x-show="isLastStep && (!currentStep?.configCheck || showConfigResult)">
             <div class="completion-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
