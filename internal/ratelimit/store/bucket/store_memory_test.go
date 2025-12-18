@@ -49,8 +49,8 @@ func TestInMemoryBucketStore_Allow(t *testing.T) {
 func TestInMemoryBucketStore_AllowN(t *testing.T) {
 	t.Skip("TODO: Implement test after AllowN is implemented")
 
-	store := NewInMemoryBucketStore()
-	ctx := context.Background()
+	// store := NewInMemoryBucketStore()
+	// ctx := context.Background()
 
 	// TODO: Test cases to implement:
 	// 1. Request with cost 1 behaves like Allow
@@ -75,8 +75,8 @@ func TestInMemoryBucketStore_AllowN(t *testing.T) {
 func TestInMemoryBucketStore_Reset(t *testing.T) {
 	t.Skip("TODO: Implement test after Reset is implemented")
 
-	store := NewInMemoryBucketStore()
-	ctx := context.Background()
+	// store := NewInMemoryBucketStore()
+	// ctx := context.Background()
 
 	// TODO: Test cases to implement:
 	// 1. Reset clears counter for key
@@ -97,8 +97,8 @@ func TestInMemoryBucketStore_Reset(t *testing.T) {
 func TestInMemoryBucketStore_SlidingWindow(t *testing.T) {
 	t.Skip("TODO: Implement test after Allow is implemented")
 
-	store := NewInMemoryBucketStore()
-	ctx := context.Background()
+	// store := NewInMemoryBucketStore()
+	// ctx := context.Background()
 
 	// TODO: Test cases to implement:
 	// 1. Timestamps outside window are cleaned up
