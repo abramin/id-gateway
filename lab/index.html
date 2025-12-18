@@ -84,34 +84,41 @@
       </div>
     </div>
     <div class="hero-visual">
-      <div class="shield-icon">
-        <svg viewBox="0 0 100 100" fill="none">
+      <div class="credo-logo-hero">
+        <svg viewBox="0 0 120 120" fill="none">
           <defs>
-            <linearGradient id="shield-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id="credo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" style="stop-color:#00ff41"/>
               <stop offset="100%" style="stop-color:#39ff14"/>
             </linearGradient>
+            <filter id="glow">
+              <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+              <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
           </defs>
-          <path
-            d="M50 5 L90 20 L90 45 C90 70 70 90 50 95 C30 90 10 70 10 45 L10 20 Z"
-            stroke="url(#shield-gradient)"
-            stroke-width="2"
-            fill="none"
-            opacity="0.3"
-          />
-          <path
-            d="M50 15 L80 27 L80 45 C80 65 65 80 50 85 C35 80 20 65 20 45 L20 27 Z"
-            stroke="url(#shield-gradient)"
-            stroke-width="2"
-            fill="url(#shield-gradient)"
-            opacity="0.1"
-          />
-          <path
-            d="M45 50 L35 60 M55 50 L65 60 M40 40 L40 45 M60 40 L60 45 M35 70 Q50 80 65 70"
-            stroke="url(#shield-gradient)"
-            stroke-width="3"
-            stroke-linecap="round"
-          />
+          <!-- Outer glow ring -->
+          <circle cx="60" cy="60" r="55" stroke="url(#credo-gradient)" stroke-width="1" fill="none" opacity="0.2"/>
+          <circle cx="60" cy="60" r="50" stroke="url(#credo-gradient)" stroke-width="1" fill="none" opacity="0.1"/>
+          <!-- ID Card -->
+          <rect x="20" y="20" width="45" height="65" rx="4" stroke="url(#credo-gradient)" stroke-width="3" fill="none" filter="url(#glow)"/>
+          <rect x="20" y="20" width="45" height="65" rx="4" fill="url(#credo-gradient)" opacity="0.05"/>
+          <!-- Person icon in card -->
+          <circle cx="42.5" cy="38" r="8" fill="url(#credo-gradient)" opacity="0.8"/>
+          <path d="M42.5 50 L42.5 70" stroke="url(#credo-gradient)" stroke-width="4" stroke-linecap="round" filter="url(#glow)"/>
+          <!-- Vertical bars (barcode/data lines) -->
+          <line x1="75" y1="22" x2="75" y2="78" stroke="url(#credo-gradient)" stroke-width="4" stroke-linecap="round" filter="url(#glow)"/>
+          <line x1="88" y1="22" x2="88" y2="78" stroke="url(#credo-gradient)" stroke-width="4" stroke-linecap="round" filter="url(#glow)"/>
+          <line x1="100" y1="30" x2="100" y2="70" stroke="url(#credo-gradient)" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+          <!-- Curved connection at bottom -->
+          <path d="M20 92 Q20 105 55 105 Q90 105 90 92" stroke="url(#credo-gradient)" stroke-width="3" fill="none" stroke-linecap="round" filter="url(#glow)"/>
+          <!-- Data dots -->
+          <circle cx="30" cy="75" r="2" fill="url(#credo-gradient)" opacity="0.6"/>
+          <circle cx="38" cy="75" r="2" fill="url(#credo-gradient)" opacity="0.6"/>
+          <circle cx="46" cy="75" r="2" fill="url(#credo-gradient)" opacity="0.6"/>
+          <circle cx="54" cy="75" r="2" fill="url(#credo-gradient)" opacity="0.6"/>
         </svg>
       </div>
     </div>
