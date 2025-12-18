@@ -481,7 +481,12 @@
             token_replay: 'Audience Validation',
             csrf_callback: 'State Parameter',
             scope_escalation: 'Scope Validation',
-            token_storage_xss: 'HttpOnly Cookies'
+            token_storage_xss: 'HttpOnly Cookies',
+            jwt_alg_confusion: 'JWT Algorithm Enforcement',
+            refresh_token_theft: 'Refresh Token Rotation',
+            open_redirect_phishing: 'Strict Redirect URI Matching',
+            as_mixup: 'Issuer Validation',
+            clickjacking_auth: 'Frame Protection'
           };
 
           return fixes[attack.id] || 'the recommended security control';

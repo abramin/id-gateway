@@ -175,10 +175,25 @@
           <label class="form-label">Scenario:</label>
           <select class="form-select" x-model="$store.flow.currentScenario" @change="loadScenario()">
             <option value="">Select attack scenario...</option>
-            <option value="pkce_bypass">PKCE Bypass Attack</option>
-            <option value="redirect_hijack">Redirect URI Hijacking</option>
-            <option value="token_replay">Token Replay Attack</option>
-            <option value="csrf_login">CSRF Login Attack</option>
+            <optgroup label="OAuth Code Flow">
+              <option value="pkce_bypass">PKCE Bypass Attack</option>
+              <option value="redirect_hijack">Redirect URI Hijacking</option>
+              <option value="csrf_login">CSRF Login Attack</option>
+              <option value="open_redirect">Open Redirect Phishing</option>
+              <option value="as_mixup">Auth Server Mix-Up</option>
+            </optgroup>
+            <optgroup label="Token Attacks">
+              <option value="token_replay">Token Replay Attack</option>
+              <option value="jwt_confusion">JWT Algorithm Confusion</option>
+              <option value="refresh_hijack">Refresh Token Hijacking</option>
+            </optgroup>
+            <optgroup label="UI Attacks">
+              <option value="clickjacking">Clickjacking Authorization</option>
+            </optgroup>
+            <optgroup label="Advanced Scenarios">
+              <option value="credential_stuffing">Credential Stuffing</option>
+              <option value="api_abuse">API Rate Limit Bypass</option>
+            </optgroup>
           </select>
         </div>
         <div class="flow-controls">
@@ -610,6 +625,104 @@
             { id: 'csrf_5', text: 'Link victim session to attacker account', xp: 55, trigger: 'step_5' },
             { id: 'csrf_6', text: 'Harvest victim data via linked account', xp: 30, trigger: 'step_6' }
           ]
+        },
+        jwt_confusion: {
+          id: 'jwt_confusion',
+          title: 'JWT Algorithm Confusion',
+          description: 'Forge admin tokens by exploiting algorithm validation vulnerabilities.',
+          difficulty: 'advanced',
+          bonusXP: 120,
+          objectives: [
+            { id: 'jwt_1', text: 'Obtain valid JWT for analysis', xp: 15, trigger: 'step_1' },
+            { id: 'jwt_2', text: 'Decode and identify RS256 algorithm', xp: 25, trigger: 'step_2' },
+            { id: 'jwt_3', text: 'Retrieve public key from JWKS endpoint', xp: 30, trigger: 'step_3' },
+            { id: 'jwt_4', text: 'Forge token with HS256 using public key', xp: 50, trigger: 'step_4' },
+            { id: 'jwt_5', text: 'Access admin resources with forged token', xp: 60, trigger: 'step_5' }
+          ]
+        },
+        refresh_hijack: {
+          id: 'refresh_hijack',
+          title: 'Refresh Token Persistence',
+          description: 'Maintain long-term access using stolen refresh tokens.',
+          difficulty: 'intermediate',
+          bonusXP: 80,
+          objectives: [
+            { id: 'ref_1', text: 'Extract refresh token from victim device', xp: 35, trigger: 'step_1' },
+            { id: 'ref_2', text: 'Wait for victim to change password', xp: 15, trigger: 'step_2' },
+            { id: 'ref_3', text: 'Use stolen token to get new access token', xp: 45, trigger: 'step_3' },
+            { id: 'ref_4', text: 'Maintain persistent access to victim data', xp: 55, trigger: 'step_4' }
+          ]
+        },
+        open_redirect: {
+          id: 'open_redirect',
+          title: 'OAuth Phishing Campaign',
+          description: 'Use OAuth endpoint as open redirector for credential theft.',
+          difficulty: 'intermediate',
+          bonusXP: 70,
+          objectives: [
+            { id: 'odr_1', text: 'Probe redirect URI validation', xp: 20, trigger: 'step_1' },
+            { id: 'odr_2', text: 'Craft malicious OAuth phishing URL', xp: 30, trigger: 'step_2' },
+            { id: 'odr_3', text: 'Launch phishing email campaign', xp: 35, trigger: 'step_3' },
+            { id: 'odr_4', text: 'Redirect victim to fake login', xp: 40, trigger: 'step_4' },
+            { id: 'odr_5', text: 'Capture victim credentials', xp: 50, trigger: 'step_5' }
+          ]
+        },
+        as_mixup: {
+          id: 'as_mixup',
+          title: 'IdP Mix-Up Attack',
+          description: 'Steal authorization codes in federated identity scenarios.',
+          difficulty: 'expert',
+          bonusXP: 150,
+          objectives: [
+            { id: 'mix_1', text: 'Set up malicious identity provider', xp: 30, trigger: 'step_1' },
+            { id: 'mix_2', text: 'Lure victim to initiate login via evil IdP', xp: 35, trigger: 'step_2' },
+            { id: 'mix_3', text: 'Redirect victim to legitimate corporate IdP', xp: 40, trigger: 'step_3' },
+            { id: 'mix_4', text: 'Wait for victim authentication', xp: 25, trigger: 'step_4' },
+            { id: 'mix_5', text: 'Intercept corporate authorization code', xp: 55, trigger: 'step_5' },
+            { id: 'mix_6', text: 'Exchange code for corporate access', xp: 65, trigger: 'step_6' }
+          ]
+        },
+        clickjacking: {
+          id: 'clickjacking',
+          title: 'Clickjacking Consent',
+          description: 'Trick users into authorizing your app via UI redressing.',
+          difficulty: 'intermediate',
+          bonusXP: 65,
+          objectives: [
+            { id: 'cj_1', text: 'Test for missing frame protection headers', xp: 20, trigger: 'step_1' },
+            { id: 'cj_2', text: 'Build clickjacking page with hidden iframe', xp: 35, trigger: 'step_2' },
+            { id: 'cj_3', text: 'Lure victim to malicious page', xp: 30, trigger: 'step_3' },
+            { id: 'cj_4', text: 'Capture invisible click on Authorize button', xp: 45, trigger: 'step_4' },
+            { id: 'cj_5', text: 'Receive OAuth grant for victim account', xp: 50, trigger: 'step_5' }
+          ]
+        },
+        credential_stuffing: {
+          id: 'credential_stuffing',
+          title: 'Credential Stuffing Raid',
+          description: 'Mass account takeover using breached credential databases.',
+          difficulty: 'advanced',
+          bonusXP: 110,
+          objectives: [
+            { id: 'cs_1', text: 'Acquire breach database with credentials', xp: 25, trigger: 'step_1' },
+            { id: 'cs_2', text: 'Deploy distributed attack infrastructure', xp: 35, trigger: 'step_2' },
+            { id: 'cs_3', text: 'Begin automated credential testing', xp: 30, trigger: 'step_3' },
+            { id: 'cs_4', text: 'Scale attack across botnet', xp: 45, trigger: 'step_4' },
+            { id: 'cs_5', text: 'Compromise high-value accounts', xp: 60, trigger: 'step_5' }
+          ]
+        },
+        api_abuse: {
+          id: 'api_abuse',
+          title: 'API Rate Limit Bypass',
+          description: 'Exploit weak rate limiting to scrape data and exhaust resources.',
+          difficulty: 'intermediate',
+          bonusXP: 75,
+          objectives: [
+            { id: 'api_1', text: 'Map API endpoints and rate limits', xp: 20, trigger: 'step_1' },
+            { id: 'api_2', text: 'Discover header-based bypass technique', xp: 35, trigger: 'step_2' },
+            { id: 'api_3', text: 'Automate IP rotation for unlimited requests', xp: 40, trigger: 'step_3' },
+            { id: 'api_4', text: 'Scrape entire user database', xp: 50, trigger: 'step_4' },
+            { id: 'api_5', text: 'Cause resource exhaustion on target', xp: 55, trigger: 'step_5' }
+          ]
         }
       };
 
@@ -1019,6 +1132,160 @@
             request: null,
             response: { success: true, message: 'Victim believes they are logged into their own account, but session belongs to attacker!' }
           }
+        ],
+        jwt_confusion: [
+          { id: 1, title: 'Obtain valid JWT', description: 'Attacker obtains a legitimate JWT signed with RS256 to study its structure', nodes: ['attacker', 'authserver'],
+            request: { method: 'POST', url: 'https://auth.example.com/token', body: { grant_type: 'client_credentials' } },
+            response: { access_token: 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMTIzIiwicm9sZSI6InVzZXIifQ.sig' }
+          },
+          { id: 2, title: 'Decode JWT header', description: 'Attacker decodes JWT and sees alg: RS256 (asymmetric signing)', nodes: ['attacker'], isAttack: true,
+            request: { method: 'DECODE', url: 'base64url decode JWT' },
+            response: { header: { alg: 'RS256', typ: 'JWT' }, payload: { sub: 'user123', role: 'user' } }
+          },
+          { id: 3, title: 'Fetch public key', description: 'Attacker retrieves the public RSA key from JWKS endpoint', nodes: ['attacker', 'authserver'], isAttack: true,
+            request: { method: 'GET', url: 'https://auth.example.com/.well-known/jwks.json' },
+            response: { keys: [{ kty: 'RSA', n: '0vx7agoebGcQ...', e: 'AQAB', use: 'sig' }] }
+          },
+          { id: 4, title: 'Forge token with HS256', description: 'Attacker changes alg to HS256 and signs with PUBLIC key as HMAC secret!', nodes: ['attacker'], isAttack: true,
+            request: { method: 'FORGE', url: 'Create malicious JWT' },
+            response: { forged_token: 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsInJvbGUiOiJhZG1pbiJ9.crafted_sig', note: 'Header changed to HS256, payload has role:admin!' }
+          },
+          { id: 5, title: 'Send forged token', description: 'Attacker uses forged admin token against the API', nodes: ['attacker', 'resource'], isAttack: true,
+            request: { method: 'GET', url: 'https://api.example.com/admin/users', headers: { Authorization: 'Bearer eyJhbGciOiJIUzI1NiJ9...' } },
+            response: { success: true, users: ['admin@corp.com', 'ceo@corp.com'], message: 'VULNERABLE: Server used public key for HS256 verification!' }
+          }
+        ],
+        refresh_hijack: [
+          { id: 1, title: 'Steal refresh token', description: 'Attacker obtains victim\'s refresh token via XSS, malware, or device compromise', nodes: ['attacker', 'victim'], isAttack: true,
+            request: { method: 'STEAL', url: 'localStorage.getItem("refresh_token")' },
+            response: { refresh_token: 'ref_7x8y9z_abcdef123456', note: 'Token valid for 30 days!' }
+          },
+          { id: 2, title: 'Victim changes password', description: 'Victim notices suspicious activity and changes their password', nodes: ['victim', 'authserver'],
+            request: { method: 'POST', url: 'https://auth.example.com/password/change', body: { new_password: '****' } },
+            response: { status: 200, message: 'Password changed successfully' }
+          },
+          { id: 3, title: 'Attacker uses stolen token', description: 'Days later, attacker tries the stolen refresh token', nodes: ['attacker', 'authserver'], isAttack: true,
+            request: { method: 'POST', url: 'https://auth.example.com/token', body: { grant_type: 'refresh_token', refresh_token: 'ref_7x8y9z_abcdef123456' } },
+            response: { access_token: 'eyJ...new_access_token', refresh_token: 'ref_7x8y9z_abcdef123456', message: 'VULNERABLE: Token still valid!' }
+          },
+          { id: 4, title: 'Persistent access', description: 'Attacker maintains access indefinitely by refreshing periodically', nodes: ['attacker', 'resource'], isAttack: true,
+            request: { method: 'GET', url: 'https://api.example.com/user/data', headers: { Authorization: 'Bearer eyJ...' } },
+            response: { success: true, data: { emails: ['...'], documents: ['...'] }, message: 'Attacker has persistent access despite password change!' }
+          }
+        ],
+        open_redirect: [
+          { id: 1, title: 'Probe redirect validation', description: 'Attacker tests if OAuth endpoint accepts arbitrary redirect URIs', nodes: ['attacker', 'authserver'], isAttack: true,
+            request: { method: 'GET', url: 'https://auth.example.com/authorize?redirect_uri=https://evil.com&client_id=app' },
+            response: { status: 200, message: 'Redirect URI accepted! (validation too loose)' }
+          },
+          { id: 2, title: 'Craft phishing URL', description: 'Attacker creates OAuth URL that redirects to phishing site', nodes: ['attacker'], isAttack: true,
+            request: { method: 'CRAFT', url: 'https://auth.example.com/authorize?redirect_uri=https://auth.example.com.evil.site/login&client_id=app' },
+            response: { message: 'URL looks legitimate - starts with trusted domain!' }
+          },
+          { id: 3, title: 'Send phishing email', description: 'Attacker sends URL via email - victims trust auth.example.com domain', nodes: ['attacker', 'victim'], isAttack: true,
+            request: { method: 'EMAIL', url: 'Subject: Verify your account' },
+            response: { message: 'Victim sees trusted domain and clicks link' }
+          },
+          { id: 4, title: 'Victim redirected', description: 'OAuth server redirects victim to attacker\'s phishing page', nodes: ['victim', 'authserver', 'attacker'], isAttack: true,
+            request: { method: 'GET', url: 'https://auth.example.com/authorize?redirect_uri=https://auth.example.com.evil.site/...' },
+            response: { status: 302, redirect: 'https://auth.example.com.evil.site/login' }
+          },
+          { id: 5, title: 'Credentials stolen!', description: 'Victim enters credentials on fake login page', nodes: ['victim', 'attacker'], isAttack: true,
+            request: { method: 'POST', url: 'https://auth.example.com.evil.site/login', body: { email: 'victim@corp.com', password: '****' } },
+            response: { captured: true, credentials: { email: 'victim@corp.com', password: 'P@ssw0rd123' }, message: 'Phishing successful!' }
+          }
+        ],
+        as_mixup: [
+          { id: 1, title: 'Setup malicious IdP', description: 'Attacker operates a malicious identity provider in a federation', nodes: ['attacker'], isAttack: true,
+            request: { method: 'SETUP', url: 'https://evil-idp.attacker.com' },
+            response: { message: 'Malicious IdP ready - registered in app\'s federation' }
+          },
+          { id: 2, title: 'Victim initiates login', description: 'Attacker tricks victim to start login with evil IdP', nodes: ['victim', 'client'], isAttack: true,
+            request: { method: 'GET', url: 'https://app.example.com/login?idp=evil-idp' },
+            response: { session: { expectedIdp: 'evil-idp.attacker.com' }, message: 'App expects response from evil IdP' }
+          },
+          { id: 3, title: 'Evil IdP redirects to legit IdP', description: 'Instead of authenticating, evil IdP redirects to corporate IdP', nodes: ['attacker', 'victim', 'authserver'], isAttack: true,
+            request: { method: 'REDIRECT', url: 'evil-idp.attacker.com → corporate-idp.company.com' },
+            response: { message: 'Victim now authenticating with REAL corporate IdP' }
+          },
+          { id: 4, title: 'Victim authenticates', description: 'Victim logs in with corporate credentials (looks normal)', nodes: ['victim', 'authserver'],
+            request: { method: 'POST', url: 'https://corporate-idp.company.com/authorize', body: { user: 'victim@corp.com' } },
+            response: { status: 302, redirect: 'https://app.example.com/callback?code=CORP_CODE_123' }
+          },
+          { id: 5, title: 'Code sent to wrong IdP!', description: 'App sends CORPORATE code to evil IdP (based on session expectation)', nodes: ['client', 'attacker'], isAttack: true,
+            request: { method: 'POST', url: 'https://evil-idp.attacker.com/token', body: { code: 'CORP_CODE_123' } },
+            response: { captured: true, code: 'CORP_CODE_123', message: 'Attacker received corporate authorization code!' }
+          },
+          { id: 6, title: 'Attacker exchanges code', description: 'Attacker exchanges stolen code at real corporate IdP', nodes: ['attacker', 'authserver'], isAttack: true,
+            request: { method: 'POST', url: 'https://corporate-idp.company.com/token', body: { code: 'CORP_CODE_123' } },
+            response: { success: true, access_token: 'eyJ...corporate_token', message: 'Full access to victim\'s corporate account!' }
+          }
+        ],
+        clickjacking: [
+          { id: 1, title: 'Test frame protection', description: 'Attacker checks if auth page can be embedded in iframe', nodes: ['attacker', 'authserver'], isAttack: true,
+            request: { method: 'GET', url: 'https://auth.example.com/authorize?client_id=evil-app', headers: { 'Sec-Fetch-Dest': 'iframe' } },
+            response: { headers: { 'Content-Type': 'text/html' }, note: 'Missing X-Frame-Options header!' }
+          },
+          { id: 2, title: 'Build clickjacking page', description: 'Attacker creates page with invisible iframe over tempting button', nodes: ['attacker'], isAttack: true,
+            request: { method: 'CREATE', url: 'prize-winner.html' },
+            response: { html: '<div class="bait">Click to claim prize!</div><iframe src="auth.example.com/authorize" style="opacity:0.0001">' }
+          },
+          { id: 3, title: 'Lure victim', description: 'Victim visits attacker\'s page while logged into target service', nodes: ['attacker', 'victim'], isAttack: true,
+            request: { method: 'SOCIAL', url: 'Free iPhone giveaway! Click here!' },
+            response: { message: 'Victim visits prize-winner.com' }
+          },
+          { id: 4, title: 'Invisible click', description: 'Victim clicks "Claim Prize" but actually clicks hidden Authorize button', nodes: ['victim', 'authserver'], isAttack: true,
+            request: { method: 'CLICK', url: 'User click coordinates match hidden "Authorize" button' },
+            response: { status: 302, redirect: 'https://evil.com/callback?code=STOLEN_CODE', message: 'OAuth grant issued without informed consent!' }
+          },
+          { id: 5, title: 'Attack complete!', description: 'Attacker\'s app now has access to victim\'s account', nodes: ['attacker'], isAttack: true,
+            request: { method: 'POST', url: 'https://auth.example.com/token', body: { code: 'STOLEN_CODE' } },
+            response: { success: true, access_token: 'eyJ...', scope: 'read write delete', message: 'Full account access via UI redressing!' }
+          }
+        ],
+        credential_stuffing: [
+          { id: 1, title: 'Obtain breach database', description: 'Attacker acquires leaked credentials from data breaches', nodes: ['attacker'], isAttack: true,
+            request: { method: 'ACQUIRE', url: 'darkweb://breach-compilation-2024.txt' },
+            response: { records: '500M+ email:password combinations', sources: ['LinkedIn', 'Adobe', 'Dropbox'] }
+          },
+          { id: 2, title: 'Setup attack infrastructure', description: 'Attacker prepares distributed botnet with rotating proxies', nodes: ['attacker'], isAttack: true,
+            request: { method: 'SETUP', url: 'botnet.attacker.net' },
+            response: { nodes: 10000, proxies: 50000, rate: '100k attempts/hour' }
+          },
+          { id: 3, title: 'Begin credential stuffing', description: 'Automated login attempts using breached credentials', nodes: ['attacker', 'client'], isAttack: true,
+            request: { method: 'POST', url: 'https://app.example.com/login', body: { email: 'user1@email.com', password: 'password123' } },
+            response: { attempts: 1, status: 401, message: 'Invalid credentials' }
+          },
+          { id: 4, title: 'Scale attack', description: 'Botnet tests thousands of credential pairs per minute', nodes: ['attacker', 'client'], isAttack: true,
+            request: { method: 'BATCH', url: 'Testing 50,000 credentials...' },
+            response: { tested: 50000, valid: 127, rate: '~0.25% success', message: '127 valid accounts found!' }
+          },
+          { id: 5, title: 'Account takeover', description: 'Attacker logs into compromised accounts', nodes: ['attacker', 'client'], isAttack: true,
+            request: { method: 'POST', url: 'https://app.example.com/login', body: { email: 'cfo@company.com', password: 'Summer2024!' } },
+            response: { success: true, user: 'cfo@company.com', access_level: 'admin', message: 'High-value account compromised!' }
+          }
+        ],
+        api_abuse: [
+          { id: 1, title: 'Discover API endpoints', description: 'Attacker maps the API surface and identifies rate limits', nodes: ['attacker', 'resource'], isAttack: true,
+            request: { method: 'GET', url: 'https://api.example.com/v1/search?q=test' },
+            response: { headers: { 'X-RateLimit-Limit': '100', 'X-RateLimit-Remaining': '99' }, note: '100 requests per minute' }
+          },
+          { id: 2, title: 'Test rate limit bypass', description: 'Attacker tries various bypass techniques', nodes: ['attacker', 'resource'], isAttack: true,
+            request: { method: 'GET', url: 'https://api.example.com/v1/search', headers: { 'X-Forwarded-For': '1.2.3.4' } },
+            response: { headers: { 'X-RateLimit-Remaining': '99' }, note: 'Rate limit reset! Header spoofing works!' }
+          },
+          { id: 3, title: 'Rotate headers', description: 'Attacker automates header rotation to bypass limits', nodes: ['attacker'], isAttack: true,
+            request: { method: 'SCRIPT', url: 'for ip in range(256): headers["X-Forwarded-For"] = f"10.0.0.{ip}"' },
+            response: { message: 'Unlimited requests possible via IP rotation!' }
+          },
+          { id: 4, title: 'Data scraping', description: 'Attacker scrapes all user data from the API', nodes: ['attacker', 'resource'], isAttack: true,
+            request: { method: 'GET', url: 'https://api.example.com/v1/users?page=1...1000' },
+            response: { scraped: { users: 100000, emails: 100000, profiles: 100000 }, message: 'Full database scraped!' }
+          },
+          { id: 5, title: 'Resource exhaustion', description: 'Attacker launches resource-intensive queries', nodes: ['attacker', 'resource'], isAttack: true,
+            request: { method: 'GET', url: 'https://api.example.com/v1/export?format=csv&all=true' },
+            response: { server_load: '98%', response_time: '45s', message: 'API struggling under load - near DoS!' }
+          }
         ]
       };
 
@@ -1110,16 +1377,25 @@
           attack: function(args) {
             const type = args[0];
             if (!type) {
-              return '<span class="error">Usage: attack &lt;pkce|redirect|replay|csrf&gt;</span>';
+              return '<span class="error">Usage: attack &lt;type&gt;</span>\n' +
+                     '<span class="muted">OAuth attacks:</span> pkce, redirect, replay, csrf, jwt, refresh, openredir, mixup, clickjack\n' +
+                     '<span class="muted">Advanced:</span> creds, ratelimit';
             }
             const scenarioMap = {
               pkce: 'pkce_bypass',
               redirect: 'redirect_hijack',
               replay: 'token_replay',
-              csrf: 'csrf_login'
+              csrf: 'csrf_login',
+              jwt: 'jwt_confusion',
+              refresh: 'refresh_hijack',
+              openredir: 'open_redirect',
+              mixup: 'as_mixup',
+              clickjack: 'clickjacking',
+              creds: 'credential_stuffing',
+              ratelimit: 'api_abuse'
             };
             if (!scenarioMap[type]) {
-              return `<span class="error">Unknown attack type: ${type}</span>`;
+              return `<span class="error">Unknown attack type: ${type}</span>\n<span class="muted">Try: attack pkce, attack jwt, attack creds, etc.</span>`;
             }
             const scenarioId = scenarioMap[type];
             const flow = Alpine.store('flow');

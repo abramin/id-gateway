@@ -21,14 +21,7 @@
   <!-- Navigation -->
   <nav class="nav">
     <div class="nav-brand">
-      <svg class="brand-logo" viewBox="0 0 100 100" fill="none">
-        <rect x="10" y="10" width="35" height="55" rx="3" stroke="currentColor" stroke-width="5" fill="none"/>
-        <circle cx="27.5" cy="25" r="7" fill="currentColor"/>
-        <line x1="27.5" y1="38" x2="27.5" y2="55" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
-        <line x1="55" y1="12" x2="55" y2="65" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
-        <line x1="70" y1="12" x2="70" y2="65" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
-        <path d="M10 75 Q10 90 40 90 Q70 90 70 75" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round"/>
-      </svg>
+      <span class="brand-ascii">[A]</span>
       <span class="glow">Attack Lab</span>
     </div>
     <div class="nav-links">
@@ -70,48 +63,22 @@
       </p>
       <div class="hero-stats">
         <div class="stat">
-          <span class="stat-value">6</span>
+          <span class="stat-value">11</span>
           <span class="stat-label">Attack Types</span>
         </div>
         <div class="stat">
-          <span class="stat-value">3</span>
+          <span class="stat-value">4</span>
           <span class="stat-label">Learning Modes</span>
         </div>
         <div class="stat">
-          <span class="stat-value">10+</span>
+          <span class="stat-value">15+</span>
           <span class="stat-label">Security Controls</span>
         </div>
       </div>
     </div>
     <div class="hero-visual">
       <div class="credo-logo-hero">
-        <svg viewBox="0 0 100 110" fill="none">
-          <defs>
-            <linearGradient id="credo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" style="stop-color:#00ff41"/>
-              <stop offset="100%" style="stop-color:#39ff14"/>
-            </linearGradient>
-            <filter id="glow">
-              <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-              <feMerge>
-                <feMergeNode in="coloredBlur"/>
-                <feMergeNode in="SourceGraphic"/>
-              </feMerge>
-            </filter>
-          </defs>
-          <!-- ID Card rectangle -->
-          <rect x="10" y="10" width="40" height="58" rx="3" stroke="url(#credo-gradient)" stroke-width="5" fill="none" filter="url(#glow)"/>
-          <!-- Person head (circle) -->
-          <circle cx="30" cy="28" r="8" fill="url(#credo-gradient)" filter="url(#glow)"/>
-          <!-- Person body (vertical line) -->
-          <line x1="30" y1="40" x2="30" y2="60" stroke="url(#credo-gradient)" stroke-width="5" stroke-linecap="round" filter="url(#glow)"/>
-          <!-- Vertical bar 1 -->
-          <line x1="60" y1="12" x2="60" y2="68" stroke="url(#credo-gradient)" stroke-width="5" stroke-linecap="round" filter="url(#glow)"/>
-          <!-- Vertical bar 2 -->
-          <line x1="75" y1="12" x2="75" y2="68" stroke="url(#credo-gradient)" stroke-width="5" stroke-linecap="round" filter="url(#glow)"/>
-          <!-- Curved bowl at bottom -->
-          <path d="M10 82 Q10 100 42 100 Q75 100 75 82" stroke="url(#credo-gradient)" stroke-width="5" fill="none" stroke-linecap="round" filter="url(#glow)"/>
-        </svg>
+        <img src="images/logo.svg" alt="Credo Logo" class="hero-logo-img">
       </div>
     </div>
   </header>
@@ -338,6 +305,81 @@
           <div class="attack-defense">
             <span class="defense-label">Blocked by:</span>
             <span class="defense-control">HttpOnly Cookies</span>
+          </div>
+        </div>
+
+        <div class="attack-card">
+          <div class="attack-header">
+            <span class="badge badge-error">Critical</span>
+            <span class="attack-category">Token Security</span>
+          </div>
+          <h4 class="attack-title">JWT Algorithm Confusion</h4>
+          <p class="attack-description">
+            Attacker forges tokens by switching signing algorithm from RS256 to HS256.
+          </p>
+          <div class="attack-defense">
+            <span class="defense-label">Blocked by:</span>
+            <span class="defense-control">Algorithm Enforcement</span>
+          </div>
+        </div>
+
+        <div class="attack-card">
+          <div class="attack-header">
+            <span class="badge badge-warning">High</span>
+            <span class="attack-category">Token Security</span>
+          </div>
+          <h4 class="attack-title">Refresh Token Hijacking</h4>
+          <p class="attack-description">
+            Attacker steals refresh token for persistent access that survives password changes.
+          </p>
+          <div class="attack-defense">
+            <span class="defense-label">Blocked by:</span>
+            <span class="defense-control">Token Rotation</span>
+          </div>
+        </div>
+
+        <div class="attack-card">
+          <div class="attack-header">
+            <span class="badge badge-info">Medium</span>
+            <span class="attack-category">Code Flow</span>
+          </div>
+          <h4 class="attack-title">Open Redirect Phishing</h4>
+          <p class="attack-description">
+            Attacker uses OAuth endpoint as open redirector for convincing phishing URLs.
+          </p>
+          <div class="attack-defense">
+            <span class="defense-label">Blocked by:</span>
+            <span class="defense-control">Strict URI Validation</span>
+          </div>
+        </div>
+
+        <div class="attack-card">
+          <div class="attack-header">
+            <span class="badge badge-error">Critical</span>
+            <span class="attack-category">Code Flow</span>
+          </div>
+          <h4 class="attack-title">AS Mix-Up Attack</h4>
+          <p class="attack-description">
+            Attacker steals codes in multi-IdP scenarios by confusing which AS issued them.
+          </p>
+          <div class="attack-defense">
+            <span class="defense-label">Blocked by:</span>
+            <span class="defense-control">Issuer Validation</span>
+          </div>
+        </div>
+
+        <div class="attack-card">
+          <div class="attack-header">
+            <span class="badge badge-info">Medium</span>
+            <span class="attack-category">Authorization</span>
+          </div>
+          <h4 class="attack-title">Clickjacking Authorization</h4>
+          <p class="attack-description">
+            Attacker tricks users into clicking hidden authorize button via iframe overlay.
+          </p>
+          <div class="attack-defense">
+            <span class="defense-label">Blocked by:</span>
+            <span class="defense-control">Frame Protection</span>
           </div>
         </div>
       </div>

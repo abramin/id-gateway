@@ -1075,6 +1075,1246 @@ Result: REJECTED - State mismatch`,
         }
       }
     }
+  },
+
+  // ========== NEW STORY SCENARIOS ==========
+
+  {
+    id: 'jwt_forgery',
+    title: 'The Algorithm Trick',
+    category: 'Token Security',
+    difficulty: 'advanced',
+    estimatedTime: '12 min',
+    description: 'Weak JWT validation allows attackers to forge tokens by manipulating the signing algorithm.',
+
+    vulnerableConfig: { enforceJwtAlgorithm: false },
+    secureConfig: { enforceJwtAlgorithm: true },
+
+    attacker: {
+      intro: "You've obtained a valid JWT from an API that uses RS256 signing. The public key is available at the JWKS endpoint. You wonder if the server properly validates the algorithm...",
+      goal: "Forge a token with admin privileges by exploiting algorithm confusion.",
+      initialRisk: 20,
+      initialSuccess: 30,
+
+      steps: {
+        start: {
+          id: 'start',
+          title: 'Analyzing the Token',
+          narrative: "You decode the JWT you obtained:",
+          codeSnippet: `// Header:
+{
+  "alg": "RS256",
+  "typ": "JWT",
+  "kid": "key-1"
+}
+
+// Payload:
+{
+  "sub": "user_12345",
+  "role": "user",
+  "aud": "api.example.com",
+  "exp": 1699999999
+}`,
+          observation: "The token uses RS256 (RSA asymmetric signing). You want to become 'admin'...",
+          choices: [
+            { id: 'get_pubkey', text: 'Fetch the public key from JWKS endpoint', riskDelta: 5, successDelta: 15, consequence: "Need the key for the attack", next: 'fetch_jwks' },
+            { id: 'try_none', text: 'Try algorithm: none attack directly', riskDelta: 15, successDelta: 10, consequence: "Quick test but often blocked", next: 'try_none_alg' }
+          ]
+        },
+
+        try_none_alg: {
+          id: 'try_none_alg',
+          title: 'Testing "alg: none"',
+          narrative: "You create a token with no signature:",
+          codeSnippet: `// Forged token:
+{
+  "alg": "none",
+  "typ": "JWT"
+}
+.
+{
+  "sub": "admin",
+  "role": "admin"
+}
+.
+(no signature)`,
+          observation: "Sending to the API...",
+          choices: [
+            { id: 'send_none', text: 'Send the unsigned token', riskDelta: 10, successDelta: 5, next: 'none_result' }
+          ]
+        },
+
+        none_result: {
+          id: 'none_result',
+          title: '"None" Algorithm Rejected',
+          isFailure: true,
+          failureType: 'blocked',
+          narrative: "The server rejects tokens with 'alg: none':",
+          codeSnippet: `{
+  "error": "invalid_token",
+  "details": "Algorithm 'none' is not allowed"
+}`,
+          learningMoment: {
+            title: "The 'None' Algorithm",
+            explanation: "Most modern JWT libraries reject 'alg: none' by default. This was a common vulnerability (CVE-2015-9235) but is now well-known. However, the RS256→HS256 confusion attack may still work!",
+            recommendation: "Try the algorithm confusion attack using the public key as an HMAC secret."
+          },
+          choices: [
+            { id: 'try_confusion', text: 'Try RS256→HS256 confusion', next: 'fetch_jwks', riskDelta: 5, successDelta: 10 }
+          ]
+        },
+
+        fetch_jwks: {
+          id: 'fetch_jwks',
+          title: 'Fetching the Public Key',
+          narrative: "You retrieve the JWKS from the well-known endpoint:",
+          codeSnippet: `GET /.well-known/jwks.json
+
+{
+  "keys": [{
+    "kty": "RSA",
+    "kid": "key-1",
+    "use": "sig",
+    "n": "0vx7agoebGcQ...",  // RSA modulus
+    "e": "AQAB"              // RSA exponent
+  }]
+}`,
+          observation: "You have the public key! In RS256, this verifies signatures. But in HS256, secrets create signatures...",
+          choices: [
+            { id: 'craft_hs256', text: 'Craft HS256 token signed with public key', riskDelta: 15, successDelta: 25, consequence: "The classic algorithm confusion attack", next: 'craft_forged' }
+          ]
+        },
+
+        craft_forged: {
+          id: 'craft_forged',
+          title: 'Crafting the Forged Token',
+          narrative: "You create a new token with elevated privileges:",
+          codeSnippet: `// New header - changed to HS256!
+{
+  "alg": "HS256",  // <- Changed from RS256
+  "typ": "JWT"
+}
+
+// New payload - you're admin now!
+{
+  "sub": "admin",
+  "role": "admin",
+  "aud": "api.example.com",
+  "exp": 1799999999
+}
+
+// Sign with public key as HMAC secret
+signature = HMAC-SHA256(header.payload, publicKey)`,
+          observation: "If the server uses the public key to verify HS256 tokens, your forged token will validate!",
+          choices: [
+            { id: 'send_forged', text: 'Send the forged admin token', riskDelta: 20, successDelta: 30, next: 'attempt_forgery' }
+          ]
+        },
+
+        attempt_forgery: {
+          id: 'attempt_forgery',
+          title: 'Sending the Forged Token',
+          narrative: "You send a request with your crafted token:",
+          codeSnippet: `GET /api/admin/users
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...`,
+          configCheck: 'enforceJwtAlgorithm',
+          onSecure: {
+            title: 'Attack Blocked!',
+            narrative: "The server enforces algorithm validation:",
+            codeSnippet: `{
+  "error": "invalid_token",
+  "details": "Algorithm mismatch: expected RS256, got HS256"
+}`,
+            explanation: "The server is configured to only accept RS256 tokens. It doesn't derive the algorithm from the token header - it's hardcoded! Your algorithm confusion attack fails.",
+            endingType: 'blocked'
+          },
+          onVulnerable: {
+            title: 'Attack Succeeded!',
+            narrative: "The server accepts your forged token!",
+            codeSnippet: `HTTP/1.1 200 OK
+
+{
+  "users": [
+    {"id": 1, "email": "ceo@company.com", "role": "admin"},
+    {"id": 2, "email": "cto@company.com", "role": "admin"},
+    ...
+  ],
+  "total": 1547
+}`,
+            explanation: "The vulnerable server reads the algorithm from the token header and uses the public key for both RS256 verification AND HS256 verification. Since you know the public key, you can sign any token you want!",
+            endingType: 'success'
+          }
+        }
+      }
+    },
+
+    defender: {
+      intro: "A security audit revealed that your JWT validation library accepts multiple algorithms. An attacker could potentially forge tokens by exploiting algorithm confusion...",
+      goal: "Configure strict algorithm enforcement to prevent token forgery.",
+      initialRisk: 0,
+      initialSuccess: 100,
+
+      steps: {
+        start: {
+          id: 'start',
+          title: 'Understanding the Vulnerability',
+          narrative: "You examine your current JWT validation code:",
+          codeSnippet: `// VULNERABLE: Algorithm from token header
+const decoded = jwt.verify(token, publicKey);
+
+// The library reads 'alg' from the token itself!
+// If alg=HS256, it uses publicKey as HMAC secret
+// Attacker can forge tokens with known public key!`,
+          observation: "The algorithm is read from the untrusted token header. This is CVE-2015-9235!",
+          showControls: ['enforceJwtAlgorithm'],
+          choices: [
+            { id: 'fix', text: 'Implement algorithm enforcement', riskDelta: 0, successDelta: 30, next: 'implement_fix' },
+            { id: 'research', text: 'Research the vulnerability first', riskDelta: 0, successDelta: 15, next: 'research' }
+          ]
+        },
+
+        research: {
+          id: 'research',
+          title: 'Understanding Algorithm Confusion',
+          narrative: "You study the attack mechanism:",
+          codeSnippet: `Algorithm Confusion Attack:
+
+1. Server uses RS256 (asymmetric)
+   - Private key: signs tokens
+   - Public key: verifies tokens (public!)
+
+2. Attacker changes header to HS256 (symmetric)
+   - Same key signs AND verifies
+
+3. If server uses public key for HS256...
+   - Attacker signs with public key
+   - Server verifies with public key
+   - VALID TOKEN! Complete forgery.`,
+          observation: "The public key is public by design, so anyone can forge tokens!",
+          choices: [
+            { id: 'fix', text: 'Fix the vulnerability now', riskDelta: 0, successDelta: 25, next: 'implement_fix' }
+          ]
+        },
+
+        implement_fix: {
+          id: 'implement_fix',
+          title: 'Enforcing Algorithm Whitelist',
+          narrative: "Update your JWT validation to enforce a specific algorithm:",
+          instruction: "Enable 'Enforce JWT Algorithm' to only accept tokens with the expected algorithm.",
+          showControls: ['enforceJwtAlgorithm'],
+          codeSnippet: `// SECURE: Explicit algorithm enforcement
+const decoded = jwt.verify(token, publicKey, {
+  algorithms: ['RS256']  // ONLY accept RS256
+});
+
+// Now if token has alg=HS256, it's rejected
+// regardless of signature validity!`,
+          configCheck: 'enforceJwtAlgorithm',
+          onSecure: {
+            title: 'Algorithm Enforcement Enabled',
+            narrative: "Your JWT validation now enforces the expected algorithm:",
+            codeSnippet: `// Token verification flow:
+1. Read algorithm from token: "HS256"
+2. Check against whitelist: ["RS256"]
+3. "HS256" not in whitelist
+4. REJECT - algorithm not allowed
+
+// Attacker cannot:
+// - Use "alg: none"
+// - Switch to HS256
+// - Use any other algorithm`,
+            explanation: "By enforcing a specific algorithm, you've eliminated the algorithm confusion attack. The token's algorithm header is now ignored - you know what algorithm your tokens use!",
+            endingType: 'success'
+          },
+          onVulnerable: {
+            title: 'Still Vulnerable',
+            narrative: "Without algorithm enforcement, tokens can still be forged.",
+            instruction: "Enable algorithm enforcement to secure your JWT validation.",
+            continueDisabled: true
+          }
+        }
+      }
+    }
+  },
+
+  {
+    id: 'refresh_persistence',
+    title: 'The Persistent Intruder',
+    category: 'Token Security',
+    difficulty: 'intermediate',
+    estimatedTime: '10 min',
+    description: 'Stolen refresh tokens allow attackers to maintain access even after the victim changes their password.',
+
+    vulnerableConfig: { enableRefreshTokenRotation: false },
+    secureConfig: { enableRefreshTokenRotation: true, bindTokenToClient: true },
+
+    attacker: {
+      intro: "You compromised a user's device temporarily and extracted their refresh token. They've since secured their device and changed their password, but you still have that refresh token...",
+      goal: "Use the stolen refresh token to maintain persistent access despite the user's remediation efforts.",
+      initialRisk: 25,
+      initialSuccess: 40,
+
+      steps: {
+        start: {
+          id: 'start',
+          title: 'Examining the Stolen Token',
+          narrative: "You examine the refresh token you extracted:",
+          codeSnippet: `Stolen Refresh Token:
+ref_7x8y9z_abcdef123456
+
+Token Info:
+- User: victim@company.com
+- Issued: 3 days ago
+- Expires: 30 days from issue
+- Scopes: read write`,
+          observation: "The token was issued before the password change. Will it still work?",
+          choices: [
+            { id: 'try_refresh', text: 'Try to use the refresh token', riskDelta: 15, successDelta: 20, consequence: "Direct approach - see if it works", next: 'attempt_refresh' },
+            { id: 'wait', text: 'Wait a few days to avoid detection', riskDelta: -5, successDelta: 5, consequence: "More stealthy but token might expire", next: 'delayed_attempt' }
+          ]
+        },
+
+        delayed_attempt: {
+          id: 'delayed_attempt',
+          title: 'Delayed Access Attempt',
+          narrative: "You wait 3 days to reduce suspicion, then try the token:",
+          codeSnippet: `Day 6 since token theft:
+- User has changed password
+- User has logged out of all sessions
+- User believes they are safe...`,
+          choices: [
+            { id: 'try_now', text: 'Attempt to use the refresh token', riskDelta: 10, successDelta: 15, next: 'attempt_refresh' }
+          ]
+        },
+
+        attempt_refresh: {
+          id: 'attempt_refresh',
+          title: 'Using the Refresh Token',
+          narrative: "You send a token refresh request:",
+          codeSnippet: `POST /oauth/token HTTP/1.1
+Host: auth.company.com
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=refresh_token
+&refresh_token=ref_7x8y9z_abcdef123456
+&client_id=mobile-app`,
+          configCheck: 'enableRefreshTokenRotation',
+          onSecure: {
+            title: 'Attack Blocked!',
+            narrative: "The server rejects your refresh token:",
+            codeSnippet: `{
+  "error": "invalid_grant",
+  "error_description": "Refresh token has been revoked"
+}
+
+// Server log:
+[SECURITY] Attempted reuse of rotated token
+User: victim@company.com
+Action: All tokens revoked, user notified`,
+            explanation: "The server implements refresh token rotation! When the legitimate user refreshed their token, a new one was issued and the old one was invalidated. Your stolen token is now useless, and the suspicious reuse attempt triggered additional security measures.",
+            endingType: 'blocked'
+          },
+          onVulnerable: {
+            title: 'Attack Succeeded!',
+            narrative: "The server issues you new tokens!",
+            codeSnippet: `{
+  "access_token": "eyJhbGciOiJSUzI1NiIs...",
+  "refresh_token": "ref_7x8y9z_abcdef123456",
+  "token_type": "Bearer",
+  "expires_in": 3600
+}
+
+// You now have:
+// - Fresh access token
+// - Same refresh token (reusable!)`,
+            explanation: "Without refresh token rotation, the stolen token remains valid indefinitely! Password changes don't invalidate refresh tokens. You now have persistent access until the token expires in 30 days - or forever if you keep refreshing!",
+            next: 'persistent_access'
+          }
+        },
+
+        persistent_access: {
+          id: 'persistent_access',
+          title: 'Maintaining Persistence',
+          narrative: "You've established persistent access:",
+          codeSnippet: `Your access timeline:
+Day 0:  Stole refresh token
+Day 3:  User changed password
+Day 6:  You refresh -> new access token!
+Day 7:  User logout all sessions
+Day 8:  You refresh -> still works!
+Day 30: Token expires? Just refresh again!
+
+Victim believes they're safe.
+You have indefinite access.`,
+          choices: [
+            { id: 'exfiltrate', text: 'Begin exfiltrating data', riskDelta: 25, successDelta: 30, next: 'success_exfil' }
+          ]
+        },
+
+        success_exfil: {
+          id: 'success_exfil',
+          title: 'Data Exfiltration',
+          narrative: "You access the victim's resources:",
+          codeSnippet: `GET /api/user/data
+Authorization: Bearer (your fresh token)
+
+Response: All user data, documents, messages...
+
+You maintain access for weeks,
+exfiltrating data at your leisure.`,
+          explanation: "This is the danger of refresh tokens without rotation. They provide long-term persistent access that survives most remediation attempts.",
+          endingType: 'success'
+        }
+      }
+    },
+
+    defender: {
+      intro: "Security analysis shows that stolen refresh tokens remain valid indefinitely, even after password changes. Users have no way to revoke compromised tokens...",
+      goal: "Implement refresh token rotation to limit the impact of token theft.",
+      initialRisk: 0,
+      initialSuccess: 100,
+
+      steps: {
+        start: {
+          id: 'start',
+          title: 'Understanding the Risk',
+          narrative: "You analyze your current refresh token behavior:",
+          codeSnippet: `Current Implementation:
+- Refresh tokens valid for 30 days
+- Same token can be used multiple times
+- Password change doesn't revoke tokens
+- No device/client binding
+
+Risk: Stolen token = 30 days of access
+      (or indefinite if attacker keeps refreshing)`,
+          observation: "Refresh tokens are a major persistence vector for attackers!",
+          showControls: ['enableRefreshTokenRotation', 'bindTokenToClient'],
+          choices: [
+            { id: 'enable_rotation', text: 'Enable refresh token rotation', riskDelta: 0, successDelta: 30, next: 'implement_rotation' },
+            { id: 'analyze', text: 'Analyze attack scenarios first', riskDelta: 0, successDelta: 15, next: 'analyze_attacks' }
+          ]
+        },
+
+        analyze_attacks: {
+          id: 'analyze_attacks',
+          title: 'Attack Scenario Analysis',
+          narrative: "You map out the attack timeline:",
+          codeSnippet: `Attack Timeline (current state):
+┌─────────────────────────────────────────┐
+│ Day 0: Attacker steals refresh token    │
+│ Day 1: User notices suspicious activity │
+│ Day 2: User changes password            │
+│ Day 3: Attacker uses stolen token ✓     │
+│ Day 4: User logs out all sessions       │
+│ Day 5: Attacker refreshes again ✓       │
+│ ...                                     │
+│ Day 30: Attacker still has access ✓     │
+└─────────────────────────────────────────┘`,
+          observation: "The refresh token survives all user remediation attempts!",
+          choices: [
+            { id: 'fix', text: 'Implement rotation to fix this', riskDelta: 0, successDelta: 25, next: 'implement_rotation' }
+          ]
+        },
+
+        implement_rotation: {
+          id: 'implement_rotation',
+          title: 'Implementing Token Rotation',
+          narrative: "You implement refresh token rotation:",
+          instruction: "Enable 'Refresh Token Rotation' to issue new tokens on each refresh and invalidate old ones.",
+          showControls: ['enableRefreshTokenRotation', 'bindTokenToClient'],
+          codeSnippet: `// Rotation implementation:
+function refreshToken(oldToken) {
+  // 1. Validate old token
+  const grant = validateRefreshToken(oldToken);
+
+  // 2. Check if token was already used
+  if (grant.tokenUsed) {
+    // BREACH DETECTED!
+    revokeAllTokensForGrant(grant.id);
+    alertSecurityTeam(grant.userId);
+    throw new Error('Token reuse detected');
+  }
+
+  // 3. Mark old token as used
+  markTokenAsUsed(oldToken);
+
+  // 4. Issue new refresh token
+  return issueNewTokens(grant);
+}`,
+          configCheck: 'enableRefreshTokenRotation',
+          onSecure: {
+            title: 'Rotation Enabled',
+            narrative: "Refresh token rotation is now active:",
+            codeSnippet: `New Attack Timeline:
+┌─────────────────────────────────────────┐
+│ Day 0: Attacker steals refresh token    │
+│ Day 1: User refreshes -> NEW token      │
+│        (old token now invalid!)         │
+│ Day 2: Attacker tries stolen token      │
+│        -> REJECTED (already used)       │
+│        -> All user tokens revoked       │
+│        -> Security team alerted         │
+└─────────────────────────────────────────┘`,
+            explanation: "With rotation, each refresh token can only be used once. When the legitimate user refreshes, the attacker's stolen token becomes invalid. Any attempt to reuse it triggers security alerts and revokes all tokens!",
+            endingType: 'success'
+          },
+          onVulnerable: {
+            title: 'Still Vulnerable',
+            narrative: "Without rotation, stolen refresh tokens remain a persistent threat.",
+            instruction: "Enable refresh token rotation to protect against token theft.",
+            continueDisabled: true
+          }
+        }
+      }
+    }
+  },
+
+  {
+    id: 'oauth_phishing',
+    title: 'The Trusted Redirect',
+    category: 'Code Flow Attacks',
+    difficulty: 'intermediate',
+    estimatedTime: '8 min',
+    description: 'Attackers abuse the OAuth endpoint as an open redirector to create convincing phishing URLs.',
+
+    vulnerableConfig: { strictRedirectUri: false, allowWildcardRedirects: true },
+    secureConfig: { strictRedirectUri: true, allowWildcardRedirects: false },
+
+    attacker: {
+      intro: "You want to phish users of a popular service, but their email security blocks known phishing domains. You notice their OAuth provider might have loose redirect validation...",
+      goal: "Use the trusted OAuth authorization endpoint to redirect victims to your phishing site.",
+      initialRisk: 15,
+      initialSuccess: 35,
+
+      steps: {
+        start: {
+          id: 'start',
+          title: 'Probing Redirect Validation',
+          narrative: "You test the authorization endpoint's redirect validation:",
+          codeSnippet: `Test 1 - Legitimate redirect:
+/authorize?redirect_uri=https://app.example.com/callback
+Result: ✓ Accepted
+
+Test 2 - Subdomain variation:
+/authorize?redirect_uri=https://evil.app.example.com/callback
+Result: ???`,
+          choices: [
+            { id: 'test_subdomain', text: 'Test subdomain manipulation', riskDelta: 10, successDelta: 15, next: 'subdomain_test' },
+            { id: 'test_path', text: 'Test path manipulation', riskDelta: 5, successDelta: 10, next: 'path_test' }
+          ]
+        },
+
+        subdomain_test: {
+          id: 'subdomain_test',
+          title: 'Testing Subdomain Tricks',
+          narrative: "You try various subdomain manipulations:",
+          codeSnippet: `Test A: https://app.example.com.evil.com/callback
+Test B: https://evil.app.example.com/callback
+Test C: https://app-example.com/callback`,
+          configCheck: 'strictRedirectUri',
+          onSecure: {
+            title: 'Validation Too Strict',
+            narrative: "All subdomain tricks are rejected:",
+            codeSnippet: `{
+  "error": "invalid_redirect_uri",
+  "error_description": "Must exactly match registered URI"
+}`,
+            explanation: "Strict validation only accepts exact URI matches. No subdomain manipulation works.",
+            endingType: 'blocked'
+          },
+          onVulnerable: {
+            title: 'Subdomain Accepted!',
+            narrative: "The server accepts your subdomain trick!",
+            codeSnippet: `https://app.example.com.evil.com/callback
+Result: ✓ ACCEPTED!
+
+The server only checks if the redirect starts
+with the registered domain prefix!`,
+            next: 'craft_phishing'
+          }
+        },
+
+        path_test: {
+          id: 'path_test',
+          title: 'Testing Path Manipulation',
+          narrative: "You try path-based attacks:",
+          codeSnippet: `Test: /callback?next=https://evil.com
+Test: /callback/../../../evil
+Test: /callback#@evil.com`,
+          observation: "Most of these are blocked, but let's try subdomains...",
+          choices: [
+            { id: 'subdomain', text: 'Try subdomain manipulation', riskDelta: 5, successDelta: 10, next: 'subdomain_test' }
+          ]
+        },
+
+        craft_phishing: {
+          id: 'craft_phishing',
+          title: 'Crafting the Phishing Campaign',
+          narrative: "You create a convincing phishing setup:",
+          codeSnippet: `Your infrastructure:
+1. Register: app.example.com.evil.com
+2. Set up fake login page mimicking example.com
+3. Craft OAuth URL:
+
+https://auth.example.com/authorize?
+  client_id=legitimate-app
+  &redirect_uri=https://app.example.com.evil.com/steal
+  &response_type=code
+  &scope=openid profile`,
+          observation: "The URL starts with the trusted auth.example.com domain!",
+          choices: [
+            { id: 'send_phish', text: 'Launch phishing campaign', riskDelta: 20, successDelta: 25, next: 'phishing_campaign' }
+          ]
+        },
+
+        phishing_campaign: {
+          id: 'phishing_campaign',
+          title: 'Launching the Phishing Attack',
+          narrative: "You send phishing emails with the OAuth link:",
+          codeSnippet: `From: security@examp1e.com
+Subject: Verify Your Account
+
+Dear User,
+
+We've detected unusual activity. Please verify
+your account immediately:
+
+[Verify Now]
+-> https://auth.example.com/authorize?...
+
+This link is safe - it's from auth.example.com!`,
+          observation: "Users see a trusted domain and click...",
+          choices: [
+            { id: 'victim_clicks', text: 'Wait for victims to click', riskDelta: 15, successDelta: 20, next: 'victim_redirected' }
+          ]
+        },
+
+        victim_redirected: {
+          id: 'victim_redirected',
+          title: 'Victim Redirected',
+          narrative: "A victim clicks the link and is redirected to your site:",
+          codeSnippet: `User journey:
+1. Clicks "auth.example.com/authorize?..."
+2. OAuth server processes request
+3. Redirects to: app.example.com.evil.com
+4. Victim sees fake login page
+5. Enters credentials
+6. You capture: email + password`,
+          configCheck: 'strictRedirectUri',
+          onSecure: {
+            title: 'Attack Blocked!',
+            narrative: "The OAuth server rejects the malicious redirect:",
+            codeSnippet: `User sees error:
+"Invalid redirect URI"
+
+The phishing link doesn't work!`,
+            explanation: "Strict redirect validation prevents the OAuth endpoint from being used as an open redirector.",
+            endingType: 'blocked'
+          },
+          onVulnerable: {
+            title: 'Credentials Captured!',
+            narrative: "Your phishing attack succeeds:",
+            codeSnippet: `Captured credentials:
+- victim@company.com : Password123!
+- cfo@company.com : Summer2024!
+- admin@company.com : Qwerty789!
+
+Total compromised: 47 accounts`,
+            explanation: "By abusing the OAuth endpoint as an open redirector, you bypassed email security filters and exploited users' trust in the legitimate domain. This is why strict redirect validation is critical!",
+            endingType: 'success'
+          }
+        }
+      }
+    },
+
+    defender: {
+      intro: "Your security team discovered phishing campaigns using your OAuth authorization endpoint as an open redirector. Attackers are exploiting users' trust in your domain...",
+      goal: "Tighten redirect URI validation to prevent open redirect abuse.",
+      initialRisk: 0,
+      initialSuccess: 100,
+
+      steps: {
+        start: {
+          id: 'start',
+          title: 'Analyzing the Phishing Attack',
+          narrative: "You examine the phishing URLs being used:",
+          codeSnippet: `Reported phishing URLs:
+https://auth.yourcompany.com/authorize?
+  redirect_uri=https://yourcompany.com.evil.site/...
+
+https://auth.yourcompany.com/authorize?
+  redirect_uri=https://login-yourcompany.com/...
+
+Users trust auth.yourcompany.com and click!`,
+          observation: "Your OAuth endpoint is being weaponized against your own users!",
+          showControls: ['strictRedirectUri', 'allowWildcardRedirects'],
+          choices: [
+            { id: 'fix', text: 'Implement strict validation', riskDelta: 0, successDelta: 30, next: 'implement_strict' },
+            { id: 'audit', text: 'Audit current validation logic', riskDelta: 0, successDelta: 15, next: 'audit_validation' }
+          ]
+        },
+
+        audit_validation: {
+          id: 'audit_validation',
+          title: 'Auditing Redirect Validation',
+          narrative: "You examine the current validation code:",
+          codeSnippet: `// VULNERABLE: Prefix-only matching
+function validateRedirect(uri, registered) {
+  return uri.startsWith(registered);
+}
+
+// This accepts:
+// ✓ https://app.example.com/callback
+// ✓ https://app.example.com.evil.com  <- BAD!
+// ✓ https://app.example.com/callback/../evil`,
+          observation: "The validation is too loose! Any URI starting with the registered one is accepted.",
+          choices: [
+            { id: 'fix', text: 'Fix the validation logic', riskDelta: 0, successDelta: 25, next: 'implement_strict' }
+          ]
+        },
+
+        implement_strict: {
+          id: 'implement_strict',
+          title: 'Implementing Strict Validation',
+          narrative: "You implement strict redirect URI matching:",
+          instruction: "Enable 'Strict URI Matching' and disable 'Allow Wildcards'.",
+          showControls: ['strictRedirectUri', 'allowWildcardRedirects'],
+          codeSnippet: `// SECURE: Exact string matching
+function validateRedirect(uri, registered) {
+  // Normalize both URIs
+  const normalizedUri = normalizeUrl(uri);
+  const normalizedReg = normalizeUrl(registered);
+
+  // Exact match only
+  return normalizedUri === normalizedReg;
+}
+
+// Now rejects:
+// ✗ https://app.example.com.evil.com
+// ✗ https://app.example.com/callback/../x
+// ✓ https://app.example.com/callback ONLY`,
+          configCheck: 'strictRedirectUri',
+          onSecure: {
+            title: 'Strict Validation Enabled',
+            narrative: "Your OAuth endpoint now rejects manipulated redirects:",
+            codeSnippet: `Phishing attempt blocked:
+redirect_uri=https://app.example.com.evil.com
+Result: REJECTED - must match exactly
+
+Your OAuth endpoint can no longer be
+abused as an open redirector!`,
+            explanation: "Strict validation ensures only pre-registered redirect URIs are accepted. Attackers can no longer abuse your trusted domain for phishing.",
+            endingType: 'success'
+          },
+          onVulnerable: {
+            title: 'Still Vulnerable',
+            narrative: "Without strict validation, your OAuth endpoint remains an open redirect risk.",
+            instruction: "Enable strict URI validation to protect your users.",
+            continueDisabled: true
+          }
+        }
+      }
+    }
+  },
+
+  {
+    id: 'idp_confusion',
+    title: 'The Identity Mix-Up',
+    category: 'Code Flow Attacks',
+    difficulty: 'advanced',
+    estimatedTime: '12 min',
+    description: 'In multi-IdP environments, attackers can steal authorization codes by confusing clients about which IdP issued them.',
+
+    vulnerableConfig: { validateIssuer: false },
+    secureConfig: { validateIssuer: true, requirePkce: true },
+
+    attacker: {
+      intro: "You've discovered an enterprise app that supports multiple identity providers for SSO. You control one of the IdPs in the federation. Can you steal authorization codes from sessions with other IdPs?",
+      goal: "Execute an authorization server mix-up attack to steal codes from legitimate IdP sessions.",
+      initialRisk: 30,
+      initialSuccess: 25,
+
+      steps: {
+        start: {
+          id: 'start',
+          title: 'Reconnaissance',
+          narrative: "You analyze the application's IdP configuration:",
+          codeSnippet: `Supported Identity Providers:
+1. corporate-idp.company.com (legitimate)
+2. partner-idp.partner.com   (legitimate)
+3. evil-idp.attacker.com     (you control this!)
+
+All use the same callback:
+https://app.example.com/oauth/callback`,
+          observation: "The app uses the same callback URL for all IdPs. This is the key to the attack!",
+          choices: [
+            { id: 'setup', text: 'Set up the mix-up attack', riskDelta: 20, successDelta: 20, consequence: "Complex but effective attack", next: 'setup_attack' },
+            { id: 'analyze', text: 'Analyze the OAuth flow first', riskDelta: 10, successDelta: 15, next: 'analyze_flow' }
+          ]
+        },
+
+        analyze_flow: {
+          id: 'analyze_flow',
+          title: 'Analyzing the OAuth Flow',
+          narrative: "You study how the app handles multiple IdPs:",
+          codeSnippet: `Normal flow:
+1. User clicks "Login with Corporate IdP"
+2. App stores: session.expectedIdp = "corporate"
+3. App redirects to corporate-idp.company.com
+4. User authenticates
+5. Corporate IdP redirects to /callback?code=ABC
+6. App exchanges code at corporate IdP
+
+The vulnerability:
+- App trusts the IdP based on session state
+- But what if we manipulate the flow?`,
+          choices: [
+            { id: 'setup', text: 'Set up the attack', riskDelta: 15, successDelta: 20, next: 'setup_attack' }
+          ]
+        },
+
+        setup_attack: {
+          id: 'setup_attack',
+          title: 'Setting Up the Mix-Up',
+          narrative: "You prepare your malicious IdP:",
+          codeSnippet: `Your evil IdP configuration:
+1. User initiates login with YOUR IdP
+2. App stores: session.expectedIdp = "evil-idp"
+3. Instead of authenticating...
+4. Your IdP redirects user to CORPORATE IdP
+5. User authenticates with corporate credentials
+6. Corporate IdP sends code to /callback
+7. App thinks code is for evil-idp
+8. App sends code to YOUR IdP!`,
+          observation: "The client will send the corporate code to your IdP!",
+          choices: [
+            { id: 'execute', text: 'Execute the attack', riskDelta: 25, successDelta: 25, next: 'execute_attack' }
+          ]
+        },
+
+        execute_attack: {
+          id: 'execute_attack',
+          title: 'Executing the Attack',
+          narrative: "You lure a victim to initiate login with your IdP:",
+          codeSnippet: `Attack execution:
+1. Victim clicks link to login via your IdP
+2. Your IdP secretly redirects to corporate IdP
+3. Victim sees corporate login (looks normal!)
+4. Victim enters corporate credentials
+5. Corporate IdP issues code
+6. Code arrives at /callback
+7. App sends code to YOUR token endpoint!
+
+You receive: code=CORP_ABC123`,
+          configCheck: 'validateIssuer',
+          onSecure: {
+            title: 'Attack Blocked!',
+            narrative: "The app validates the issuer in the response:",
+            codeSnippet: `// App checks response:
+Response iss: corporate-idp.company.com
+Expected iss: evil-idp.attacker.com
+
+MISMATCH DETECTED!
+Error: Issuer does not match expected IdP
+
+The code is discarded.`,
+            explanation: "The app uses RFC 9207 issuer validation! It checks that the authorization response's 'iss' parameter matches the IdP it expects. Your mix-up attack fails because the response clearly came from the corporate IdP, not yours.",
+            endingType: 'blocked'
+          },
+          onVulnerable: {
+            title: 'Code Intercepted!',
+            narrative: "The app sends the corporate code to your IdP:",
+            codeSnippet: `// Your evil token endpoint receives:
+POST /token
+grant_type=authorization_code
+&code=CORP_ABC123  <- Corporate user's code!
+&redirect_uri=https://app.example.com/callback
+
+You now have a valid authorization code
+for the corporate IdP!`,
+            next: 'exchange_code'
+          }
+        },
+
+        exchange_code: {
+          id: 'exchange_code',
+          title: 'Exchanging the Stolen Code',
+          narrative: "You exchange the code at the real corporate IdP:",
+          codeSnippet: `POST https://corporate-idp.company.com/token
+grant_type=authorization_code
+&code=CORP_ABC123
+&client_id=app-client-id
+&redirect_uri=https://app.example.com/callback
+
+Response:
+{
+  "access_token": "corporate_user_token",
+  "id_token": "eyJ...",
+  "refresh_token": "ref_xyz"
+}`,
+          observation: "You now have tokens for a corporate user!",
+          explanation: "The AS mix-up attack succeeded! You tricked the client into sending a corporate authorization code to your malicious IdP. You then exchanged it at the real corporate IdP to get valid tokens.",
+          endingType: 'success'
+        }
+      }
+    },
+
+    defender: {
+      intro: "A security researcher demonstrated that your multi-IdP SSO implementation is vulnerable to authorization server mix-up attacks. Attackers could steal codes from legitimate IdP sessions...",
+      goal: "Implement issuer validation to prevent IdP confusion attacks.",
+      initialRisk: 0,
+      initialSuccess: 100,
+
+      steps: {
+        start: {
+          id: 'start',
+          title: 'Understanding the Vulnerability',
+          narrative: "You review the AS mix-up attack mechanism:",
+          codeSnippet: `The Mix-Up Attack:
+1. Attacker IdP in your federation
+2. Victim starts login with attacker IdP
+3. Attacker redirects to legitimate IdP
+4. Victim authenticates with legitimate IdP
+5. Code comes back to your app
+6. App sends code to attacker's token endpoint!
+
+Result: Attacker gets legitimate user's code`,
+          observation: "Your app can't distinguish which IdP the code came from!",
+          showControls: ['validateIssuer'],
+          choices: [
+            { id: 'implement', text: 'Implement issuer validation', riskDelta: 0, successDelta: 30, next: 'implement_iss' },
+            { id: 'research', text: 'Research RFC 9207', riskDelta: 0, successDelta: 15, next: 'research_rfc' }
+          ]
+        },
+
+        research_rfc: {
+          id: 'research_rfc',
+          title: 'RFC 9207: Authorization Response Issuer',
+          narrative: "You study the solution:",
+          codeSnippet: `RFC 9207: OAuth 2.0 Authorization Server Issuer
+
+The AS includes 'iss' in authorization response:
+/callback?code=ABC&iss=https://idp.example.com
+
+Client MUST verify:
+1. 'iss' parameter is present
+2. 'iss' matches expected authorization server
+3. Reject if mismatch
+
+This prevents mix-up attacks!`,
+          choices: [
+            { id: 'implement', text: 'Implement this now', riskDelta: 0, successDelta: 25, next: 'implement_iss' }
+          ]
+        },
+
+        implement_iss: {
+          id: 'implement_iss',
+          title: 'Implementing Issuer Validation',
+          narrative: "You add issuer validation to your callback handler:",
+          instruction: "Enable 'Validate Issuer' to check the 'iss' parameter in authorization responses.",
+          showControls: ['validateIssuer'],
+          codeSnippet: `// Updated callback handler:
+app.get('/callback', (req, res) => {
+  const { code, iss, state } = req.query;
+
+  // Get expected IdP from session
+  const expectedIdp = req.session.expectedIdp;
+
+  // RFC 9207: Validate issuer
+  if (iss !== expectedIdp) {
+    log.security('IdP mismatch', { expected: expectedIdp, got: iss });
+    return res.status(400).send('Invalid issuer');
+  }
+
+  // Safe to exchange code with expectedIdp
+  exchangeCode(code, expectedIdp);
+});`,
+          configCheck: 'validateIssuer',
+          onSecure: {
+            title: 'Issuer Validation Enabled',
+            narrative: "Your app now validates the authorization response issuer:",
+            codeSnippet: `Mix-up attack attempt:
+Session expects: evil-idp.attacker.com
+Response iss:    corporate-idp.company.com
+
+Result: REJECTED
+"Issuer mismatch - possible mix-up attack"
+
+The code is safely discarded.`,
+            explanation: "By validating the 'iss' parameter, you ensure codes are only exchanged with the IdP that actually issued them. Mix-up attacks are now impossible!",
+            endingType: 'success'
+          },
+          onVulnerable: {
+            title: 'Still Vulnerable',
+            narrative: "Without issuer validation, mix-up attacks remain possible.",
+            instruction: "Enable issuer validation to secure your multi-IdP implementation.",
+            continueDisabled: true
+          }
+        }
+      }
+    }
+  },
+
+  {
+    id: 'invisible_consent',
+    title: 'The Invisible Click',
+    category: 'Authorization',
+    difficulty: 'intermediate',
+    estimatedTime: '8 min',
+    description: 'Attackers use clickjacking to trick users into authorizing malicious applications.',
+
+    vulnerableConfig: { frameProtection: false },
+    secureConfig: { frameProtection: true },
+
+    attacker: {
+      intro: "You've created a malicious OAuth application but users won't authorize it knowingly. You notice the authorization server's consent page doesn't have frame protection...",
+      goal: "Use clickjacking to trick users into authorizing your malicious application without their knowledge.",
+      initialRisk: 20,
+      initialSuccess: 40,
+
+      steps: {
+        start: {
+          id: 'start',
+          title: 'Testing Frame Protection',
+          narrative: "You test if the authorization page can be embedded:",
+          codeSnippet: `<iframe src="https://auth.example.com/authorize?
+  client_id=your-malicious-app
+  &redirect_uri=https://evil.com/callback
+  &scope=read write delete"
+  style="opacity: 0.01;">
+</iframe>`,
+          observation: "If this works, you can overlay a fake UI on top!",
+          choices: [
+            { id: 'test_frame', text: 'Test if framing is allowed', riskDelta: 10, successDelta: 15, next: 'frame_test' }
+          ]
+        },
+
+        frame_test: {
+          id: 'frame_test',
+          title: 'Testing the Iframe',
+          narrative: "You check the response headers:",
+          codeSnippet: `HTTP Response Headers:
+Content-Type: text/html
+Cache-Control: no-store
+
+// Missing:
+// X-Frame-Options: DENY
+// Content-Security-Policy: frame-ancestors 'none'`,
+          configCheck: 'frameProtection',
+          onSecure: {
+            title: 'Framing Blocked!',
+            narrative: "The browser refuses to load the page in an iframe:",
+            codeSnippet: `Console Error:
+Refused to display 'https://auth.example.com/...'
+in a frame because it set 'X-Frame-Options' to 'deny'.`,
+            explanation: "The authorization server sets X-Frame-Options: DENY or CSP frame-ancestors 'none'. Browsers won't render the page in any iframe, preventing clickjacking entirely.",
+            endingType: 'blocked'
+          },
+          onVulnerable: {
+            title: 'Framing Allowed!',
+            narrative: "The authorization page loads in your iframe!",
+            codeSnippet: `No frame protection headers!
+The consent page renders in your iframe.
+Time to build the clickjacking attack.`,
+            next: 'build_attack'
+          }
+        },
+
+        build_attack: {
+          id: 'build_attack',
+          title: 'Building the Clickjacking Page',
+          narrative: "You create a deceptive page with the consent form hidden behind a fake UI:",
+          codeSnippet: `<style>
+  .bait {
+    position: absolute;
+    z-index: 1;
+  }
+  .hidden-consent {
+    position: absolute;
+    z-index: 2;
+    opacity: 0.0001; /* Nearly invisible */
+  }
+  #authorize-btn {
+    /* Positioned exactly over "Claim Prize" */
+    top: 340px;
+    left: 250px;
+  }
+</style>
+
+<div class="bait">
+  <h1>Congratulations! You Won!</h1>
+  <button style="top:340px;left:250px;">
+    Claim Your Prize!
+  </button>
+</div>
+
+<iframe class="hidden-consent"
+  src="https://auth.example.com/authorize?...">
+</iframe>`,
+          observation: "The 'Authorize' button is positioned exactly behind 'Claim Prize'!",
+          choices: [
+            { id: 'deploy', text: 'Deploy the attack page', riskDelta: 15, successDelta: 20, next: 'deploy_attack' }
+          ]
+        },
+
+        deploy_attack: {
+          id: 'deploy_attack',
+          title: 'Deploying the Attack',
+          narrative: "You host the page and lure victims:",
+          codeSnippet: `Your attack site: prize-winner.com
+
+Email campaign:
+"You've been selected for a $500 gift card!
+Click here to claim: https://prize-winner.com"
+
+Social media:
+"Free iPhone giveaway! Click to enter!"`,
+          choices: [
+            { id: 'wait', text: 'Wait for victims to click', riskDelta: 20, successDelta: 25, next: 'victim_clicks' }
+          ]
+        },
+
+        victim_clicks: {
+          id: 'victim_clicks',
+          title: 'Victim Interaction',
+          narrative: "A victim visits your page, already logged into the target service:",
+          codeSnippet: `Victim's experience:
+1. Visits prize-winner.com
+2. Sees "Claim Your Prize!" button
+3. Clicks the button
+4. (Actually clicks hidden "Authorize" button)
+5. Gets redirected to your callback
+6. Confused, closes the tab
+
+Your experience:
+Received OAuth grant for victim's account!`,
+          configCheck: 'frameProtection',
+          onSecure: {
+            title: 'Attack Failed',
+            narrative: "The attack couldn't work because the page can't be framed.",
+            explanation: "Frame protection prevents the attack entirely.",
+            endingType: 'blocked'
+          },
+          onVulnerable: {
+            title: 'Grant Captured!',
+            narrative: "You receive an authorization code for the victim!",
+            codeSnippet: `Your callback received:
+?code=victim_auth_code_xyz
+
+Exchange for tokens:
+{
+  "access_token": "victim_access_token",
+  "scope": "read write delete"
+}
+
+You now have full access to victim's account!`,
+            explanation: "Clickjacking allowed you to trick the user into authorizing your malicious app. They thought they were clicking 'Claim Prize' but actually clicked 'Authorize'. This is why frame protection is essential!",
+            endingType: 'success'
+          }
+        }
+      }
+    },
+
+    defender: {
+      intro: "Security researchers demonstrated that your authorization consent page is vulnerable to clickjacking. Attackers can trick users into unknowingly authorizing malicious applications...",
+      goal: "Implement frame protection to prevent clickjacking attacks on the consent page.",
+      initialRisk: 0,
+      initialSuccess: 100,
+
+      steps: {
+        start: {
+          id: 'start',
+          title: 'Understanding Clickjacking',
+          narrative: "You learn how clickjacking works:",
+          codeSnippet: `Clickjacking Attack:
+┌─────────────────────────────┐
+│  Fake Page (visible)        │
+│  ┌───────────────────────┐  │
+│  │  "Click to Win!"      │  │
+│  │  [  Claim Prize  ]    │  │
+│  └───────────────────────┘  │
+│                             │
+│  Hidden iframe (invisible)  │
+│  ┌───────────────────────┐  │
+│  │  Authorize App?       │  │
+│  │  [  Authorize  ]  <- clicked!
+│  └───────────────────────┘  │
+└─────────────────────────────┘`,
+          observation: "Users click on what they see, but their click goes to the hidden iframe!",
+          showControls: ['frameProtection'],
+          choices: [
+            { id: 'implement', text: 'Implement frame protection', riskDelta: 0, successDelta: 30, next: 'implement_protection' },
+            { id: 'options', text: 'Review protection options', riskDelta: 0, successDelta: 15, next: 'review_options' }
+          ]
+        },
+
+        review_options: {
+          id: 'review_options',
+          title: 'Frame Protection Options',
+          narrative: "You review the available protections:",
+          codeSnippet: `Option 1: X-Frame-Options header
+X-Frame-Options: DENY
+- Blocks ALL framing
+- Older but widely supported
+
+Option 2: CSP frame-ancestors
+Content-Security-Policy: frame-ancestors 'none'
+- More flexible (can allow specific origins)
+- Modern standard
+
+Option 3: JavaScript frame-busting
+if (top !== self) top.location = self.location;
+- Can be bypassed (sandbox attribute)
+- Use as fallback only
+
+Recommendation: Use both headers!`,
+          choices: [
+            { id: 'implement', text: 'Implement header protection', riskDelta: 0, successDelta: 25, next: 'implement_protection' }
+          ]
+        },
+
+        implement_protection: {
+          id: 'implement_protection',
+          title: 'Adding Frame Protection',
+          narrative: "You add frame protection headers to authorization pages:",
+          instruction: "Enable 'Frame Protection' to add X-Frame-Options and CSP headers.",
+          showControls: ['frameProtection'],
+          codeSnippet: `// Authorization endpoint middleware:
+app.use('/authorize', (req, res, next) => {
+  // Block framing entirely
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader(
+    'Content-Security-Policy',
+    "frame-ancestors 'none'"
+  );
+  next();
+});
+
+// Also add to consent confirmation page`,
+          configCheck: 'frameProtection',
+          onSecure: {
+            title: 'Frame Protection Enabled',
+            narrative: "Your authorization pages now block framing:",
+            codeSnippet: `Response Headers:
+X-Frame-Options: DENY
+Content-Security-Policy: frame-ancestors 'none'
+
+When attacker tries to iframe:
+Browser: "Refused to display in frame"
+
+Clickjacking attack: IMPOSSIBLE`,
+            explanation: "Frame protection headers instruct browsers to never render your authorization pages inside iframes. Attackers cannot overlay fake UI because the page simply won't load in their iframe.",
+            endingType: 'success'
+          },
+          onVulnerable: {
+            title: 'Still Vulnerable',
+            narrative: "Without frame protection, clickjacking attacks remain possible.",
+            instruction: "Enable frame protection to secure your authorization flow.",
+            continueDisabled: true
+          }
+        }
+      }
+    }
   }
 ];
 

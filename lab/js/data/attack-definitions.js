@@ -560,6 +560,479 @@ const ATTACK_DEFINITIONS = [
         goal: "Implement secure token storage that's resilient to XSS attacks."
       }
     }
+  },
+
+  // ========== NEW ATTACK TYPES ==========
+
+  {
+    id: 'jwt_alg_confusion',
+    title: 'JWT Algorithm Confusion',
+    category: 'Token Security',
+    severity: 'critical',
+    description: 'Attacker exploits weak JWT validation by changing the algorithm from RS256 to HS256 (using the public key as HMAC secret) or to "alg: none" to forge arbitrary tokens.',
+    shortDescription: 'Forge tokens via algorithm switch',
+
+    blockedBy: ['enforceJwtAlgorithm'],
+    partiallyBlockedBy: ['validateAudience'],
+
+    technicalDetails: {
+      attackVector: 'JWT header manipulation, algorithm downgrade',
+      prerequisites: ['Access to public key (for RS256→HS256)', 'Server accepts multiple algorithms'],
+      impact: 'Complete token forgery - attacker can create tokens for any user with any claims'
+    },
+
+    steps: [
+      {
+        id: 'obtain_token',
+        title: 'Obtain Valid Token',
+        description: 'Attacker obtains a valid JWT to study its structure.',
+        perspective: 'attack',
+        diagramNodes: ['attacker', 'authServer'],
+        diagramArrow: { from: 'authServer', to: 'attacker', label: 'Valid JWT' }
+      },
+      {
+        id: 'analyze_jwt',
+        title: 'Analyze JWT Structure',
+        description: 'Attacker decodes the JWT header and identifies the signing algorithm (RS256).',
+        perspective: 'attack',
+        diagramNodes: ['attacker'],
+        diagramArrow: null
+      },
+      {
+        id: 'obtain_pubkey',
+        title: 'Obtain Public Key',
+        description: 'Attacker retrieves the public key from /.well-known/jwks.json or other sources.',
+        perspective: 'attack',
+        diagramNodes: ['attacker', 'authServer'],
+        diagramArrow: { from: 'authServer', to: 'attacker', label: 'Public Key', style: 'dashed' }
+      },
+      {
+        id: 'craft_token',
+        title: 'Craft Malicious Token',
+        description: 'Attacker changes algorithm to HS256 and signs with public key as HMAC secret, or uses "alg: none".',
+        perspective: 'attack',
+        diagramNodes: ['attacker'],
+        diagramArrow: null
+      },
+      {
+        id: 'use_forged',
+        title: 'Use Forged Token',
+        description: 'Attacker sends the forged token to access protected resources as any user.',
+        perspective: 'compromised',
+        diagramNodes: ['attacker', 'resourceServer'],
+        diagramArrow: { from: 'attacker', to: 'resourceServer', label: 'Forged Token → Admin Access' }
+      }
+    ],
+
+    mitigations: [
+      {
+        control: 'enforceJwtAlgorithm',
+        title: 'Enforce Algorithm Whitelist',
+        description: 'Only accept tokens signed with a specific, pre-configured algorithm. Never derive the algorithm from the token header.',
+        effectiveness: 'complete'
+      },
+      {
+        control: null,
+        title: 'Reject "none" Algorithm',
+        description: 'Explicitly reject any token with "alg: none" in the header.',
+        effectiveness: 'complete'
+      },
+      {
+        control: null,
+        title: 'Use Asymmetric Keys Properly',
+        description: 'Use separate key types for different algorithms. Never use a public key as a symmetric secret.',
+        effectiveness: 'complete'
+      }
+    ],
+
+    story: {
+      attacker: {
+        intro: "You've discovered that an API validates JWTs using RSA (RS256). You know the public key is available at the JWKS endpoint. A classic vulnerability might let you forge any token...",
+        goal: "Exploit algorithm confusion to forge a token with admin privileges."
+      },
+      defender: {
+        intro: "A security audit has flagged that your JWT validation library accepts multiple algorithms. This is a critical vulnerability that could allow complete authentication bypass...",
+        goal: "Configure strict algorithm enforcement to prevent token forgery attacks."
+      }
+    }
+  },
+
+  {
+    id: 'refresh_token_theft',
+    title: 'Refresh Token Hijacking',
+    category: 'Token Security',
+    severity: 'high',
+    description: 'Attacker steals a long-lived refresh token and uses it to continuously generate new access tokens, maintaining persistent access even after the user changes their password.',
+    shortDescription: 'Steal refresh token for persistent access',
+
+    blockedBy: ['enableRefreshTokenRotation'],
+    partiallyBlockedBy: ['bindTokenToClient', 'shortTokenLifetime'],
+
+    technicalDetails: {
+      attackVector: 'Token theft via XSS, network interception, or device compromise',
+      prerequisites: ['Access to refresh token', 'No token binding or rotation'],
+      impact: 'Persistent unauthorized access - survives password changes and session revocation'
+    },
+
+    steps: [
+      {
+        id: 'steal_refresh',
+        title: 'Steal Refresh Token',
+        description: 'Attacker obtains the refresh token through XSS, malware, or network interception.',
+        perspective: 'attack',
+        diagramNodes: ['attacker', 'user'],
+        diagramArrow: { from: 'user', to: 'attacker', label: 'Refresh Token Stolen', style: 'dashed' }
+      },
+      {
+        id: 'use_refresh',
+        title: 'Use Refresh Token',
+        description: 'Attacker sends the stolen refresh token to obtain new access tokens.',
+        perspective: 'attack',
+        diagramNodes: ['attacker', 'authServer'],
+        diagramArrow: { from: 'attacker', to: 'authServer', label: 'Refresh Token' }
+      },
+      {
+        id: 'get_access',
+        title: 'Receive New Access Token',
+        description: 'Authorization server issues fresh access tokens to the attacker.',
+        perspective: 'attack',
+        diagramNodes: ['authServer', 'attacker'],
+        diagramArrow: { from: 'authServer', to: 'attacker', label: 'New Access Token' }
+      },
+      {
+        id: 'user_changes_password',
+        title: 'User Changes Password',
+        description: 'Victim realizes something is wrong and changes their password.',
+        perspective: 'normal',
+        diagramNodes: ['user', 'authServer'],
+        diagramArrow: { from: 'user', to: 'authServer', label: 'Change Password' }
+      },
+      {
+        id: 'persistent_access',
+        title: 'Attacker Retains Access',
+        description: 'Without refresh token rotation or binding, attacker can still use the stolen refresh token.',
+        perspective: 'compromised',
+        diagramNodes: ['attacker', 'resourceServer'],
+        diagramArrow: { from: 'attacker', to: 'resourceServer', label: 'Still Has Access!' }
+      }
+    ],
+
+    mitigations: [
+      {
+        control: 'enableRefreshTokenRotation',
+        title: 'Enable Refresh Token Rotation',
+        description: 'Issue a new refresh token with each use and invalidate the old one. If an old token is used, revoke all tokens for that grant.',
+        effectiveness: 'complete'
+      },
+      {
+        control: 'bindTokenToClient',
+        title: 'Bind Token to Client Instance',
+        description: 'Cryptographically bind refresh tokens to the client device/instance using DPoP or similar.',
+        effectiveness: 'complete'
+      },
+      {
+        control: null,
+        title: 'Refresh Token Expiration',
+        description: 'Set reasonable expiration times on refresh tokens (days, not months).',
+        effectiveness: 'partial'
+      },
+      {
+        control: null,
+        title: 'Revoke on Password Change',
+        description: 'Invalidate all refresh tokens when the user changes their password.',
+        effectiveness: 'partial'
+      }
+    ],
+
+    story: {
+      attacker: {
+        intro: "You've obtained a refresh token from a compromised device. The user has since changed their password, but you still have this long-lived token...",
+        goal: "Use the stolen refresh token to maintain persistent access to the victim's account."
+      },
+      defender: {
+        intro: "Users are reporting that attackers maintain access to their accounts even after password changes. Investigation reveals refresh tokens aren't being properly rotated or invalidated...",
+        goal: "Implement refresh token rotation and binding to prevent persistent unauthorized access."
+      }
+    }
+  },
+
+  {
+    id: 'open_redirect_phishing',
+    title: 'Open Redirect via OAuth',
+    category: 'Code Flow Attacks',
+    severity: 'medium',
+    description: 'Attacker abuses the OAuth authorization endpoint as an open redirector to create convincing phishing URLs that appear to originate from the trusted authorization server.',
+    shortDescription: 'Use OAuth for phishing redirects',
+
+    blockedBy: ['strictRedirectUri'],
+    partiallyBlockedBy: ['rejectUnknownParams'],
+
+    technicalDetails: {
+      attackVector: 'Phishing, social engineering, trust exploitation',
+      prerequisites: ['Loose redirect URI validation', 'User trusts the authorization server domain'],
+      impact: 'Credential theft via phishing, malware distribution using trusted URLs'
+    },
+
+    steps: [
+      {
+        id: 'identify_target',
+        title: 'Identify Trusted OAuth Server',
+        description: 'Attacker identifies a popular OAuth provider with loose redirect validation.',
+        perspective: 'attack',
+        diagramNodes: ['attacker', 'authServer'],
+        diagramArrow: { from: 'attacker', to: 'authServer', label: 'Probe Validation', style: 'dashed' }
+      },
+      {
+        id: 'craft_url',
+        title: 'Craft Malicious OAuth URL',
+        description: 'Attacker creates an authorization URL that redirects to their phishing site.',
+        perspective: 'attack',
+        diagramNodes: ['attacker'],
+        diagramArrow: null
+      },
+      {
+        id: 'distribute',
+        title: 'Distribute Phishing Link',
+        description: 'Attacker sends the link via email, SMS, or social media. URL appears to be from trusted OAuth server.',
+        perspective: 'attack',
+        diagramNodes: ['attacker', 'user'],
+        diagramArrow: { from: 'attacker', to: 'user', label: 'Trusted-Looking URL' }
+      },
+      {
+        id: 'user_clicks',
+        title: 'User Clicks Link',
+        description: 'User trusts the domain and clicks. OAuth server redirects to attacker\'s phishing page.',
+        perspective: 'attack',
+        diagramNodes: ['user', 'authServer', 'attacker'],
+        diagramArrow: { from: 'authServer', to: 'attacker', label: 'Redirect to Phishing', through: 'user' }
+      },
+      {
+        id: 'credential_theft',
+        title: 'Credentials Stolen',
+        description: 'Phishing page mimics login and steals user credentials.',
+        perspective: 'compromised',
+        diagramNodes: ['user', 'attacker'],
+        diagramArrow: { from: 'user', to: 'attacker', label: 'Credentials' }
+      }
+    ],
+
+    mitigations: [
+      {
+        control: 'strictRedirectUri',
+        title: 'Strict Redirect URI Validation',
+        description: 'Only allow exact-match redirect URIs that are pre-registered.',
+        effectiveness: 'complete'
+      },
+      {
+        control: null,
+        title: 'Require User Interaction',
+        description: 'Always require explicit user authentication before redirecting, even for errors.',
+        effectiveness: 'partial'
+      },
+      {
+        control: null,
+        title: 'Display Redirect Warning',
+        description: 'Show users where they will be redirected before processing.',
+        effectiveness: 'partial'
+      }
+    ],
+
+    story: {
+      attacker: {
+        intro: "You want to phish users of a popular service. You notice their OAuth provider has loose redirect validation. You can create phishing links that appear to come from the trusted auth server...",
+        goal: "Create a convincing phishing campaign using the OAuth authorization endpoint as an open redirector."
+      },
+      defender: {
+        intro: "Your security team has detected phishing attacks using your OAuth authorization endpoint as an open redirector. Attackers are exploiting your users' trust in your domain...",
+        goal: "Tighten redirect URI validation to prevent your OAuth endpoint from being used in phishing attacks."
+      }
+    }
+  },
+
+  {
+    id: 'as_mixup',
+    title: 'Authorization Server Mix-Up',
+    category: 'Code Flow Attacks',
+    severity: 'critical',
+    description: 'In multi-IdP scenarios, attacker tricks the client into sending the authorization code to the wrong authorization server by exploiting lack of issuer validation.',
+    shortDescription: 'Steal code via IdP confusion',
+
+    blockedBy: ['validateIssuer'],
+    partiallyBlockedBy: ['requirePkce'],
+
+    technicalDetails: {
+      attackVector: 'IdP impersonation, issuer confusion',
+      prerequisites: ['Client supports multiple authorization servers', 'No issuer validation in callback'],
+      impact: 'Authorization code theft, full account takeover in federated scenarios'
+    },
+
+    steps: [
+      {
+        id: 'setup_malicious_as',
+        title: 'Set Up Malicious AS',
+        description: 'Attacker operates a malicious authorization server or compromises one in the federation.',
+        perspective: 'attack',
+        diagramNodes: ['attacker'],
+        diagramArrow: null
+      },
+      {
+        id: 'initiate_flow',
+        title: 'Victim Initiates Login',
+        description: 'User tries to log in to a client that supports multiple IdPs.',
+        perspective: 'normal',
+        diagramNodes: ['user', 'client'],
+        diagramArrow: { from: 'user', to: 'client', label: 'Login Request' }
+      },
+      {
+        id: 'redirect_intercept',
+        title: 'Attacker Intercepts/Manipulates',
+        description: 'Attacker manipulates the flow so user authenticates with legitimate AS but client expects malicious AS.',
+        perspective: 'attack',
+        diagramNodes: ['attacker', 'user', 'authServer'],
+        diagramArrow: { from: 'attacker', to: 'user', label: 'Manipulate Flow', style: 'dashed' }
+      },
+      {
+        id: 'code_to_wrong_as',
+        title: 'Code Sent to Wrong AS',
+        description: 'Client sends the authorization code to the malicious AS (thinking that\'s where the flow started).',
+        perspective: 'attack',
+        diagramNodes: ['client', 'attacker'],
+        diagramArrow: { from: 'client', to: 'attacker', label: 'Authorization Code!' }
+      },
+      {
+        id: 'attacker_exchanges',
+        title: 'Attacker Exchanges Code',
+        description: 'Attacker uses the stolen code at the legitimate AS to get tokens.',
+        perspective: 'compromised',
+        diagramNodes: ['attacker', 'authServer'],
+        diagramArrow: { from: 'attacker', to: 'authServer', label: 'Exchange Code → Tokens' }
+      }
+    ],
+
+    mitigations: [
+      {
+        control: 'validateIssuer',
+        title: 'Validate Issuer in Response',
+        description: 'Use the "iss" parameter in authorization responses (RFC 9207) to verify the response came from the expected AS.',
+        effectiveness: 'complete'
+      },
+      {
+        control: 'requirePkce',
+        title: 'Require PKCE',
+        description: 'PKCE partially mitigates this by binding the code to the client, but issuer validation is still recommended.',
+        effectiveness: 'partial'
+      },
+      {
+        control: null,
+        title: 'Per-AS Redirect URIs',
+        description: 'Use unique redirect URIs for each authorization server to prevent confusion.',
+        effectiveness: 'complete'
+      }
+    ],
+
+    story: {
+      attacker: {
+        intro: "You've discovered an enterprise application that supports login via multiple identity providers. The client doesn't validate which IdP the authorization response came from...",
+        goal: "Execute an AS mix-up attack to steal authorization codes from legitimate IdP sessions."
+      },
+      defender: {
+        intro: "Your application supports multiple identity providers for SSO. A security researcher has demonstrated that authorization codes could be stolen through IdP confusion...",
+        goal: "Implement issuer validation to ensure authorization responses come from the expected identity provider."
+      }
+    }
+  },
+
+  {
+    id: 'clickjacking_auth',
+    title: 'Clickjacking Authorization',
+    category: 'Authorization',
+    severity: 'medium',
+    description: 'Attacker embeds the authorization page in a transparent iframe, tricking users into clicking "Authorize" while thinking they\'re performing a different action.',
+    shortDescription: 'Trick clicks on hidden auth page',
+
+    blockedBy: ['frameProtection'],
+    partiallyBlockedBy: [],
+
+    technicalDetails: {
+      attackVector: 'UI redressing, iframe overlay',
+      prerequisites: ['Authorization page can be framed', 'User already authenticated with IdP'],
+      impact: 'Unauthorized OAuth grants, attacker gains access without user awareness'
+    },
+
+    steps: [
+      {
+        id: 'create_overlay',
+        title: 'Create Clickjacking Page',
+        description: 'Attacker creates a page with the authorization endpoint in a transparent iframe, positioned behind a fake UI.',
+        perspective: 'attack',
+        diagramNodes: ['attacker'],
+        diagramArrow: null
+      },
+      {
+        id: 'position_button',
+        title: 'Position "Authorize" Button',
+        description: 'Attacker positions the iframe so the "Authorize" button aligns with a tempting button on the visible page.',
+        perspective: 'attack',
+        diagramNodes: ['attacker'],
+        diagramArrow: null
+      },
+      {
+        id: 'lure_victim',
+        title: 'Lure Victim to Page',
+        description: 'Attacker gets victim to visit their malicious page (e.g., "Click to win prize!").',
+        perspective: 'attack',
+        diagramNodes: ['attacker', 'user'],
+        diagramArrow: { from: 'attacker', to: 'user', label: 'Lure to Page' }
+      },
+      {
+        id: 'victim_clicks',
+        title: 'Victim Clicks',
+        description: 'User clicks what they think is a harmless button, but actually clicks "Authorize" on the hidden iframe.',
+        perspective: 'attack',
+        diagramNodes: ['user', 'authServer'],
+        diagramArrow: { from: 'user', to: 'authServer', label: 'Click "Authorize"' }
+      },
+      {
+        id: 'grant_issued',
+        title: 'Attacker Receives Grant',
+        description: 'Authorization is granted to the attacker\'s application without the user\'s informed consent.',
+        perspective: 'compromised',
+        diagramNodes: ['authServer', 'attacker'],
+        diagramArrow: { from: 'authServer', to: 'attacker', label: 'OAuth Grant' }
+      }
+    ],
+
+    mitigations: [
+      {
+        control: 'frameProtection',
+        title: 'X-Frame-Options / CSP',
+        description: 'Set X-Frame-Options: DENY or Content-Security-Policy: frame-ancestors \'none\' on authorization pages.',
+        effectiveness: 'complete'
+      },
+      {
+        control: null,
+        title: 'Frame-Busting JavaScript',
+        description: 'Include JavaScript that detects framing and breaks out (less reliable than headers).',
+        effectiveness: 'partial'
+      },
+      {
+        control: null,
+        title: 'Require Re-Authentication',
+        description: 'Require password re-entry for sensitive authorization grants.',
+        effectiveness: 'partial'
+      }
+    ],
+
+    story: {
+      attacker: {
+        intro: "You want to get OAuth access to victims' accounts without their knowledge. You've noticed the authorization server doesn't prevent its pages from being framed...",
+        goal: "Create a clickjacking attack that tricks users into authorizing your malicious application."
+      },
+      defender: {
+        intro: "Security researchers have demonstrated that your authorization pages can be embedded in iframes, enabling clickjacking attacks...",
+        goal: "Implement frame protection headers to prevent the authorization page from being embedded in malicious sites."
+      }
+    }
   }
 ];
 
