@@ -421,7 +421,16 @@ func (s *Service) emitAudit(ctx context.Context, event audit.Event) {
 	if s.auditor == nil {
 		return
 	}
-	_ = s.auditor.Emit(ctx, event)
+	if err := s.auditor.Emit(ctx, event); err != nil {
+		// Log audit failures but don't fail the operation - audit is best-effort
+		// for consent operations. The primary operation should still succeed.
+		s.logger.ErrorContext(ctx, "failed to emit audit event",
+			"error", err,
+			"action", event.Action,
+			"user_id", event.UserID,
+			"purpose", event.Purpose,
+		)
+	}
 }
 
 // incrementConsentsGranted increments the consents granted metric if metrics are enabled
