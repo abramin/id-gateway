@@ -11,21 +11,22 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	tenant "credo/internal/tenant/models"
-	"credo/internal/tenant/store"
+	clientstore "credo/internal/tenant/store/client"
+	tenantstore "credo/internal/tenant/store/tenant"
 	dErrors "credo/pkg/domain-errors"
 )
 
 // ServiceSuite provides shared test setup for tenant service tests.
 type ServiceSuite struct {
 	suite.Suite
-	tenantStore *store.InMemoryTenantStore
-	clientStore *store.InMemoryClientStore
+	tenantStore *tenantstore.InMemory
+	clientStore *clientstore.InMemory
 	service     *Service
 }
 
 func (s *ServiceSuite) SetupTest() {
-	s.tenantStore = store.NewInMemoryTenantStore()
-	s.clientStore = store.NewInMemoryClientStore()
+	s.tenantStore = tenantstore.NewInMemory()
+	s.clientStore = clientstore.NewInMemory()
 	s.service = New(s.tenantStore, s.clientStore, nil)
 }
 
@@ -41,8 +42,8 @@ func (s *ServiceSuite) createTestTenant(name string) *tenant.Tenant {
 	return t
 }
 
-func (s *ServiceSuite) createTestClient(tenantID uuid.UUID) *tenant.ClientResponse {
-	resp, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
+func (s *ServiceSuite) createTestClient(tenantID uuid.UUID) *tenant.Client {
+	client, _, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
 		TenantID:      tenantID,
 		Name:          "Web",
 		RedirectURIs:  []string{"https://app.example.com/callback"},
@@ -50,7 +51,7 @@ func (s *ServiceSuite) createTestClient(tenantID uuid.UUID) *tenant.ClientRespon
 		AllowedScopes: []string{"openid"},
 	})
 	require.NoError(s.T(), err)
-	return resp
+	return client
 }
 
 // Tenant Tests
@@ -59,14 +60,14 @@ func (s *ServiceSuite) TestCreateTenantValidation() {
 	s.T().Run("validates empty name", func(t *testing.T) {
 		_, err := s.service.CreateTenant(context.Background(), "")
 		require.Error(s.T(), err)
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeValidation))
+		assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeInvariantViolation))
 	})
 
 	s.T().Run("validates name length", func(t *testing.T) {
 		longName := make([]byte, 129)
 		_, err := s.service.CreateTenant(context.Background(), string(longName))
 		require.Error(s.T(), err)
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeValidation))
+		assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeInvariantViolation))
 	})
 }
 
@@ -98,9 +99,9 @@ func (s *ServiceSuite) TestCreateAndGetClient() {
 		AllowedScopes: []string{"openid"},
 	}
 
-	created, err := s.service.CreateClient(context.Background(), req)
+	created, secret, err := s.service.CreateClient(context.Background(), req)
 	require.NoError(s.T(), err)
-	assert.NotEmpty(s.T(), created.ClientSecret, "expected client secret for confidential client")
+	assert.NotEmpty(s.T(), secret, "expected client secret for confidential client")
 	assert.NotEqual(s.T(), uuid.Nil, created.ID)
 
 	fetched, err := s.service.GetClient(context.Background(), created.ID)
@@ -114,14 +115,14 @@ func (s *ServiceSuite) TestUpdateClient() {
 
 	newName := "Updated"
 	newRedirects := []string{"https://app.example.com/new"}
-	resp, err := s.service.UpdateClient(context.Background(), created.ID, &tenant.UpdateClientRequest{
+	updated, secret, err := s.service.UpdateClient(context.Background(), created.ID, &tenant.UpdateClientRequest{
 		Name:         &newName,
 		RedirectURIs: &newRedirects,
 		RotateSecret: true,
 	})
 	require.NoError(s.T(), err)
-	assert.Equal(s.T(), newName, resp.Name)
-	assert.NotEmpty(s.T(), resp.ClientSecret, "expected rotated secret to be returned")
+	assert.Equal(s.T(), newName, updated.Name)
+	assert.NotEmpty(s.T(), secret, "expected rotated secret to be returned")
 }
 
 func (s *ServiceSuite) TestGetTenantCounts() {
@@ -136,13 +137,13 @@ func (s *ServiceSuite) TestGetTenantCounts() {
 
 func (s *ServiceSuite) TestValidationErrors() {
 	s.T().Run("create client with missing fields", func(t *testing.T) {
-		_, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{TenantID: uuid.New()})
+		_, _, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{TenantID: uuid.New()})
 		require.Error(s.T(), err)
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeValidation) || dErrors.Is(err, dErrors.CodeNotFound))
+		assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeValidation) || dErrors.HasCode(err, dErrors.CodeNotFound))
 	})
 
 	s.T().Run("update client with invalid redirect uri", func(t *testing.T) {
-		_, err := s.service.UpdateClient(context.Background(), uuid.New(), &tenant.UpdateClientRequest{
+		_, _, err := s.service.UpdateClient(context.Background(), uuid.New(), &tenant.UpdateClientRequest{
 			RedirectURIs: &[]string{"invalid"},
 		})
 		require.Error(s.T(), err)
@@ -152,7 +153,7 @@ func (s *ServiceSuite) TestValidationErrors() {
 func (s *ServiceSuite) TestCreateClientHashesSecret() {
 	tenantRecord := s.createTestTenant("Acme")
 
-	resp, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
+	client, secret, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
 		TenantID:      tenantRecord.ID,
 		Name:          "Web",
 		RedirectURIs:  []string{"https://app.example.com/callback"},
@@ -160,20 +161,20 @@ func (s *ServiceSuite) TestCreateClientHashesSecret() {
 		AllowedScopes: []string{"openid"},
 	})
 	require.NoError(s.T(), err)
-	assert.NotEmpty(s.T(), resp.ClientSecret, "expected secret for confidential client")
+	assert.NotEmpty(s.T(), secret, "expected secret for confidential client")
 
-	stored, err := s.clientStore.FindByID(context.Background(), resp.ID)
+	stored, err := s.clientStore.FindByID(context.Background(), client.ID)
 	require.NoError(s.T(), err)
 	assert.NotEmpty(s.T(), stored.ClientSecretHash, "expected stored client secret hash")
 
-	err = bcrypt.CompareHashAndPassword([]byte(stored.ClientSecretHash), []byte(resp.ClientSecret))
+	err = bcrypt.CompareHashAndPassword([]byte(stored.ClientSecretHash), []byte(secret))
 	assert.NoError(s.T(), err, "stored hash should match client secret")
 }
 
 func (s *ServiceSuite) TestPublicClientValidation() {
 	tenantRecord := s.createTestTenant("Acme")
 
-	_, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
+	_, _, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
 		TenantID:      tenantRecord.ID,
 		Name:          "Public",
 		RedirectURIs:  []string{"https://app.example.com/callback"},
@@ -182,13 +183,13 @@ func (s *ServiceSuite) TestPublicClientValidation() {
 		Public:        true,
 	})
 	require.Error(s.T(), err)
-	assert.True(s.T(), dErrors.Is(err, dErrors.CodeValidation), "expected validation error for public client with client_credentials")
+	assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeValidation), "expected validation error for public client with client_credentials")
 }
 
 func (s *ServiceSuite) TestRedirectURIRequiresHost() {
 	tenantRecord := s.createTestTenant("Acme")
 
-	_, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
+	_, _, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
 		TenantID:      tenantRecord.ID,
 		Name:          "Web",
 		RedirectURIs:  []string{"https:///callback"},
@@ -196,7 +197,7 @@ func (s *ServiceSuite) TestRedirectURIRequiresHost() {
 		AllowedScopes: []string{"openid"},
 	})
 	require.Error(s.T(), err)
-	assert.True(s.T(), dErrors.Is(err, dErrors.CodeValidation), "expected validation error for redirect without host")
+	assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeValidation), "expected validation error for redirect without host")
 }
 
 func (s *ServiceSuite) TestTenantScopedClientAccess() {
@@ -206,7 +207,7 @@ func (s *ServiceSuite) TestTenantScopedClientAccess() {
 
 	_, err := s.service.GetClientForTenant(context.Background(), t2.ID, created.ID)
 	require.Error(s.T(), err)
-	assert.True(s.T(), dErrors.Is(err, dErrors.CodeNotFound), "expected not found when tenant mismatched")
+	assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeNotFound), "expected not found when tenant mismatched")
 }
 
 func (s *ServiceSuite) TestResolveClient() {
@@ -222,7 +223,7 @@ func (s *ServiceSuite) TestResolveClient() {
 func (s *ServiceSuite) TestCreateClientNormalizesInput() {
 	tenantRecord := s.createTestTenant("Acme")
 
-	resp, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
+	client, _, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
 		TenantID:      tenantRecord.ID,
 		Name:          "  Web  ",
 		RedirectURIs:  []string{" https://app.example.com/callback ", "https://app.example.com/callback"},
@@ -230,10 +231,10 @@ func (s *ServiceSuite) TestCreateClientNormalizesInput() {
 		AllowedScopes: []string{"openid", "openid"},
 	})
 	require.NoError(s.T(), err)
-	assert.Equal(s.T(), "Web", resp.Name, "expected trimmed name")
-	assert.Len(s.T(), resp.RedirectURIs, 1, "expected deduplicated redirect URIs")
-	assert.Equal(s.T(), "https://app.example.com/callback", resp.RedirectURIs[0])
-	assert.Len(s.T(), resp.AllowedGrants, 1, "expected deduplicated grants")
-	assert.Equal(s.T(), "authorization_code", resp.AllowedGrants[0], "expected lowercased grants")
-	assert.Len(s.T(), resp.AllowedScopes, 1, "expected deduplicated scopes")
+	assert.Equal(s.T(), "Web", client.Name, "expected trimmed name")
+	assert.Len(s.T(), client.RedirectURIs, 1, "expected deduplicated redirect URIs")
+	assert.Equal(s.T(), "https://app.example.com/callback", client.RedirectURIs[0])
+	assert.Len(s.T(), client.AllowedGrants, 1, "expected deduplicated grants")
+	assert.Equal(s.T(), "authorization_code", client.AllowedGrants[0], "expected lowercased grants")
+	assert.Len(s.T(), client.AllowedScopes, 1, "expected deduplicated scopes")
 }

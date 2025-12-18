@@ -18,13 +18,13 @@ func (s *ServiceSuite) TestService_RevokeSession() {
 	s.T().Run("Given invalid user When revoke Then unauthorized", func(t *testing.T) {
 		err := s.service.RevokeSession(ctx, uuid.Nil, uuid.New())
 		assert.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeUnauthorized))
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeUnauthorized))
 	})
 
 	s.T().Run("Given missing session id When revoke Then bad request", func(t *testing.T) {
 		err := s.service.RevokeSession(ctx, uuid.New(), uuid.Nil)
 		assert.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeBadRequest))
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeBadRequest))
 	})
 
 	s.T().Run("Given session not found When revoke Then not found", func(t *testing.T) {
@@ -34,7 +34,7 @@ func (s *ServiceSuite) TestService_RevokeSession() {
 
 		err := s.service.RevokeSession(ctx, userID, sessionID)
 		assert.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeNotFound))
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeNotFound))
 	})
 
 	s.T().Run("Given session belongs to different user When revoke Then forbidden", func(t *testing.T) {
@@ -50,7 +50,7 @@ func (s *ServiceSuite) TestService_RevokeSession() {
 
 		err := s.service.RevokeSession(ctx, userID, sessionID)
 		assert.Error(t, err)
-		assert.True(t, dErrors.Is(err, dErrors.CodeForbidden))
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeForbidden))
 	})
 
 	s.T().Run("Given active session owned by user When revoke Then session revoked and token JTI revoked", func(t *testing.T) {

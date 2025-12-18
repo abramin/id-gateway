@@ -3,7 +3,7 @@
 **Status:** Implementation Required
 **Priority:** P1 (High)
 **Owner:** Engineering Team
-**Last Updated:** 2025-12-03
+**Last Updated:** 2025-12-13
 
 ---
 
@@ -56,7 +56,7 @@ Credo must implement both endpoints to comply with GDPR.
 
 ### FR-1: Data Export (Already covered in PRD-006)
 
-See **PRD-006: Audit & Compliance** for `GET /me/data-export` implementation.
+See **PRD-006: Audit & Compliance** for `GET /me/data-export` implementation. The data-export service MUST fan out concurrent reads across audit, consent, session, VC, and registry cache stores using a shared `context.Context` (errgroup/waitgroup), surface the first error, and aggregate results in a deterministic order. HTTP handlers remain thin (parse/validate, call service, render); no business logic in handlers.
 
 ---
 
@@ -149,6 +149,12 @@ func pseudonymizeUserID(userID string) string {
 ---
 
 ## 5. Technical Requirements
+
+### TR-0: Data Export Orchestration (Service Layer)
+
+- Provide a dedicated service method (not handler) that issues concurrent store reads (audit, consent, session, VC, registry cache) with shared context cancellation and per-source latency metrics.
+- Collate results into a single export DTO; avoid leaking internal errors—map to domain errors before returning to handlers.
+- Enforce consistent ordering of exported sections so clients receive stable payload shape even when store latency varies.
 
 ### TR-1: Store Interface Updates
 
@@ -373,3 +379,4 @@ curl http://localhost:8080/auth/userinfo -H "Authorization: Bearer $TOKEN"
 | Version | Date       | Author       | Changes     |
 | ------- | ---------- | ------------ | ----------- |
 | 1.0     | 2025-12-03 | Product Team | Initial PRD |
+| 1.1     | 2025-12-13 | Engineering  | Specify concurrent data-export fan-out, add service-layer orchestration TR, handler stays thin |

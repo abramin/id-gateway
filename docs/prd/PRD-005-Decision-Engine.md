@@ -126,6 +126,7 @@ The gateway must make authorization decisions by combining evidence from multipl
      - Fetch citizen record: `registryService.Citizen(nationalID)`
      - Fetch sanctions record: `registryService.Sanctions(nationalID)`
      - Check for AgeOver18 VC: `vcStore.FindByUserAndType(userID, "AgeOver18")`
+     - Execute evidence lookups in parallel (errgroup or equivalent) with shared context cancellation on first failure/timeout; emit per-source latency/cache metrics.
    - For "sanctions_screening":
      - Get national_id from context
      - Fetch sanctions record only
@@ -292,6 +293,10 @@ func (s *Service) Evaluate(ctx context.Context, in DecisionInput) (DecisionOutco
 }
 ```
 
+- Evidence gathering MUST be orchestrated in the service layer (not handlers) via a helper that runs registry and VC lookups concurrently using a shared `context.Context` (errgroup preferred) with early cancellation on first error/timeout.
+- Emit per-source spans/metrics (latency, cache hit/miss) and map infra/store errors to domain errors before rule evaluation.
+- Handlers remain thin: parse/validate, call orchestrator + evaluator, emit audit event, return response.
+
 ### TR-3: Identity Derivation
 
 **Location:** `internal/decision/models.go`
@@ -387,6 +392,7 @@ func (h *Handler) handleDecisionEvaluate(w http.ResponseWriter, r *http.Request)
 - [ ] Decision evaluates pass for compliant users with credentials
 - [ ] Decision fails for sanctioned users
 - [ ] Decision fails for users under 18
+- [ ] Evidence gathering runs registry + VC lookups in parallel with shared context cancellation and traces/metrics per source
 - [ ] Decision passes with conditions for users without VCs
 - [ ] All decisions emit audit events with outcome
 - [ ] Evidence gathering handles registry errors gracefully
@@ -455,9 +461,10 @@ curl -X POST http://localhost:8080/decision/evaluate \
 
 ## Revision History
 
-| Version | Date       | Author       | Changes                                    |
-| ------- | ---------- | ------------ | ------------------------------------------ |
-| 1.3     | 2025-12-18 | Security Eng | Added DSA/SQL requirements for rule DAGs and normalized, immutable rule storage |
-| 1.2     | 2025-12-18 | Security Eng | Added secure-by-design evaluation (DAG, default-deny, signed policy bundles) |
-| 1.0     | 2025-12-03 | Product Team | Initial PRD                                |
-| 1.1     | 2025-12-12 | Engineering  | Add TR-5 CQRS & Read-Optimized Projections |
+| Version | Date       | Author       | Changes                                                                         |
+| ------- | ---------- | ------------ | ------------------------------------------------------------------------------- |
+| 1.4     | 2025-12-18 | Security Eng | Added DSA/SQL requirements for rule DAGs and normalized, immutable rule storage |
+| 1.3     | 2025-12-18 | Security Eng | Added secure-by-design evaluation (DAG, default-deny, signed policy bundles)    |
+| 1.2     | 2025-12-16 | Engineering  | Add concurrent evidence-gathering requirements and acceptance criteria          |
+| 1.1     | 2025-12-12 | Engineering  | Add TR-5 CQRS & Read-Optimized Projections                                      |
+| 1.0     | 2025-12-03 | Product Team | Initial PRD                                                                     |

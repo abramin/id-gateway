@@ -1,18 +1,27 @@
-package httpError
+package httputil
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 
-	"credo/internal/transport/http/json"
 	dErrors "credo/pkg/domain-errors"
 )
+
+func WriteJSON(w http.ResponseWriter, status int, response any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		// best-effort fallback; don't override status for the caller
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+	}
+}
 
 // WriteError centralizes domain error translation to HTTP responses.
 // It translates transport-agnostic domain errors into HTTP status codes and error responses.
 func WriteError(w http.ResponseWriter, err error) {
-	// Try domain error first (new approach)
-	var domainErr dErrors.DomainError
+	// Try domain error first
+	var domainErr *dErrors.Error
 	if errors.As(err, &domainErr) {
 		status := DomainCodeToHTTPStatus(domainErr.Code)
 		code := DomainCodeToHTTPCode(domainErr.Code)
@@ -22,12 +31,12 @@ func WriteError(w http.ResponseWriter, err error) {
 		if domainErr.Message != "" {
 			response["error_description"] = domainErr.Message
 		}
-		json.WriteJSON(w, status, response)
+		WriteJSON(w, status, response)
 		return
 	}
 
 	// Fallback for unexpected errors
-	json.WriteJSON(w, http.StatusInternalServerError, map[string]string{
+	WriteJSON(w, http.StatusInternalServerError, map[string]string{
 		"error": DomainCodeToHTTPCode(dErrors.CodeInternal),
 	})
 }

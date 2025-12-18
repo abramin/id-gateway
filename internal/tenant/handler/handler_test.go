@@ -16,7 +16,8 @@ import (
 
 	"credo/internal/platform/middleware"
 	"credo/internal/tenant/service"
-	"credo/internal/tenant/store"
+	clientstore "credo/internal/tenant/store/client"
+	tenantstore "credo/internal/tenant/store/tenant"
 )
 
 const adminToken = "secret-token"
@@ -28,8 +29,8 @@ type HandlerSuite struct {
 }
 
 func (s *HandlerSuite) SetupTest() {
-	tenants := store.NewInMemoryTenantStore()
-	clients := store.NewInMemoryClientStore()
+	tenants := tenantstore.NewInMemory()
+	clients := clientstore.NewInMemory()
 	svc := service.New(tenants, clients, nil)
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 

@@ -4,7 +4,6 @@
 **Priority:** P0 (Critical)
 **Owner:** Engineering Team
 **Dependencies:** PRD-001 (Authentication), PRD-016 (Token Lifecycle)
-**Last Updated:** 2025-12-18
 
 ---
 
@@ -163,11 +162,25 @@ Retry-After: 45 (seconds, only on 429 response)
 **Description:** Combine credential-specific throttles with global limits to slow brute force and credential stuffing.
 
 **Controls:**
+
 - Username/email and IP combined key with sliding window: 5 attempts/15 minutes, hard lock for 15 minutes after 10 failures/day; emit audit `auth.lockout`.
 - Progressive backoff before 401/429 responses (250ms → 500ms → 1s) to reduce online guessing speed.
 - Generic error messaging to prevent account enumeration (same response for invalid username vs password/MFA code).
 - Require CAPTCHA or out-of-band verification after 3 consecutive lockouts within 24 hours.
 - OTP verification endpoints share the same counters to prevent bypassing login limits.
+
+**Account Lockout Response (429):**
+
+```json
+{
+  "error": "account_locked",
+  "message": "Account temporarily locked due to too many failed attempts. Please try again later or reset your password.",
+  "retry_after": 900,
+  "support_url": "https://example.com/support"
+}
+```
+
+Note: This response intentionally does not reveal whether the account exists (prevents enumeration).
 
 ---
 
@@ -231,6 +244,48 @@ On each request:
 }
 ```
 
+**Error Responses:**
+
+**401 Unauthorized (missing or invalid token):**
+
+```json
+{
+  "error": "unauthorized",
+  "message": "Admin authentication required"
+}
+```
+
+**403 Forbidden (insufficient permissions):**
+
+```json
+{
+  "error": "forbidden",
+  "message": "Insufficient permissions to manage rate limit allowlist"
+}
+```
+
+**400 Bad Request (invalid input):**
+
+```json
+{
+  "error": "invalid_request",
+  "message": "Invalid allowlist entry",
+  "details": {
+    "type": "must be 'ip' or 'user_id'",
+    "identifier": "invalid IP address format"
+  }
+}
+```
+
+**404 Not Found (when removing from allowlist):**
+
+```json
+{
+  "error": "not_found",
+  "message": "Identifier not found in allowlist"
+}
+```
+
 **Business Logic:**
 
 1. Validate admin JWT token
@@ -277,6 +332,39 @@ X-Quota-Reset: 1738291200 (first of next month)
 5. Increment usage counter
 6. Add quota headers to response
 
+**Error Responses:**
+
+**401 Unauthorized (invalid API key):**
+
+```json
+{
+  "error": "invalid_api_key",
+  "message": "API key is missing or invalid"
+}
+```
+
+**403 Forbidden (API key lacks access):**
+
+```json
+{
+  "error": "forbidden",
+  "message": "API key does not have access to this resource"
+}
+```
+
+**429 Too Many Requests (quota exceeded):**
+
+```json
+{
+  "error": "quota_exceeded",
+  "message": "Monthly API quota exceeded. Upgrade your plan for additional requests.",
+  "quota_limit": 1000,
+  "quota_used": 1000,
+  "quota_reset": 1738291200,
+  "upgrade_url": "https://example.com/plans"
+}
+```
+
 ---
 
 ### FR-6: DDoS Protection (Global Throttling)
@@ -308,6 +396,42 @@ X-Quota-Reset: 1738291200 (first of next month)
   "retry_after": 60
 }
 ```
+
+---
+
+### FR-7: Rate Limiter Failure Mode
+
+**Scope:** All rate-limited endpoints
+
+**Description:** Define behavior when the rate limiting infrastructure (Redis) is unavailable.
+
+**Policy:** Fail Open (allow requests to proceed)
+
+**Rationale:**
+
+- Availability over security for transient failures
+- Redis failures should be rare and short-lived
+- Denying all requests would cause complete service outage
+
+**Fallback Behavior:**
+
+1. If Redis is unavailable, allow the request
+2. Log warning: `rate_limiter_unavailable`
+3. Emit metric: `rate_limit.fallback_allow`
+4. Set header: `X-RateLimit-Status: degraded`
+
+**Monitoring:**
+
+- Alert if fallback mode exceeds 1% of requests
+- Alert if Redis connection failures persist > 30 seconds
+
+**Optional: In-Memory Fallback**
+
+For critical endpoints (authentication), maintain a local in-memory rate limiter as backup:
+
+- Smaller limits than distributed version
+- Per-instance only (not shared across instances)
+- Prevents total bypass during Redis outage
 
 ---
 
@@ -357,25 +481,10 @@ type TokenBucket struct {
     mu        sync.Mutex
 }
 
-func (b *TokenBucket) Take(cost int) bool {
-    b.mu.Lock()
-    defer b.mu.Unlock()
-
-    // Refill tokens based on elapsed time
-    now := time.Now()
-    elapsed := now.Sub(b.lastRefill)
-    tokensToAdd := int(elapsed / b.refillRate)
-    b.tokens = min(b.tokens + tokensToAdd, b.capacity)
-    b.lastRefill = now
-
-    // Check if enough tokens
-    if b.tokens >= cost {
-        b.tokens -= cost
-        return true
-    }
-    return false
-}
+func (b *TokenBucket) Take(cost int) bool {}
 ```
+
+- Bucket refill/eviction should be handled by a background goroutine (context-aware) to amortize work across requests; emit metrics for refill latency, eviction counts, and queue depth when shared stores backpressure.
 
 **Sliding Window (Redis, production):**
 
@@ -414,34 +523,6 @@ type RateLimitMiddleware struct {
 func (m *RateLimitMiddleware) RateLimit(class EndpointClass) func(http.Handler) http.Handler {
     return func(next http.Handler) http.Handler {
         return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-            // Extract IP
-            ip := extractClientIP(r)
-
-            // Check allowlist
-            if allowed, _ := m.limiter.IsAllowlisted(r.Context(), ip); allowed {
-                next.ServeHTTP(w, r)
-                return
-            }
-
-            // Get limit config for endpoint class
-            limit, window := m.config.GetLimits(class)
-
-            // Check IP rate limit
-            key := fmt.Sprintf("ip:%s:%s", ip, class)
-            allowed, remaining, resetAt, err := m.limiter.Allow(r.Context(), key, limit, window)
-
-            // Add headers
-            w.Header().Set("X-RateLimit-Limit", strconv.Itoa(limit))
-            w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(remaining))
-            w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(resetAt.Unix(), 10))
-
-            if !allowed {
-                w.Header().Set("Retry-After", strconv.Itoa(int(window.Seconds())))
-                http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
-                return
-            }
-
-            next.ServeHTTP(w, r)
         })
     }
 }
@@ -681,9 +762,11 @@ curl -X POST http://localhost:8080/admin/rate-limit/allowlist \
 
 ## Revision History
 
-| Version | Date       | Author       | Changes     |
-| ------- | ---------- | ------------ | ----------- |
-| 1.3     | 2025-12-18 | Security Eng | Added DSA/SQL requirements (deque/time-wheel, Postgres partitioning), atomic multi-key resets, expanded testing |
-| 1.2     | 2025-12-18 | Security Eng | Added default-deny posture when limits missing, atomicity, and security-focused tests |
-| 1.1     | 2025-12-12 | Product Team | Added OWASP authentication-specific throttling and lockout guidance |
-| 1.0     | 2025-12-12 | Product Team | Initial PRD |
+| Version | Date       | Author       | Changes                                                                                                         |
+| ------- | ---------- | ------------ | --------------------------------------------------------------------------------------------------------------- |
+| 1.5     | 2025-12-18 | Security Eng | Added DSA/SQL requirements (deque/time-wheel, Postgres partitioning), atomic multi-key resets, expanded testing |
+| 1.4     | 2025-12-18 | Security Eng | Added default-deny posture when limits missing, atomicity, and security-focused tests                           |
+| 1.3     | 2025-12-17 | Engineering  | Add comprehensive error responses for FR-4, FR-5, FR-2b; add FR-7 failure mode                                  |
+| 1.2     | 2025-12-16 | Engineering  | Add background refill/eviction requirement with metrics for token buckets                                       |
+| 1.1     | 2025-12-12 | Product Team | Added OWASP authentication-specific throttling and lockout guidance                                             |
+| 1.0     | 2025-12-12 | Product Team | Initial PRD                                                                                                     |

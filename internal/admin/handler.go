@@ -9,7 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"credo/internal/platform/middleware"
-	respond "credo/internal/transport/http/json"
+	"credo/internal/transport/httputil"
 )
 
 // Handler handles admin monitoring and stats endpoints
@@ -53,7 +53,7 @@ func (h *Handler) HandleGetStats(w http.ResponseWriter, r *http.Request) {
 		"request_id", requestID,
 	)
 
-	respond.WriteJSON(w, http.StatusOK, stats)
+	httputil.WriteJSON(w, http.StatusOK, stats)
 }
 
 // HandleGetAllUsers returns all users with session information
@@ -77,7 +77,7 @@ func (h *Handler) HandleGetAllUsers(w http.ResponseWriter, r *http.Request) {
 		"count", len(users),
 	)
 
-	respond.WriteJSON(w, http.StatusOK, map[string]interface{}{
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
 		"users": users,
 		"total": len(users),
 	})
@@ -112,7 +112,7 @@ func (h *Handler) HandleGetRecentAuditEvents(w http.ResponseWriter, r *http.Requ
 		"count", len(events),
 	)
 
-	respond.WriteJSON(w, http.StatusOK, map[string]interface{}{
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
 		"events": events,
 		"total":  len(events),
 	})

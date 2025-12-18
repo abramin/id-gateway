@@ -662,6 +662,140 @@ Proof:
 
 ---
 
+## C8. Consent-as-a-Service Platform
+
+**PRD:** PRD-029
+**Priority:** P2 (Strategic)
+**Time Estimate:** 12-16 hours
+**Depends On:** PRD-002 (Consent), PRD-018 (Notifications)
+
+### What It Adds
+
+- **Multi-tenant consent delegation** where third-party apps integrate with Credo as their consent hub
+- Unified user consent dashboard across all connected services
+- Cross-service consent revocation with webhook notifications
+- GDPR Article 7 compliance-as-a-service
+
+### Why Strategic
+
+- No competitor offers consent-as-a-service
+- Positions Credo as a consent hub, not just an identity provider
+- Enterprise value for platforms managing multiple applications
+
+### Resume Impact
+
+"Built consent-as-a-service platform with multi-tenant delegation enabling unified consent management across partner applications."
+
+---
+
+## C9. Portable Trust Score
+
+**PRD:** PRD-030
+**Priority:** P2 (Strategic)
+**Time Estimate:** 14-18 hours
+**Depends On:** PRD-004 (VCs), PRD-005 (Decision), PRD-010 (ZKP)
+
+### What It Adds
+
+- **Privacy-preserving reputation score** that travels with users
+- Trust score components: verification level, credential count, account age, attestations
+- ZKP-provable score (prove score > threshold without revealing inputs)
+- Cross-service score sharing via verifiable credentials
+- Score decay over time for freshness
+
+### Why Strategic
+
+- Enables "prove once, trust everywhere" across services
+- Reduces verification costs for low-risk operations
+- No competitor offers ZKP-based portable trust scores
+
+### Resume Impact
+
+"Implemented privacy-preserving trust score system with zero-knowledge proofs enabling cross-service reputation without revealing underlying data."
+
+---
+
+## C10. Compliance-as-Code Templates
+
+**PRD:** PRD-031
+**Priority:** P2 (Strategic - Early Start)
+**Time Estimate:** 10-14 hours
+**Depends On:** PRD-002 (Consent), PRD-006 (Audit), PRD-007 (Data Rights)
+
+### What It Adds
+
+- **Pre-built compliance templates** for GDPR, CCPA, HIPAA, PCI-DSS, SOC2
+- One-click compliance setup for new tenants
+- Template composition (e.g., GDPR + PCI for EU fintech)
+- Compliance status endpoint showing current configuration
+- YAML-based template definitions for customization
+
+### Why Strategic
+
+- Immediate enterprise value (can start after Phase 2)
+- Reduces compliance setup from weeks to minutes
+- Differentiates from Auth0/Okta which lack compliance templates
+
+### Resume Impact
+
+"Built compliance-as-code template system enabling one-click GDPR/HIPAA/PCI-DSS configuration for identity platform."
+
+---
+
+## C11. Privacy-Preserving Analytics
+
+**PRD:** PRD-032
+**Priority:** P2 (Strategic)
+**Time Estimate:** 16-20 hours
+**Depends On:** PRD-006 (Audit), PRD-010 (ZKP)
+
+### What It Adds
+
+- **Differential privacy** for aggregate analytics queries
+- Privacy budget management limiting total information disclosure
+- Query audit trail showing who asked what
+- User transparency (what queries touched my data)
+- Suppression of small groups to prevent re-identification
+
+### Why Strategic
+
+- Enables business insights without PII access
+- GDPR Article 25 data protection by design
+- No competitor offers privacy-preserving analytics for identity data
+
+### Resume Impact
+
+"Implemented differential privacy analytics engine enabling aggregate user insights while maintaining individual privacy guarantees."
+
+---
+
+## C12. Federated Trust Network
+
+**PRD:** PRD-033
+**Priority:** P3 (Strategic - Most Advanced)
+**Time Estimate:** 18-24 hours
+**Depends On:** PRD-004 (VCs), PRD-009 (DIDs), PRD-010 (ZKP)
+
+### What It Adds
+
+- **Web of trust** where verified users vouch for others
+- ZKP vouches that prove relationship without revealing identity
+- Weighted trust scoring based on voucher reputation
+- Conditional verification (N vouches = verified for purpose X)
+- Fraud prevention: circular vouching detection, velocity limits
+
+### Why Strategic
+
+- Reduces verification costs using social trust
+- Solves cold start problem for new users
+- Creates network effects and user stickiness
+
+### Resume Impact
+
+"Built decentralized trust network with zero-knowledge vouching enabling privacy-preserving social identity verification."
+
+---
+
 # Implementation Timeline
 
 ## Minimum Viable V2 (3-4 weeks)
@@ -998,6 +1132,22 @@ This section explains how to consume the platform as composable modules while ke
 
 **Use when:** Building partner ecosystem, improving developer experience, or need operations tooling.
 
+## Differentiation Pack (Strategic)
+
+**Phase 7: Unique market differentiators**
+
+- PRD-029: Consent-as-a-Service (multi-tenant consent delegation)
+- PRD-030: Portable Trust Score (ZKP-provable reputation)
+- PRD-031: Compliance-as-Code Templates (GDPR/CCPA/HIPAA/PCI presets)
+- PRD-032: Privacy-Preserving Analytics (differential privacy)
+- PRD-033: Federated Trust Network (web of trust with ZKP vouching)
+
+**Use when:** Differentiating from Auth0/Okta/Keycloak with unique capabilities no competitor offers.
+
+**Early Start Options:**
+- PRD-029 and PRD-031 can start after Phase 2 (no ZKP dependency)
+- PRD-030, PRD-032, PRD-033 require Phase 5 ZKP foundation
+
 ## Adoption Timeline
 
 | Milestone | Timeline | PRDs |
@@ -1006,6 +1156,7 @@ This section explains how to consume the platform as composable modules while ke
 | Production Baseline | 15-20 days | + Infrastructure Layer |
 | Full Production | 22-30 days | + Assurance Pack |
 | Advanced Features | 30-46 days | + Decentralized + Integrations |
+| Strategic Differentiation | 43-58 days | + Differentiation Pack |
 
 ---
 
@@ -1016,3 +1167,4 @@ This section explains how to consume the platform as composable modules while ke
 | 1.0     | 2025-12-03 | Product Team | Initial V2 Roadmap                                                    |
 | 2.0     | 2025-12-06 | Product Team | Reorganized into tracks, added advanced features (DIDs, ZK, ML, GDPR) |
 | 3.0     | 2025-12-17 | Engineering  | Consolidated: merged SYSTEM_DESIGN_ROADMAP.md and MODULE_BUNDLES.md   |
+| 3.1     | 2025-12-17 | Engineering  | Added Phase 7 Differentiation Pack (C8-C12): Consent-as-a-Service, Trust Score, Compliance Templates, Privacy Analytics, Federated Trust Network |

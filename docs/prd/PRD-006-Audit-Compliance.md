@@ -3,7 +3,7 @@
 **Status:** Implementation Required
 **Priority:** P0 (Critical)
 **Owner:** Engineering Team
-**Last Updated:** 2025-12-12
+**Last Updated:** 2025-12-18
 
 ---
 
@@ -46,7 +46,7 @@ This requires an **append-only**, **immutable**, **searchable** audit log.
 
 **Function:** `auditPublisher.Emit(ctx, event)`
 
-**Description:** Internal service method called by handlers to log sensitive operations. Should be non-blocking.
+**Description:** Internal service method called by handlers to log sensitive operations. MUST be non-blocking using a buffered channel + background worker started at server bootstrap with graceful shutdown on context cancel.
 
 **Usage Example:**
 
@@ -213,22 +213,12 @@ type Event struct {
 
 **Location:** `internal/audit/publisher.go`
 
-```go
-type Publisher struct {
-    store Store
-}
+**Outline:**
 
-func (p *Publisher) Emit(ctx context.Context, ev Event) error {
-    // Synchronous for MVP, async with channel in production
-    return p.store.Append(ctx, ev)
-}
-
-func (p *Publisher) List(ctx context.Context, userID string) ([]Event, error) {
-    return p.store.ListByUser(ctx, userID)
-}
-```
-
-**Future:** Use buffered channel + background worker for async publishing.
+- Publisher owns a bounded channel (size configurable) and a worker goroutine that persists events to the store.
+- `Emit` performs a non-blocking enqueue with backpressure policy: drop oldest or block based on configuration; emit metrics for drops/queue depth.
+- Worker runs with `context.Context`, drains the channel, and flushes outstanding events on shutdown; emits span/metric annotations for latency and failures.
+- `List` remains a synchronous store read.
 
 ### TR-3: Store (Append-Only)
 
@@ -348,8 +338,7 @@ curl "http://localhost:8080/me/data-export?action=consent_granted" \
 
 ## 7. Future Enhancements
 
-- Async event publishing (channel + worker goroutine)
-- Queue-based audit (NATS, Kafka)
+- Replace in-process channel with queue-based transport (NATS, Kafka) and multi-consumer indexing workers
 - Persistent store (Postgres, MongoDB)
 - Audit log retention policies (delete after N years)
 - Audit dashboards (real-time monitoring)
@@ -369,7 +358,8 @@ curl "http://localhost:8080/me/data-export?action=consent_granted" \
 
 | Version | Date       | Author       | Changes                                                                                         |
 | ------- | ---------- | ------------ | ----------------------------------------------------------------------------------------------- |
-| 1.4     | 2025-12-18 | Security Eng | Added anchoring/verification requirements alongside partitioning and least-privilege interfaces |
-| 1.3     | 2025-12-18 | Security Eng | Added secure storage/integrity (hash chaining, partitioning, least-privilege interfaces)        |
+| 1.5     | 2025-12-18 | Security Eng | Added anchoring/verification requirements alongside partitioning and least-privilege interfaces |
+| 1.4     | 2025-12-18 | Security Eng | Added secure storage/integrity (hash chaining, partitioning, least-privilege interfaces)        |
+| 1.3     | 2025-12-16 | Engineering  | Formalize async publisher (buffered channel + worker, shutdown semantics, metrics/backpressure) |
 | 1.2     | 2025-12-12 | Engineering  | Add FR-3: Searchable Audit Queries (Investigations) & TR-5: Event Streaming & Indexing Pipeline |
 | 1.0     | 2025-12-03 | Product Team | Initial PRD                                                                                     |

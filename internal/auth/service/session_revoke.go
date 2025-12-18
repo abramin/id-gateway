@@ -20,7 +20,7 @@ func (s *Service) RevokeSession(ctx context.Context, userID uuid.UUID, sessionID
 
 	session, err := s.sessions.FindByID(ctx, sessionID)
 	if err != nil {
-		if dErrors.Is(err, dErrors.CodeNotFound) {
+		if dErrors.HasCode(err, dErrors.CodeNotFound) {
 			return dErrors.New(dErrors.CodeNotFound, "session not found")
 		}
 		return dErrors.Wrap(err, dErrors.CodeInternal, "failed to find session")

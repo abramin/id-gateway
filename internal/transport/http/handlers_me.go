@@ -1,4 +1,4 @@
-package httptransport
+package http
 
 // import "net/http"
 

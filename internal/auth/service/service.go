@@ -15,9 +15,9 @@ import (
 	"credo/internal/auth/models"
 	"credo/internal/auth/store/revocation"
 	sessionStore "credo/internal/auth/store/session"
-	"credo/internal/facts"
 	"credo/internal/platform/metrics"
 	"credo/internal/platform/middleware"
+	"credo/internal/sentinel"
 	"credo/pkg/attrs"
 	dErrors "credo/pkg/domain-errors"
 )
@@ -287,13 +287,13 @@ type tokenErrorMapping struct {
 // tokenErrorMappings defines error translations in priority order.
 // First match wins; more specific errors should come first.
 var tokenErrorMappings = []tokenErrorMapping{
-	{facts.ErrNotFound, dErrors.CodeInvalidGrant, "invalid authorization code", "invalid refresh token", "not_found"},
-	{facts.ErrExpired, dErrors.CodeInvalidGrant, "authorization code expired", "refresh token expired", "expired"},
-	{facts.ErrAlreadyUsed, dErrors.CodeInvalidGrant, "authorization code already used", "invalid refresh token", "already_used"},
+	{sentinel.ErrNotFound, dErrors.CodeInvalidGrant, "invalid authorization code", "invalid refresh token", "not_found"},
+	{sentinel.ErrExpired, dErrors.CodeInvalidGrant, "authorization code expired", "refresh token expired", "expired"},
+	{sentinel.ErrAlreadyUsed, dErrors.CodeInvalidGrant, "authorization code already used", "invalid refresh token", "already_used"},
 	{sessionStore.ErrSessionRevoked, dErrors.CodeInvalidGrant, "session has been revoked", "session has been revoked", "session_revoked"},
-	{facts.ErrInvalidState, dErrors.CodeInvalidGrant, "session not active", "session not active", "invalid_state"},
-	{facts.ErrInvalidInput, dErrors.CodeInvalidGrant, "", "", "invalid_input"},
-	{facts.ErrBadRequest, dErrors.CodeBadRequest, "", "", "bad_request"},
+	{sentinel.ErrInvalidState, dErrors.CodeInvalidGrant, "session not active", "session not active", "invalid_state"},
+	{sentinel.ErrInvalidInput, dErrors.CodeInvalidGrant, "", "", "invalid_input"},
+	{sentinel.ErrBadRequest, dErrors.CodeBadRequest, "", "", "bad_request"},
 }
 
 // handleTokenError translates dependency errors into domain errors.
@@ -309,7 +309,7 @@ func (s *Service) handleTokenError(ctx context.Context, err error, clientID stri
 	}
 
 	// Pass through existing domain errors
-	var de dErrors.DomainError
+	var de *dErrors.Error
 	if errors.As(err, &de) {
 		s.authFailure(ctx, string(de.Code), false, attrs...)
 		return err

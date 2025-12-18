@@ -235,10 +235,9 @@ if err != nil {
 
 **Business Logic:**
 
-1. Call Citizen() and Sanctions() in parallel (use goroutines)
-2. Wait for both to complete or timeout (5 second max)
-3. If either fails, return error
-4. Return both records
+1. Call `Citizen()` and `Sanctions()` concurrently using a shared `context.Context` (errgroup preferred) with early cancel on first failure or timeout (5s max).
+2. Capture per-call latency and cache hit/miss metadata for traces/metrics.
+3. If either fails, return error; otherwise return both records as a single evidence bundle.
 
 ### Identity Evidence Orchestration
 
@@ -381,6 +380,7 @@ type Service struct {
 func (s *Service) Check(ctx context.Context, nationalID string) (*CitizenRecord, *SanctionsRecord, error)
 func (s *Service) Citizen(ctx context.Context, nationalID string) (*CitizenRecord, error)
 func (s *Service) Sanctions(ctx context.Context, nationalID string) (*SanctionsRecord, error)
+// Check MUST execute citizen + sanctions lookups in parallel (errgroup or equivalent), propagate context cancellation, and annotate spans/metrics with cache outcomes and per-call latency.
 ```
 
 ### TR-5: Data Minimization
@@ -744,7 +744,7 @@ curl -X POST http://localhost:8080/registry/citizen \
 - [ ] Sanctions lookup returns listed status
 - [ ] Cache reduces latency on repeated lookups
 - [ ] Cache expires after 5 minutes
-- [ ] Combined Check() calls both registries in parallel
+- [ ] Combined Check() runs citizen + sanctions in parallel with shared context cancellation and traces/metrics for each call
 - [ ] Operations require consent (403 without)
 - [ ] All lookups emit audit events
 - [ ] Mock clients simulate realistic latency
@@ -852,7 +852,8 @@ curl -X POST http://localhost:8080/registry/citizen \
 
 | Version | Date       | Author           | Changes                                                                                                                                          |
 | ------- | ---------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1.3     | 2025-12-18 | Security Eng     | Added secure-by-design and testing requirements (value objects, default-deny, immutability, typed results)                                       |
-| 1.0     | 2025-12-03 | Product Team     | Initial PRD                                                                                                                                      |
-| 1.1     | 2025-12-10 | Engineering Team | Add tracing requirements                                                                                                                         |
+| 1.4     | 2025-12-18 | Security Eng     | Added secure-by-design and testing requirements (value objects, default-deny, immutability, typed results)                                       |
+| 1.3     | 2025-12-13 | Engineering Team | Clarify concurrent Check() requirements (errgroup + context cancel), add tracing/metrics expectations, update acceptance criteria                |
 | 1.2     | 2025-12-11 | Engineering Team | Document provider abstraction architecture implementation, add orchestration details, expand TR-6 with capability negotiation and error taxonomy |
+| 1.1     | 2025-12-10 | Engineering Team | Add tracing requirements                                                                                                                         |
+| 1.0     | 2025-12-03 | Product Team     | Initial PRD                                                                                                                                      |

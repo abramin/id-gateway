@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"time"
 
 	"credo/internal/consent/models"
 	"credo/internal/consent/service"
@@ -26,14 +27,15 @@ func NewConsentAdapter(consentService *service.Service) ports.ConsentPort {
 
 // HasConsent checks if user has valid consent for a purpose
 func (a *ConsentAdapter) HasConsent(ctx context.Context, userID string, purpose string) (bool, error) {
-	consents, err := a.consentService.List(ctx, userID, nil)
+	records, err := a.consentService.List(ctx, userID, nil)
 	if err != nil {
 		return false, err
 	}
 
 	// Find consent for this purpose and check if active
-	for _, c := range consents.Consents {
-		if string(c.Purpose) == purpose && c.Status == models.StatusActive {
+	now := time.Now()
+	for _, record := range records {
+		if string(record.Purpose) == purpose && record.IsActive(now) {
 			return true, nil
 		}
 	}

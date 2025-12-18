@@ -79,7 +79,7 @@ func (s *ServiceSuite) TestUserInfo() {
 
 		result, err := s.service.UserInfo(context.Background(), uuid.New().String())
 		assert.Error(s.T(), err)
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeInternal))
+		assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeInternal))
 		assert.Nil(s.T(), result)
 	})
 
@@ -92,7 +92,7 @@ func (s *ServiceSuite) TestUserInfo() {
 
 		result, err := s.service.UserInfo(context.Background(), uuid.New().String())
 		assert.Error(s.T(), err)
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeInternal))
+		assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeInternal))
 		assert.Nil(s.T(), result)
 	})
 

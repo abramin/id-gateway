@@ -3,9 +3,9 @@ package store
 import (
 	"context"
 
-	"credo/internal/tenant/models"
-
 	"github.com/google/uuid"
+
+	"credo/internal/tenant/models"
 )
 
 // TenantStore persists tenant records.

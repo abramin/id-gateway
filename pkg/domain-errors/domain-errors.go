@@ -1,4 +1,4 @@
-package errors
+package domainerrors
 
 import "errors"
 
@@ -22,55 +22,64 @@ const (
 	CodeInvariantViolation Code = "invariant_violation"
 
 	// OAuth 2.0 error codes (RFC 6749 §5.2)
-	CodeInvalidGrant          Code = "invalid_grant"           // Invalid/expired/used authorization code or refresh token
-	CodeInvalidClient         Code = "invalid_client"          // Client authentication failed
-	CodeUnsupportedGrantType  Code = "unsupported_grant_type"  // Grant type not supported
-	CodeInvalidRequest        Code = "invalid_request"         // Missing required parameter or malformed request
-	CodeAccessDenied          Code = "access_denied"           // Resource owner or server denied request
+	CodeInvalidGrant         Code = "invalid_grant"          // Invalid/expired/used authorization code or refresh token
+	CodeInvalidClient        Code = "invalid_client"         // Client authentication failed
+	CodeUnsupportedGrantType Code = "unsupported_grant_type" // Grant type not supported
+	CodeInvalidRequest       Code = "invalid_request"        // Missing required parameter or malformed request
+	CodeAccessDenied         Code = "access_denied"          // Resource owner or server denied request
 )
 
-// DomainError wraps domain or infrastructure failures with a stable code.
+// Error wraps domain or infrastructure failures with a stable code.
 // It is transport-agnostic and can be used across service, store, and other layers.
-type DomainError struct {
+type Error struct {
 	Code    Code
 	Message string
 	Err     error
 }
 
-func (e DomainError) Error() string {
+// Error implements the error interface.
+func (e *Error) Error() string {
 	if e.Message != "" {
 		return e.Message
 	}
 	return string(e.Code)
 }
 
-func (e DomainError) Unwrap() error {
+// Unwrap implements error unwrapping for error chains.
+func (e *Error) Unwrap() error {
 	return e.Err
 }
 
-// New creates a new DomainError with the given code and message.
-func New(code Code, msg string) DomainError {
-	return DomainError{Code: code, Message: msg}
-}
-
-// Wrap creates a new DomainError wrapping an existing error.
-func Wrap(err error, code Code, msg string) DomainError {
-	// Preserve an existing domain code if the cause is already a DomainError
-	var de DomainError
-	if errors.As(err, &de) {
-		de.Message = msg
-		de.Err = err
-		return de
+// Is enables errors.Is() to match errors by code.
+func (e *Error) Is(target error) bool {
+	t, ok := target.(*Error)
+	if !ok {
+		return false
 	}
-
-	return DomainError{Code: code, Message: msg, Err: err}
+	return e.Code == t.Code
 }
 
-// Is checks if an error is a DomainError with the given code.
-func Is(err error, code Code) bool {
-	var de DomainError
-	if errors.As(err, &de) {
-		return de.Code == code
+// New creates a new domain error with the given code and message.
+func New(code Code, msg string) error {
+	return &Error{Code: code, Message: msg}
+}
+
+// Wrap creates a new domain error wrapping an existing error.
+// If the wrapped error is already a domain error, the original code is preserved.
+func Wrap(err error, code Code, msg string) error {
+	var existing *Error
+	if errors.As(err, &existing) {
+		// Preserve the original domain code, update message
+		return &Error{Code: existing.Code, Message: msg, Err: err}
+	}
+	return &Error{Code: code, Message: msg, Err: err}
+}
+
+// HasCode checks if an error is a domain error with the given code.
+func HasCode(err error, code Code) bool {
+	var e *Error
+	if errors.As(err, &e) {
+		return e.Code == code
 	}
 	return false
 }

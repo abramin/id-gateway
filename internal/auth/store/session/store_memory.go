@@ -9,13 +9,13 @@ import (
 	"github.com/google/uuid"
 
 	"credo/internal/auth/models"
-	"credo/internal/facts"
+	"credo/internal/sentinel"
 )
 
 // ErrNotFound is returned when a requested record is not found in the store.
 // Services should check for this error using errors.Is(err, store.ErrNotFound).
-var ErrNotFound = facts.ErrNotFound
-var ErrSessionRevoked = fmt.Errorf("session has been revoked: %w", facts.ErrInvalidState)
+var ErrNotFound = sentinel.ErrNotFound
+var ErrSessionRevoked = fmt.Errorf("session has been revoked: %w", sentinel.ErrInvalidState)
 
 // Error Contract:
 // All store methods follow this error pattern:
@@ -157,16 +157,16 @@ func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, id uuid.UUID, 
 		return nil, fmt.Errorf("session not found: %w", ErrNotFound)
 	}
 	if session.ClientID.String() != clientID {
-		return nil, fmt.Errorf("client_id mismatch: %w", facts.ErrInvalidInput)
+		return nil, fmt.Errorf("client_id mismatch: %w", sentinel.ErrInvalidInput)
 	}
 	if session.Status == "revoked" {
 		return nil, ErrSessionRevoked
 	}
 	if session.Status != "pending_consent" && session.Status != "active" {
-		return nil, fmt.Errorf("session in invalid state: %w", facts.ErrInvalidState)
+		return nil, fmt.Errorf("session in invalid state: %w", sentinel.ErrInvalidState)
 	}
 	if at.After(session.ExpiresAt) {
-		return nil, fmt.Errorf("session expired: %w", facts.ErrExpired)
+		return nil, fmt.Errorf("session expired: %w", sentinel.ErrExpired)
 	}
 
 	if at.After(session.LastSeenAt) {
@@ -198,16 +198,16 @@ func (s *InMemorySessionStore) AdvanceLastRefreshed(_ context.Context, id uuid.U
 		return nil, fmt.Errorf("session not found: %w", ErrNotFound)
 	}
 	if session.ClientID.String() != clientID {
-		return nil, fmt.Errorf("client_id mismatch: %w", facts.ErrInvalidInput)
+		return nil, fmt.Errorf("client_id mismatch: %w", sentinel.ErrInvalidInput)
 	}
 	if session.Status == "revoked" {
 		return nil, ErrSessionRevoked
 	}
 	if session.Status != "active" {
-		return nil, fmt.Errorf("session in invalid state: %w", facts.ErrInvalidState)
+		return nil, fmt.Errorf("session in invalid state: %w", sentinel.ErrInvalidState)
 	}
 	if at.After(session.ExpiresAt) {
-		return nil, fmt.Errorf("session expired: %w", facts.ErrExpired)
+		return nil, fmt.Errorf("session expired: %w", sentinel.ErrExpired)
 	}
 
 	if session.LastRefreshedAt == nil || at.After(*session.LastRefreshedAt) {

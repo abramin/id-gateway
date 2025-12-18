@@ -1,4 +1,4 @@
-package facts
+package sentinel
 
 import "errors"
 

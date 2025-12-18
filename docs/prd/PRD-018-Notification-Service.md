@@ -4,7 +4,6 @@
 **Priority:** P0 (Critical)
 **Owner:** Engineering Team
 **Dependencies:** PRD-001 (Authentication), PRD-002 (Consent)
-**Last Updated:** 2025-12-12
 
 ---
 
@@ -78,6 +77,7 @@ type Email struct {
 ```
 
 **Security (OWASP Forgot Password & Authentication Cheat Sheets):**
+
 - Email domain must enforce SPF, DKIM, and DMARC; use subdomains dedicated to auth (`auth.example.com`).
 - Do not include passwords or shared secrets in messages; OTPs and reset links must have short TTL (≤15 minutes) and single-use tokens.
 - Templates include clear issuer name and anti-phishing copy; avoid clickable links for OTP delivery (numeric codes only) where possible.
@@ -104,6 +104,7 @@ type SMSNotifier interface {
 ```
 
 **Security (OWASP MFA & SMS Guidelines):**
+
 - OTP messages exclude PII and links; include sender brand and expiry (≤5 minutes) to reduce phishing risk.
 - Enforce per-recipient throttling (5 messages/hour, 10/day) and randomize OTP codes with cryptographic RNG.
 - Use short codes/alphanumeric sender IDs to prevent spoofing where supported; log delivery failures and suspected SIM-swap indicators.
@@ -251,24 +252,9 @@ type AWSSNSProvider struct { snsClient *sns.Client }
 
 ### TR-3: Async Notification Queue
 
-**Use Go channels for MVP, Kafka/NATS for production:**
-
-```go
-type NotificationQueue struct {
-    emailChan   chan *Email
-    smsChan     chan *SMS
-    webhookChan chan *Webhook
-    workers     int
-}
-
-func (q *NotificationQueue) Start(ctx context.Context) {
-    for i := 0; i < q.workers; i++ {
-        go q.emailWorker(ctx)
-        go q.smsWorker(ctx)
-        go q.webhookWorker(ctx)
-    }
-}
-```
+- Use buffered per-channel queues (email/sms/webhook) with configurable worker counts and rate limits per provider/channel.
+- Workers run with shared `context.Context`, enforce retry/backoff, and drain queues on shutdown; publish metrics for queue depth, drops, and per-provider latency.
+- Keep handlers thin: enqueue notification requests and return; orchestration (templating, routing, retries) lives in the service/queue layer.
 
 ---
 
@@ -346,7 +332,8 @@ err := notifier.SendWebhook(ctx, webhook)
 
 ## Revision History
 
-| Version | Date       | Author       | Changes     |
-| ------- | ---------- | ------------ | ----------- |
-| 1.1     | 2025-12-12 | Product Team | Added OWASP-aligned OTP handling, throttling, and anti-phishing controls |
-| 1.0     | 2025-12-12 | Product Team | Initial PRD |
+| Version | Date       | Author       | Changes                                                                                     |
+| ------- | ---------- | ------------ | ------------------------------------------------------------------------------------------- |
+| 1.2     | 2025-12-16 | Engineering  | Define async worker-pool queue per channel with metrics/backpressure and handler boundaries |
+| 1.1     | 2025-12-12 | Product Team | Added OWASP-aligned OTP handling, throttling, and anti-phishing controls                    |
+| 1.0     | 2025-12-12 | Product Team | Initial PRD                                                                                 |

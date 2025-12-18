@@ -1,8 +1,8 @@
 # Product Requirements Documents (PRDs)
 
 **Credo Implementation Specifications**
-**Version:** 2.0
-**Last Updated:** 2025-12-12
+**Version:** 2.3
+**Last Updated:** 2025-12-18
 
 This directory contains technical product requirements for implementing Credo system. Each PRD is written for developers and provides detailed specifications, API contracts, data models, and acceptance criteria.
 
@@ -33,13 +33,11 @@ Credo is a **regulated identity and authorization system** that:
 | PRD                                                       | Feature                             | Status         | Est. Time | Dependencies |
 | --------------------------------------------------------- | ----------------------------------- | -------------- | --------- | ------------ |
 | [PRD-001](./PRD-001-Authentication-Session-Management.md) | Authentication & Session Management | 🟢 Done        | 13-14h    | None         |
-| [PRD-001B](./PRD-001B-Admin-User-Deletion.md) | Admin - User Deletion | 🟢 Done        | 1h    | PRD-001         |
+| [PRD-001B](./PRD-001B-Admin-User-Deletion.md)             | Admin - User Deletion               | 🟢 Done        | 1h        | PRD-001      |
 | [PRD-016](./PRD-016-Token-Lifecycle-Revocation.md) 🆕     | Token Lifecycle & Revocation        | ⚠️ Mostly Done | 6-8h      | PRD-001      |
-| [PRD-026A](./PRD-026A-Tenant-Client-Management.md) 🆕    | Tenant & Client Management (MVP)    | 🟢 Done | 8-10h     | PRD-001, 016 |
+| [PRD-026A](./PRD-026A-Tenant-Client-Management.md) 🆕     | Tenant & Client Management (MVP)    | 🟢 Done        | 8-10h     | PRD-001, 016 |
 | [PRD-017](./PRD-017-Rate-Limiting-Abuse-Prevention.md) 🆕 | Rate Limiting & Abuse Prevention    | 🔵 Not Started | 8-10h     | PRD-001, 016 |
-| [PRD-002](./PRD-002-Consent-Management.md)                | Consent Management System           | 🟢 Done  | 5-7h      | PRD-001      |
-| [PRD-028](./PRD-028-Security-Enhancements.md) 🆕          | Security Enhancements (Completed Core) | 🔵 Not Started | 4-6h   | 1, 1B, 2, 16, 26A |
-| ↳ TR-6 (Projections)                                      | Consent projection/read-model perf  | ⏩ Defer | 6-8h      | PRD-002, A2 (Postgres) |
+| [PRD-002](./PRD-002-Consent-Management.md)                | Consent Management System           | 🟢 Done        | 5-7h      | PRD-001      |
 
 **Phase 0 Total:** ~32-39 hours (4-5 days)
 
@@ -60,13 +58,14 @@ Credo is a **regulated identity and authorization system** that:
 
 ### Phase 2: Operational Baseline (Production Prerequisites) - P0 Critical
 
-| PRD                                                  | Feature                     | Status         | Est. Time | Dependencies |
-| ---------------------------------------------------- | --------------------------- | -------------- | --------- | ------------ |
-| [PRD-019](./PRD-019-API-Versioning-Lifecycle.md) 🆕  | API Versioning & Lifecycle  | 🔵 Not Started | 3-4h      | None         |
-| [PRD-020](./PRD-020-Operational-Readiness-SRE.md) 🆕 | Operational Readiness & SRE | 🔵 Not Started | 8-12h     | PRD-006      |
-| [PRD-007](./PRD-007-User-Data-Rights.md)             | User Data Rights (GDPR)     | 🔵 Not Started | 4-6h      | PRD-001-006  |
+| PRD                                                  | Feature                             | Status         | Est. Time | Dependencies |
+| ---------------------------------------------------- | ----------------------------------- | -------------- | --------- | ------------ |
+| [PRD-019](./PRD-019-API-Versioning-Lifecycle.md) 🆕  | API Versioning & Lifecycle          | 🔵 Not Started | 3-4h      | None         |
+| [PRD-020](./PRD-020-Operational-Readiness-SRE.md) 🆕 | Operational Readiness & SRE         | 🔵 Not Started | 8-12h     | PRD-006      |
+| [PRD-028](./PRD-028-Performance-Optimization.md) 🆕  | Auth/Token Performance Enhancements | 🔵 Not Started | 4-6h      | PRD-001, 016 |
+| [PRD-007](./PRD-007-User-Data-Rights.md)             | User Data Rights (GDPR)             | 🔵 Not Started | 4-6h      | PRD-001-006  |
 
-**Phase 2 Total:** ~15-22 hours (2-3 days)
+**Phase 2 Total:** ~19-28 hours (2.5-3.5 days)
 
 **🎉 MVP COMPLETE: ~73-95 hours (9-12 days)**
 
@@ -74,13 +73,15 @@ Credo is a **regulated identity and authorization system** that:
 
 ### Phase 3: Production Hardening (Beta Ready) - P0-P1
 
-| PRD                                                     | Feature                                   | Status         | Est. Time | Dependencies      |
-| ------------------------------------------------------- | ----------------------------------------- | -------------- | --------- | ----------------- |
-| [PRD-018](./PRD-018-Notification-Service.md) 🆕         | Notification Service (Email/SMS/Webhooks) | 🔵 Not Started | 10-14h    | PRD-001, 002      |
-| [PRD-021](./PRD-021-Multi-Factor-Authentication.md) 🆕  | Multi-Factor Authentication               | 🔵 Not Started | 10-14h    | PRD-001, 016, 018 |
-| [PRD-022](./PRD-022-Account-Recovery-Credentials.md) 🆕 | Account Recovery & Credentials            | 🔵 Not Started | 6-8h      | PRD-001, 018      |
-| [PRD-015](./PRD-015-Credo-Policy-Engine.md)             | Credo Policy Engine (Internal PDP)        | 🔵 Not Started | 16-20h    | PRD-005           |
-| [PRD-005B](./PRD-005B-Cerbos-Authorization.md)          | Cerbos Authorization (External PDP)       | 🔵 Not Started | 6-8h      | PRD-005           |
+| PRD                                                     | Feature                                   | Status         | Est. Time | Dependencies           |
+| ------------------------------------------------------- | ----------------------------------------- | -------------- | --------- | ---------------------- |
+| [PRD-018](./PRD-018-Notification-Service.md) 🆕         | Notification Service (Email/SMS/Webhooks) | 🔵 Not Started | 10-14h    | PRD-001, 002           |
+| [PRD-021](./PRD-021-Multi-Factor-Authentication.md) 🆕  | Multi-Factor Authentication               | 🔵 Not Started | 10-14h    | PRD-001, 016, 018      |
+| [PRD-022](./PRD-022-Account-Recovery-Credentials.md) 🆕 | Account Recovery & Credentials            | 🔵 Not Started | 6-8h      | PRD-001, 018           |
+| [PRD-015](./PRD-015-Credo-Policy-Engine.md)             | Credo Policy Engine (Internal PDP)        | 🔵 Not Started | 16-20h    | PRD-005                |
+| [PRD-005B](./PRD-005B-Cerbos-Authorization.md)          | Cerbos Authorization (External PDP)       | 🔵 Not Started | 6-8h      | PRD-005                |
+| [PRD-028](./PRD-028-Security-Enhancements.md) 🆕        | Security Enhancements (Completed Core)    | 🔵 Not Started | 4-6h      | 1, 1B, 2, 16, 26A      |
+| ↳ TR-6 (Projections)                                    | Consent projection/read-model perf        | ⏩ Defer       | 6-8h      | PRD-002, A2 (Postgres) |
 
 **Phase 3 Total:** ~48-64 hours (6-8 days)
 
@@ -130,19 +131,36 @@ Credo is a **regulated identity and authorization system** that:
 
 ---
 
+### Phase 7: Differentiation Pack (Strategic) - P2-P3
+
+| PRD                                                | Feature                      | Status         | Est. Time | Dependencies      |
+| -------------------------------------------------- | ---------------------------- | -------------- | --------- | ----------------- |
+| [PRD-029](./PRD-029-Consent-as-a-Service.md) 🆕    | Consent-as-a-Service         | 🔵 Not Started | 12-16h    | PRD-002, 018      |
+| [PRD-030](./PRD-030-Portable-Trust-Score.md) 🆕    | Portable Trust Score         | 🔵 Not Started | 14-18h    | PRD-004, 005, 010 |
+| [PRD-031](./PRD-031-Compliance-Templates.md) 🆕    | Compliance-as-Code Templates | 🔵 Not Started | 10-14h    | PRD-002, 006, 007 |
+| [PRD-032](./PRD-032-Privacy-Analytics.md) 🆕       | Privacy-Preserving Analytics | 🔵 Not Started | 16-20h    | PRD-006, 010      |
+| [PRD-033](./PRD-033-Federated-Trust-Network.md) 🆕 | Federated Trust Network      | 🔵 Not Started | 18-24h    | PRD-004, 009, 010 |
+
+**Phase 7 Total:** ~70-92 hours (9-12 days)
+
+> **Note:** PRD-029 and PRD-031 can start after Phase 2 (no ZKP dependency). PRD-030, 032, 033 require Phase 5 completion.
+
+---
+
 ## Timeline Summary
 
-| Phase | Description   | PRDs                  | Time   | Cumulative   | Milestone            |
-| ----- | ------------- | --------------------- | ------ | ------------ | -------------------- |
-| 0     | Foundation    | 1, 16, 17, 2          | 32-39h | 32-39h       | Auth + Security      |
-| 1     | Core Identity | 3, 4, 5, 6            | 26-34h | 58-73h       | Full Identity Flow   |
-| 2     | Operational   | 19, 20, 7             | 15-22h | **73-95h**   | **MVP** ✅           |
-| 3     | Hardening     | 18, 21, 22, 15, 5B    | 48-64h | **121-159h** | **Production** 🚀    |
-| 4     | Assurance     | 13, 23, 6B, 7B, 8, 24 | 60-84h | 181-243h     | Regulated Ready      |
-| 5     | Decentralized | 4B, 9, 10             | 46-58h | 227-301h     | Web3 Features        |
-| 6     | Integrations  | 11, 12, 14, 25, 26    | 46-64h | **273-365h** | **Full Platform** 🌟 |
+| Phase | Description     | PRDs                  | Time   | Cumulative   | Milestone             |
+| ----- | --------------- | --------------------- | ------ | ------------ | --------------------- |
+| 0     | Foundation      | 1, 16, 17, 2          | 32-39h | 32-39h       | Auth + Security       |
+| 1     | Core Identity   | 3, 4, 5, 6            | 26-34h | 58-73h       | Full Identity Flow    |
+| 2     | Operational     | 19, 20, 28, 7         | 19-28h | **77-101h**  | **MVP** ✅            |
+| 3     | Hardening       | 18, 21, 22, 15, 5B    | 48-64h | **125-165h** | **Production** 🚀     |
+| 4     | Assurance       | 13, 23, 6B, 7B, 8, 24 | 60-84h | 185-249h     | Regulated Ready       |
+| 5     | Decentralized   | 4B, 9, 10             | 46-58h | 231-307h     | Web3 Features         |
+| 6     | Integrations    | 11, 12, 14, 25, 26    | 46-64h | 277-371h     | Full Platform         |
+| 7     | Differentiation | 29, 30, 31, 32, 33    | 70-92h | **347-463h** | **Strategic Edge** 🎯 |
 
-**Total System Time:** ~273-365 hours (34-46 days)
+**Total System Time:** ~347-463 hours (43-58 days)
 
 ---
 
@@ -168,11 +186,12 @@ Build identity issuance and decision capabilities:
 - PRD-005: Evidence-based decision engine with Redis caching
 - PRD-006: Audit logging with event streaming (outbox pattern)
 
-**Phase 2: Operational Baseline (2-3 days)**
-Production operational requirements:
+**Phase 2: Operational Baseline (2.5-3.5 days)**
+Production operational requirements and performance hardening:
 
 - PRD-019: API versioning (/v1/, deprecation headers)
 - PRD-020: Health checks, backup/DR, SLAs, runbooks
+- PRD-028: Auth/token performance optimizations (caches, sweepers, pooling)
 - PRD-007: GDPR data export/deletion
 
 **MVP Deliverables:**
@@ -206,7 +225,7 @@ Add production security and notifications:
 
 ---
 
-### Phases 4-6: Advanced Features (20-28 days)
+### Phases 4-7: Advanced Features (29-40 days)
 
 **Phase 4: Assurance Pack (7.5-10.5 days)**
 Regulated industry requirements:
@@ -234,6 +253,15 @@ Ecosystem and developer experience:
 - PRD-025: Developer sandbox (test environment, mock data, API explorer)
 - PRD-026: Admin dashboard (operations UI for user/session/consent management)
 
+**Phase 7: Differentiation Pack (9-12 days)**
+Strategic differentiation features that set Credo apart from competitors:
+
+- PRD-029: Consent-as-a-Service (multi-tenant consent delegation, unified dashboard)
+- PRD-030: Portable Trust Score (ZKP-provable reputation, cross-service sharing)
+- PRD-031: Compliance-as-Code Templates (GDPR, CCPA, HIPAA, PCI-DSS presets)
+- PRD-032: Privacy-Preserving Analytics (differential privacy, aggregate insights without PII)
+- PRD-033: Federated Trust Network (peer vouching, web of trust with ZKP)
+
 ---
 
 ## Implementation Order Rationale
@@ -258,15 +286,24 @@ Ecosystem and developer experience:
 - Decentralized Pack targets Web3 and privacy-focused applications
 - Integrations Pack provides ecosystem connectivity and developer experience
 
+**Phase 7 (Differentiation):** Unique market positioning
+
+- Consent-as-a-Service and Compliance Templates can start after Phase 2 (no ZKP dependency)
+- Trust Score, Privacy Analytics, and Trust Network require Phase 5's ZKP foundation
+- These features differentiate Credo from Auth0/Okta/Keycloak
+
 ### Module Bundle Alignment
 
-See [MODULE_BUNDLES.md](../MODULE_BUNDLES.md) for detailed bundle compositions:
+Module bundles organize PRDs by deployment scenario:
 
 - **Core Identity Plane:** Phases 0-2 (MVP)
 - **Infrastructure Layer:** Phases 0-3 (operational + security)
 - **Assurance Pack:** Phase 4 (regulated industries)
 - **Decentralized Pack:** Phase 5 (Web3)
 - **Integrations Pack:** Phase 6 (ecosystem)
+- **Differentiation Pack:** Phase 7 (strategic positioning)
+
+See [ROADMAP.md](../ROADMAP.md#module-adoption-guide) for detailed bundle compositions.
 
 ---
 
@@ -409,7 +446,7 @@ Run with: `make test-e2e`
 ## Architecture References
 
 - **[architecture.md](../architecture.md):** System design, CQRS patterns, event streaming
-- **[MODULE_BUNDLES.md](../MODULE_BUNDLES.md):** PRD organization by phase and bundle
+- **[ROADMAP.md](../ROADMAP.md):** Implementation timeline, module bundles, adoption guide
 - **[AGENTS.md](../../AGENTS.md):** Module structure rules, testing conventions, service layer patterns
 
 ---
@@ -429,11 +466,14 @@ Run with: `make test-e2e`
 
 ## Revision History
 
-| Version | Date       | Changes                                                                  |
-| ------- | ---------- | ------------------------------------------------------------------------ |
-| 2.0     | 2025-12-12 | Added 11 new PRDs (16-26); restructured into 6 phases; updated timelines |
-| 1.1     | 2025-12-11 | Added PRD-015 (Policy Engine); updated advanced feature sequencing       |
-| 1.0     | 2025-12-10 | Initial PRD suite (PRD-001 through PRD-014)                              |
+| Version | Date       | Changes                                                                                   |
+| ------- | ---------- | ----------------------------------------------------------------------------------------- |
+| 2.3     | 2025-12-17 | Added Phase 7: Differentiation Pack (PRD-029 through PRD-033)                             |
+| 2.2     | 2025-12-17 | Moved PRD-028 from Phase 0 to Phase 2 (performance after functionality)                   |
+| 2.1     | 2025-12-16 | Added PRD-028 (Auth/Token performance), updated Phase 0 timelines/index, refreshed totals |
+| 2.0     | 2025-12-12 | Added 11 new PRDs (16-26); restructured into 6 phases; updated timelines                  |
+| 1.1     | 2025-12-11 | Added PRD-015 (Policy Engine); updated advanced feature sequencing                        |
+| 1.0     | 2025-12-10 | Initial PRD suite (PRD-001 through PRD-014)                                               |
 
 ---
 

@@ -190,7 +190,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 				result, err := s.service.Token(context.Background(), &req)
 				assert.Error(s.T(), err)
 				assert.Nil(s.T(), result)
-				assert.True(s.T(), dErrors.Is(err, tt.expectedCode))
+				assert.True(s.T(), dErrors.HasCode(err, tt.expectedCode))
 				if tt.expectedMsg != "" {
 					assert.Contains(s.T(), err.Error(), tt.expectedMsg)
 				}
@@ -208,7 +208,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		result, err := s.service.Token(context.Background(), &req)
 		assert.Error(s.T(), err)
 		assert.Nil(s.T(), result)
-		assert.True(s.T(), dErrors.Is(err, dErrors.CodeInternal))
+		assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeInternal))
 	})
 
 	s.T().Run("JWT generation errors", func(t *testing.T) {
@@ -269,7 +269,7 @@ func (s *ServiceSuite) TestToken_Exchange() {
 				result, err := s.service.Token(context.Background(), &req)
 				assert.Error(s.T(), err)
 				assert.Nil(s.T(), result)
-				assert.True(s.T(), dErrors.Is(err, dErrors.CodeInternal))
+				assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeInternal))
 				assert.Contains(s.T(), err.Error(), tt.expectedErr)
 			})
 		}
