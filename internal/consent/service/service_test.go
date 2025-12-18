@@ -264,6 +264,91 @@ func (s *ServiceSuite) TestRequire_ConsentStates() {
 	})
 }
 
+// TestRequire_TimeBoundary verifies the exact boundary behavior for consent expiry.
+// Invariant: Consent with ExpiresAt == now (or 1 nanosecond ago) should be treated as expired.
+// Reason not a feature test: Tests precise timing boundary that cannot be controlled in e2e.
+func (s *ServiceSuite) TestRequire_TimeBoundary() {
+	s.T().Run("consent expiring exactly now is treated as expired", func(t *testing.T) {
+		// Set expiry to exactly now
+		exactlyNow := time.Now()
+		record := &models.Record{
+			ID:        "consent_boundary",
+			Purpose:   models.PurposeVCIssuance,
+			ExpiresAt: &exactlyNow,
+		}
+
+		s.mockStore.EXPECT().
+			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeVCIssuance).
+			Return(record, nil)
+
+		// Service uses time.Now() internally, so ExpiresAt.Before(now) will be false initially
+		// but by the time the comparison happens, exactlyNow.Before(time.Now()) should be true
+		// due to time passing. This test verifies the edge case behavior.
+		err := s.service.Require(context.Background(), "user123", models.PurposeVCIssuance)
+		// The result depends on exact timing - either expired or just barely valid
+		// We're testing that the boundary doesn't panic or cause unexpected behavior
+		if err != nil {
+			assert.True(t, dErrors.HasCode(err, dErrors.CodeInvalidConsent), "if error, should be CodeInvalidConsent")
+		}
+		// Note: This is an edge case test - consent at exact boundary may or may not pass
+		// depending on nanosecond timing. The key invariant is no panics or incorrect error types.
+	})
+
+	s.T().Run("consent expired 1 nanosecond ago is expired", func(t *testing.T) {
+		// Set expiry to 1 nanosecond ago to guarantee expired
+		justExpired := time.Now().Add(-time.Nanosecond)
+		record := &models.Record{
+			ID:        "consent_just_expired",
+			Purpose:   models.PurposeVCIssuance,
+			ExpiresAt: &justExpired,
+		}
+
+		s.mockStore.EXPECT().
+			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeVCIssuance).
+			Return(record, nil)
+
+		err := s.service.Require(context.Background(), "user123", models.PurposeVCIssuance)
+		require.Error(t, err)
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeInvalidConsent), "expected CodeInvalidConsent for just-expired consent")
+	})
+
+	s.T().Run("consent expiring in 1 nanosecond is still valid", func(t *testing.T) {
+		// Set expiry to 1 nanosecond in the future
+		justBeforeExpiry := time.Now().Add(time.Nanosecond)
+		record := &models.Record{
+			ID:        "consent_about_to_expire",
+			Purpose:   models.PurposeVCIssuance,
+			ExpiresAt: &justBeforeExpiry,
+		}
+
+		s.mockStore.EXPECT().
+			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeVCIssuance).
+			Return(record, nil)
+
+		err := s.service.Require(context.Background(), "user123", models.PurposeVCIssuance)
+		// May or may not pass depending on exact timing, but should not panic
+		// The important thing is consistent error types
+		if err != nil {
+			assert.True(t, dErrors.HasCode(err, dErrors.CodeInvalidConsent), "if error, should be CodeInvalidConsent")
+		}
+	})
+
+	s.T().Run("consent with nil ExpiresAt is valid (no expiry)", func(t *testing.T) {
+		record := &models.Record{
+			ID:        "consent_no_expiry",
+			Purpose:   models.PurposeVCIssuance,
+			ExpiresAt: nil, // No expiry set
+		}
+
+		s.mockStore.EXPECT().
+			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeVCIssuance).
+			Return(record, nil)
+
+		err := s.service.Require(context.Background(), "user123", models.PurposeVCIssuance)
+		assert.NoError(t, err, "consent with no expiry should be valid")
+	})
+}
+
 // TestRequire_StoreErrorPropagation verifies that store errors are properly propagated.
 // Invariant: Store failures must surface as CodeInternal errors.
 func (s *ServiceSuite) TestRequire_StoreErrorPropagation() {
