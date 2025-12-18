@@ -164,6 +164,19 @@ pre {
   overflow-x: auto;
 }
 
+.ascii-art {
+  background: #0b1220;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  color: #e5e7eb;
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+  line-height: 1.1;
+  padding: 16px;
+  margin-top: 16px;
+  white-space: pre;
+  overflow-x: auto;
+}
+
 details {
   margin-top: 6px;
 }
