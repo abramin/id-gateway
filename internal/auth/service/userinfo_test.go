@@ -12,11 +12,21 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
 // TestUserInfo tests the OIDC userinfo endpoint (PRD-001 FR-3)
+//
+// AGENTS.MD JUSTIFICATION (per testing.md doctrine):
+// These unit tests verify behaviors NOT covered by Gherkin:
+// - session not found: Tests error propagation from session store
+// - user not found: Tests error propagation from user store
+// - session not active: Tests edge case (pending_consent status)
+// - store errors: Tests CodeInternal error mapping
+// - validation: Tests input validation error codes
+//
+// REMOVED per testing.md (duplicate of e2e/features/auth_normal_flow.feature):
+// - "happy path - returns user info" - covered by "Access userinfo endpoint"
 func (s *ServiceSuite) TestUserInfo() {
 	existingUser := &models.User{
 		ID:        uuid.New(),
@@ -25,24 +35,6 @@ func (s *ServiceSuite) TestUserInfo() {
 		LastName:  "Doe",
 		Verified:  true,
 	}
-
-	s.T().Run("happy path - returns user info", func(t *testing.T) {
-		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(&models.Session{
-			UserID: existingUser.ID,
-			Status: string(models.SessionStatusActive),
-		}, nil)
-		s.mockUserStore.EXPECT().FindByID(gomock.Any(), existingUser.ID).Return(existingUser, nil)
-		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
-
-		result, err := s.service.UserInfo(context.Background(), uuid.New().String())
-		require.NoError(s.T(), err)
-		assert.Equal(s.T(), existingUser.ID.String(), result.Sub)
-		assert.Equal(s.T(), existingUser.Email, result.Email)
-		assert.Equal(s.T(), existingUser.Verified, result.EmailVerified)
-		assert.Equal(s.T(), existingUser.FirstName, result.GivenName)
-		assert.Equal(s.T(), existingUser.LastName, result.FamilyName)
-		assert.Equal(s.T(), "John Doe", result.Name)
-	})
 
 	s.T().Run("session lookup returns not found error", func(t *testing.T) {
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(nil, sessionStore.ErrNotFound)

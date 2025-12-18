@@ -11,19 +11,20 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
 // TestToken_Exchange tests the OAuth 2.0 token exchange endpoint (PRD-001 FR-2)
 //
-// AGENTS.MD JUSTIFICATION:
-// These unit tests exist to test error propagation and infrastructure failure modes
-// that cannot be reliably triggered via e2e tests:
-// - happy path: Validates mock integration (minimal value, consider for removal)
-// - validation errors: Tests input validation (fast feedback, could be e2e)
+// AGENTS.MD JUSTIFICATION (per testing.md doctrine):
+// These unit tests verify behaviors NOT covered by Gherkin:
+// - validation errors: Tests input validation error codes (fast feedback)
 // - infrastructure errors: Tests error mapping from store failures → domain errors
 // - JWT generation errors: Tests error propagation from token generation
+//
+// REMOVED per testing.md (duplicate of e2e/features/auth_normal_flow.feature):
+// - "happy path - successful token exchange" - covered by "Complete OAuth2 authorization code flow"
+// - "session already active - idempotency" - covered by auth flow tests
 //
 // RFC 6749 §5.2 invalid_grant scenarios are covered by e2e feature tests
 // (auth_normal_flow.feature, auth_token_lifecycle.feature).
@@ -66,82 +67,6 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		CreatedAt:      time.Now().Add(-5 * time.Minute),
 		ExpiresAt:      time.Now().Add(24 * time.Hour),
 	}
-
-	// expectTokenPersistence sets up mock expectations for session advancement and refresh token creation.
-	// accessTokenJTI must match what expectTokenGeneration returns.
-	expectTokenPersistence := func(expectedStatus string, sess models.Session, accessTokenJTI string) {
-		activate := sess.Status == string(models.SessionStatusPendingConsent)
-		s.mockSessionStore.EXPECT().AdvanceLastSeen(gomock.Any(), sess.ID, clientUUID.String(), gomock.Any(), accessTokenJTI, activate, sess.DeviceID, sess.DeviceFingerprintHash).DoAndReturn(
-			func(_ context.Context, id uuid.UUID, client string, seenAt time.Time, jti string, activateFlag bool, deviceID string, fingerprint string) (*models.Session, error) {
-				assert.Equal(s.T(), sess.ID, id)
-				assert.Equal(s.T(), clientUUID.String(), client)
-				assert.Equal(s.T(), accessTokenJTI, jti)
-				assert.Equal(s.T(), activate, activateFlag)
-				assert.False(s.T(), seenAt.IsZero())
-				sess.Status = expectedStatus
-				return &sess, nil
-			},
-		)
-		s.mockRefreshStore.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, token *models.RefreshTokenRecord) error {
-				assert.Equal(s.T(), sess.ID, token.SessionID)
-				assert.False(s.T(), token.Used)
-				assert.True(s.T(), token.ExpiresAt.After(time.Now()))
-				return nil
-			},
-		)
-		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
-	}
-
-	s.T().Run("happy path - successful token exchange", func(t *testing.T) {
-		req := baseReq
-		codeRec := *validCodeRecord
-		sess := *validSession
-		ctx := context.Background()
-
-		// Token exchange now calls resolveTokenContext which needs client, tenant, and user
-		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
-		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientID).Return(mockClient, mockTenant, nil)
-		s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(mockUser, nil)
-
-		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, nil)
-		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		accessToken, accessTokenJTI, idToken, refreshToken := s.expectTokenGeneration(userID, sessionID, clientUUID, tenantID, sess.RequestedScope)
-		expectTokenPersistence(string(models.SessionStatusActive), sess, accessTokenJTI)
-
-		result, err := s.service.Token(ctx, &req)
-		require.NoError(s.T(), err)
-		assert.Equal(s.T(), accessToken, result.AccessToken)
-		assert.Equal(s.T(), idToken, result.IDToken)
-		assert.Equal(s.T(), refreshToken, result.RefreshToken)
-		assert.Equal(s.T(), "Bearer", result.TokenType)
-		assert.Equal(s.T(), s.service.TokenTTL, result.ExpiresIn)
-	})
-
-	s.T().Run("session already active - idempotency", func(t *testing.T) {
-		req := baseReq
-		codeRec := *validCodeRecord
-		sess := *validSession
-		sess.Status = string(models.SessionStatusActive) // Already active
-		ctx := context.Background()
-
-		// Add resolveTokenContext expectations
-		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
-		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientID).Return(mockClient, mockTenant, nil)
-		s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(mockUser, nil)
-
-		s.mockCodeStore.EXPECT().ConsumeAuthCode(gomock.Any(), req.Code, req.RedirectURI, gomock.Any()).Return(&codeRec, nil)
-		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		_, accessTokenJTI, _, _ := s.expectTokenGeneration(userID, sessionID, clientUUID, tenantID, sess.RequestedScope)
-		expectTokenPersistence(string(models.SessionStatusActive), sess, accessTokenJTI)
-
-		result, err := s.service.Token(ctx, &req)
-		require.NoError(s.T(), err)
-		assert.NotNil(s.T(), result)
-		assert.Equal(s.T(), string(models.SessionStatusActive), sess.Status) // Should remain active
-	})
 
 	// Table test for simple validation errors
 	s.T().Run("validation errors", func(t *testing.T) {

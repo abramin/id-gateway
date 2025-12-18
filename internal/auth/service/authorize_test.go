@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"testing"
-	"time"
 
 	"credo/internal/auth/device"
 	"credo/internal/auth/models"
@@ -18,13 +17,15 @@ import (
 
 // TestAuthorize tests the OAuth 2.0 authorization code flow (PRD-001 FR-1)
 //
-// AGENTS.MD JUSTIFICATION:
-// These unit tests verify:
-// - Input validation error mapping (tested faster here than e2e)
-// - User creation orchestration via mocks (tests service coordination)
+// AGENTS.MD JUSTIFICATION (per testing.md doctrine):
+// These unit tests verify behaviors NOT covered by Gherkin:
+// - Device binding with fingerprint hashing (needs device setup not available in e2e)
+// - Input validation error mapping (fast feedback)
 // - Store error propagation to domain errors
 //
-// Happy path authorization flow is covered by e2e/features/auth_normal_flow.feature.
+// REMOVED per testing.md (duplicate of e2e/features/auth_normal_flow.feature):
+// - "happy path - user not found, creates user" - covered by "Complete OAuth2 authorization code flow"
+// - "happy path - user exists" - covered by "Complete OAuth2 authorization code flow"
 func (s *ServiceSuite) TestAuthorize() {
 	tenantID := uuid.New()
 	clientID := uuid.New()
@@ -59,88 +60,6 @@ func (s *ServiceSuite) TestAuthorize() {
 		RedirectURI: "https://client.app/callback",
 		Email:       "email@test.com",
 	}
-
-	s.T().Run("happy path - user not found, creates user and session", func(t *testing.T) {
-		req := baseReq
-		req.State = "xyz"
-
-		ctx := context.Background()
-
-		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), req.ClientID).Return(mockClient, mockTenant, nil)
-
-		s.mockUserStore.EXPECT().FindOrCreateByTenantAndEmail(gomock.Any(), tenantID, req.Email, gomock.Any()).DoAndReturn(
-			func(ctx context.Context, tid uuid.UUID, email string, user *models.User) (*models.User, error) {
-				assert.Equal(s.T(), tenantID, tid)
-				assert.Equal(s.T(), req.Email, email)
-				assert.Equal(s.T(), req.Email, user.Email)
-				assert.Equal(s.T(), tenantID, user.TenantID)
-				assert.NotNil(s.T(), user.ID)
-				return user, nil
-			})
-
-		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
-
-		// Expect authorization code to be created
-		s.mockCodeStore.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(ctx context.Context, code *models.AuthorizationCodeRecord) error {
-				assert.Contains(s.T(), code.Code, "authz_")
-				assert.Equal(s.T(), req.RedirectURI, code.RedirectURI)
-				assert.False(s.T(), code.Used)
-				assert.True(s.T(), code.ExpiresAt.After(time.Now()))
-				return nil
-			})
-
-		// Expect session to be created
-		s.mockSessionStore.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(ctx context.Context, session *models.Session) error {
-				assert.NotNil(s.T(), session.UserID)
-				assert.Equal(s.T(), clientID, session.ClientID)
-				assert.Equal(s.T(), tenantID, session.TenantID)
-				assert.True(s.T(), session.ExpiresAt.After(time.Now()))
-				assert.Equal(s.T(), string(models.SessionStatusPendingConsent), session.Status)
-				assert.NotNil(s.T(), session.ID)
-				// Device binding disabled by default; device metadata optional
-				return nil
-			})
-
-		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
-
-		result, err := s.service.Authorize(ctx, &req)
-		assert.NoError(s.T(), err)
-		assert.NotEmpty(s.T(), result.Code)
-		assert.Contains(s.T(), result.Code, "authz_")
-		assert.Contains(s.T(), result.RedirectURI, "https://client.app/callback")
-		assert.Contains(s.T(), result.RedirectURI, "code="+result.Code)
-		assert.Contains(s.T(), result.RedirectURI, "state=xyz")
-		// DeviceID may be empty when device binding is disabled
-	})
-
-	s.T().Run("happy path - user exists", func(t *testing.T) {
-		req := baseReq
-		ctx := context.Background()
-
-		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), req.ClientID).Return(mockClient, mockTenant, nil)
-		s.mockUserStore.EXPECT().FindOrCreateByTenantAndEmail(gomock.Any(), tenantID, req.Email, gomock.Any()).Return(existingUser, nil)
-		s.mockCodeStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
-		s.mockSessionStore.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(ctx context.Context, session *models.Session) error {
-				assert.Equal(s.T(), existingUser.ID, session.UserID)
-				assert.Equal(s.T(), clientID, session.ClientID)
-				assert.Equal(s.T(), tenantID, session.TenantID)
-				assert.True(s.T(), session.ExpiresAt.After(time.Now()))
-				assert.Equal(s.T(), string(models.SessionStatusPendingConsent), session.Status)
-				assert.NotNil(s.T(), session.ID)
-				return nil
-			})
-		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
-
-		result, err := s.service.Authorize(ctx, &req)
-		assert.NoError(s.T(), err)
-		assert.NotEmpty(s.T(), result.Code)
-		assert.Contains(s.T(), result.Code, "authz_")
-		assert.Contains(s.T(), result.RedirectURI, "https://client.app/callback")
-		assert.Contains(s.T(), result.RedirectURI, "code="+result.Code)
-	})
 
 	s.T().Run("device binding enabled attaches device metadata", func(t *testing.T) {
 		// Temporarily enable device binding on the service
@@ -227,31 +146,11 @@ func (s *ServiceSuite) TestAuthorize() {
 }
 
 // TestAuthorizeClientValidation tests that authorize rejects requests
-// when the client is unknown or inactive (RFC 6749 §4.1.2.1 and PRD-026A FR-4.5.3).
+// when the client is inactive (PRD-026A FR-4.5.3).
+//
+// REMOVED per testing.md (duplicate of e2e/features/auth_security.feature):
+// - "unknown client_id rejected" - covered by "Unknown client_id is rejected"
 func (s *ServiceSuite) TestAuthorizeClientValidation() {
-	s.T().Run("unknown client_id rejected (RFC 6749 §4.1.2.1)", func(t *testing.T) {
-		req := models.AuthorizationRequest{
-			ClientID:    "unknown-client",
-			Scopes:      []string{"openid"},
-			RedirectURI: "https://app.example.com/callback",
-			Email:       "user@test.com",
-		}
-		ctx := context.Background()
-
-		// Client resolver returns not_found for unknown client
-		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), req.ClientID).
-			Return(nil, nil, dErrors.New(dErrors.CodeInvalidClient, "client not found"))
-
-		result, err := s.service.Authorize(ctx, &req)
-
-		// RFC 6749 §4.1.2.1: If client_id is missing or invalid, MUST NOT redirect
-		// Returns 400 Bad Request with invalid_client error
-		assert.Error(t, err, "expected error when client_id is unknown")
-		assert.Nil(t, result)
-		assert.True(t, dErrors.HasCode(err, dErrors.CodeInvalidClient),
-			"expected invalid_client error code per RFC 6749")
-	})
-
 	s.T().Run("inactive client rejected", func(t *testing.T) {
 		req := models.AuthorizationRequest{
 			ClientID:    "inactive-client",

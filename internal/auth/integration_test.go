@@ -126,7 +126,7 @@ func TestConcurrentUserCreation(t *testing.T) {
 	concurrentRequests := 10
 	errCh := make(chan error, concurrentRequests)
 
-	for i := 0; i < concurrentRequests; i++ {
+	for range concurrentRequests {
 		go func() {
 			reqBody := models.AuthorizationRequest{
 				Email:       "testuser@example.com",
@@ -157,7 +157,7 @@ func TestConcurrentUserCreation(t *testing.T) {
 		}()
 	}
 
-	for i := 0; i < concurrentRequests; i++ {
+	for range concurrentRequests {
 		err := <-errCh
 		require.NoError(t, err)
 	}

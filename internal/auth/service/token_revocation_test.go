@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"credo/internal/auth/models"
-	sessionStore "credo/internal/auth/store/session"
 	jwttoken "credo/internal/jwt_token"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -17,6 +16,19 @@ import (
 )
 
 // TestRevokeToken tests the RevokeToken endpoint (PRD-016 FR-3)
+//
+// AGENTS.MD JUSTIFICATION (per testing.md doctrine):
+// These unit tests verify behaviors NOT covered by Gherkin:
+// - hint inference: Tests internal token type detection without hint
+// - TRL failure: Tests partial failure handling (session revoked despite TRL error)
+// - refresh deletion failure: Tests partial failure handling
+//
+// REMOVED per testing.md (duplicate of e2e/features/auth_token_lifecycle.feature, auth_security.feature):
+// - "revoke access token - happy path" - covered by "Revoke access token"
+// - "revoke refresh token - happy path" - covered by "Revoke refresh token"
+// - "already revoked - idempotent success" - covered by "Revoking already revoked token"
+// - "token not found - idempotent success" - covered by "Revoking unknown token"
+// - "expired access token - can still revoke" - covered by "Revoking expired token"
 func (s *ServiceSuite) TestRevokeToken() {
 	sessionID := uuid.New()
 	userID := uuid.New()
@@ -32,152 +44,6 @@ func (s *ServiceSuite) TestRevokeToken() {
 		CreatedAt:          time.Now().Add(-1 * time.Hour),
 		ExpiresAt:          time.Now().Add(23 * time.Hour),
 	}
-
-	s.T().Run("revoke access token - happy path", func(t *testing.T) {
-		ctx := context.Background()
-		accessToken := "mock-access-token"
-		tokenJTI := "token-jti-123"
-
-		sess := *validSession
-		sess.LastAccessTokenJTI = tokenJTI
-
-		// Mock JWT parsing to return valid claims
-		claims := &jwttoken.AccessTokenClaims{
-			UserID:    userID.String(),
-			SessionID: sessionID.String(),
-			RegisteredClaims: jwt.RegisteredClaims{
-				ID: tokenJTI,
-			},
-		}
-		s.mockJWT.EXPECT().ParseTokenSkipClaimsValidation(accessToken).Return(claims, nil)
-
-		// Expect session lookup
-		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-
-		// Expect session revocation
-		s.mockSessionStore.EXPECT().RevokeSessionIfActive(gomock.Any(), sessionID, gomock.Any()).Return(nil)
-
-		// Expect TRL update
-		s.mockTRL.EXPECT().RevokeToken(gomock.Any(), tokenJTI, s.service.TokenTTL).Return(nil)
-
-		// Expect refresh token deletion
-		s.mockRefreshStore.EXPECT().DeleteBySessionID(gomock.Any(), sessionID).Return(nil)
-
-		// Expect audit event
-		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
-
-		err := s.service.RevokeToken(ctx, accessToken, TokenHintAccessToken)
-		assert.NoError(t, err)
-	})
-
-	s.T().Run("revoke refresh token - happy path", func(t *testing.T) {
-		ctx := context.Background()
-		refreshToken := "ref_valid-refresh-token"
-
-		refreshRecord := &models.RefreshTokenRecord{
-			Token:     refreshToken,
-			SessionID: sessionID,
-			Used:      false,
-			ExpiresAt: time.Now().Add(30 * 24 * time.Hour),
-		}
-
-		sess := *validSession
-
-		// Expect refresh token lookup
-		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshToken).Return(refreshRecord, nil)
-
-		// Expect session lookup
-		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-
-		// Expect session revocation
-		s.mockSessionStore.EXPECT().RevokeSessionIfActive(gomock.Any(), sessionID, gomock.Any()).Return(nil)
-
-		// Expect TRL update with LastAccessTokenJTI
-		s.mockTRL.EXPECT().RevokeToken(gomock.Any(), jti, s.service.TokenTTL).Return(nil)
-
-		// Expect refresh token deletion
-		s.mockRefreshStore.EXPECT().DeleteBySessionID(gomock.Any(), sessionID).Return(nil)
-
-		// Expect audit event
-		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
-
-		err := s.service.RevokeToken(ctx, refreshToken, TokenHintRefreshToken)
-		assert.NoError(t, err)
-	})
-
-	s.T().Run("already revoked - idempotent success", func(t *testing.T) {
-		ctx := context.Background()
-		accessToken := "mock-access-token"
-		tokenJTI := "token-jti-456"
-
-		sess := *validSession
-		sess.LastAccessTokenJTI = tokenJTI
-		sess.Status = "revoked"
-
-		claims := &jwttoken.AccessTokenClaims{
-			UserID:    userID.String(),
-			SessionID: sessionID.String(),
-			RegisteredClaims: jwt.RegisteredClaims{
-				ID: tokenJTI,
-			},
-		}
-		s.mockJWT.EXPECT().ParseTokenSkipClaimsValidation(accessToken).Return(claims, nil)
-		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		s.mockSessionStore.EXPECT().RevokeSessionIfActive(gomock.Any(), sessionID, gomock.Any()).
-			Return(sessionStore.ErrSessionRevoked)
-
-		// Expect audit event for already revoked
-		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
-
-		err := s.service.RevokeToken(ctx, accessToken, TokenHintAccessToken)
-		assert.NoError(t, err) // Should be idempotent
-	})
-
-	s.T().Run("token not found - idempotent success", func(t *testing.T) {
-		ctx := context.Background()
-		fakeToken := "fake-token-that-does-not-exist"
-
-		// Service will try to parse as JWT first - mock failure
-		s.mockJWT.EXPECT().ParseTokenSkipClaimsValidation(fakeToken).Return(nil, errors.New("invalid token"))
-
-		// Then it will try as refresh token - mock failure
-		s.mockRefreshStore.EXPECT().Find(gomock.Any(), fakeToken).Return(nil, errors.New("not found"))
-
-		// Expect audit event for token not found
-		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
-
-		err := s.service.RevokeToken(ctx, fakeToken, "")
-		assert.NoError(t, err) // RFC 7009 Section 2.2 - idempotent
-	})
-
-	s.T().Run("expired access token - can still revoke", func(t *testing.T) {
-		ctx := context.Background()
-		expiredToken := "expired-jwt-token"
-		expiredJTI := "expired-jti-123"
-
-		sess := *validSession
-		sess.LastAccessTokenJTI = expiredJTI
-
-		// Mock parsing returns expired token claims
-		claims := &jwttoken.AccessTokenClaims{
-			UserID:    userID.String(),
-			SessionID: sessionID.String(),
-			RegisteredClaims: jwt.RegisteredClaims{
-				ID: expiredJTI,
-			},
-		}
-		s.mockJWT.EXPECT().ParseTokenSkipClaimsValidation(expiredToken).Return(claims, nil)
-		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-		s.mockSessionStore.EXPECT().RevokeSessionIfActive(gomock.Any(), sessionID, gomock.Any()).Return(nil)
-		s.mockTRL.EXPECT().RevokeToken(gomock.Any(), expiredJTI, s.service.TokenTTL).Return(nil)
-		s.mockRefreshStore.EXPECT().DeleteBySessionID(gomock.Any(), sessionID).Return(nil)
-
-		// Expect audit event
-		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
-
-		err := s.service.RevokeToken(ctx, expiredToken, TokenHintAccessToken)
-		assert.NoError(t, err)
-	})
 
 	s.T().Run("hint inference - access token without hint", func(t *testing.T) {
 		ctx := context.Background()

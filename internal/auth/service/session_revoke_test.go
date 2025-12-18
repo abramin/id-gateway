@@ -12,6 +12,16 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+// TestService_RevokeSession tests session revocation (PRD-016)
+//
+// AGENTS.MD JUSTIFICATION (per testing.md doctrine):
+// These unit tests verify behaviors NOT covered by Gherkin:
+// - validation errors: Tests input validation error codes (fast feedback)
+// - session not found: Tests error propagation from store
+// - different user forbidden: Tests multi-user authorization check (unique)
+//
+// REMOVED per testing.md (duplicate of e2e/features/auth_token_lifecycle.feature):
+// - "active session owned by user revoked" - covered by "Revoke session by session_id"
 func (s *ServiceSuite) TestService_RevokeSession() {
 	ctx := context.Background()
 
@@ -51,32 +61,5 @@ func (s *ServiceSuite) TestService_RevokeSession() {
 		err := s.service.RevokeSession(ctx, userID, sessionID)
 		assert.Error(t, err)
 		assert.True(t, dErrors.HasCode(err, dErrors.CodeForbidden))
-	})
-
-	s.T().Run("Given active session owned by user When revoke Then session revoked and token JTI revoked", func(t *testing.T) {
-		userID := uuid.New()
-		sessionID := uuid.New()
-		jti := uuid.NewString()
-		session := &models.Session{
-			ID:                 sessionID,
-			UserID:             userID,
-			ClientID:           uuid.New(),
-			Status:             string(models.SessionStatusActive),
-			LastAccessTokenJTI: jti,
-		}
-
-		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(session, nil)
-		s.mockSessionStore.EXPECT().RevokeSessionIfActive(gomock.Any(), sessionID, gomock.Any()).Return(nil)
-		s.mockRefreshStore.EXPECT().DeleteBySessionID(gomock.Any(), sessionID).Return(nil)
-		s.mockTRL.EXPECT().RevokeToken(gomock.Any(), jti, s.service.TokenTTL).Return(nil)
-		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
-		s.mockTRL.EXPECT().IsRevoked(gomock.Any(), jti).Return(true, nil)
-
-		err := s.service.RevokeSession(ctx, userID, sessionID)
-		assert.NoError(t, err)
-
-		revoked, err := s.service.IsTokenRevoked(ctx, jti)
-		assert.NoError(t, err)
-		assert.True(t, revoked)
 	})
 }
