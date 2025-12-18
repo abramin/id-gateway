@@ -30,6 +30,8 @@ type TestContext struct {
 	UserID               string
 	AdminToken           string
 	TenantID             string
+	TestClientID         string // UUID of client for admin API tests
+	ClientSecret         string // Saved client secret for rotation tests
 	AccessTokens         map[string]string
 	RefreshTokens        map[string]string
 	SessionIDs           map[string]string
@@ -142,6 +144,43 @@ func (tc *TestContext) DELETE(path string, headers map[string]string) error {
 
 	for key, value := range headers {
 		req.Header.Set(key, value)
+	}
+
+	resp, err := tc.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to make request: %w", err)
+	}
+
+	tc.LastResponse = resp
+	tc.LastResponseBody, err = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	return nil
+}
+
+// PUT makes a PUT request with optional headers
+func (tc *TestContext) PUT(path string, body interface{}) error {
+	return tc.PUTWithHeaders(path, body, nil)
+}
+
+// PUTWithHeaders makes a PUT request with optional headers
+func (tc *TestContext) PUTWithHeaders(path string, body interface{}, headers map[string]string) error {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), "PUT", tc.BaseURL+path, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 
 	resp, err := tc.HTTPClient.Do(req)
@@ -299,6 +338,30 @@ func (tc *TestContext) GetBaseURL() string {
 
 func (tc *TestContext) GetHTTPClient() *http.Client {
 	return tc.HTTPClient
+}
+
+func (tc *TestContext) GetTenantID() string {
+	return tc.TenantID
+}
+
+func (tc *TestContext) SetTenantID(tenantID string) {
+	tc.TenantID = tenantID
+}
+
+func (tc *TestContext) GetTestClientID() string {
+	return tc.TestClientID
+}
+
+func (tc *TestContext) SetTestClientID(clientID string) {
+	tc.TestClientID = clientID
+}
+
+func (tc *TestContext) GetClientSecret() string {
+	return tc.ClientSecret
+}
+
+func (tc *TestContext) SetClientSecret(secret string) {
+	tc.ClientSecret = secret
 }
 
 // EnsureTestClient creates a tenant and client via the admin API if not already set up.

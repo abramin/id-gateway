@@ -3,6 +3,7 @@ package e2e
 import (
 	"github.com/cucumber/godog"
 
+	"credo/e2e/steps/admin"
 	"credo/e2e/steps/auth"
 	"credo/e2e/steps/common"
 	"credo/e2e/steps/consent"
@@ -18,4 +19,7 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 
 	// Register consent-specific steps
 	consent.RegisterSteps(ctx, tc)
+
+	// Register admin-specific steps (tenant/client management)
+	admin.RegisterSteps(ctx, tc)
 }
