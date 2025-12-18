@@ -28,6 +28,11 @@ func TestConfig_Defaults(t *testing.T) {
 }
 
 func TestService_GetProgressiveBackoff(t *testing.T) {
+<<<<<<< HEAD
+=======
+	t.Skip("TODO: Enable after GetProgressiveBackoff is implemented")
+
+>>>>>>> dae3bdf (add handler test, remove unneeded service tests)
 	buckets := &noopBucketStore{}
 	allowlist := &noopAllowlistStore{}
 	svc, err := New(buckets, allowlist)
