@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Attack Lab - Hacker Desktop</title>
+  <link rel="stylesheet" href="css/shared.css">
+  <link rel="stylesheet" href="css/hacker-desktop.css">
+
+  <!-- WinBox.js for window management -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/winbox@0.2.82/dist/css/winbox.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/winbox@0.2.82/dist/js/winbox.min.js"></script>
+
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <!-- Stores -->
+  <script src="js/stores/theme-store.js"></script>
+  <script src="js/stores/config-store.js"></script>
+  <script src="js/stores/mock-api-store.js"></script>
+  <script src="js/stores/flow-store.js"></script>
+
+  <!-- Utils -->
+  <script src="js/utils/jwt.js"></script>
+  <script src="js/utils/formatting.js"></script>
+</head>
+<body x-data="hackerDesktop">
+  <!-- Taskbar -->
+  <nav class="taskbar">
+    <div class="taskbar-brand">
+      <a href="index.html" class="back-btn" title="Back to modules">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+      </a>
+      <span class="brand-text glow">ATTACK_LAB</span>
+      <span class="brand-version">v1.0</span>
+    </div>
+
+    <div class="taskbar-windows">
+      <button
+        class="taskbar-btn"
+        :class="{ 'active': windows.flowDiagram.open }"
+        @click="toggleWindow('flowDiagram')"
+        title="Flow Diagram"
+      >
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7"/>
+          <rect x="14" y="3" width="7" height="7"/>
+          <rect x="14" y="14" width="7" height="7"/>
+          <rect x="3" y="14" width="7" height="7"/>
+          <path d="M10 6.5h4M17.5 10v4M10 17.5h4M6.5 10v4"/>
+        </svg>
+        <span>Flow</span>
+      </button>
+      <button
+        class="taskbar-btn"
+        :class="{ 'active': windows.terminal.open }"
+        @click="toggleWindow('terminal')"
+        title="Hacker Terminal"
+      >
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="4 17 10 11 4 5"/>
+          <line x1="12" y1="19" x2="20" y2="19"/>
+        </svg>
+        <span>Terminal</span>
+      </button>
+      <button
+        class="taskbar-btn"
+        :class="{ 'active': windows.inspector.open }"
+        @click="toggleWindow('inspector')"
+        title="Request Inspector"
+      >
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+        </svg>
+        <span>Inspector</span>
+      </button>
+      <button
+        class="taskbar-btn"
+        :class="{ 'active': windows.config.open }"
+        @click="toggleWindow('config')"
+        title="Security Config"
+      >
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+        <span>Config</span>
+      </button>
+      <button
+        class="taskbar-btn objectives-btn"
+        :class="{ 'active': windows.objectives.open, 'has-objectives': $store.game.activeObjectives.length > 0 }"
+        @click="toggleWindow('objectives')"
+        title="Mission Objectives"
+      >
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+          <polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+        <span>Objectives</span>
+        <span class="objective-count" x-show="$store.game.activeObjectives.length > 0" x-text="$store.game.completedCount + '/' + $store.game.activeObjectives.length"></span>
+      </button>
+    </div>
+
+    <div class="taskbar-status">
+      <!-- Rank & XP Display -->
+      <div class="rank-display" @click="toggleWindow('objectives')" title="View Objectives">
+        <span class="rank-icon" x-text="$store.game.currentRank.icon"></span>
+        <div class="rank-info">
+          <span class="rank-name" x-text="$store.game.currentRank.name"></span>
+          <div class="xp-bar">
+            <div class="xp-fill" :style="`width: ${$store.game.xpProgress}%`"></div>
+          </div>
+        </div>
+        <span class="xp-text" x-text="$store.game.totalXP + ' XP'"></span>
+      </div>
+      <div class="status-divider"></div>
+      <div class="status-item">
+        <span class="status-indicator" :class="$store.flow.isAttacking ? 'indicator-danger' : 'indicator-idle'"></span>
+        <span x-text="$store.flow.isAttacking ? 'ATTACKING' : 'IDLE'"></span>
+      </div>
+      <a href="hacker-desktop-help.html" class="help-link" title="Help & Tutorial">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </a>
+    </div>
+  </nav>
+
+  <!-- Desktop Area -->
+  <main class="desktop" id="desktop">
+    <!-- Window contents are injected by WinBox -->
+
+    <!-- Welcome overlay when no windows open -->
+    <div class="welcome-overlay" x-show="!anyWindowOpen">
+      <div class="welcome-content">
+        <div class="welcome-logo">
+          <pre class="ascii-art">
+   ___  _____ _____ ___   _____ _  __  _      ___  ___
+  / _ \|_   _|_   _/ _ \ / ____| |/ / | |    / _ \| _ )
+ | |_| | | |   | || |_| || |    | ' <  | |__ | |_| | _ \
+ |_/ \_| |_|   |_||_/ \_||_|    |_|\_\ |____||_/ \_|___/
+          </pre>
+        </div>
+        <h2 class="glow">Welcome to Attack Lab</h2>
+        <p>Click the buttons in the taskbar to open windows</p>
+        <div class="welcome-hints">
+          <div class="hint-item">
+            <kbd>Flow</kbd> - Visualize OAuth flows and attacks
+          </div>
+          <div class="hint-item">
+            <kbd>Terminal</kbd> - Execute attack commands
+          </div>
+          <div class="hint-item">
+            <kbd>Inspector</kbd> - Analyze requests and responses
+          </div>
+          <div class="hint-item">
+            <kbd>Config</kbd> - Toggle security defenses
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Hidden templates for window content -->
+  <template id="flow-diagram-content">
+    <div class="window-content flow-diagram" x-data="flowDiagram">
+      <div class="flow-header">
+        <div class="flow-scenario">
+          <label class="form-label">Scenario:</label>
+          <select class="form-select" x-model="$store.flow.currentScenario" @change="loadScenario()">
+            <option value="">Select attack scenario...</option>
+            <option value="pkce_bypass">PKCE Bypass Attack</option>
+            <option value="redirect_hijack">Redirect URI Hijacking</option>
+            <option value="token_replay">Token Replay Attack</option>
+            <option value="csrf_login">CSRF Login Attack</option>
+          </select>
+        </div>
+        <div class="flow-controls">
+          <button class="btn btn-sm btn-secondary" @click="resetFlow()" :disabled="!$store.flow.currentScenario">
+            Reset
+          </button>
+          <button class="btn btn-sm btn-primary" @click="stepForward()" :disabled="!canStep">
+            <span x-text="$store.flow.isComplete ? 'Complete' : 'Next Step'"></span>
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="flow-canvas">
+        <!-- Services -->
+        <div class="service-nodes">
+          <div class="service-node" :class="{ 'active': isNodeActive('victim') }" id="node-victim">
+            <div class="node-icon">👤</div>
+            <div class="node-label">Victim</div>
+          </div>
+          <div class="service-node" :class="{ 'active': isNodeActive('client') }" id="node-client">
+            <div class="node-icon">💻</div>
+            <div class="node-label">Client App</div>
+          </div>
+          <div class="service-node" :class="{ 'active': isNodeActive('authserver') }" id="node-authserver">
+            <div class="node-icon">🔐</div>
+            <div class="node-label">Auth Server</div>
+            <div class="node-status" :class="getServerStatus()">
+              <span x-text="getServerStatusText()"></span>
+            </div>
+          </div>
+          <div class="service-node" :class="{ 'active': isNodeActive('resource') }" id="node-resource">
+            <div class="node-icon">📦</div>
+            <div class="node-label">Resource Server</div>
+          </div>
+          <div class="service-node attacker" :class="{ 'active': isNodeActive('attacker') }" id="node-attacker">
+            <div class="node-icon">☠️</div>
+            <div class="node-label">Attacker</div>
+          </div>
+        </div>
+
+        <!-- Flow arrows will be drawn here -->
+        <svg class="flow-arrows" id="flow-arrows">
+          <defs>
+            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+              <polygon points="0 0, 10 3.5, 0 7" fill="var(--accent-primary)"/>
+            </marker>
+            <marker id="arrowhead-danger" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+              <polygon points="0 0, 10 3.5, 0 7" fill="var(--error)"/>
+            </marker>
+          </defs>
+        </svg>
+      </div>
+
+      <div class="flow-info" x-show="$store.flow.currentStep">
+        <div class="step-badge">
+          Step <span x-text="$store.flow.stepIndex + 1"></span>
+        </div>
+        <h4 class="step-title" x-text="$store.flow.currentStep?.title"></h4>
+        <p class="step-description" x-text="$store.flow.currentStep?.description"></p>
+        <div class="step-request" x-show="$store.flow.currentStep?.request">
+          <code x-text="typeof $store.flow.currentStep?.request === 'object' ? $store.flow.currentStep?.request.url : $store.flow.currentStep?.request"></code>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <template id="terminal-content">
+    <div class="window-content terminal" x-data="hackerTerminal">
+      <div class="terminal-output" id="terminal-output">
+        <div class="terminal-line system">
+          <span class="prompt">system@attack-lab:~$</span>
+          <span>Welcome to Attack Lab Terminal v1.0</span>
+        </div>
+        <div class="terminal-line system">
+          <span>Type 'help' for available commands</span>
+        </div>
+        <template x-for="(line, index) in history" :key="index">
+          <div class="terminal-line" :class="line.type">
+            <template x-if="line.type === 'input'">
+              <span><span class="prompt">hacker@attack-lab:~$</span> <span x-text="line.text"></span></span>
+            </template>
+            <template x-if="line.type !== 'input'">
+              <span x-html="line.text"></span>
+            </template>
+          </div>
+        </template>
+      </div>
+      <div class="terminal-input-line">
+        <span class="prompt">hacker@attack-lab:~$</span>
+        <input
+          type="text"
+          class="terminal-input"
+          x-model="currentInput"
+          @keydown.enter="executeCommand()"
+          @keydown.up="historyUp()"
+          @keydown.down="historyDown()"
+          @keydown.tab.prevent="autoComplete()"
+          placeholder="Enter command..."
+          autofocus
+        >
+      </div>
+    </div>
+  </template>
+
+  <template id="inspector-content">
+    <div class="window-content inspector" x-data="requestInspector">
+      <div class="inspector-tabs">
+        <button class="tab" :class="{ 'active': activeTab === 'request' }" @click="activeTab = 'request'">Request</button>
+        <button class="tab" :class="{ 'active': activeTab === 'response' }" @click="activeTab = 'response'">Response</button>
+        <button class="tab" :class="{ 'active': activeTab === 'token' }" @click="activeTab = 'token'">Token</button>
+      </div>
+
+      <div class="inspector-content" x-show="activeTab === 'request'">
+        <div class="inspector-section">
+          <h4>Current Request</h4>
+          <div class="request-display" x-show="$store.flow.currentRequest">
+            <div class="request-method" x-text="$store.flow.currentRequest?.method || 'GET'"></div>
+            <div class="request-url" x-text="$store.flow.currentRequest?.url"></div>
+          </div>
+          <div class="empty-state" x-show="!$store.flow.currentRequest">
+            <p>No request captured yet. Run an attack from the terminal or step through a flow.</p>
+          </div>
+        </div>
+
+        <div class="inspector-section" x-show="$store.flow.currentRequest?.headers">
+          <h4>Headers</h4>
+          <div class="headers-list">
+            <template x-for="(value, key) in $store.flow.currentRequest?.headers || {}" :key="key">
+              <div class="header-row">
+                <span class="header-key" x-text="key"></span>
+                <span class="header-value" x-text="value"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <div class="inspector-section" x-show="$store.flow.currentRequest?.body">
+          <h4>Body</h4>
+          <pre class="code-block" x-text="formatJson($store.flow.currentRequest?.body)"></pre>
+        </div>
+      </div>
+
+      <div class="inspector-content" x-show="activeTab === 'response'">
+        <div class="inspector-section">
+          <h4>Response</h4>
+          <div class="response-display" x-show="$store.flow.currentResponse">
+            <div class="response-status" :class="$store.flow.currentResponse?.success ? 'status-success' : 'status-error'">
+              <span x-text="$store.flow.currentResponse?.success ? '200 OK' : '401 Unauthorized'"></span>
+            </div>
+            <pre class="code-block" x-text="formatJson($store.flow.currentResponse)"></pre>
+          </div>
+          <div class="empty-state" x-show="!$store.flow.currentResponse">
+            <p>No response yet.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="inspector-content" x-show="activeTab === 'token'">
+        <div class="inspector-section">
+          <h4>Captured Token</h4>
+          <div class="token-display" x-show="$store.flow.capturedToken">
+            <div class="token-raw">
+              <code x-text="truncate($store.flow.capturedToken, 60)"></code>
+              <button class="btn btn-sm btn-ghost" @click="copyToken()">Copy</button>
+            </div>
+            <div class="token-decoded" x-show="decodedToken">
+              <h5>Header</h5>
+              <pre class="code-block" x-text="formatJson(decodedToken?.header)"></pre>
+              <h5>Payload</h5>
+              <pre class="code-block" x-text="formatJson(decodedToken?.payload)"></pre>
+            </div>
+          </div>
+          <div class="empty-state" x-show="!$store.flow.capturedToken">
+            <p>No token captured yet. Complete an authorization flow to capture a token.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <template id="config-content">
+    <div class="window-content config-panel" x-data>
+      <div class="config-header">
+        <h4>Security Defenses</h4>
+        <div class="preset-buttons">
+          <button class="btn btn-sm" :class="getPresetClass('insecure')" @click="$store.config.applyPreset('insecure')">Vulnerable</button>
+          <button class="btn btn-sm" :class="getPresetClass('partial')" @click="$store.config.applyPreset('partial')">Partial</button>
+          <button class="btn btn-sm" :class="getPresetClass('secure')" @click="$store.config.applyPreset('secure')">Secure</button>
+        </div>
+      </div>
+
+      <div class="config-controls">
+        <label class="toggle">
+          <input type="checkbox" class="toggle-input" x-model="$store.config.requirePkce">
+          <span class="toggle-switch"></span>
+          <span class="toggle-label">PKCE Required</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" class="toggle-input" x-model="$store.config.strictRedirectUri">
+          <span class="toggle-switch"></span>
+          <span class="toggle-label">Strict Redirect URI</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" class="toggle-input" x-model="$store.config.validateAudience">
+          <span class="toggle-switch"></span>
+          <span class="toggle-label">Audience Validation</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" class="toggle-input" x-model="$store.config.requireStateParam">
+          <span class="toggle-switch"></span>
+          <span class="toggle-label">State Parameter</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" class="toggle-input" x-model="$store.config.httpsOnlyRedirects">
+          <span class="toggle-switch"></span>
+          <span class="toggle-label">HTTPS Only</span>
+        </label>
+      </div>
+
+      <div class="config-score">
+        <div class="score-ring">
+          <svg viewBox="0 0 100 100">
+            <circle class="score-bg" cx="50" cy="50" r="45"/>
+            <circle
+              class="score-fill"
+              cx="50" cy="50" r="45"
+              :stroke-dasharray="`${$store.config.securityScore * 2.83} 283`"
+            />
+          </svg>
+          <div class="score-text">
+            <span class="score-value glow" x-text="$store.config.securityScore"></span>
+            <span class="score-label">/ 100</span>
+          </div>
+        </div>
+        <div class="score-level" :class="`level-${$store.config.securityLevel.color}`">
+          <span x-text="$store.config.securityLevel.label"></span>
+        </div>
+      </div>
+
+      <div class="config-vulns" x-show="$store.config.vulnerabilities.length > 0">
+        <h5>Active Vulnerabilities</h5>
+        <template x-for="vuln in $store.config.vulnerabilities" :key="vuln.id">
+          <div class="vuln-item">
+            <span class="vuln-severity" :class="`severity-${vuln.severity}`" x-text="vuln.severity"></span>
+            <span class="vuln-name" x-text="vuln.name"></span>
+          </div>
+        </template>
+      </div>
+    </div>
+  </template>
+
+  <template id="objectives-content">
+    <div class="window-content objectives-panel" x-data="objectivesPanel">
+      <!-- Rank Progress Header -->
+      <div class="rank-header">
+        <div class="rank-badge">
+          <span class="rank-icon-lg" x-text="$store.game.currentRank.icon"></span>
+          <div class="rank-details">
+            <span class="rank-title" x-text="$store.game.currentRank.name"></span>
+            <span class="rank-level" x-text="'Level ' + $store.game.currentRank.level"></span>
+          </div>
+        </div>
+        <div class="xp-progress">
+          <div class="xp-bar-lg">
+            <div class="xp-fill-lg" :style="`width: ${$store.game.xpProgress}%`"></div>
+          </div>
+          <span class="xp-label" x-text="$store.game.totalXP + ' / ' + $store.game.nextRankXP + ' XP'"></span>
+        </div>
+      </div>
+
+      <!-- Active Mission -->
+      <div class="mission-section" x-show="$store.game.activeObjectives.length > 0">
+        <div class="section-header">
+          <h4>Current Mission</h4>
+          <span class="mission-difficulty" :class="'difficulty-' + $store.game.currentMission?.difficulty" x-text="$store.game.currentMission?.difficulty"></span>
+        </div>
+        <div class="mission-title" x-text="$store.game.currentMission?.title"></div>
+        <p class="mission-description" x-text="$store.game.currentMission?.description"></p>
+
+        <!-- Objectives List -->
+        <div class="objectives-list">
+          <template x-for="obj in $store.game.activeObjectives" :key="obj.id">
+            <div class="objective-item" :class="{ 'completed': obj.completed }">
+              <div class="objective-check">
+                <svg x-show="obj.completed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              </div>
+              <div class="objective-content">
+                <span class="objective-text" x-text="obj.text"></span>
+                <span class="objective-xp" x-text="'+' + obj.xp + ' XP'"></span>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- Mission Rewards -->
+        <div class="mission-rewards" x-show="$store.game.allObjectivesComplete">
+          <div class="reward-banner">
+            <span class="reward-icon">🏆</span>
+            <span>Mission Complete!</span>
+          </div>
+          <button class="btn btn-primary btn-glow" @click="claimRewards()">
+            Claim <span x-text="$store.game.currentMission?.bonusXP"></span> Bonus XP
+          </button>
+        </div>
+      </div>
+
+      <!-- No Active Mission -->
+      <div class="no-mission" x-show="$store.game.activeObjectives.length === 0">
+        <div class="no-mission-icon">🎯</div>
+        <h4>Select an Attack</h4>
+        <p>Use the Terminal to start an attack and unlock mission objectives</p>
+        <div class="mission-list">
+          <button class="mission-btn" @click="startMission('pkce_bypass')">
+            <span class="mission-icon">🔓</span>
+            <span>PKCE Bypass</span>
+            <span class="mission-xp">+150 XP</span>
+          </button>
+          <button class="mission-btn" @click="startMission('redirect_hijack')">
+            <span class="mission-icon">🔀</span>
+            <span>Redirect Hijack</span>
+            <span class="mission-xp">+200 XP</span>
+          </button>
+          <button class="mission-btn" @click="startMission('token_replay')">
+            <span class="mission-icon">🔄</span>
+            <span>Token Replay</span>
+            <span class="mission-xp">+175 XP</span>
+          </button>
+          <button class="mission-btn" @click="startMission('csrf_login')">
+            <span class="mission-icon">🕸️</span>
+            <span>CSRF Attack</span>
+            <span class="mission-xp">+225 XP</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Stats Footer -->
+      <div class="stats-footer">
+        <div class="stat-item">
+          <span class="stat-value" x-text="$store.game.missionsCompleted"></span>
+          <span class="stat-label">Missions</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value" x-text="$store.game.totalObjectivesCompleted"></span>
+          <span class="stat-label">Objectives</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value" x-text="$store.game.totalXP"></span>
+          <span class="stat-label">Total XP</span>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <script>
+    // Wait for Alpine and WinBox to be ready
+    document.addEventListener('alpine:init', () => {
+      // Rank definitions
+      const RANKS = [
+        { level: 1, name: 'Script Kiddie', icon: '👶', minXP: 0, color: '#888' },
+        { level: 2, name: 'Wannabe', icon: '🎮', minXP: 100, color: '#4ade80' },
+        { level: 3, name: 'Hacker', icon: '💻', minXP: 300, color: '#22d3ee' },
+        { level: 4, name: 'Cracker', icon: '🔓', minXP: 600, color: '#a78bfa' },
+        { level: 5, name: 'Elite', icon: '⚡', minXP: 1000, color: '#f472b6' },
+        { level: 6, name: 'Cyber Ninja', icon: '🥷', minXP: 1500, color: '#fb923c' },
+        { level: 7, name: 'Black Hat', icon: '🎩', minXP: 2200, color: '#ef4444' },
+        { level: 8, name: 'APT Operator', icon: '🕵️', minXP: 3000, color: '#dc2626' },
+        { level: 9, name: 'Nation State', icon: '🏴‍☠️', minXP: 4000, color: '#00ff41' }
+      ];
+
+      // Mission definitions
+      const MISSIONS = {
+        pkce_bypass: {
+          id: 'pkce_bypass',
+          title: 'PKCE Bypass Operation',
+          description: 'Exploit missing PKCE protection to intercept and steal authorization codes.',
+          difficulty: 'beginner',
+          bonusXP: 50,
+          objectives: [
+            { id: 'pkce_1', text: 'Scan target for vulnerabilities', xp: 15, trigger: 'scan' },
+            { id: 'pkce_2', text: 'Identify missing PKCE in auth request', xp: 20, trigger: 'step_2' },
+            { id: 'pkce_3', text: 'Intercept authorization code', xp: 35, trigger: 'step_4' },
+            { id: 'pkce_4', text: 'Exchange stolen code for tokens', xp: 40, trigger: 'step_5' },
+            { id: 'pkce_5', text: 'Capture access token', xp: 40, trigger: 'step_6' }
+          ]
+        },
+        redirect_hijack: {
+          id: 'redirect_hijack',
+          title: 'Redirect URI Hijacking',
+          description: 'Manipulate redirect URIs to steal authorization codes via phishing.',
+          difficulty: 'intermediate',
+          bonusXP: 75,
+          objectives: [
+            { id: 'redir_1', text: 'Craft malicious authorization URL', xp: 25, trigger: 'step_1' },
+            { id: 'redir_2', text: 'Execute phishing attack', xp: 30, trigger: 'step_2' },
+            { id: 'redir_3', text: 'Bypass redirect URI validation', xp: 35, trigger: 'step_3' },
+            { id: 'redir_4', text: 'Capture redirected authorization code', xp: 50, trigger: 'step_5' },
+            { id: 'redir_5', text: 'Obtain victim access token', xp: 60, trigger: 'step_6' }
+          ]
+        },
+        token_replay: {
+          id: 'token_replay',
+          title: 'Token Replay Attack',
+          description: 'Replay tokens across services that don\'t validate audience claims.',
+          difficulty: 'intermediate',
+          bonusXP: 60,
+          objectives: [
+            { id: 'replay_1', text: 'Obtain legitimate low-privilege token', xp: 20, trigger: 'step_1' },
+            { id: 'replay_2', text: 'Decode and analyze JWT claims', xp: 25, trigger: 'step_2' },
+            { id: 'replay_3', text: 'Attempt token replay on admin API', xp: 40, trigger: 'step_3' },
+            { id: 'replay_4', text: 'Access unauthorized resources', xp: 50, trigger: 'step_4' }
+          ]
+        },
+        csrf_login: {
+          id: 'csrf_login',
+          title: 'OAuth Login CSRF',
+          description: 'Execute CSRF to link victim session to attacker account.',
+          difficulty: 'advanced',
+          bonusXP: 100,
+          objectives: [
+            { id: 'csrf_1', text: 'Authenticate with attacker account', xp: 20, trigger: 'step_1' },
+            { id: 'csrf_2', text: 'Capture authorization code WITHOUT using it', xp: 35, trigger: 'step_2' },
+            { id: 'csrf_3', text: 'Create CSRF exploit page', xp: 40, trigger: 'step_3' },
+            { id: 'csrf_4', text: 'Trick victim into visiting CSRF page', xp: 45, trigger: 'step_4' },
+            { id: 'csrf_5', text: 'Link victim session to attacker account', xp: 55, trigger: 'step_5' },
+            { id: 'csrf_6', text: 'Harvest victim data via linked account', xp: 30, trigger: 'step_6' }
+          ]
+        }
+      };
+
+      // Game progression store
+      Alpine.store('game', {
+        totalXP: parseInt(localStorage.getItem('attack-lab-xp') || '0'),
+        missionsCompleted: parseInt(localStorage.getItem('attack-lab-missions') || '0'),
+        totalObjectivesCompleted: parseInt(localStorage.getItem('attack-lab-objectives') || '0'),
+        currentMission: null,
+        activeObjectives: [],
+        completedMissions: JSON.parse(localStorage.getItem('attack-lab-completed-missions') || '[]'),
+
+        get currentRank() {
+          let rank = RANKS[0];
+          for (const r of RANKS) {
+            if (this.totalXP >= r.minXP) rank = r;
+          }
+          return rank;
+        },
+
+        get nextRank() {
+          const currentLevel = this.currentRank.level;
+          return RANKS.find(r => r.level === currentLevel + 1) || this.currentRank;
+        },
+
+        get nextRankXP() {
+          return this.nextRank.minXP;
+        },
+
+        get xpProgress() {
+          const current = this.currentRank;
+          const next = this.nextRank;
+          if (current.level === next.level) return 100;
+          const range = next.minXP - current.minXP;
+          const progress = this.totalXP - current.minXP;
+          return Math.min(100, Math.round((progress / range) * 100));
+        },
+
+        get completedCount() {
+          return this.activeObjectives.filter(o => o.completed).length;
+        },
+
+        get allObjectivesComplete() {
+          return this.activeObjectives.length > 0 && this.activeObjectives.every(o => o.completed);
+        },
+
+        loadMission(missionId) {
+          const mission = MISSIONS[missionId];
+          if (!mission) return false;
+
+          this.currentMission = mission;
+          this.activeObjectives = mission.objectives.map(o => ({ ...o, completed: false }));
+          return true;
+        },
+
+        completeObjective(triggerId) {
+          const obj = this.activeObjectives.find(o => o.trigger === triggerId && !o.completed);
+          if (obj) {
+            obj.completed = true;
+            this.addXP(obj.xp);
+            this.totalObjectivesCompleted++;
+            this.save();
+            return obj;
+          }
+          return null;
+        },
+
+        addXP(amount) {
+          const oldRank = this.currentRank;
+          this.totalXP += amount;
+          const newRank = this.currentRank;
+
+          // Check for rank up
+          if (newRank.level > oldRank.level) {
+            // Could trigger a celebration here
+            console.log(`🎉 Rank up! ${oldRank.name} → ${newRank.name}`);
+          }
+          this.save();
+        },
+
+        claimMissionReward() {
+          if (!this.allObjectivesComplete || !this.currentMission) return;
+
+          this.addXP(this.currentMission.bonusXP);
+          this.missionsCompleted++;
+          this.completedMissions.push(this.currentMission.id);
+
+          // Reset current mission
+          this.currentMission = null;
+          this.activeObjectives = [];
+          this.save();
+        },
+
+        save() {
+          localStorage.setItem('attack-lab-xp', this.totalXP.toString());
+          localStorage.setItem('attack-lab-missions', this.missionsCompleted.toString());
+          localStorage.setItem('attack-lab-objectives', this.totalObjectivesCompleted.toString());
+          localStorage.setItem('attack-lab-completed-missions', JSON.stringify(this.completedMissions));
+        },
+
+        reset() {
+          this.totalXP = 0;
+          this.missionsCompleted = 0;
+          this.totalObjectivesCompleted = 0;
+          this.completedMissions = [];
+          this.currentMission = null;
+          this.activeObjectives = [];
+          this.save();
+        }
+      });
+
+      // Flow store for shared state between windows
+      Alpine.store('flow', {
+        currentScenario: '',
+        stepIndex: -1,
+        currentStep: null,
+        steps: [],
+        isAttacking: false,
+        isComplete: false,
+        currentRequest: null,
+        currentResponse: null,
+        capturedToken: null,
+        activeNodes: [],
+
+        setScenario(scenario, steps) {
+          this.currentScenario = scenario;
+          this.steps = steps;
+          this.stepIndex = -1;
+          this.currentStep = null;
+          this.isComplete = false;
+          this.isAttacking = false;
+          this.activeNodes = [];
+          this.currentRequest = null;
+          this.currentResponse = null;
+        },
+
+        nextStep() {
+          if (this.stepIndex < this.steps.length - 1) {
+            this.stepIndex++;
+            this.currentStep = this.steps[this.stepIndex];
+            this.activeNodes = this.currentStep.nodes || [];
+            this.isAttacking = this.currentStep.isAttack || false;
+            // Set request/response for Inspector window
+            this.currentRequest = this.currentStep.request || null;
+            this.currentResponse = this.currentStep.response || null;
+            // Capture token if response contains one
+            if (this.currentResponse && this.currentResponse.access_token) {
+              this.capturedToken = this.currentResponse.access_token;
+            }
+            // Trigger objective completion based on step
+            const game = Alpine.store('game');
+            game.completeObjective('step_' + this.currentStep.id);
+            return true;
+          }
+          this.isComplete = true;
+          this.isAttacking = false;
+          return false;
+        },
+
+        reset() {
+          this.stepIndex = -1;
+          this.currentStep = null;
+          this.isComplete = false;
+          this.isAttacking = false;
+          this.activeNodes = [];
+          this.currentRequest = null;
+          this.currentResponse = null;
+        }
+      });
+
+      // Main desktop controller
+      Alpine.data('hackerDesktop', () => ({
+        windows: {
+          flowDiagram: { open: false, instance: null },
+          terminal: { open: false, instance: null },
+          inspector: { open: false, instance: null },
+          config: { open: false, instance: null },
+          objectives: { open: false, instance: null }
+        },
+
+        get anyWindowOpen() {
+          return Object.values(this.windows).some(w => w.open);
+        },
+
+        init() {
+          // Restore window states from localStorage
+          const saved = localStorage.getItem('attack-lab-windows');
+          if (saved) {
+            const states = JSON.parse(saved);
+            // Don't auto-open, just remember positions
+          }
+        },
+
+        toggleWindow(name) {
+          if (this.windows[name].open) {
+            this.closeWindow(name);
+          } else {
+            this.openWindow(name);
+          }
+        },
+
+        openWindow(name) {
+          if (this.windows[name].open) {
+            // Focus existing window
+            this.windows[name].instance?.focus();
+            return;
+          }
+
+          const configs = {
+            flowDiagram: {
+              title: '📊 Flow Diagram',
+              width: '600px',
+              height: '500px',
+              x: 50,
+              y: 50,
+              template: 'flow-diagram-content'
+            },
+            terminal: {
+              title: '💀 Hacker Terminal',
+              width: '700px',
+              height: '400px',
+              x: 100,
+              y: 150,
+              template: 'terminal-content',
+              class: ['terminal-window']
+            },
+            inspector: {
+              title: '🔍 Request Inspector',
+              width: '500px',
+              height: '450px',
+              x: 700,
+              y: 50,
+              template: 'inspector-content'
+            },
+            config: {
+              title: '🛡️ Security Config',
+              width: '320px',
+              height: '500px',
+              x: 'right',
+              y: 'center',
+              template: 'config-content'
+            },
+            objectives: {
+              title: '🎯 Mission Objectives',
+              width: '380px',
+              height: '520px',
+              x: 'center',
+              y: 'center',
+              template: 'objectives-content',
+              class: ['objectives-window']
+            }
+          };
+
+          const cfg = configs[name];
+          const template = document.getElementById(cfg.template);
+          const content = template.content.cloneNode(true);
+
+          const win = new WinBox({
+            title: cfg.title,
+            width: cfg.width,
+            height: cfg.height,
+            x: cfg.x,
+            y: cfg.y,
+            mount: content,
+            class: cfg.class || [],
+            background: '#0d1117',
+            border: 1,
+            onclose: () => {
+              this.windows[name].open = false;
+              this.windows[name].instance = null;
+              this.saveWindowStates();
+              return false;
+            },
+            onfocus: () => {
+              // Update taskbar active state
+            }
+          });
+
+          this.windows[name].open = true;
+          this.windows[name].instance = win;
+          this.saveWindowStates();
+
+          // Initialize Alpine on the mounted content
+          setTimeout(() => {
+            Alpine.initTree(win.body);
+          }, 0);
+        },
+
+        closeWindow(name) {
+          if (this.windows[name].instance) {
+            this.windows[name].instance.close();
+          }
+          this.windows[name].open = false;
+          this.windows[name].instance = null;
+        },
+
+        saveWindowStates() {
+          const states = {};
+          for (const [name, win] of Object.entries(this.windows)) {
+            if (win.instance) {
+              states[name] = {
+                x: win.instance.x,
+                y: win.instance.y,
+                width: win.instance.width,
+                height: win.instance.height
+              };
+            }
+          }
+          localStorage.setItem('attack-lab-windows', JSON.stringify(states));
+        }
+      }));
+
+      // Define attack scenarios globally so terminal can access them
+      window.ATTACK_SCENARIOS = {
+        pkce_bypass: [
+          { id: 1, title: 'User initiates login', description: 'Victim clicks "Login with OAuth" on the client app', nodes: ['victim', 'client'],
+            request: { method: 'GET', url: 'https://app.example.com/login' },
+            response: { status: 302, redirect: '/oauth/authorize' }
+          },
+          { id: 2, title: 'Authorization request', description: 'Client redirects to auth server WITHOUT code_challenge (PKCE missing)', nodes: ['client', 'authserver'],
+            request: { method: 'GET', url: 'https://auth.example.com/authorize?response_type=code&client_id=app&redirect_uri=https://app.example.com/callback&scope=openid&state=xyz', headers: { 'Host': 'auth.example.com' } },
+            response: { status: 200, body: 'Login page displayed' }
+          },
+          { id: 3, title: 'User authenticates', description: 'Victim enters credentials and approves the authorization', nodes: ['victim', 'authserver'],
+            request: { method: 'POST', url: 'https://auth.example.com/authorize', body: { username: 'victim', password: '****', approve: true } },
+            response: { status: 302, redirect: 'https://app.example.com/callback?code=AUTH_CODE_123&state=xyz' }
+          },
+          { id: 4, title: 'Attacker intercepts code!', description: 'Attacker captures the authorization code from the redirect URL (via network sniffing, referrer leak, or malware)', nodes: ['authserver', 'attacker'], isAttack: true,
+            request: { method: 'INTERCEPT', url: 'Captured: code=AUTH_CODE_123' },
+            response: { captured: true, code: 'AUTH_CODE_123', message: 'Authorization code stolen!' }
+          },
+          { id: 5, title: 'Attacker exchanges code', description: 'Attacker sends stolen code to token endpoint (no code_verifier needed!)', nodes: ['attacker', 'authserver'], isAttack: true,
+            request: { method: 'POST', url: 'https://auth.example.com/token', body: { grant_type: 'authorization_code', code: 'AUTH_CODE_123', redirect_uri: 'https://app.example.com/callback', client_id: 'app' } },
+            response: { success: true, access_token: 'eyJhbGciOiJSUzI1NiIs...', token_type: 'Bearer', expires_in: 3600 }
+          },
+          { id: 6, title: 'Attack complete!', description: 'Attacker now has a valid access token for the victim\'s account', nodes: ['attacker'], isAttack: true,
+            request: null,
+            response: { message: 'SUCCESS: Attacker has full access to victim\'s account!', token: 'eyJhbGciOiJSUzI1NiIs...' }
+          }
+        ],
+        redirect_hijack: [
+          { id: 1, title: 'Attacker crafts malicious link', description: 'Attacker creates authorization URL with their server as redirect_uri', nodes: ['attacker'], isAttack: true,
+            request: { method: 'CRAFT', url: 'https://auth.example.com/authorize?redirect_uri=https://evil.attacker.com/steal&client_id=app' },
+            response: { message: 'Malicious OAuth URL crafted' }
+          },
+          { id: 2, title: 'Phishing attack', description: 'Attacker tricks victim into clicking the malicious link via email/social engineering', nodes: ['attacker', 'victim'], isAttack: true,
+            request: { method: 'PHISH', url: 'Phishing email: "Click here to verify your account"' },
+            response: { message: 'Victim clicks malicious link' }
+          },
+          { id: 3, title: 'Auth server accepts bad redirect', description: 'Server validates redirect_uri but accepts attacker\'s domain (loose validation)', nodes: ['victim', 'authserver'],
+            request: { method: 'GET', url: 'https://auth.example.com/authorize?redirect_uri=https://evil.attacker.com/steal&client_id=app' },
+            response: { status: 200, message: 'Redirect URI accepted (validation too loose!)' }
+          },
+          { id: 4, title: 'Victim authenticates', description: 'Victim logs in normally, unaware of the malicious redirect', nodes: ['victim', 'authserver'],
+            request: { method: 'POST', url: 'https://auth.example.com/authorize', body: { approve: true } },
+            response: { status: 302, redirect: 'https://evil.attacker.com/steal?code=STOLEN_CODE' }
+          },
+          { id: 5, title: 'Code sent to attacker!', description: 'Authorization code is redirected to attacker\'s server instead of legitimate app', nodes: ['authserver', 'attacker'], isAttack: true,
+            request: { method: 'GET', url: 'https://evil.attacker.com/steal?code=STOLEN_CODE' },
+            response: { captured: true, code: 'STOLEN_CODE' }
+          },
+          { id: 6, title: 'Attack complete!', description: 'Attacker exchanges stolen code for tokens', nodes: ['attacker', 'authserver'], isAttack: true,
+            request: { method: 'POST', url: 'https://auth.example.com/token', body: { code: 'STOLEN_CODE' } },
+            response: { success: true, access_token: 'eyJhbGciOiJSUzI1NiIs...' }
+          }
+        ],
+        token_replay: [
+          { id: 1, title: 'Attacker obtains valid token', description: 'Attacker legitimately gets a token for low-privilege Service A (frontend-app)', nodes: ['attacker', 'authserver'],
+            request: { method: 'POST', url: 'https://auth.example.com/token', body: { client_id: 'frontend-app' } },
+            response: { success: true, access_token: 'eyJ...', token_type: 'Bearer', aud: 'frontend-app' }
+          },
+          { id: 2, title: 'Attacker inspects token', description: 'Decodes JWT and sees aud="frontend-app", but wonders if other services check this...', nodes: ['attacker'],
+            request: { method: 'DECODE', url: 'JWT payload inspection' },
+            response: { header: { alg: 'RS256' }, payload: { iss: 'auth.example.com', sub: 'user123', aud: 'frontend-app', scope: 'read:profile' } }
+          },
+          { id: 3, title: 'Replay attack attempt', description: 'Attacker sends frontend-app token to admin-api (high-privilege service)', nodes: ['attacker', 'resource'], isAttack: true,
+            request: { method: 'GET', url: 'https://admin-api.example.com/users', headers: { 'Authorization': 'Bearer eyJ...' } },
+            response: { pending: true, message: 'Checking if admin-api validates audience...' }
+          },
+          { id: 4, title: 'Attack succeeds!', description: 'Admin-api does NOT validate audience claim - accepts wrong token!', nodes: ['resource'], isAttack: true,
+            request: null,
+            response: { success: true, users: [{ id: 1, email: 'admin@company.com', role: 'admin' }, { id: 2, email: 'ceo@company.com', role: 'admin' }], message: 'VULNERABLE: admin-api accepted frontend-app token!' }
+          }
+        ],
+        csrf_login: [
+          { id: 1, title: 'Attacker authenticates', description: 'Attacker logs in with their OWN account and captures authorization code BEFORE using it', nodes: ['attacker', 'authserver'],
+            request: { method: 'POST', url: 'https://auth.example.com/authorize', body: { user: 'attacker@evil.com' } },
+            response: { status: 302, redirect: 'https://app.example.com/callback?code=ATTACKER_CODE' }
+          },
+          { id: 2, title: 'Attacker captures their own code', description: 'Intercepts redirect, saves code WITHOUT completing the flow', nodes: ['attacker'], isAttack: true,
+            request: { method: 'INTERCEPT', url: 'Blocked redirect to save code' },
+            response: { code: 'ATTACKER_CODE', note: 'Code saved - DO NOT use yet!' }
+          },
+          { id: 3, title: 'CSRF page created', description: 'Attacker creates malicious page that auto-submits callback with their code', nodes: ['attacker'], isAttack: true,
+            request: { method: 'CREATE', url: 'evil-page.html' },
+            response: { html: '<body onload="location=\'/callback?code=ATTACKER_CODE\'">' }
+          },
+          { id: 4, title: 'Victim visits page', description: 'Victim is tricked into visiting attacker\'s page while logged into target app', nodes: ['victim', 'attacker'], isAttack: true,
+            request: { method: 'GET', url: 'https://evil.attacker.com/cute-cats.html' },
+            response: { message: 'Victim\'s browser auto-redirects...' }
+          },
+          { id: 5, title: 'CSRF triggers callback', description: 'Victim\'s browser completes OAuth flow with ATTACKER\'S code (no state validation!)', nodes: ['victim', 'client'], isAttack: true,
+            request: { method: 'GET', url: 'https://app.example.com/callback?code=ATTACKER_CODE' },
+            response: { status: 200, message: 'Session created - linked to attacker@evil.com!' }
+          },
+          { id: 6, title: 'Attack complete!', description: 'Victim\'s session is now connected to attacker\'s account - any data they enter goes to attacker', nodes: ['client'], isAttack: true,
+            request: null,
+            response: { success: true, message: 'Victim believes they are logged into their own account, but session belongs to attacker!' }
+          }
+        ]
+      };
+
+      // Flow Diagram component
+      Alpine.data('flowDiagram', () => ({
+        get canStep() {
+          const flow = Alpine.store('flow');
+          return flow.currentScenario && flow.steps.length > 0 && !flow.isComplete;
+        },
+
+        loadScenario() {
+          const scenario = Alpine.store('flow').currentScenario;
+          if (scenario && window.ATTACK_SCENARIOS[scenario]) {
+            const flow = Alpine.store('flow');
+            flow.steps = window.ATTACK_SCENARIOS[scenario];
+            flow.stepIndex = -1;
+            flow.currentStep = null;
+            flow.isComplete = false;
+            flow.isAttacking = false;
+            flow.activeNodes = [];
+            flow.currentRequest = null;
+            flow.currentResponse = null;
+          }
+        },
+
+        stepForward() {
+          Alpine.store('flow').nextStep();
+        },
+
+        resetFlow() {
+          Alpine.store('flow').reset();
+        },
+
+        isNodeActive(node) {
+          return Alpine.store('flow').activeNodes.includes(node);
+        },
+
+        getServerStatus() {
+          const config = Alpine.store('config');
+          if (config.securityScore >= 80) return 'status-secure';
+          if (config.securityScore >= 50) return 'status-partial';
+          return 'status-vulnerable';
+        },
+
+        getServerStatusText() {
+          const config = Alpine.store('config');
+          if (config.securityScore >= 80) return 'SECURE';
+          if (config.securityScore >= 50) return 'PARTIAL';
+          return 'VULNERABLE';
+        }
+      }));
+
+      // Terminal component
+      Alpine.data('hackerTerminal', () => ({
+        history: [],
+        commandHistory: [],
+        historyIndex: -1,
+        currentInput: '',
+
+        commands: {
+          help: () => `Available commands:
+  <span class="cmd">scan</span>          - Scan target for vulnerabilities
+  <span class="cmd">attack &lt;type&gt;</span> - Launch attack (pkce, redirect, replay, csrf)
+  <span class="cmd">intercept</span>     - Start intercepting requests
+  <span class="cmd">status</span>        - Show current attack status
+  <span class="cmd">config</span>        - Show target security config
+  <span class="cmd">token</span>         - Show captured token
+  <span class="cmd">clear</span>         - Clear terminal
+  <span class="cmd">help</span>          - Show this help`,
+
+          scan: function() {
+            const config = Alpine.store('config');
+            const game = Alpine.store('game');
+            const vulns = config.vulnerabilities;
+
+            // Trigger scan objective completion
+            game.completeObjective('scan');
+
+            if (vulns.length === 0) {
+              return '<span class="success">Target appears secure. No vulnerabilities detected.</span>';
+            }
+            let result = `<span class="warning">Found ${vulns.length} vulnerabilities:</span>\n`;
+            vulns.forEach(v => {
+              result += `  <span class="error">[${v.severity.toUpperCase()}]</span> ${v.name}\n`;
+            });
+            return result;
+          },
+
+          attack: function(args) {
+            const type = args[0];
+            if (!type) {
+              return '<span class="error">Usage: attack &lt;pkce|redirect|replay|csrf&gt;</span>';
+            }
+            const scenarioMap = {
+              pkce: 'pkce_bypass',
+              redirect: 'redirect_hijack',
+              replay: 'token_replay',
+              csrf: 'csrf_login'
+            };
+            if (!scenarioMap[type]) {
+              return `<span class="error">Unknown attack type: ${type}</span>`;
+            }
+            const scenarioId = scenarioMap[type];
+            const flow = Alpine.store('flow');
+            const game = Alpine.store('game');
+            // Load the scenario with its steps
+            const scenarios = window.ATTACK_SCENARIOS || {};
+            if (scenarios[scenarioId]) {
+              flow.currentScenario = scenarioId;
+              flow.steps = scenarios[scenarioId];
+              flow.stepIndex = -1;
+              flow.currentStep = null;
+              flow.isComplete = false;
+              flow.isAttacking = false;
+              flow.activeNodes = [];
+              // Load mission objectives
+              game.loadMission(scenarioId);
+            }
+            return `<span class="success">Mission loaded: ${type.toUpperCase()} attack. Open Flow Diagram to execute.</span>\n<span class="warning">Objectives activated! Check the Objectives panel.</span>`;
+          },
+
+          intercept: () => {
+            Alpine.store('flow').isAttacking = true;
+            return '<span class="warning">Intercepting requests... (simulated)</span>';
+          },
+
+          status: function() {
+            const flow = Alpine.store('flow');
+            return `Attack Status:
+  Scenario: ${flow.currentScenario || 'none'}
+  Step: ${flow.stepIndex + 1}/${flow.steps.length}
+  Active: ${flow.isAttacking ? '<span class="error">YES</span>' : '<span class="success">NO</span>'}`;
+          },
+
+          config: function() {
+            const cfg = Alpine.store('config');
+            return `Target Security Config:
+  PKCE: ${cfg.requirePkce ? '<span class="success">ON</span>' : '<span class="error">OFF</span>'}
+  Strict Redirect: ${cfg.strictRedirectUri ? '<span class="success">ON</span>' : '<span class="error">OFF</span>'}
+  Audience Check: ${cfg.validateAudience ? '<span class="success">ON</span>' : '<span class="error">OFF</span>'}
+  State Param: ${cfg.requireStateParam ? '<span class="success">ON</span>' : '<span class="error">OFF</span>'}
+  Score: ${cfg.securityScore}/100`;
+          },
+
+          token: function() {
+            const token = Alpine.store('flow').capturedToken;
+            if (!token) {
+              return '<span class="warning">No token captured yet.</span>';
+            }
+            return `Captured Token:\n<span class="token">${token.substring(0, 50)}...</span>`;
+          },
+
+          clear: function() {
+            return '__CLEAR__';
+          }
+        },
+
+        executeCommand() {
+          const input = this.currentInput.trim();
+          if (!input) return;
+
+          // Add to history
+          this.history.push({ type: 'input', text: input });
+          this.commandHistory.push(input);
+          this.historyIndex = this.commandHistory.length;
+
+          // Parse command
+          const parts = input.split(/\s+/);
+          const cmd = parts[0].toLowerCase();
+          const args = parts.slice(1);
+
+          // Execute
+          let output;
+          if (cmd === 'clear') {
+            this.history = [];
+            this.currentInput = '';
+            return;
+          } else if (this.commands[cmd]) {
+            output = typeof this.commands[cmd] === 'function'
+              ? this.commands[cmd](args)
+              : this.commands[cmd];
+          } else {
+            output = `<span class="error">Command not found: ${cmd}</span>. Type 'help' for available commands.`;
+          }
+
+          this.history.push({ type: 'output', text: output });
+          this.currentInput = '';
+
+          // Scroll to bottom
+          this.$nextTick(() => {
+            const el = document.getElementById('terminal-output');
+            if (el) el.scrollTop = el.scrollHeight;
+          });
+        },
+
+        historyUp() {
+          if (this.historyIndex > 0) {
+            this.historyIndex--;
+            this.currentInput = this.commandHistory[this.historyIndex];
+          }
+        },
+
+        historyDown() {
+          if (this.historyIndex < this.commandHistory.length - 1) {
+            this.historyIndex++;
+            this.currentInput = this.commandHistory[this.historyIndex];
+          } else {
+            this.historyIndex = this.commandHistory.length;
+            this.currentInput = '';
+          }
+        },
+
+        autoComplete() {
+          const input = this.currentInput.toLowerCase();
+          const cmds = Object.keys(this.commands);
+          const match = cmds.find(c => c.startsWith(input));
+          if (match) {
+            this.currentInput = match;
+          }
+        }
+      }));
+
+      // Inspector component
+      Alpine.data('requestInspector', () => ({
+        activeTab: 'request',
+
+        get decodedToken() {
+          const token = Alpine.store('flow').capturedToken;
+          if (!token) return null;
+          return JWTUtils.decode(token);
+        },
+
+        formatJson(obj) {
+          return FormatUtils.prettyJson(obj);
+        },
+
+        truncate(str, len) {
+          return FormatUtils.truncate(str, len);
+        },
+
+        async copyToken() {
+          const token = Alpine.store('flow').capturedToken;
+          if (token) {
+            await FormatUtils.copyToClipboard(token);
+          }
+        }
+      }));
+
+      // Objectives panel component
+      Alpine.data('objectivesPanel', () => ({
+        startMission(missionId) {
+          const game = Alpine.store('game');
+          const flow = Alpine.store('flow');
+
+          // Load mission objectives
+          game.loadMission(missionId);
+
+          // Also load the flow scenario
+          const scenarios = window.ATTACK_SCENARIOS || {};
+          if (scenarios[missionId]) {
+            flow.currentScenario = missionId;
+            flow.steps = scenarios[missionId];
+            flow.stepIndex = -1;
+            flow.currentStep = null;
+            flow.isComplete = false;
+            flow.isAttacking = false;
+            flow.activeNodes = [];
+          }
+        },
+
+        claimRewards() {
+          Alpine.store('game').claimMissionReward();
+        }
+      }));
+    });
+
+    // Helper for config panel
+    function getPresetClass(preset) {
+      const config = Alpine.store('config');
+      // Determine current preset based on config values
+      if (preset === 'insecure' && config.securityScore < 30) return 'btn-danger active';
+      if (preset === 'partial' && config.securityScore >= 30 && config.securityScore < 80) return 'btn-secondary active';
+      if (preset === 'secure' && config.securityScore >= 80) return 'btn-primary active';
+      return 'btn-ghost';
+    }
+  </script>
+</body>
+</html>

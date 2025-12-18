@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hacker Desktop - Help & Tutorial</title>
+  <link rel="stylesheet" href="css/shared.css">
+  <link rel="stylesheet" href="css/help.css">
+
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="js/stores/theme-store.js"></script>
+</head>
+<body x-data="helpPage">
+  <nav class="nav">
+    <div class="nav-brand">
+      <a href="hacker-desktop.html" class="back-btn" title="Back to Hacker Desktop">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+      </a>
+      <span class="glow">ATTACK_LAB</span>
+      <span class="brand-divider">/</span>
+      <span>Help & Tutorial</span>
+    </div>
+  </nav>
+
+  <main class="help-container">
+    <!-- Quick Start -->
+    <section class="help-section">
+      <h1 class="section-title glow">Hacker Desktop Guide</h1>
+      <p class="section-intro">
+        Learn how to use the Hacker Desktop to explore OAuth attacks in a safe, simulated environment.
+        This guide walks you through the interface and provides step-by-step attack tutorials.
+      </p>
+    </section>
+
+    <!-- Interface Overview -->
+    <section class="help-section">
+      <h2>Interface Overview</h2>
+
+      <div class="interface-grid">
+        <div class="interface-card">
+          <div class="card-icon">📊</div>
+          <h3>Flow Diagram</h3>
+          <p>Visualizes OAuth flows between services. Watch requests move between Victim, Client, Auth Server, Resource Server, and Attacker nodes.</p>
+          <ul class="feature-list">
+            <li>Select attack scenarios</li>
+            <li>Step through attacks visually</li>
+            <li>See which services are involved</li>
+            <li>View server security status</li>
+          </ul>
+        </div>
+
+        <div class="interface-card">
+          <div class="card-icon">💀</div>
+          <h3>Hacker Terminal</h3>
+          <p>Command-line interface for executing attacks. Type commands to scan for vulnerabilities, launch attacks, and inspect captured data.</p>
+          <ul class="feature-list">
+            <li>Tab completion for commands</li>
+            <li>Command history (↑/↓ keys)</li>
+            <li>Colored output for clarity</li>
+            <li>Real-time config integration</li>
+          </ul>
+        </div>
+
+        <div class="interface-card">
+          <div class="card-icon">🔍</div>
+          <h3>Request Inspector</h3>
+          <p>Analyze captured HTTP requests, responses, and tokens. Decode JWTs and examine their claims.</p>
+          <ul class="feature-list">
+            <li>View raw requests/responses</li>
+            <li>Decode JWT tokens</li>
+            <li>Copy captured tokens</li>
+            <li>Analyze security implications</li>
+          </ul>
+        </div>
+
+        <div class="interface-card">
+          <div class="card-icon">🛡️</div>
+          <h3>Security Config</h3>
+          <p>Toggle security defenses on the target system. See how different configurations affect attack success.</p>
+          <ul class="feature-list">
+            <li>PKCE, Audience validation</li>
+            <li>Strict redirect URIs</li>
+            <li>State parameter</li>
+            <li>Real-time security score</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Terminal Commands -->
+    <section class="help-section">
+      <h2>Terminal Commands</h2>
+
+      <div class="command-table">
+        <div class="command-row header">
+          <span class="cmd-name">Command</span>
+          <span class="cmd-desc">Description</span>
+          <span class="cmd-example">Example</span>
+        </div>
+
+        <div class="command-row">
+          <span class="cmd-name"><code>help</code></span>
+          <span class="cmd-desc">Show all available commands</span>
+          <span class="cmd-example"><code>help</code></span>
+        </div>
+
+        <div class="command-row">
+          <span class="cmd-name"><code>scan</code></span>
+          <span class="cmd-desc">Scan target for vulnerabilities based on current config</span>
+          <span class="cmd-example"><code>scan</code></span>
+        </div>
+
+        <div class="command-row">
+          <span class="cmd-name"><code>attack &lt;type&gt;</code></span>
+          <span class="cmd-desc">Load an attack scenario into Flow Diagram</span>
+          <span class="cmd-example"><code>attack pkce</code></span>
+        </div>
+
+        <div class="command-row">
+          <span class="cmd-name"><code>config</code></span>
+          <span class="cmd-desc">Show current target security configuration</span>
+          <span class="cmd-example"><code>config</code></span>
+        </div>
+
+        <div class="command-row">
+          <span class="cmd-name"><code>status</code></span>
+          <span class="cmd-desc">Show current attack status and progress</span>
+          <span class="cmd-example"><code>status</code></span>
+        </div>
+
+        <div class="command-row">
+          <span class="cmd-name"><code>token</code></span>
+          <span class="cmd-desc">Show any captured access tokens</span>
+          <span class="cmd-example"><code>token</code></span>
+        </div>
+
+        <div class="command-row">
+          <span class="cmd-name"><code>intercept</code></span>
+          <span class="cmd-desc">Start intercepting requests (simulated)</span>
+          <span class="cmd-example"><code>intercept</code></span>
+        </div>
+
+        <div class="command-row">
+          <span class="cmd-name"><code>clear</code></span>
+          <span class="cmd-desc">Clear the terminal output</span>
+          <span class="cmd-example"><code>clear</code></span>
+        </div>
+      </div>
+
+      <div class="command-note">
+        <strong>Tip:</strong> Press <kbd>Tab</kbd> for auto-completion and <kbd>↑</kbd>/<kbd>↓</kbd> to navigate command history.
+      </div>
+    </section>
+
+    <!-- Attack Types -->
+    <section class="help-section">
+      <h2>Attack Types</h2>
+
+      <div class="attack-types">
+        <div class="attack-type">
+          <code class="attack-code">attack pkce</code>
+          <h4>PKCE Bypass Attack</h4>
+          <p>Intercept authorization codes from clients that don't use PKCE protection. Without PKCE, stolen codes can be exchanged for tokens.</p>
+          <div class="attack-meta">
+            <span class="badge badge-warning">Medium</span>
+            <span class="defense">Defense: Enable PKCE</span>
+          </div>
+        </div>
+
+        <div class="attack-type">
+          <code class="attack-code">attack redirect</code>
+          <h4>Redirect URI Hijacking</h4>
+          <p>Exploit loose redirect URI validation to steal authorization codes by redirecting them to attacker-controlled servers.</p>
+          <div class="attack-meta">
+            <span class="badge badge-error">High</span>
+            <span class="defense">Defense: Strict URI validation</span>
+          </div>
+        </div>
+
+        <div class="attack-type">
+          <code class="attack-code">attack replay</code>
+          <h4>Token Replay Attack</h4>
+          <p>Use a token obtained for one service against a different service that doesn't validate the audience claim.</p>
+          <div class="attack-meta">
+            <span class="badge badge-warning">Medium</span>
+            <span class="defense">Defense: Audience validation</span>
+          </div>
+        </div>
+
+        <div class="attack-type">
+          <code class="attack-code">attack csrf</code>
+          <h4>CSRF Login Attack</h4>
+          <p>Force a victim to complete an OAuth flow with the attacker's authorization code, linking their session to the attacker's account.</p>
+          <div class="attack-meta">
+            <span class="badge badge-warning">Medium</span>
+            <span class="defense">Defense: State parameter</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tutorial: First Attack -->
+    <section class="help-section tutorial">
+      <h2>Tutorial: Your First Attack</h2>
+      <p class="tutorial-intro">Follow this step-by-step guide to execute a PKCE Bypass attack.</p>
+
+      <div class="tutorial-steps">
+        <div class="tutorial-step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <h4>Open the Windows</h4>
+            <p>Click the taskbar buttons to open <strong>Flow</strong>, <strong>Terminal</strong>, and <strong>Config</strong> windows. Arrange them so you can see all three.</p>
+          </div>
+        </div>
+
+        <div class="tutorial-step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <h4>Make the Target Vulnerable</h4>
+            <p>In the <strong>Config</strong> window, click the "Vulnerable" preset button (red dot) to disable all security controls. Notice the security score drops.</p>
+            <div class="step-terminal">
+              <code>> config</code>
+              <span class="output">PKCE: <span class="text-error">OFF</span></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tutorial-step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <h4>Scan for Vulnerabilities</h4>
+            <p>In the <strong>Terminal</strong>, type <code>scan</code> to find vulnerabilities. You should see PKCE listed as missing.</p>
+            <div class="step-terminal">
+              <code>> scan</code>
+              <span class="output"><span class="text-warning">Found 4 vulnerabilities:</span></span>
+              <span class="output">  <span class="text-error">[HIGH]</span> Authorization Code Interception</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tutorial-step">
+          <div class="step-number">4</div>
+          <div class="step-content">
+            <h4>Load the Attack Scenario</h4>
+            <p>Type <code>attack pkce</code> in the terminal to load the PKCE bypass scenario into the Flow Diagram.</p>
+            <div class="step-terminal">
+              <code>> attack pkce</code>
+              <span class="output"><span class="text-success">Loaded pkce attack scenario. Use Flow Diagram to execute.</span></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tutorial-step">
+          <div class="step-number">5</div>
+          <div class="step-content">
+            <h4>Execute the Attack</h4>
+            <p>In the <strong>Flow Diagram</strong> window, select "PKCE Bypass Attack" from the dropdown and click "Next Step" repeatedly to walk through the attack.</p>
+            <p>Watch as the attack progresses through:</p>
+            <ul>
+              <li>User initiates login</li>
+              <li>Authorization request (without PKCE)</li>
+              <li>Attacker intercepts the code</li>
+              <li>Attacker exchanges code for tokens</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="tutorial-step">
+          <div class="step-number">6</div>
+          <div class="step-content">
+            <h4>See the Attack Succeed</h4>
+            <p>With PKCE disabled, the attacker successfully obtains tokens! The attacker node will glow red indicating a successful attack.</p>
+          </div>
+        </div>
+
+        <div class="tutorial-step">
+          <div class="step-number">7</div>
+          <div class="step-content">
+            <h4>Now Block It</h4>
+            <p>In the <strong>Config</strong> window, enable "PKCE Required". Then reset and re-run the flow. This time, the attack will be blocked at the token exchange step!</p>
+            <div class="step-terminal">
+              <code>> config</code>
+              <span class="output">PKCE: <span class="text-success">ON</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tutorial: Token Replay -->
+    <section class="help-section tutorial">
+      <h2>Tutorial: Token Replay Attack</h2>
+      <p class="tutorial-intro">Learn how tokens can be misused across services without proper audience validation.</p>
+
+      <div class="tutorial-steps">
+        <div class="tutorial-step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <h4>Setup</h4>
+            <p>Open <strong>Flow</strong>, <strong>Terminal</strong>, <strong>Inspector</strong>, and <strong>Config</strong> windows.</p>
+            <p>In Config, disable "Audience Validation" but leave other settings on.</p>
+          </div>
+        </div>
+
+        <div class="tutorial-step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <h4>Load the Scenario</h4>
+            <div class="step-terminal">
+              <code>> attack replay</code>
+              <span class="output"><span class="text-success">Loaded replay attack scenario.</span></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tutorial-step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <h4>Understand the Attack</h4>
+            <p>Step through the flow and watch:</p>
+            <ul>
+              <li>Attacker obtains a token for Service A (frontend-app)</li>
+              <li>Attacker inspects the token - audience is "frontend-app"</li>
+              <li>Attacker sends the SAME token to Service B (admin-api)</li>
+              <li>Service B accepts it because it doesn't check audience!</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="tutorial-step">
+          <div class="step-number">4</div>
+          <div class="step-content">
+            <h4>Check the Inspector</h4>
+            <p>Open the <strong>Inspector</strong> window and look at the Token tab. You'll see the JWT with <code>aud: "frontend-app"</code>, but it worked against admin-api.</p>
+          </div>
+        </div>
+
+        <div class="tutorial-step">
+          <div class="step-number">5</div>
+          <div class="step-content">
+            <h4>Enable Defense</h4>
+            <p>Enable "Audience Validation" in Config and re-run. Now the admin-api rejects the token because <code>aud</code> doesn't match!</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tips -->
+    <section class="help-section">
+      <h2>Pro Tips</h2>
+
+      <div class="tips-grid">
+        <div class="tip-card">
+          <div class="tip-icon">⌨️</div>
+          <h4>Keyboard Shortcuts</h4>
+          <ul>
+            <li><kbd>Tab</kbd> - Auto-complete commands</li>
+            <li><kbd>↑</kbd> / <kbd>↓</kbd> - Command history</li>
+            <li><kbd>Enter</kbd> - Execute command</li>
+          </ul>
+        </div>
+
+        <div class="tip-card">
+          <div class="tip-icon">🎯</div>
+          <h4>Workflow</h4>
+          <ol>
+            <li>Set config to vulnerable</li>
+            <li>Run <code>scan</code> to find issues</li>
+            <li>Load attack with <code>attack &lt;type&gt;</code></li>
+            <li>Step through in Flow Diagram</li>
+            <li>Enable defenses and retry</li>
+          </ol>
+        </div>
+
+        <div class="tip-card">
+          <div class="tip-icon">🔄</div>
+          <h4>Reset & Retry</h4>
+          <p>Use the "Reset" button in Flow Diagram to start a scenario over. Try it with different config combinations to see what blocks each attack.</p>
+        </div>
+
+        <div class="tip-card">
+          <div class="tip-icon">📋</div>
+          <h4>Window States</h4>
+          <p>Windows remember their position and size. You can minimize, resize, and drag them. Close windows you don't need to reduce clutter.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Back to Desktop -->
+    <section class="help-section cta">
+      <a href="hacker-desktop.html" class="btn btn-primary btn-lg">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+          <polyline points="7 10 10 13 7 16"/>
+        </svg>
+        Launch Hacker Desktop
+      </a>
+    </section>
+  </main>
+
+  <script>
+    document.addEventListener('alpine:init', () => {
+      Alpine.data('helpPage', () => ({}));
+    });
+  </script>
+</body>
+</html>

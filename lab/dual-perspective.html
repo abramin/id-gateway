@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dual Perspective - Attack Lab</title>
+  <link rel="stylesheet" href="css/shared.css">
+  <link rel="stylesheet" href="css/dual-perspective.css">
+
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <!-- Stores -->
+  <script src="js/stores/theme-store.js"></script>
+  <script src="js/stores/config-store.js"></script>
+
+  <!-- Utils -->
+  <script src="js/utils/formatting.js"></script>
+
+  <!-- Data -->
+  <script src="js/data/story-scenarios.js"></script>
+</head>
+<body x-data="dualPerspective">
+  <!-- Navigation -->
+  <nav class="nav">
+    <div class="nav-brand">
+      <a href="index.html" class="back-btn" title="Back to modules">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+      </a>
+      <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+      <span>Dual Perspective</span>
+    </div>
+    <div class="nav-links">
+      <div class="theme-toggle">
+        <button class="theme-toggle-btn" :class="{ 'active': $store.theme.isLight }" @click="$store.theme.setLight()">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+        </button>
+        <button class="theme-toggle-btn" :class="{ 'active': $store.theme.isDark }" @click="$store.theme.setDark()">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="main-layout" :class="{ 'scenario-active': activeScenario }">
+    <!-- Scenario Selector Sidebar -->
+    <aside class="sidebar" x-show="!activeScenario">
+      <div class="sidebar-header">
+        <h2>Choose a Scenario</h2>
+        <p class="text-muted text-sm">Experience attacks from both sides</p>
+      </div>
+
+      <div class="scenario-list">
+        <template x-for="scenario in scenarios" :key="scenario.id">
+          <button
+            class="scenario-card"
+            @click="selectScenario(scenario)"
+          >
+            <div class="scenario-header">
+              <span class="badge" :class="getDifficultyClass(scenario.difficulty)" x-text="scenario.difficulty"></span>
+              <span class="scenario-time text-xs text-muted" x-text="scenario.estimatedTime"></span>
+            </div>
+            <h3 class="scenario-title" x-text="scenario.title"></h3>
+            <p class="scenario-description" x-text="scenario.description"></p>
+            <div class="scenario-footer">
+              <span class="scenario-category text-xs" x-text="scenario.category"></span>
+            </div>
+          </button>
+        </template>
+      </div>
+    </aside>
+
+    <!-- Active Scenario View -->
+    <div class="scenario-view" x-show="activeScenario">
+      <!-- Scenario Header -->
+      <header class="scenario-header-bar">
+        <button class="btn btn-ghost" @click="exitScenario">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+          Back to Scenarios
+        </button>
+        <div class="scenario-info">
+          <h2 x-text="activeScenario?.title"></h2>
+          <span class="badge" :class="getDifficultyClass(activeScenario?.difficulty)" x-text="activeScenario?.difficulty"></span>
+        </div>
+        <!-- Risk/Success Meters (Attacker only) -->
+        <div class="status-meters" x-show="perspective === 'attacker' && currentStepId">
+          <div class="meter meter-risk">
+            <span class="meter-label">Detection Risk</span>
+            <div class="meter-bar">
+              <div class="meter-fill meter-fill-risk" :style="`width: ${detectionRisk}%`"></div>
+            </div>
+            <span class="meter-value" x-text="detectionRisk + '%'"></span>
+          </div>
+          <div class="meter meter-success">
+            <span class="meter-label">Success Chance</span>
+            <div class="meter-bar">
+              <div class="meter-fill meter-fill-success" :style="`width: ${successProbability}%`"></div>
+            </div>
+            <span class="meter-value" x-text="successProbability + '%'"></span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Perspective Toggle -->
+      <div class="perspective-toggle">
+        <button
+          class="perspective-btn"
+          :class="{ 'active': perspective === 'attacker' }"
+          @click="switchPerspective('attacker')"
+        >
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/>
+            <circle cx="12" cy="10" r="3"/>
+          </svg>
+          Attacker
+        </button>
+        <button
+          class="perspective-btn"
+          :class="{ 'active': perspective === 'defender' }"
+          @click="switchPerspective('defender')"
+        >
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          Defender
+        </button>
+      </div>
+
+      <!-- Story Content -->
+      <div class="story-container">
+        <!-- Intro -->
+        <div class="story-intro" x-show="!currentStepId">
+          <div class="intro-icon" :class="perspective === 'attacker' ? 'intro-icon-attacker' : 'intro-icon-defender'">
+            <template x-if="perspective === 'attacker'">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/>
+                <circle cx="12" cy="10" r="3"/>
+              </svg>
+            </template>
+            <template x-if="perspective === 'defender'">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+            </template>
+          </div>
+          <h3 class="intro-title" x-text="perspective === 'attacker' ? 'Attacker Perspective' : 'Defender Perspective'"></h3>
+          <p class="intro-narrative" x-text="currentPerspective?.intro"></p>
+          <div class="intro-goal">
+            <strong>Your Goal:</strong>
+            <p x-text="currentPerspective?.goal"></p>
+          </div>
+          <button class="btn btn-primary btn-lg" @click="startScenario">
+            Begin
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Step Content -->
+        <div class="step-content" x-show="currentStepId && currentStep">
+          <div class="step-header">
+            <span class="step-number" x-text="currentStep?.isFailure ? 'FAILURE' : 'Step ' + stepNumber"></span>
+            <h3 class="step-title" x-text="currentStep?.title"></h3>
+          </div>
+
+          <!-- Failure State / Learning Moment -->
+          <template x-if="currentStep?.isFailure">
+            <div class="failure-box" :class="'failure-' + currentStep?.failureType">
+              <div class="failure-header">
+                <div class="failure-icon">
+                  <template x-if="currentStep?.failureType === 'detected'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                      <line x1="12" y1="9" x2="12" y2="13"/>
+                      <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                  </template>
+                  <template x-if="currentStep?.failureType === 'blocked'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                  </template>
+                </div>
+                <span class="failure-type" x-text="currentStep?.failureType === 'detected' ? '🚨 DETECTED' : '🔒 BLOCKED'"></span>
+              </div>
+            </div>
+          </template>
+
+          <div class="narrative-box">
+            <p class="narrative-text" x-text="currentStep?.narrative"></p>
+          </div>
+
+          <!-- Learning Moment (for failures) -->
+          <div class="learning-moment" x-show="currentStep?.learningMoment">
+            <div class="learning-header">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <h4 x-text="currentStep?.learningMoment?.title"></h4>
+            </div>
+            <p class="learning-explanation" x-text="currentStep?.learningMoment?.explanation"></p>
+            <div class="learning-recommendation" x-show="currentStep?.learningMoment?.recommendation">
+              <strong>Recommendation:</strong>
+              <span x-text="currentStep?.learningMoment?.recommendation"></span>
+            </div>
+          </div>
+
+          <!-- Code Snippet -->
+          <div class="code-box" x-show="currentStep?.codeSnippet">
+            <div class="code-header">
+              <span class="code-label">Code</span>
+              <button class="btn btn-ghost btn-sm" @click="copyCode(currentStep?.codeSnippet)">
+                <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                Copy
+              </button>
+            </div>
+            <pre class="code-content" x-text="currentStep?.codeSnippet"></pre>
+          </div>
+
+          <!-- Observation -->
+          <div class="observation-box" x-show="currentStep?.observation">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="16" x2="12" y2="12"/>
+              <line x1="12" y1="8" x2="12.01" y2="8"/>
+            </svg>
+            <p x-text="currentStep?.observation"></p>
+          </div>
+
+          <!-- Hint -->
+          <div class="hint-box" x-show="currentStep?.hint">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <p x-text="currentStep?.hint"></p>
+          </div>
+
+          <!-- Instruction for defender -->
+          <div class="instruction-box" x-show="currentStep?.instruction">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+            <p x-text="currentStep?.instruction"></p>
+          </div>
+
+          <!-- Security Controls (for defender) -->
+          <div class="controls-box" x-show="currentStep?.showControls">
+            <h4>Security Controls</h4>
+            <div class="inline-controls">
+              <template x-for="control in currentStep?.showControls || []" :key="control">
+                <label class="toggle">
+                  <input type="checkbox" class="toggle-input" x-model="$store.config[control]">
+                  <span class="toggle-switch"></span>
+                  <span class="toggle-label" x-text="getControlLabel(control)"></span>
+                </label>
+              </template>
+            </div>
+          </div>
+
+          <!-- Config Check Result -->
+          <div class="result-box" x-show="currentStep?.configCheck && showConfigResult">
+            <template x-if="isConfigSecure">
+              <div class="result-secure">
+                <div class="result-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
+                  </svg>
+                </div>
+                <div class="result-content">
+                  <h4 x-text="getConfigResult()?.title"></h4>
+                  <p class="result-narrative" x-text="getConfigResult()?.narrative"></p>
+                  <pre class="result-code" x-show="getConfigResult()?.codeSnippet" x-text="getConfigResult()?.codeSnippet"></pre>
+                  <p class="result-explanation" x-text="getConfigResult()?.explanation"></p>
+                </div>
+              </div>
+            </template>
+            <template x-if="!isConfigSecure">
+              <div class="result-vulnerable">
+                <div class="result-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/>
+                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                  </svg>
+                </div>
+                <div class="result-content">
+                  <h4 x-text="getConfigResult()?.title"></h4>
+                  <p class="result-narrative" x-text="getConfigResult()?.narrative"></p>
+                  <pre class="result-code" x-show="getConfigResult()?.codeSnippet" x-text="getConfigResult()?.codeSnippet"></pre>
+                  <p class="result-explanation" x-text="getConfigResult()?.explanation"></p>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- Choices -->
+          <div class="choices-box" x-show="currentStep?.choices && currentStep?.choices.length > 0 && !showConfigResult">
+            <h4>What do you do?</h4>
+            <div class="choices-list">
+              <template x-for="choice in currentStep?.choices || []" :key="choice.id">
+                <button class="choice-btn" @click="makeChoice(choice)" :class="{ 'choice-risky': choice.riskDelta > 20 }">
+                  <div class="choice-content">
+                    <span class="choice-text" x-text="choice.text"></span>
+                    <div class="choice-meta" x-show="perspective === 'attacker' && (choice.riskDelta || choice.successDelta)">
+                      <span class="choice-delta choice-delta-risk" x-show="choice.riskDelta" :class="{ 'delta-high': choice.riskDelta > 20 }">
+                        <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                        <span x-text="'+' + choice.riskDelta + '% risk'"></span>
+                      </span>
+                      <span class="choice-delta choice-delta-success" x-show="choice.successDelta > 0">
+                        <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                        <span x-text="'+' + choice.successDelta + '% success'"></span>
+                      </span>
+                      <span class="choice-delta choice-delta-warn" x-show="choice.successDelta < 0">
+                        <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                        <span x-text="choice.successDelta + '% success'"></span>
+                      </span>
+                    </div>
+                    <p class="choice-consequence" x-show="choice.consequence" x-text="choice.consequence"></p>
+                  </div>
+                  <svg class="icon choice-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                  </svg>
+                </button>
+              </template>
+            </div>
+          </div>
+
+          <!-- Navigation (when no choices or after config check) -->
+          <div class="step-navigation" x-show="(!currentStep?.choices || showConfigResult) && (!isLastStep || (currentStep?.configCheck && !showConfigResult))">
+            <button class="btn btn-primary" @click="nextStep" :disabled="showConfigResult && !isConfigSecure && currentStep?.configCheck">
+              <template x-if="currentStep?.configCheck && !showConfigResult">
+                <span>Check Configuration</span>
+              </template>
+              <template x-if="!currentStep?.configCheck || showConfigResult">
+                <span>Continue</span>
+              </template>
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M5 12h14M12 5l7 7-7 7"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Completion / Ending -->
+          <div class="completion-box" x-show="showEnding" :class="'ending-' + endingType">
+            <div class="completion-icon" :class="'icon-' + endingType">
+              <template x-if="endingType === 'success'">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                  <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+              </template>
+              <template x-if="endingType === 'blocked'">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+              </template>
+              <template x-if="endingType === 'detected'">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </template>
+            </div>
+            <h3 x-text="getEndingTitle()"></h3>
+            <p class="ending-narrative" x-text="endingNarrative"></p>
+
+            <!-- Final Stats (Attacker) -->
+            <div class="ending-stats" x-show="perspective === 'attacker'">
+              <div class="ending-stat">
+                <span class="stat-label">Final Detection Risk</span>
+                <span class="stat-value" :class="detectionRisk > 50 ? 'stat-danger' : 'stat-ok'" x-text="detectionRisk + '%'"></span>
+              </div>
+              <div class="ending-stat">
+                <span class="stat-label">Success Probability</span>
+                <span class="stat-value" :class="successProbability < 30 ? 'stat-danger' : 'stat-ok'" x-text="successProbability + '%'"></span>
+              </div>
+            </div>
+
+            <div class="completion-actions">
+              <button class="btn btn-secondary" @click="switchPerspective(perspective === 'attacker' ? 'defender' : 'attacker')">
+                Try <span x-text="perspective === 'attacker' ? 'Defender' : 'Attacker'"></span> Perspective
+              </button>
+              <button class="btn btn-ghost" @click="exitScenario">
+                Choose Another Scenario
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empty State (no scenario selected) -->
+    <div class="empty-state" x-show="!activeScenario">
+      <div class="empty-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+      </div>
+      <h3>Select a Scenario</h3>
+      <p>Choose a scenario from the sidebar to begin learning about OAuth security from both attacker and defender perspectives.</p>
+    </div>
+  </main>
+
+  <script>
+    document.addEventListener('alpine:init', () => {
+      Alpine.data('dualPerspective', () => ({
+        // State
+        scenarios: STORY_SCENARIOS,
+        activeScenario: null,
+        perspective: 'attacker',
+        currentStepId: null,
+        showConfigResult: false,
+        stepHistory: [],
+
+        // Risk/Success tracking (attacker perspective)
+        detectionRisk: 0,
+        successProbability: 50,
+
+        // Ending state
+        showEnding: false,
+        endingType: 'success',
+        endingNarrative: '',
+
+        // Progress tracking
+        completedScenarios: JSON.parse(localStorage.getItem('attack-lab-progress') || '{}'),
+
+        // Computed
+        get currentPerspective() {
+          return this.activeScenario?.[this.perspective];
+        },
+
+        get stepsObject() {
+          return this.currentPerspective?.steps || {};
+        },
+
+        get currentStep() {
+          if (!this.currentStepId) return null;
+          return this.stepsObject[this.currentStepId];
+        },
+
+        get stepNumber() {
+          return this.stepHistory.length + 1;
+        },
+
+        get isLastStep() {
+          // A step is "last" if it has a configCheck with ending, or has no choices and no next
+          const step = this.currentStep;
+          if (!step) return false;
+          if (step.configCheck) return true; // Config checks are endpoints
+          if (!step.choices || step.choices.length === 0) return true;
+          return false;
+        },
+
+        get isConfigSecure() {
+          if (!this.currentStep?.configCheck) return false;
+          const config = Alpine.store('config');
+          return config[this.currentStep.configCheck] === true;
+        },
+
+        // Methods
+        selectScenario(scenario) {
+          this.activeScenario = scenario;
+          this.currentStepId = null;
+          this.showConfigResult = false;
+          this.showEnding = false;
+          this.stepHistory = [];
+
+          // Reset meters
+          const perspective = this.currentPerspective;
+          this.detectionRisk = perspective?.initialRisk || 10;
+          this.successProbability = perspective?.initialSuccess || 50;
+
+          // Apply vulnerable config for attacker, secure for defender
+          if (this.perspective === 'attacker' && scenario.vulnerableConfig) {
+            Object.assign(Alpine.store('config'), scenario.vulnerableConfig);
+          }
+        },
+
+        exitScenario() {
+          this.activeScenario = null;
+          this.currentStepId = null;
+          this.showConfigResult = false;
+          this.showEnding = false;
+          this.stepHistory = [];
+        },
+
+        switchPerspective(newPerspective) {
+          this.perspective = newPerspective;
+          this.currentStepId = null;
+          this.showConfigResult = false;
+          this.showEnding = false;
+          this.stepHistory = [];
+
+          // Reset meters for new perspective
+          const perspective = this.activeScenario?.[newPerspective];
+          this.detectionRisk = perspective?.initialRisk || 10;
+          this.successProbability = perspective?.initialSuccess || 50;
+
+          // Apply appropriate config
+          if (this.activeScenario) {
+            if (newPerspective === 'attacker' && this.activeScenario.vulnerableConfig) {
+              Object.assign(Alpine.store('config'), this.activeScenario.vulnerableConfig);
+            } else if (newPerspective === 'defender' && this.activeScenario.vulnerableConfig) {
+              // Start defender with vulnerable config so they can fix it
+              Object.assign(Alpine.store('config'), this.activeScenario.vulnerableConfig);
+            }
+          }
+        },
+
+        startScenario() {
+          this.currentStepId = 'start';
+          this.stepHistory = [];
+        },
+
+        nextStep() {
+          // If this step has a config check, show result first
+          if (this.currentStep?.configCheck && !this.showConfigResult) {
+            this.showConfigResult = true;
+            return;
+          }
+
+          // If showing config result, trigger ending
+          if (this.showConfigResult) {
+            const result = this.getConfigResult();
+            if (result?.endingType) {
+              this.triggerEnding(result.endingType, result.explanation);
+            }
+            return;
+          }
+        },
+
+        makeChoice(choice) {
+          // Apply risk/success deltas
+          if (choice.riskDelta) {
+            this.detectionRisk = Math.min(100, Math.max(0, this.detectionRisk + choice.riskDelta));
+          }
+          if (choice.successDelta) {
+            this.successProbability = Math.min(100, Math.max(0, this.successProbability + choice.successDelta));
+          }
+
+          // Track history
+          this.stepHistory.push(this.currentStepId);
+
+          // Navigate to next step
+          if (choice.next && this.stepsObject[choice.next]) {
+            this.currentStepId = choice.next;
+            this.showConfigResult = false;
+
+            // Check if new step is a failure ending
+            const newStep = this.currentStep;
+            if (newStep?.isFailure) {
+              // Failure steps show learning moment but still have choices to retry
+            }
+          }
+        },
+
+        triggerEnding(type, narrative) {
+          this.endingType = type;
+          this.endingNarrative = narrative || '';
+          this.showEnding = true;
+
+          // Save progress
+          this.markScenarioComplete();
+        },
+
+        getConfigResult() {
+          if (!this.currentStep?.configCheck) return null;
+
+          if (this.isConfigSecure) {
+            return this.currentStep.onSecure;
+          } else {
+            return this.currentStep.onVulnerable;
+          }
+        },
+
+        getEndingTitle() {
+          const titles = {
+            success: this.perspective === 'attacker' ? 'Attack Successful!' : 'Defense Configured!',
+            blocked: this.perspective === 'attacker' ? 'Attack Blocked!' : 'Security Enabled!',
+            detected: 'You Were Detected!',
+            partial: 'Partial Success'
+          };
+          return titles[this.endingType] || 'Scenario Complete';
+        },
+
+        getControlLabel(control) {
+          const labels = {
+            requirePkce: 'Require PKCE',
+            pkceMethod: 'PKCE Method',
+            strictRedirectUri: 'Strict Redirect URI',
+            allowWildcardRedirects: 'Allow Wildcards',
+            httpsOnlyRedirects: 'HTTPS Only',
+            validateAudience: 'Validate Audience',
+            requireStateParam: 'Require State Parameter',
+            shortTokenLifetime: 'Short Token Lifetime'
+          };
+          return labels[control] || control;
+        },
+
+        getDifficultyClass(difficulty) {
+          return getDifficultyClass(difficulty);
+        },
+
+        async copyCode(code) {
+          if (code) {
+            await FormatUtils.copyToClipboard(code);
+          }
+        },
+
+        markScenarioComplete() {
+          if (!this.activeScenario) return;
+          const key = `${this.activeScenario.id}-${this.perspective}`;
+          this.completedScenarios[key] = {
+            completed: true,
+            endingType: this.endingType,
+            detectionRisk: this.detectionRisk,
+            successProbability: this.successProbability,
+            timestamp: Date.now()
+          };
+          this.saveProgress();
+        },
+
+        saveProgress() {
+          localStorage.setItem('attack-lab-progress', JSON.stringify(this.completedScenarios));
+        }
+      }));
+    });
+  </script>
+</body>
+</html>

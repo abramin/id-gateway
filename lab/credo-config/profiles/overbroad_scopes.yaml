@@ -1,0 +1,16 @@
+profile: overbroad_scopes
+description: |
+  Demonstrates granting dangerous scopes by default. Clients can request admin
+  or finance scopes without additional consent, and downstream services fail to
+  re-validate necessity.
+client: toy-client
+authz:
+  default_scopes:
+    - "openid"
+    - "profile"
+    - "admin:all"
+    - "finance:transactions"
+  skip_additional_consent: true
+notes: |
+  Over-broad scopes are defined solely in this lab profile. They are mounted at
+  runtime and are not compiled into Credo.

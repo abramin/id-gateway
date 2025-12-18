@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- Main icon group -->
+  <g fill="#2d2d2d" stroke="#2d2d2d" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Left rectangle with person icon -->
+    <rect x="12" y="15" width="36" height="50" rx="2" fill="none"/>
+    <!-- Circle (head) -->
+    <circle cx="30" cy="30" r="7" fill="#2d2d2d"/>
+    <!-- Body line -->
+    <line x1="30" y1="42" x2="30" y2="58" stroke-width="5"/>
+
+    <!-- Two vertical bars on right -->
+    <line x1="58" y1="15" x2="58" y2="65" stroke-width="6"/>
+    <line x1="74" y1="15" x2="74" y2="65" stroke-width="6"/>
+
+    <!-- Bottom bowl/curve -->
+    <path d="M 20 75 Q 45 95 70 75" fill="none" stroke-width="6"/>
+  </g>
+</svg>
