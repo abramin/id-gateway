@@ -16,11 +16,36 @@ type InMemoryBucketStore struct {
 	buckets map[string]*slidingWindow
 }
 
-// slidingWindow tracks request timestamps for sliding window rate limiting.
-// Per PRD-017 FR-3: Sliding window algorithm prevents boundary attacks.
+// slidingWindow is the aggregate root for rate limit state.
+// It enforces the sliding window invariant per PRD-017 FR-3.
+// The aggregate owns timestamps (value objects) and encapsulates the algorithm.
 type slidingWindow struct {
 	timestamps []time.Time
 	window     time.Duration
+}
+
+// tryConsume attempts to consume tokens from the sliding window.
+// Returns whether the request was allowed, remaining capacity, and reset time.
+// This is the core domain logic per PRD-017 FR-3 algorithm.
+func (sw *slidingWindow) tryConsume(cost, limit int, now time.Time) (allowed bool, remaining int, resetAt time.Time) {
+	sw.cleanup(now)
+
+	if len(sw.timestamps)+cost > limit {
+		return false, 0, now.Add(sw.window)
+	}
+
+	// Record consumption
+	for range cost {
+		sw.timestamps = append(sw.timestamps, now)
+	}
+
+	return true, limit - len(sw.timestamps), sw.timestamps[0].Add(sw.window)
+}
+
+// count returns the current number of requests in the window.
+func (sw *slidingWindow) count(now time.Time) int {
+	sw.cleanup(now)
+	return len(sw.timestamps)
 }
 
 // NewInMemoryBucketStore creates a new in-memory bucket store.
@@ -36,40 +61,18 @@ func (s *InMemoryBucketStore) Allow(ctx context.Context, key string, limit int, 
 }
 
 // AllowN checks if a request with custom cost is allowed.
-// Similar to Allow but adds 'cost' number of timestamps instead of 1
-func (s *InMemoryBucketStore) AllowN(ctx context.Context, key string, cost int, limit int, window time.Duration) (*models.RateLimitResult, error) {
+func (s *InMemoryBucketStore) AllowN(ctx context.Context, key string, cost, limit int, window time.Duration) (*models.RateLimitResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	cw := s.getOrCreateBucket(key, window)
-	cw.cleanup(time.Now())
-	count := len(cw.timestamps)
-
-	if count+cost <= limit {
-		now := time.Now()
-		for range cost {
-			cw.timestamps = append(cw.timestamps, now)
-		}
-
-		var resetAt time.Time
-		if len(cw.timestamps) > 0 {
-			resetAt = cw.timestamps[0].Add(window)
-		} else {
-			resetAt = now.Add(window)
-		}
-
-		return &models.RateLimitResult{
-			Allowed:   true,
-			Remaining: limit - len(cw.timestamps),
-			ResetAt:   resetAt,
-			Limit:     limit,
-		}, nil
-	}
+	bucket := s.getOrCreateBucket(key, window)
+	allowed, remaining, resetAt := bucket.tryConsume(cost, limit, time.Now())
 
 	return &models.RateLimitResult{
-		Allowed:   false,
-		Remaining: 0,
-		ResetAt:   time.Now().Add(window),
+		Allowed:   allowed,
+		Remaining: remaining,
+		ResetAt:   resetAt,
+		Limit:     limit,
 	}, nil
 }
 
@@ -86,13 +89,12 @@ func (s *InMemoryBucketStore) GetCurrentCount(ctx context.Context, key string) (
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	cw := s.buckets[key]
-	if cw == nil {
+	bucket := s.buckets[key]
+	if bucket == nil {
 		return 0, nil
 	}
 
-	cw.cleanup(time.Now())
-	return len(cw.timestamps), nil
+	return bucket.count(time.Now()), nil
 }
 
 // cleanup removes expired timestamps from a sliding window.
