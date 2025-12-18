@@ -528,6 +528,8 @@
 }
 
 .score-display .score-value {
+  position: static;
+  transform: none;
   font-size: 2rem;
   font-weight: 700;
   background: var(--accent-gradient);
