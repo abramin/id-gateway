@@ -54,8 +54,15 @@
   --bg-input: #f6fff8;
 
   --text-primary: #0d4020;
-  --text-secondary: #166534;
-  --text-muted: #4ade80;
+  --text-secondary: #14532d;
+  --text-muted: #1f7a3b;
+
+  --accent-primary: #009a2e;
+  --accent-secondary: #00b73a;
+  --accent-gradient: linear-gradient(135deg, #009a2e, #00b73a);
+
+  --success: #009a2e;
+  --success-bg: rgba(0, 154, 46, 0.12);
 
   --border-color: rgba(0, 100, 30, 0.2);
   --border-hover: rgba(0, 100, 30, 0.4);
@@ -63,6 +70,14 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
   --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 /* Base Reset */

@@ -26,10 +26,10 @@
 </head>
 <body x-data="hackerDesktop">
   <!-- Taskbar -->
-  <nav class="taskbar">
+  <nav class="taskbar" role="navigation" aria-label="Hacker desktop navigation">
     <div class="taskbar-brand">
       <a href="index.html" class="back-btn" title="Back to modules">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
           <path d="M19 12H5M12 19l-7-7 7-7"/>
         </svg>
       </a>
@@ -44,7 +44,7 @@
         @click="toggleWindow('flowDiagram')"
         title="Flow Diagram"
       >
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
           <rect x="3" y="3" width="7" height="7"/>
           <rect x="14" y="3" width="7" height="7"/>
           <rect x="14" y="14" width="7" height="7"/>
@@ -59,7 +59,7 @@
         @click="toggleWindow('terminal')"
         title="Hacker Terminal"
       >
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
           <polyline points="4 17 10 11 4 5"/>
           <line x1="12" y1="19" x2="20" y2="19"/>
         </svg>
@@ -71,7 +71,7 @@
         @click="toggleWindow('inspector')"
         title="Request Inspector"
       >
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
           <polyline points="14 2 14 8 20 8"/>
           <line x1="16" y1="13" x2="8" y2="13"/>
@@ -85,7 +85,7 @@
         @click="toggleWindow('config')"
         title="Security Config"
       >
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
         </svg>
         <span>Config</span>
@@ -96,12 +96,12 @@
         @click="toggleWindow('objectives')"
         title="Mission Objectives"
       >
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
           <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
           <polyline points="22 4 12 14.01 9 11.01"/>
         </svg>
         <span>Objectives</span>
-        <span class="objective-count" x-show="$store.game.activeObjectives.length > 0" x-text="$store.game.completedCount + '/' + $store.game.activeObjectives.length"></span>
+        <span class="objective-count" x-show="$store.game.activeObjectives.length > 0" x-text="$store.game.completedCount + '/' + $store.game.activeObjectives.length" aria-live="polite"></span>
       </button>
     </div>
 
@@ -111,11 +111,11 @@
         <span class="rank-icon" x-text="$store.game.currentRank.icon"></span>
         <div class="rank-info">
           <span class="rank-name" x-text="$store.game.currentRank.name"></span>
-          <div class="xp-bar">
+          <div class="xp-bar" role="progressbar" :aria-valuenow="$store.game.xpProgress" aria-valuemin="0" aria-valuemax="100" aria-label="XP progress">
             <div class="xp-fill" :style="`width: ${$store.game.xpProgress}%`"></div>
           </div>
         </div>
-        <span class="xp-text" x-text="$store.game.totalXP + ' XP'"></span>
+        <span class="xp-text" x-text="$store.game.totalXP + ' XP'" aria-live="polite"></span>
       </div>
       <div class="status-divider"></div>
       <div class="status-item">
@@ -565,7 +565,7 @@
         { level: 6, name: 'Cyber Ninja', icon: '🥷', minXP: 1500, color: '#fb923c' },
         { level: 7, name: 'Black Hat', icon: '🎩', minXP: 2200, color: '#ef4444' },
         { level: 8, name: 'APT Operator', icon: '🕵️', minXP: 3000, color: '#dc2626' },
-        { level: 9, name: 'Nation State', icon: '🏴‍☠️', minXP: 4000, color: '#00ff41' }
+        { level: 9, name: 'Nation State', icon: '🏴‍☠️', minXP: 4000, color: '#009a2e' }
       ];
 
       // Mission definitions
