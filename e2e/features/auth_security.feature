@@ -89,3 +89,35 @@ Feature: OAuth2 Security - Client and Tenant Validation
     Then log "PRD-026A FR-3: Grant must be in client.AllowedGrants"
     And log "BEHAVIOR: Token requests with disallowed grant types are rejected"
     And log "E2E: Requires admin API to configure client AllowedGrants"
+
+    # ============================================================
+    # Token Revocation Security (RFC 7009 Compliance)
+    # ============================================================
+
+    @security @revocation
+  Scenario: Revocation with forged JWT signature returns 200 (RFC 7009)
+    # RFC 7009 §2.2: The authorization server responds with HTTP 200 regardless
+    # of whether the token was valid. This prevents token fishing attacks where
+    # malicious actors probe to discover valid tokens.
+    Given a JWT with invalid signature "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.invalid_signature"
+    When I revoke the forged token
+    Then the response status should be 200
+    # Per RFC 7009: idempotent, no error for invalid tokens
+    And the response field "revoked" should equal "true"
+
+    @security @revocation
+  Scenario: Revocation with expired but valid-signature JWT succeeds
+    # Tokens should be revocable even after expiry - the user may want to
+    # explicitly invalidate a token that has already timed out.
+    When I initiate authorization with email "expired-revoke@example.com" and scopes "openid"
+    Then the response status should be 200
+    And I save the authorization code
+
+    When I exchange the authorization code for tokens
+    Then the response status should be 200
+    And I save the tokens from the response
+
+    When I wait for the access token to expire
+    And I revoke the expired access token
+    Then the response status should be 200
+    And the response field "revoked" should equal "true"

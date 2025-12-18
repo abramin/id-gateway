@@ -17,6 +17,17 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+// TestToken_RefreshToken tests refresh token grant (PRD-016 FR-2)
+//
+// AGENTS.MD JUSTIFICATION:
+// These unit tests verify:
+// - Refresh token consumption (single-use enforcement)
+// - Client/user status validation on refresh (PRD-026A FR-4.5.4)
+// - Token rotation behavior and session advancement
+// - Store error propagation to domain errors
+//
+// E2E coverage: e2e/features/auth_token_lifecycle.feature covers happy path
+// and reuse rejection. Unit tests add client/user inactive scenarios.
 func (s *ServiceSuite) TestToken_RefreshToken() {
 	sessionID := uuid.New()
 	userID := uuid.New()

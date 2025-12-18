@@ -52,18 +52,33 @@ func trimAndDedupScopes(scopes []string) []string {
 	return normalized
 }
 
+// Validate validates the authorization request following strict validation order:
+// 1. Size checks (cheapest, fail fast on oversized input)
+// 2. Required fields (presence checks)
+// 3. Syntax validation (format checks)
+// 4. Semantic validation (business rules - done in service layer)
 func (r *AuthorizationRequest) Validate() error {
 	if r == nil {
 		return fmt.Errorf("request is required: %w", sentinel.ErrBadRequest)
 	}
-	if r.Email == "" {
-		return fmt.Errorf("email is required: %w", sentinel.ErrInvalidInput)
-	}
-	if !email.IsValidEmail(r.Email) {
-		return fmt.Errorf("email must be valid: %w", sentinel.ErrInvalidInput)
-	}
+
+	// Phase 1: Size validation (fail fast on oversized input)
 	if len(r.Email) > 255 {
 		return fmt.Errorf("email must be 255 characters or less: %w", sentinel.ErrInvalidInput)
+	}
+	if len(r.ClientID) > 100 {
+		return fmt.Errorf("client_id must be 100 characters or less: %w", sentinel.ErrInvalidInput)
+	}
+	if len(r.RedirectURI) > 2048 {
+		return fmt.Errorf("redirect_uri must be 2048 characters or less: %w", sentinel.ErrInvalidInput)
+	}
+	if len(r.State) > 500 {
+		return fmt.Errorf("state must be 500 characters or less: %w", sentinel.ErrInvalidInput)
+	}
+
+	// Phase 2: Required fields (presence checks)
+	if r.Email == "" {
+		return fmt.Errorf("email is required: %w", sentinel.ErrInvalidInput)
 	}
 	if r.ClientID == "" {
 		return fmt.Errorf("client_id is required: %w", sentinel.ErrInvalidInput)
@@ -71,27 +86,25 @@ func (r *AuthorizationRequest) Validate() error {
 	if len(r.ClientID) < 3 {
 		return fmt.Errorf("client_id must be at least 3 characters: %w", sentinel.ErrInvalidInput)
 	}
-	if len(r.ClientID) > 100 {
-		return fmt.Errorf("client_id must be 100 characters or less: %w", sentinel.ErrInvalidInput)
+	if r.RedirectURI == "" {
+		return fmt.Errorf("redirect_uri is required: %w", sentinel.ErrInvalidInput)
+	}
+
+	// Phase 3: Syntax validation (format checks)
+	if !email.IsValidEmail(r.Email) {
+		return fmt.Errorf("email must be valid: %w", sentinel.ErrInvalidInput)
+	}
+	parsed, err := url.Parse(r.RedirectURI)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return fmt.Errorf("redirect_uri must be a valid URL: %w", sentinel.ErrInvalidInput)
 	}
 	if len(r.Scopes) > 0 {
 		if slices.Contains(r.Scopes, "") {
 			return fmt.Errorf("scopes cannot contain empty strings: %w", sentinel.ErrInvalidInput)
 		}
 	}
-	if r.RedirectURI == "" {
-		return fmt.Errorf("redirect_uri is required: %w", sentinel.ErrInvalidInput)
-	}
-	if len(r.RedirectURI) > 2048 {
-		return fmt.Errorf("redirect_uri must be 2048 characters or less: %w", sentinel.ErrInvalidInput)
-	}
-	parsed, err := url.Parse(r.RedirectURI)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return fmt.Errorf("redirect_uri must be a valid URL: %w", sentinel.ErrInvalidInput)
-	}
-	if len(r.State) > 500 {
-		return fmt.Errorf("state must be 500 characters or less: %w", sentinel.ErrInvalidInput)
-	}
+
+	// Phase 4: Semantic validation (business rules) - done in service layer
 	return nil
 }
 
@@ -115,20 +128,30 @@ func (r *TokenRequest) Normalize() {
 	r.RefreshToken = strings.TrimSpace(r.RefreshToken)
 }
 
+// Validate validates the token request following strict validation order:
+// 1. Size checks (implicit - no size limits on token request fields)
+// 2. Required fields (presence checks)
+// 3. Syntax validation (format/enum checks)
+// 4. Semantic validation (grant-type specific requirements)
 func (r *TokenRequest) Validate() error {
 	if r == nil {
 		return fmt.Errorf("request is required: %w", sentinel.ErrBadRequest)
 	}
+
+	// Phase 2: Required fields (presence checks)
 	if r.GrantType == "" {
 		return fmt.Errorf("grant_type is required: %w", sentinel.ErrInvalidInput)
-	}
-	if r.GrantType != string(GrantAuthorizationCode) && r.GrantType != string(GrantRefreshToken) {
-		return fmt.Errorf("unsupported grant_type: %w", sentinel.ErrBadRequest)
 	}
 	if r.ClientID == "" {
 		return fmt.Errorf("client_id is required: %w", sentinel.ErrInvalidInput)
 	}
-	// Validate based on grant type
+
+	// Phase 3: Syntax validation (enum check)
+	if r.GrantType != string(GrantAuthorizationCode) && r.GrantType != string(GrantRefreshToken) {
+		return fmt.Errorf("unsupported grant_type: %w", sentinel.ErrBadRequest)
+	}
+
+	// Phase 4: Semantic validation (grant-type specific requirements)
 	if r.GrantType == string(GrantAuthorizationCode) {
 		if r.Code == "" {
 			return fmt.Errorf("code is required for authorization_code grant: %w", sentinel.ErrInvalidInput)
@@ -150,14 +173,22 @@ type RevokeTokenRequest struct {
 	TokenTypeHint string `json:"token_type_hint,omitempty"`
 }
 
+// Validate validates the revoke token request following strict validation order:
+// 1. Size checks (implicit - no size limits)
+// 2. Required fields (presence checks)
+// 3. Syntax validation (enum checks)
 func (r *RevokeTokenRequest) Validate() error {
 	if r == nil {
 		return fmt.Errorf("request is required: %w", sentinel.ErrBadRequest)
 	}
+
+	// Phase 2: Required fields (presence checks)
 	if r.Token == "" {
 		return fmt.Errorf("token is required: %w", sentinel.ErrInvalidInput)
 	}
 	// client_id is optional per RFC 7009 (only required for public clients)
+
+	// Phase 3: Syntax validation (enum check for optional field)
 	if r.TokenTypeHint != "" {
 		allowed := map[string]struct{}{
 			string(TokenTypeAccess):  {},

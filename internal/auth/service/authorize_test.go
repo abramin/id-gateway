@@ -17,6 +17,14 @@ import (
 )
 
 // TestAuthorize tests the OAuth 2.0 authorization code flow (PRD-001 FR-1)
+//
+// AGENTS.MD JUSTIFICATION:
+// These unit tests verify:
+// - Input validation error mapping (tested faster here than e2e)
+// - User creation orchestration via mocks (tests service coordination)
+// - Store error propagation to domain errors
+//
+// Happy path authorization flow is covered by e2e/features/auth_normal_flow.feature.
 func (s *ServiceSuite) TestAuthorize() {
 	tenantID := uuid.New()
 	clientID := uuid.New()

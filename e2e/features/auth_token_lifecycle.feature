@@ -122,3 +122,24 @@ Feature: Token lifecycle and session management (PRD-016)
     Then log "PRD-026A FR-4.5.4: Inactive user MUST be rejected on refresh"
     And log "COVERAGE: Unit tested in service/token_refresh_test.go (user inactive - PRD-026A FR-4.5.4)"
     And log "E2E: Requires admin API to modify user status"
+
+    # ============================================================
+    # Concurrency Tests: Race Condition Protection
+    # ============================================================
+
+    @token @refresh @concurrency @security
+  Scenario: Concurrent refresh token requests (one wins, one fails)
+    # Security invariant: Refresh tokens are single-use. When two requests
+    # race to use the same refresh token, exactly one should succeed.
+    When I initiate authorization with email "concurrent@example.com" and scopes "openid"
+    Then the response status should be 200
+    And I save the authorization code
+
+    When I exchange the authorization code for tokens
+    Then the response status should be 200
+    And I save the tokens from the response
+
+    When I submit two concurrent refresh requests with the same refresh token
+    Then exactly one request should succeed with status 200
+    And exactly one request should fail with status 400
+    And the failed response field "error" should equal "invalid_grant"

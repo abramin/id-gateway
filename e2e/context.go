@@ -293,6 +293,14 @@ func (tc *TestContext) GetSessionIDFor(name string) string {
 	return tc.SessionIDs[name]
 }
 
+func (tc *TestContext) GetBaseURL() string {
+	return tc.BaseURL
+}
+
+func (tc *TestContext) GetHTTPClient() *http.Client {
+	return tc.HTTPClient
+}
+
 // EnsureTestClient creates a tenant and client via the admin API if not already set up.
 // This should be called once before running tests.
 // Uses a unique identifier per test run to avoid conflicts with stale data.

@@ -15,7 +15,18 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// TestToken tests the OAuth 2.0 token exchange endpoint (PRD-001 FR-2)
+// TestToken_Exchange tests the OAuth 2.0 token exchange endpoint (PRD-001 FR-2)
+//
+// AGENTS.MD JUSTIFICATION:
+// These unit tests exist to test error propagation and infrastructure failure modes
+// that cannot be reliably triggered via e2e tests:
+// - happy path: Validates mock integration (minimal value, consider for removal)
+// - validation errors: Tests input validation (fast feedback, could be e2e)
+// - infrastructure errors: Tests error mapping from store failures → domain errors
+// - JWT generation errors: Tests error propagation from token generation
+//
+// RFC 6749 §5.2 invalid_grant scenarios are covered by e2e feature tests
+// (auth_normal_flow.feature, auth_token_lifecycle.feature).
 func (s *ServiceSuite) TestToken_Exchange() {
 	sessionID := uuid.New()
 	userID := uuid.New()
