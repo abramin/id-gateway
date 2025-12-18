@@ -17,12 +17,20 @@ import (
 
 // Service defines the interface for tenant operations.
 // Returns domain objects, not HTTP response DTOs.
+//
+// Authorization Model (PRD-026A):
+// - Platform admins can access any tenant/client (use GetClient, UpdateClient)
+// - Tenant admins can only access their own tenant's clients (use GetClientForTenant, UpdateClientForTenant)
+// - Currently only platform admin auth is implemented (shared X-Admin-Token)
+// - When tenant admin auth is added, handlers must extract tenant context and use scoped methods
 type Service interface {
 	CreateTenant(ctx context.Context, name string) (*models.Tenant, error)
 	GetTenant(ctx context.Context, id uuid.UUID) (*models.TenantDetails, error)
 	CreateClient(ctx context.Context, req *models.CreateClientRequest) (*models.Client, string, error)
 	GetClient(ctx context.Context, id uuid.UUID) (*models.Client, error)
+	GetClientForTenant(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*models.Client, error)
 	UpdateClient(ctx context.Context, id uuid.UUID, req *models.UpdateClientRequest) (*models.Client, string, error)
+	UpdateClientForTenant(ctx context.Context, tenantID uuid.UUID, id uuid.UUID, req *models.UpdateClientRequest) (*models.Client, string, error)
 }
 
 type Handler struct {
@@ -73,8 +81,9 @@ func (h *Handler) HandleCreateTenant(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleGetTenant returns tenant metadata with counts.
+// PRD-026A FR-2: Requires admin authorization. Currently uses X-Admin-Token middleware.
+// TODO: When tenant admin auth is implemented, verify caller has access to this tenant.
 func (h *Handler) HandleGetTenant(w http.ResponseWriter, r *http.Request) {
-	// TODO: 403 if not admin
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
 	idStr := chi.URLParam(r, "id")
@@ -116,6 +125,11 @@ func (h *Handler) HandleCreateClient(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleGetClient returns client metadata.
+// PRD-026A FR-4: Currently uses platform admin auth (X-Admin-Token).
+// TODO: When tenant admin auth is implemented:
+//   1. Extract tenant context from auth token
+//   2. Use h.service.GetClientForTenant(ctx, tenantID, clientID) instead
+//   3. This enforces tenant isolation at the service layer (per PRD-026A §Tenant Boundary)
 func (h *Handler) HandleGetClient(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
@@ -127,6 +141,8 @@ func (h *Handler) HandleGetClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Platform admin: can access any client
+	// When tenant admin auth is added, use GetClientForTenant instead
 	client, err := h.service.GetClient(ctx, clientID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "get client failed", "error", err, "request_id", requestID, "client_id", clientID)
@@ -138,6 +154,11 @@ func (h *Handler) HandleGetClient(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleUpdateClient updates metadata and optionally rotates secret.
+// PRD-026A FR-4: Currently uses platform admin auth (X-Admin-Token).
+// TODO: When tenant admin auth is implemented:
+//   1. Extract tenant context from auth token
+//   2. Use h.service.UpdateClientForTenant(ctx, tenantID, clientID, req) instead
+//   3. This enforces tenant isolation at the service layer (per PRD-026A §Tenant Boundary)
 func (h *Handler) HandleUpdateClient(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
@@ -155,6 +176,8 @@ func (h *Handler) HandleUpdateClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Platform admin: can update any client
+	// When tenant admin auth is added, use UpdateClientForTenant instead
 	client, secret, err := h.service.UpdateClient(ctx, clientID, &req)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "update client failed", "error", err, "request_id", requestID, "client_id", clientID)
