@@ -9,16 +9,13 @@ import (
 )
 
 // InMemoryBucketStore implements BucketStore using in-memory sliding window.
-// Per PRD-017 TR-1: In-memory implementation (MVP, not distributed).
 // For production, use RedisStore instead.
 type InMemoryBucketStore struct {
 	mu      sync.RWMutex
-	buckets map[string]*slidingWindow
+	buckets map[string]*slidingWindow // key.String() -> sliding window
 }
 
 // slidingWindow is the aggregate root for rate limit state.
-// It enforces the sliding window invariant per PRD-017 FR-3.
-// The aggregate owns timestamps (value objects) and encapsulates the algorithm.
 type slidingWindow struct {
 	timestamps []time.Time
 	window     time.Duration
@@ -26,9 +23,8 @@ type slidingWindow struct {
 
 // tryConsume attempts to consume tokens from the sliding window.
 // Returns whether the request was allowed, remaining capacity, and reset time.
-// This is the core domain logic per PRD-017 FR-3 algorithm.
 func (sw *slidingWindow) tryConsume(cost, limit int, now time.Time) (allowed bool, remaining int, resetAt time.Time) {
-	sw.cleanup(now)
+	sw.cleanupExpired(now)
 
 	if len(sw.timestamps)+cost > limit {
 		return false, 0, now.Add(sw.window)
@@ -42,10 +38,20 @@ func (sw *slidingWindow) tryConsume(cost, limit int, now time.Time) (allowed boo
 	return true, limit - len(sw.timestamps), sw.timestamps[0].Add(sw.window)
 }
 
-// count returns the current number of requests in the window.
 func (sw *slidingWindow) count(now time.Time) int {
-	sw.cleanup(now)
+	sw.cleanupExpired(now)
 	return len(sw.timestamps)
+}
+
+func (sw *slidingWindow) cleanupExpired(now time.Time) {
+	cutoff := now.Add(-sw.window)
+	i := 0
+	for ; i < len(sw.timestamps); i++ {
+		if sw.timestamps[i].After(cutoff) {
+			break
+		}
+	}
+	sw.timestamps = sw.timestamps[i:]
 }
 
 // NewInMemoryBucketStore creates a new in-memory bucket store.
@@ -65,14 +71,22 @@ func (s *InMemoryBucketStore) AllowN(ctx context.Context, key string, cost, limi
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	bucket := s.getOrCreateBucket(key, window)
+	bucket, ok := s.buckets[key]
+	if !ok {
+		bucket = &slidingWindow{
+			timestamps: []time.Time{},
+			window:     window,
+		}
+		s.buckets[key] = bucket
+	}
 	allowed, remaining, resetAt := bucket.tryConsume(cost, limit, time.Now())
 
 	return &models.RateLimitResult{
-		Allowed:   allowed,
-		Remaining: remaining,
-		ResetAt:   resetAt,
-		Limit:     limit,
+		Allowed:    allowed,
+		Limit:      limit,
+		Remaining:  remaining,
+		ResetAt:    resetAt,
+		RetryAfter: retryAfterSeconds(allowed, resetAt),
 	}, nil
 }
 
@@ -89,33 +103,22 @@ func (s *InMemoryBucketStore) GetCurrentCount(ctx context.Context, key string) (
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	bucket := s.buckets[key]
-	if bucket == nil {
+	bucket, ok := s.buckets[key]
+	if !ok {
 		return 0, nil
 	}
 
 	return bucket.count(time.Now()), nil
 }
 
-// cleanup removes expired timestamps from a sliding window.
-func (sw *slidingWindow) cleanup(now time.Time) {
-	cutoff := now.Add(-sw.window)
-	i := 0
-	for ; i < len(sw.timestamps); i++ {
-		if sw.timestamps[i].After(cutoff) {
-			break
-		}
+// retryAfterSeconds calculates seconds until retry is allowed.
+func retryAfterSeconds(allowed bool, resetAt time.Time) int {
+	if allowed {
+		return 0
 	}
-	sw.timestamps = sw.timestamps[i:]
-}
-
-// getOrCreateBucket returns an existing bucket or creates a new one.
-// Must be called while holding s.mu lock.
-func (s *InMemoryBucketStore) getOrCreateBucket(key string, window time.Duration) *slidingWindow {
-	if cw := s.buckets[key]; cw != nil {
-		return cw
+	seconds := int(time.Until(resetAt).Seconds())
+	if seconds < 0 {
+		return 0
 	}
-	cw := &slidingWindow{timestamps: []time.Time{}, window: window}
-	s.buckets[key] = cw
-	return cw
+	return seconds
 }
