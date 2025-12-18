@@ -15,8 +15,8 @@ func RequireAdminToken(expectedToken string, logger *slog.Logger) func(http.Hand
 				logger.WarnContext(ctx, "admin token mismatch",
 					"request_id", requestID,
 				)
-				w.WriteHeader(http.StatusForbidden)
-				_, _ = w.Write([]byte(`{"error":"forbidden","error_description":"admin token required"}`))
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"error":"unauthorized","error_description":"admin token required"}`))
 				return
 			}
 

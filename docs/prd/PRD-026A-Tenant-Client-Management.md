@@ -303,6 +303,7 @@ At most, it consumes a **read-only counter interface**.
 Per RFC 8414 (Authorization Server Metadata) and OpenID Connect Core 1.0, each tenant has a unique issuer URL.
 
 **Issuer Format:**
+
 ```
 {base_url}/tenants/{tenant_id}
 ```
@@ -310,23 +311,27 @@ Per RFC 8414 (Authorization Server Metadata) and OpenID Connect Core 1.0, each t
 Example: `https://auth.credo.io/tenants/550e8400-e29b-41d4-a716-446655440000`
 
 **Token Claims:**
+
 - The `iss` claim in access tokens and ID tokens uses the per-tenant issuer format
 - The `tenant_id` is also included as a custom claim in access tokens for client convenience
 - Downstream services can derive tenant from the issuer URL or use the explicit claim
 
 **Implementation Notes:**
+
 - Issuer base URL configured via `JWT_ISSUER_BASE_URL` environment variable
 - Default: `http://localhost:8080` for development
 - JWT service dynamically builds issuer using `{base_url}/tenants/{tenant_id}`
 - Global signing key used across all tenants (per-tenant keys are future work)
 
 **Future Enhancements (Out of Scope):**
+
 - Per-tenant signing keys for key isolation
 - OIDC Discovery per tenant: `GET /tenants/{tenant_id}/.well-known/openid-configuration`
 - JWKS per tenant: `GET /tenants/{tenant_id}/.well-known/jwks.json`
 - Per-tenant audience values
 
 **References:**
+
 - RFC 8414: Authorization Server Metadata
 - OpenID Connect Core 1.0, Section 2 (Issuer Identifier)
 
@@ -496,7 +501,7 @@ These capabilities may be introduced in a future PRD once tenant and client prim
 - [x] Client secret rotation updates the stored hash and old secrets fail authentication.
 - [x] Audit events emitted for tenant/client/user creation and secret rotation.
 - [x] All admin endpoints reject unauthenticated requests with 401 Unauthorized.
-- [x] Authenticated requests without sufficient admin capability are rejected with 403 Forbidden.
+- [ ] Authenticated requests without sufficient admin capability are rejected with 403 Forbidden. _(Deferred to [PRD-026](PRD-026-Admin-Dashboard-Operations-UI.md) role-based admin access)_
 - [x] Platform admin access allows tenant creation and retrieval.
 - [x] Tenant admin access allows client management only within the caller's tenant.
 - [x] Authorization checks are enforced in the service layer and cannot be bypassed by handler misuse.

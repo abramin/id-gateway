@@ -28,4 +28,6 @@ const (
 	EventUserDeleted      AuditEvent = "user_deleted"
 	EventSessionsRevoked  AuditEvent = "sessions_revoked"
 	EventTenantCreated    AuditEvent = "tenant_created"
+	EventClientCreated    AuditEvent = "client_created"
+	EventSecretRotated    AuditEvent = "secret_rotated"
 )

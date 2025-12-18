@@ -403,9 +403,11 @@ POST /admin/review-queue/{id}/deny
 - [ ] Configuration changes applied without restart
 - [ ] Admin queries enforce RLS/tenant scoping with parameterized search; summaries use views/materialized views (no ad-hoc wide joins)
 - [ ] Admin auth uses short-lived tokens with explicit acquisition flow; CSRF defenses on state-changing operations
+- [ ] Role-based admin access: authenticated requests without sufficient capability are rejected with 403 Forbidden _(dependency from [PRD-026A](PRD-026A-Tenant-Client-Management.md))_
 
 ## Revision History
 | Version | Date       | Author       | Changes                                                  |
 | ------- | ---------- | ------------ | -------------------------------------------------------- |
+| 1.2     | 2025-12-18 | Engineering  | Added role-based admin access criterion (403 for insufficient capability) from PRD-026A |
 | 1.1     | 2025-12-18 | Security Eng | Added RLS/tenant scoping, view-based summaries, short-lived admin auth/CSRF |
 | 1.0     | 2025-12-12 | Product Team | Initial PRD                                              |

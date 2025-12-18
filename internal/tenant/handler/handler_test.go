@@ -51,7 +51,7 @@ func (s *HandlerSuite) TestAdminTokenRequired() {
 	rec := httptest.NewRecorder()
 	s.router.ServeHTTP(rec, req)
 
-	assert.Equal(s.T(), http.StatusForbidden, rec.Code, "expected 403 when admin token missing")
+	assert.Equal(s.T(), http.StatusUnauthorized, rec.Code, "expected 401 when admin token missing")
 }
 
 func (s *HandlerSuite) TestCreateTenantAndClientViaHandlers() {

@@ -46,8 +46,8 @@ Feature: Tenant & Client Management Admin API (PRD-026A)
     @admin @tenant @security
   Scenario: Create tenant without admin token fails
     When I create a tenant with name "Unauthorized Tenant" and token ""
-    Then the response status should be 403
-    And the response field "error" should equal "forbidden"
+    Then the response status should be 401
+    And the response field "error" should equal "unauthorized"
 
     # ============================================================
     # CLIENT CRUD (PRD-026A FR-3, FR-4)
@@ -124,5 +124,5 @@ Feature: Tenant & Client Management Admin API (PRD-026A)
     And I save the tenant ID from the response
 
     When I create a client "Unauthorized App" under the tenant without admin token
-    Then the response status should be 403
-    And the response field "error" should equal "forbidden"
+    Then the response status should be 401
+    And the response field "error" should equal "unauthorized"

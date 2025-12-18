@@ -169,6 +169,12 @@ func (s *Service) CreateClient(ctx context.Context, req *models.CreateClientRequ
 		return nil, "", dErrors.Wrap(err, dErrors.CodeInternal, "failed to create client")
 	}
 
+	s.logAudit(ctx, string(audit.EventClientCreated),
+		"tenant_id", client.TenantID,
+		"client_id", client.ID,
+		"client_name", client.Name,
+	)
+
 	return client, secret, nil
 }
 
@@ -244,6 +250,13 @@ func (s *Service) applyClientUpdate(ctx context.Context, client *models.Client, 
 		return nil, "", dErrors.Wrap(err, dErrors.CodeInternal, "failed to update client")
 	}
 
+	if req.RotateSecret {
+		s.logAudit(ctx, string(audit.EventSecretRotated),
+			"tenant_id", client.TenantID,
+			"client_id", client.ID,
+		)
+	}
+
 	return client, rotatedSecret, nil
 }
 
@@ -259,7 +272,7 @@ func (s *Service) ResolveClient(ctx context.Context, clientID string) (*models.C
 		return nil, nil, wrapClientErr(err, "failed to resolve client")
 	}
 	if !client.IsActive() {
-		return nil, nil, dErrors.New(dErrors.CodeForbidden, "client is inactive")
+		return nil, nil, dErrors.New(dErrors.CodeInvalidClient, "client is inactive")
 	}
 
 	tenant, err := s.tenants.FindByID(ctx, client.TenantID)
