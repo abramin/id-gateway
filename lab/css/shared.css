@@ -768,6 +768,14 @@ pre {
   color: var(--text-primary);
 }
 
+.brand-ascii {
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: var(--accent-primary);
+  text-shadow: 0 0 10px rgba(0, 255, 65, 0.5);
+}
+
 .nav-links {
   display: flex;
   align-items: center;
