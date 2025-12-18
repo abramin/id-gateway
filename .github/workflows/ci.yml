@@ -194,6 +194,12 @@ jobs:
           mkdir -p pages/openapi pages/e2e
           ls -la pages/
 
+      - name: Copy Attack Lab static site
+        run: |
+          mkdir -p pages/lab
+          cp -r lab/* pages/lab/
+          ls -la pages/lab | head
+
       - name: Download OpenAPI docs
         uses: actions/download-artifact@v4
         with:

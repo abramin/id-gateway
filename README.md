@@ -3,6 +3,11 @@
 
 _Modular identity and evidence platform covering auth, consent, registry evidence, VCs, policy, and audit._
 
+## Attack Lab (OAuth Security)
+- Live: https://abramin.github.io/Credo/lab/
+- Repo: [lab/](lab/) (Alpine.js static modules: Control Panel, Dual Perspective, Request Forge)
+- Auto-deployed on pushes to `main` via GitHub Pages.
+
 ## What is it?
 - OIDC-lite auth: users, sessions, token issuance/refresh/revocation, device binding, admin deletion.
 - Consent: purpose-based grant/revoke/list with enforcement hooks.
