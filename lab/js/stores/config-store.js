@@ -35,6 +35,7 @@ document.addEventListener('alpine:init', () => {
     validateAudience: savedConfig?.validateAudience ?? true,
     shortTokenLifetime: savedConfig?.shortTokenLifetime ?? true,
     tokenLifetimeMinutes: savedConfig?.tokenLifetimeMinutes ?? 15,
+    enforceJwtAlgorithm: savedConfig?.enforceJwtAlgorithm ?? true,
 
     // State/CSRF Protection
     requireStateParam: savedConfig?.requireStateParam ?? true,
@@ -42,7 +43,12 @@ document.addEventListener('alpine:init', () => {
     // Advanced Options
     enableRefreshTokenRotation: savedConfig?.enableRefreshTokenRotation ?? true,
     bindTokenToDevice: savedConfig?.bindTokenToDevice ?? false,
+    bindTokenToClient: savedConfig?.bindTokenToClient ?? false,
     requireClientSecret: savedConfig?.requireClientSecret ?? false,
+
+    // Issuer & Frame Protection
+    validateIssuer: savedConfig?.validateIssuer ?? true,
+    frameProtection: savedConfig?.frameProtection ?? true,
 
     // Persist to localStorage
     save() {
@@ -56,10 +62,14 @@ document.addEventListener('alpine:init', () => {
           validateAudience: this.validateAudience,
           shortTokenLifetime: this.shortTokenLifetime,
           tokenLifetimeMinutes: this.tokenLifetimeMinutes,
+          enforceJwtAlgorithm: this.enforceJwtAlgorithm,
           requireStateParam: this.requireStateParam,
           enableRefreshTokenRotation: this.enableRefreshTokenRotation,
           bindTokenToDevice: this.bindTokenToDevice,
-          requireClientSecret: this.requireClientSecret
+          bindTokenToClient: this.bindTokenToClient,
+          requireClientSecret: this.requireClientSecret,
+          validateIssuer: this.validateIssuer,
+          frameProtection: this.frameProtection
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
       } catch (e) {
@@ -70,15 +80,19 @@ document.addEventListener('alpine:init', () => {
     // Computed: Security score (0-100)
     get securityScore() {
       let score = 0;
-      if (this.requirePkce) score += 20;
-      if (this.strictRedirectUri) score += 15;
-      if (!this.allowWildcardRedirects) score += 5;
-      if (this.httpsOnlyRedirects) score += 10;
-      if (this.validateAudience) score += 20;
-      if (this.shortTokenLifetime) score += 10;
-      if (this.requireStateParam) score += 10;
-      if (this.enableRefreshTokenRotation) score += 5;
-      if (this.bindTokenToDevice) score += 5;
+      if (this.requirePkce) score += 15;
+      if (this.strictRedirectUri) score += 12;
+      if (!this.allowWildcardRedirects) score += 3;
+      if (this.httpsOnlyRedirects) score += 5;
+      if (this.validateAudience) score += 12;
+      if (this.shortTokenLifetime) score += 5;
+      if (this.requireStateParam) score += 8;
+      if (this.enableRefreshTokenRotation) score += 8;
+      if (this.bindTokenToDevice) score += 3;
+      if (this.bindTokenToClient) score += 5;
+      if (this.enforceJwtAlgorithm) score += 10;
+      if (this.validateIssuer) score += 7;
+      if (this.frameProtection) score += 7;
       return Math.min(100, score);
     },
 
@@ -112,7 +126,7 @@ document.addEventListener('alpine:init', () => {
           name: 'Redirect URI Manipulation',
           severity: 'critical',
           description: 'Loose redirect URI validation allows attackers to steal authorization codes.',
-          attacks: ['redirect_manipulation']
+          attacks: ['redirect_manipulation', 'open_redirect_phishing']
         });
       }
 
@@ -156,6 +170,46 @@ document.addEventListener('alpine:init', () => {
         });
       }
 
+      if (!this.enforceJwtAlgorithm) {
+        vulns.push({
+          id: 'no_alg_enforce',
+          name: 'JWT Algorithm Confusion',
+          severity: 'critical',
+          description: 'Without algorithm enforcement, attackers can forge tokens by switching signing algorithms.',
+          attacks: ['jwt_alg_confusion']
+        });
+      }
+
+      if (!this.enableRefreshTokenRotation) {
+        vulns.push({
+          id: 'no_refresh_rotation',
+          name: 'Refresh Token Hijacking',
+          severity: 'high',
+          description: 'Without rotation, stolen refresh tokens provide persistent unauthorized access.',
+          attacks: ['refresh_token_theft']
+        });
+      }
+
+      if (!this.validateIssuer) {
+        vulns.push({
+          id: 'no_issuer_validation',
+          name: 'Authorization Server Mix-Up',
+          severity: 'critical',
+          description: 'Without issuer validation, attackers can steal codes in multi-IdP scenarios.',
+          attacks: ['as_mixup']
+        });
+      }
+
+      if (!this.frameProtection) {
+        vulns.push({
+          id: 'no_frame_protection',
+          name: 'Clickjacking Authorization',
+          severity: 'medium',
+          description: 'Without frame protection, authorization pages can be embedded in malicious sites.',
+          attacks: ['clickjacking_auth']
+        });
+      }
+
       return vulns;
     },
 
@@ -181,7 +235,12 @@ document.addEventListener('alpine:init', () => {
         'token_replay': { control: 'validateAudience', label: 'Audience Validation' },
         'audience_confusion': { control: 'validateAudience', label: 'Audience Validation' },
         'csrf_callback': { control: 'requireStateParam', label: 'State Parameter' },
-        'token_theft': { control: 'shortTokenLifetime', label: 'Short Token Lifetime' }
+        'token_theft': { control: 'shortTokenLifetime', label: 'Short Token Lifetime' },
+        'jwt_alg_confusion': { control: 'enforceJwtAlgorithm', label: 'JWT Algorithm Enforcement' },
+        'refresh_token_theft': { control: 'enableRefreshTokenRotation', label: 'Refresh Token Rotation' },
+        'open_redirect_phishing': { control: 'strictRedirectUri', label: 'Strict Redirect URIs' },
+        'as_mixup': { control: 'validateIssuer', label: 'Issuer Validation' },
+        'clickjacking_auth': { control: 'frameProtection', label: 'Frame Protection' }
       };
       return controls[attackId] || null;
     },
@@ -197,10 +256,14 @@ document.addEventListener('alpine:init', () => {
           validateAudience: false,
           shortTokenLifetime: false,
           tokenLifetimeMinutes: 60,
+          enforceJwtAlgorithm: false,
           requireStateParam: false,
           enableRefreshTokenRotation: false,
           bindTokenToDevice: false,
-          requireClientSecret: false
+          bindTokenToClient: false,
+          requireClientSecret: false,
+          validateIssuer: false,
+          frameProtection: false
         },
         partial: {
           requirePkce: true,
@@ -210,10 +273,14 @@ document.addEventListener('alpine:init', () => {
           validateAudience: false,
           shortTokenLifetime: true,
           tokenLifetimeMinutes: 15,
+          enforceJwtAlgorithm: true,
           requireStateParam: true,
           enableRefreshTokenRotation: true,
           bindTokenToDevice: false,
-          requireClientSecret: false
+          bindTokenToClient: false,
+          requireClientSecret: false,
+          validateIssuer: false,
+          frameProtection: true
         },
         secure: {
           requirePkce: true,
@@ -224,10 +291,14 @@ document.addEventListener('alpine:init', () => {
           validateAudience: true,
           shortTokenLifetime: true,
           tokenLifetimeMinutes: 15,
+          enforceJwtAlgorithm: true,
           requireStateParam: true,
           enableRefreshTokenRotation: true,
           bindTokenToDevice: true,
-          requireClientSecret: true
+          bindTokenToClient: true,
+          requireClientSecret: true,
+          validateIssuer: true,
+          frameProtection: true
         }
       };
 
@@ -264,7 +335,11 @@ document.addEventListener('alpine:init', () => {
       config.httpsOnlyRedirects,
       config.allowWildcardRedirects,
       config.enableRefreshTokenRotation,
-      config.bindTokenToDevice
+      config.bindTokenToDevice,
+      config.bindTokenToClient,
+      config.enforceJwtAlgorithm,
+      config.validateIssuer,
+      config.frameProtection
     ];
     config.save();
   });
