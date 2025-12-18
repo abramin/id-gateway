@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Control Panel - Attack Lab</title>
+  <link rel="stylesheet" href="css/shared.css">
+  <link rel="stylesheet" href="css/control-panel.css">
+
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <!-- Stores -->
+  <script src="js/stores/theme-store.js"></script>
+  <script src="js/stores/config-store.js"></script>
+  <script src="js/stores/mock-api-store.js"></script>
+
+  <!-- Utils -->
+  <script src="js/utils/jwt.js"></script>
+  <script src="js/utils/formatting.js"></script>
+
+  <!-- Data -->
+  <script src="js/data/attack-definitions.js"></script>
+
+  <!-- Components -->
+  <script src="js/components/security-panel.js"></script>
+</head>
+<body x-data="controlPanel">
+  <!-- Navigation -->
+  <nav class="nav">
+    <div class="nav-brand">
+      <a href="index.html" class="back-btn" title="Back to modules">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+      </a>
+      <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="7" height="7" rx="1"/>
+        <rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/>
+        <rect x="14" y="14" width="7" height="7" rx="1"/>
+      </svg>
+      <span>Control Panel</span>
+    </div>
+    <div class="nav-links">
+      <div class="theme-toggle">
+        <button class="theme-toggle-btn" :class="{ 'active': $store.theme.isLight }" @click="$store.theme.setLight()" title="Light mode">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+        </button>
+        <button class="theme-toggle-btn" :class="{ 'active': $store.theme.isDark }" @click="$store.theme.setDark()" title="Dark mode">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="main-layout">
+    <!-- Left Panel: Security Controls -->
+    <aside class="controls-panel">
+      <div class="panel-section">
+        <h2 class="panel-title">Security Score</h2>
+        <div class="score-display">
+          <div class="score-circle-container">
+            <svg class="score-circle" viewBox="0 0 120 120">
+              <defs>
+                <linearGradient id="score-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" style="stop-color:#8b5cf6"/>
+                  <stop offset="100%" style="stop-color:#06b6d4"/>
+                </linearGradient>
+              </defs>
+              <circle class="score-circle-bg" cx="60" cy="60" r="52"/>
+              <circle
+                class="score-circle-fill"
+                cx="60" cy="60" r="52"
+                :style="`stroke-dasharray: ${2 * Math.PI * 52}; stroke-dashoffset: ${2 * Math.PI * 52 - ($store.config.securityScore / 100) * 2 * Math.PI * 52}`"
+              />
+            </svg>
+            <div class="score-value">
+              <span class="score-number" x-text="$store.config.securityScore"></span>
+              <span class="score-max">/100</span>
+            </div>
+          </div>
+          <div class="score-meta">
+            <span class="score-label" :class="`text-${$store.config.securityLevel.color}`" x-text="$store.config.securityLevel.label"></span>
+            <span class="vulnerability-count" x-show="$store.config.vulnerabilities.length > 0">
+              <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <span x-text="$store.config.vulnerabilities.length"></span> vulnerabilities
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3 class="section-label">Presets</h3>
+        <div class="preset-buttons">
+          <button class="btn btn-sm btn-secondary" @click="$store.config.applyPreset('insecure')">
+            <span class="preset-dot preset-dot-red"></span>
+            Insecure
+          </button>
+          <button class="btn btn-sm btn-secondary" @click="$store.config.applyPreset('partial')">
+            <span class="preset-dot preset-dot-yellow"></span>
+            Partial
+          </button>
+          <button class="btn btn-sm btn-secondary" @click="$store.config.applyPreset('secure')">
+            <span class="preset-dot preset-dot-green"></span>
+            Secure
+          </button>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3 class="section-label">PKCE Protection</h3>
+        <div class="control-group">
+          <label class="toggle">
+            <input type="checkbox" class="toggle-input" x-model="$store.config.requirePkce">
+            <span class="toggle-switch"></span>
+            <span class="toggle-label">
+              Require PKCE
+              <span class="control-impact badge badge-warning">High Impact</span>
+            </span>
+          </label>
+          <p class="control-hint">Prevents authorization code interception</p>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3 class="section-label">Redirect URI Validation</h3>
+        <div class="control-group">
+          <label class="toggle">
+            <input type="checkbox" class="toggle-input" x-model="$store.config.strictRedirectUri">
+            <span class="toggle-switch"></span>
+            <span class="toggle-label">
+              Strict URI Matching
+              <span class="control-impact badge badge-error">Critical</span>
+            </span>
+          </label>
+          <p class="control-hint">Only allow exact pre-registered URIs</p>
+        </div>
+        <div class="control-group">
+          <label class="toggle">
+            <input type="checkbox" class="toggle-input" x-model="$store.config.httpsOnlyRedirects">
+            <span class="toggle-switch"></span>
+            <span class="toggle-label">
+              HTTPS Only
+              <span class="control-impact badge badge-warning">High Impact</span>
+            </span>
+          </label>
+          <p class="control-hint">Require HTTPS for redirects</p>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3 class="section-label">Token Security</h3>
+        <div class="control-group">
+          <label class="toggle">
+            <input type="checkbox" class="toggle-input" x-model="$store.config.validateAudience">
+            <span class="toggle-switch"></span>
+            <span class="toggle-label">
+              Validate Audience
+              <span class="control-impact badge badge-warning">High Impact</span>
+            </span>
+          </label>
+          <p class="control-hint">Resource servers check token audience</p>
+        </div>
+        <div class="control-group">
+          <label class="toggle">
+            <input type="checkbox" class="toggle-input" x-model="$store.config.shortTokenLifetime">
+            <span class="toggle-switch"></span>
+            <span class="toggle-label">
+              Short Token Lifetime
+              <span class="control-impact badge badge-info">Medium</span>
+            </span>
+          </label>
+          <p class="control-hint">15 min vs 1 hour token lifetime</p>
+        </div>
+        <div class="control-group">
+          <label class="toggle">
+            <input type="checkbox" class="toggle-input" x-model="$store.config.requireStateParam">
+            <span class="toggle-switch"></span>
+            <span class="toggle-label">
+              Require State Parameter
+              <span class="control-impact badge badge-warning">High Impact</span>
+            </span>
+          </label>
+          <p class="control-hint">Prevents CSRF attacks on callback</p>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <button class="btn btn-primary w-full" @click="runAllAttacks" :disabled="running">
+          <template x-if="!running">
+            <span class="flex items-center gap-2">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+              Run All Attacks
+            </span>
+          </template>
+          <template x-if="running">
+            <span class="flex items-center gap-2">
+              <span class="spinner"></span>
+              Running...
+            </span>
+          </template>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Right Panel: Attack Results -->
+    <section class="results-panel">
+      <div class="results-header">
+        <h2 class="results-title">Attack Results</h2>
+        <p class="results-subtitle" x-show="!hasResults">
+          Toggle security controls and run attacks to see which ones succeed or fail.
+        </p>
+        <div class="results-summary" x-show="hasResults">
+          <span class="summary-item summary-blocked">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+            <span x-text="blockedCount"></span> Blocked
+          </span>
+          <span class="summary-item summary-succeeded">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+            <span x-text="succeededCount"></span> Succeeded
+          </span>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div class="empty-state" x-show="!hasResults && !running">
+        <div class="empty-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <path d="M9 12l2 2 4-4"/>
+          </svg>
+        </div>
+        <h3 class="empty-title">Ready to Test</h3>
+        <p class="empty-description">
+          Configure security controls on the left, then click "Run All Attacks"
+          to see how your configuration holds up against common OAuth vulnerabilities.
+        </p>
+      </div>
+
+      <!-- Attack Results Grid -->
+      <div class="results-grid" x-show="hasResults">
+        <template x-for="result in attackResults" :key="result.id">
+          <div
+            class="result-card"
+            :class="{ 'result-blocked': result.blocked, 'result-succeeded': !result.blocked }"
+            @click="selectedAttack = result"
+          >
+            <div class="result-header">
+              <span class="result-status" :class="result.blocked ? 'status-blocked' : 'status-succeeded'">
+                <template x-if="result.blocked">
+                  <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
+                  </svg>
+                </template>
+                <template x-if="!result.blocked">
+                  <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="15" y1="9" x2="9" y2="15"/>
+                    <line x1="9" y1="9" x2="15" y2="15"/>
+                  </svg>
+                </template>
+                <span x-text="result.blocked ? 'BLOCKED' : 'SUCCEEDED'"></span>
+              </span>
+              <span class="badge" :class="getSeverityClass(result.severity)" x-text="result.severity"></span>
+            </div>
+            <h3 class="result-title" x-text="result.title"></h3>
+            <p class="result-description" x-text="result.shortDescription"></p>
+            <div class="result-footer">
+              <template x-if="result.blocked && result.blockedBy">
+                <span class="blocked-by">
+                  <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  </svg>
+                  Blocked by: <strong x-text="result.blockedByLabel"></strong>
+                </span>
+              </template>
+              <template x-if="!result.blocked">
+                <span class="attack-warning">
+                  <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                  </svg>
+                  Vulnerable!
+                </span>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+    </section>
+  </main>
+
+  <!-- Attack Detail Modal -->
+  <div class="modal-overlay" x-show="selectedAttack" @click.self="selectedAttack = null" x-cloak>
+    <div class="modal" x-show="selectedAttack" x-transition>
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="badge" :class="selectedAttack?.blocked ? 'badge-success' : 'badge-error'">
+            <span x-text="selectedAttack?.blocked ? 'BLOCKED' : 'SUCCEEDED'"></span>
+          </span>
+          <h3 class="modal-title" x-text="selectedAttack?.title"></h3>
+        </div>
+        <button class="btn btn-ghost btn-icon" @click="selectedAttack = null">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-description" x-text="selectedAttack?.description"></p>
+
+        <div class="detail-section" x-show="selectedAttack?.blocked">
+          <h4 class="detail-title">Why It Was Blocked</h4>
+          <div class="blocked-explanation">
+            <div class="shield-badge">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+            </div>
+            <div>
+              <p class="blocked-control" x-text="selectedAttack?.blockedByLabel"></p>
+              <p class="blocked-reason" x-text="getBlockedReason(selectedAttack)"></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-section" x-show="!selectedAttack?.blocked">
+          <h4 class="detail-title">Why It Succeeded</h4>
+          <div class="success-explanation">
+            <div class="warning-badge">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+            <div>
+              <p class="success-reason">Missing security controls allow this attack to succeed.</p>
+              <p class="success-fix">
+                Enable <strong x-text="getRecommendedFix(selectedAttack)"></strong> to block this attack.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <h4 class="detail-title">Attack Steps</h4>
+          <ol class="attack-steps">
+            <template x-for="(step, index) in selectedAttack?.steps || []" :key="index">
+              <li class="attack-step" :class="`step-${step.perspective}`">
+                <span class="step-number" x-text="index + 1"></span>
+                <div class="step-content">
+                  <p class="step-title" x-text="step.title"></p>
+                  <p class="step-description" x-text="step.description"></p>
+                </div>
+              </li>
+            </template>
+          </ol>
+        </div>
+
+        <div class="detail-section">
+          <h4 class="detail-title">Mitigations</h4>
+          <ul class="mitigations-list">
+            <template x-for="mitigation in selectedAttack?.mitigations || []" :key="mitigation.title">
+              <li class="mitigation-item">
+                <span class="mitigation-effectiveness" :class="`effectiveness-${mitigation.effectiveness}`">
+                  <template x-if="mitigation.effectiveness === 'complete'">
+                    <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                    </svg>
+                  </template>
+                  <template x-if="mitigation.effectiveness === 'partial'">
+                    <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"/><path d="M8 12h8"/>
+                    </svg>
+                  </template>
+                </span>
+                <div>
+                  <p class="mitigation-title" x-text="mitigation.title"></p>
+                  <p class="mitigation-description" x-text="mitigation.description"></p>
+                </div>
+              </li>
+            </template>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('alpine:init', () => {
+      Alpine.data('controlPanel', () => ({
+        // State
+        attackResults: [],
+        running: false,
+        selectedAttack: null,
+
+        // Computed
+        get hasResults() {
+          return this.attackResults.length > 0;
+        },
+
+        get blockedCount() {
+          return this.attackResults.filter(r => r.blocked).length;
+        },
+
+        get succeededCount() {
+          return this.attackResults.filter(r => !r.blocked).length;
+        },
+
+        // Run all attacks
+        async runAllAttacks() {
+          this.running = true;
+          this.attackResults = [];
+
+          const config = Alpine.store('config');
+
+          // Simulate running each attack
+          for (const attack of ATTACK_DEFINITIONS) {
+            await new Promise(r => setTimeout(r, 200)); // Simulate delay
+
+            const blocked = !config.isAttackPossible(attack.id);
+            const blockingControl = config.getBlockingControl(attack.id);
+
+            this.attackResults.push({
+              ...attack,
+              blocked,
+              blockedBy: blockingControl?.control,
+              blockedByLabel: blockingControl?.label
+            });
+          }
+
+          this.running = false;
+        },
+
+        // Get severity class
+        getSeverityClass(severity) {
+          return getSeverityClass(severity);
+        },
+
+        // Get blocked reason
+        getBlockedReason(attack) {
+          if (!attack) return '';
+
+          const reasons = {
+            requirePkce: 'PKCE ensures that only the client that initiated the authorization request can exchange the code for tokens.',
+            strictRedirectUri: 'Strict redirect URI validation prevents attackers from redirecting authorization codes to malicious endpoints.',
+            validateAudience: 'Audience validation ensures tokens are only accepted by their intended recipients.',
+            requireStateParam: 'The state parameter prevents CSRF attacks by binding the authorization request to the user\'s session.',
+            shortTokenLifetime: 'Short-lived tokens reduce the window of opportunity for token theft and replay.',
+            httpsOnlyRedirects: 'HTTPS-only redirects prevent network-level interception of authorization codes.'
+          };
+
+          return reasons[attack.blockedBy] || 'This security control prevents the attack from succeeding.';
+        },
+
+        // Get recommended fix
+        getRecommendedFix(attack) {
+          if (!attack) return '';
+
+          const fixes = {
+            code_interception: 'PKCE',
+            redirect_manipulation: 'Strict Redirect URI Matching',
+            token_replay: 'Audience Validation',
+            csrf_callback: 'State Parameter',
+            scope_escalation: 'Scope Validation',
+            token_storage_xss: 'HttpOnly Cookies'
+          };
+
+          return fixes[attack.id] || 'the recommended security control';
+        }
+      }));
+    });
+  </script>
+</body>
+</html>

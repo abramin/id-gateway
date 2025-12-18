@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Request Forge - Attack Lab</title>
+  <link rel="stylesheet" href="css/shared.css">
+  <link rel="stylesheet" href="css/request-forge.css">
+
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <!-- Stores -->
+  <script src="js/stores/theme-store.js"></script>
+  <script src="js/stores/config-store.js"></script>
+  <script src="js/stores/mock-api-store.js"></script>
+
+  <!-- Utils -->
+  <script src="js/utils/jwt.js"></script>
+  <script src="js/utils/formatting.js"></script>
+</head>
+<body x-data="requestForge">
+  <!-- Navigation -->
+  <nav class="nav">
+    <div class="nav-brand">
+      <a href="index.html" class="back-btn" title="Back to modules">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+      </a>
+      <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="16 18 22 12 16 6"/>
+        <polyline points="8 6 2 12 8 18"/>
+      </svg>
+      <span>Request Forge</span>
+    </div>
+    <div class="nav-links">
+      <label class="toggle compare-toggle">
+        <input type="checkbox" class="toggle-input" x-model="compareMode">
+        <span class="toggle-switch"></span>
+        <span class="toggle-label">Compare Mode</span>
+      </label>
+      <div class="theme-toggle">
+        <button class="theme-toggle-btn" :class="{ 'active': $store.theme.isLight }" @click="$store.theme.setLight()">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+        </button>
+        <button class="theme-toggle-btn" :class="{ 'active': $store.theme.isDark }" @click="$store.theme.setDark()">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="main-layout" :class="{ 'compare-mode': compareMode }">
+    <!-- Request Builder Panel -->
+    <section class="request-panel">
+      <div class="panel-header">
+        <h2>Request Builder</h2>
+        <div class="endpoint-tabs">
+          <button
+            class="tab"
+            :class="{ 'active': activeEndpoint === 'authorize' }"
+            @click="activeEndpoint = 'authorize'"
+          >Authorize</button>
+          <button
+            class="tab"
+            :class="{ 'active': activeEndpoint === 'token' }"
+            @click="activeEndpoint = 'token'"
+          >Token</button>
+          <button
+            class="tab"
+            :class="{ 'active': activeEndpoint === 'resource' }"
+            @click="activeEndpoint = 'resource'"
+          >Resource</button>
+        </div>
+      </div>
+
+      <div class="panel-body">
+        <!-- Authorize Endpoint -->
+        <div class="endpoint-form" x-show="activeEndpoint === 'authorize'">
+          <div class="form-header">
+            <span class="method-badge method-post">POST</span>
+            <span class="endpoint-path">/auth/authorize</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-input" x-model="authorize.email" placeholder="user@example.com">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Client ID</label>
+            <input type="text" class="form-input" x-model="authorize.client_id" placeholder="demo-client">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Redirect URI</label>
+            <input type="text" class="form-input" x-model="authorize.redirect_uri" placeholder="https://app.example.com/callback">
+            <p class="form-hint" x-show="!$store.config.strictRedirectUri">
+              <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              Strict URI validation is OFF - any URI may be accepted
+            </p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Scope</label>
+            <input type="text" class="form-input" x-model="authorize.scope" placeholder="openid profile">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">
+              State
+              <button class="btn btn-ghost btn-sm" @click="authorize.state = generateState()">Generate</button>
+            </label>
+            <input type="text" class="form-input" x-model="authorize.state" placeholder="random-state-value">
+            <p class="form-hint" x-show="!$store.config.requireStateParam && !authorize.state">
+              <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              No state parameter - vulnerable to CSRF
+            </p>
+          </div>
+
+          <div class="form-section">
+            <h4 class="form-section-title">
+              PKCE
+              <span class="badge" :class="$store.config.requirePkce ? 'badge-success' : 'badge-warning'">
+                <span x-text="$store.config.requirePkce ? 'Required' : 'Optional'"></span>
+              </span>
+            </h4>
+            <div class="form-group">
+              <label class="form-label">
+                Code Challenge
+                <button class="btn btn-ghost btn-sm" @click="generatePkce()">Generate PKCE</button>
+              </label>
+              <input type="text" class="form-input font-mono text-sm" x-model="authorize.code_challenge" placeholder="E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Code Challenge Method</label>
+              <select class="form-select" x-model="authorize.code_challenge_method">
+                <option value="">None</option>
+                <option value="S256">S256 (Recommended)</option>
+                <option value="plain">Plain</option>
+              </select>
+            </div>
+            <p class="form-hint" x-show="$store.config.requirePkce && !authorize.code_challenge">
+              <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              PKCE is required - request will fail without code_challenge
+            </p>
+          </div>
+        </div>
+
+        <!-- Token Endpoint -->
+        <div class="endpoint-form" x-show="activeEndpoint === 'token'">
+          <div class="form-header">
+            <span class="method-badge method-post">POST</span>
+            <span class="endpoint-path">/auth/token</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Grant Type</label>
+            <select class="form-select" x-model="token.grant_type">
+              <option value="authorization_code">Authorization Code</option>
+              <option value="refresh_token">Refresh Token</option>
+            </select>
+          </div>
+
+          <div x-show="token.grant_type === 'authorization_code'">
+            <div class="form-group">
+              <label class="form-label">Authorization Code</label>
+              <input type="text" class="form-input font-mono" x-model="token.code" placeholder="authz_xxx...">
+              <p class="form-hint" x-show="lastAuthCode">
+                Last code: <code class="cursor-pointer" @click="token.code = lastAuthCode" x-text="lastAuthCode"></code>
+              </p>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Redirect URI</label>
+              <input type="text" class="form-input" x-model="token.redirect_uri" placeholder="Must match authorize request">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Client ID</label>
+              <input type="text" class="form-input" x-model="token.client_id" placeholder="demo-client">
+            </div>
+
+            <div class="form-group" x-show="$store.config.requirePkce">
+              <label class="form-label">Code Verifier</label>
+              <input type="text" class="form-input font-mono text-sm" x-model="token.code_verifier" placeholder="The original code_verifier used to generate code_challenge">
+              <p class="form-hint" x-show="lastCodeVerifier">
+                Last verifier: <code class="cursor-pointer" @click="token.code_verifier = lastCodeVerifier" x-text="truncate(lastCodeVerifier, 30)"></code>
+              </p>
+            </div>
+          </div>
+
+          <div x-show="token.grant_type === 'refresh_token'">
+            <div class="form-group">
+              <label class="form-label">Refresh Token</label>
+              <input type="text" class="form-input font-mono" x-model="token.refresh_token" placeholder="ref_xxx...">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Client ID</label>
+              <input type="text" class="form-input" x-model="token.client_id" placeholder="demo-client">
+            </div>
+          </div>
+        </div>
+
+        <!-- Resource Endpoint -->
+        <div class="endpoint-form" x-show="activeEndpoint === 'resource'">
+          <div class="form-header">
+            <span class="method-badge method-get">GET</span>
+            <span class="endpoint-path">/api/data</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Access Token</label>
+            <textarea class="form-textarea font-mono text-sm" x-model="resource.access_token" placeholder="eyJhbGciOiJSUzI1NiIs..." rows="3"></textarea>
+            <p class="form-hint" x-show="lastAccessToken">
+              Use last token: <button class="btn btn-ghost btn-sm" @click="resource.access_token = lastAccessToken">Insert</button>
+            </p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Target Audience</label>
+            <input type="text" class="form-input" x-model="resource.target_audience" placeholder="resource-server">
+            <p class="form-hint">
+              Token's audience:
+              <code x-text="getTokenAudience(resource.access_token) || 'N/A'"></code>
+              <template x-if="!$store.config.validateAudience">
+                <span class="text-warning"> (validation OFF)</span>
+              </template>
+            </p>
+          </div>
+        </div>
+
+        <!-- Security Analysis -->
+        <div class="security-analysis">
+          <h4>Security Analysis</h4>
+          <div class="analysis-items">
+            <template x-for="issue in getSecurityIssues()" :key="issue.id">
+              <div class="analysis-item" :class="`analysis-${issue.severity}`">
+                <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <template x-if="issue.severity === 'error'">
+                    <g><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></g>
+                  </template>
+                  <template x-if="issue.severity === 'warning'">
+                    <g><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></g>
+                  </template>
+                  <template x-if="issue.severity === 'info'">
+                    <g><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></g>
+                  </template>
+                </svg>
+                <span x-text="issue.message"></span>
+              </div>
+            </template>
+            <div class="analysis-item analysis-success" x-show="getSecurityIssues().length === 0">
+              <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+              </svg>
+              <span>No security issues detected</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Send Button -->
+        <div class="form-actions">
+          <button class="btn btn-primary btn-lg w-full" @click="sendRequest" :disabled="loading">
+            <template x-if="!loading">
+              <span class="flex items-center gap-2">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+                Send Request
+              </span>
+            </template>
+            <template x-if="loading">
+              <span class="flex items-center gap-2">
+                <span class="spinner"></span>
+                Sending...
+              </span>
+            </template>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Response Panel -->
+    <section class="response-panel">
+      <div class="panel-header">
+        <h2>Response</h2>
+        <div class="response-meta" x-show="response">
+          <span class="status-badge" :class="response?.success ? 'status-success' : 'status-error'">
+            <span x-text="response?.success ? 'Success' : 'Error'"></span>
+          </span>
+          <span class="response-time" x-show="responseTime">
+            <span x-text="responseTime"></span>ms
+          </span>
+        </div>
+      </div>
+
+      <div class="panel-body">
+        <!-- Empty State -->
+        <div class="empty-state" x-show="!response && !loading">
+          <div class="empty-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </div>
+          <h3>No Response Yet</h3>
+          <p>Configure and send a request to see the response here.</p>
+        </div>
+
+        <!-- Response Content -->
+        <div class="response-content" x-show="response">
+          <div class="response-section">
+            <h4>Response Body</h4>
+            <pre class="response-json" x-text="formatJson(response)"></pre>
+          </div>
+
+          <!-- JWT Decoder (for token responses) -->
+          <div class="jwt-section" x-show="response?.access_token">
+            <h4>
+              Decoded Access Token
+              <button class="btn btn-ghost btn-sm" @click="showJwtDetails = !showJwtDetails">
+                <span x-text="showJwtDetails ? 'Hide' : 'Show'"></span> Details
+              </button>
+            </h4>
+
+            <div class="jwt-decoded" x-show="showJwtDetails">
+              <div class="jwt-part">
+                <span class="jwt-label">Header</span>
+                <pre class="jwt-content" x-text="formatJson(decodeJwt(response?.access_token)?.header)"></pre>
+              </div>
+              <div class="jwt-part">
+                <span class="jwt-label">Payload</span>
+                <pre class="jwt-content" x-text="formatJson(decodeJwt(response?.access_token)?.payload)"></pre>
+              </div>
+
+              <!-- Token Analysis -->
+              <div class="token-analysis">
+                <h5>Token Analysis</h5>
+                <div class="token-claims">
+                  <template x-for="claim in getTokenClaims(response?.access_token)" :key="claim.key">
+                    <div class="claim-row">
+                      <span class="claim-key" x-text="claim.key"></span>
+                      <span class="claim-value" x-text="claim.displayValue"></span>
+                      <span class="claim-info" x-show="claim.security" :class="claim.security ? 'text-warning' : ''">
+                        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                        </svg>
+                      </span>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Blocked By Indicator -->
+          <div class="blocked-indicator" x-show="response?.blocked_by">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            <div>
+              <strong>Blocked by: <span x-text="getControlLabel(response?.blocked_by)"></span></strong>
+              <p x-text="response?.error_description"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Compare Panel (when compare mode is on) -->
+    <section class="compare-panel" x-show="compareMode">
+      <div class="panel-header">
+        <h2>Compare: Secure Config</h2>
+        <div class="response-meta" x-show="compareResponse">
+          <span class="status-badge" :class="compareResponse?.success ? 'status-success' : 'status-error'">
+            <span x-text="compareResponse?.success ? 'Success' : 'Error'"></span>
+          </span>
+        </div>
+      </div>
+
+      <div class="panel-body">
+        <div class="compare-info" x-show="!compareResponse">
+          <p>When Compare Mode is on, the same request will be sent with a secure configuration to show the difference.</p>
+        </div>
+
+        <div class="response-content" x-show="compareResponse">
+          <div class="response-section">
+            <h4>Response (Secure Config)</h4>
+            <pre class="response-json" x-text="formatJson(compareResponse)"></pre>
+          </div>
+
+          <div class="blocked-indicator" x-show="compareResponse?.blocked_by">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            <div>
+              <strong>Would be blocked by: <span x-text="getControlLabel(compareResponse?.blocked_by)"></span></strong>
+              <p x-text="compareResponse?.error_description"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Config Sidebar -->
+    <aside class="config-sidebar">
+      <div class="sidebar-header">
+        <h3>Security Config</h3>
+        <div class="preset-buttons">
+          <button class="btn btn-sm btn-ghost" @click="$store.config.applyPreset('insecure')" title="Insecure">
+            <span class="preset-dot preset-dot-red"></span>
+          </button>
+          <button class="btn btn-sm btn-ghost" @click="$store.config.applyPreset('partial')" title="Partial">
+            <span class="preset-dot preset-dot-yellow"></span>
+          </button>
+          <button class="btn btn-sm btn-ghost" @click="$store.config.applyPreset('secure')" title="Secure">
+            <span class="preset-dot preset-dot-green"></span>
+          </button>
+        </div>
+      </div>
+
+      <div class="config-controls">
+        <label class="toggle">
+          <input type="checkbox" class="toggle-input" x-model="$store.config.requirePkce">
+          <span class="toggle-switch"></span>
+          <span class="toggle-label">PKCE</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" class="toggle-input" x-model="$store.config.strictRedirectUri">
+          <span class="toggle-switch"></span>
+          <span class="toggle-label">Strict Redirect</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" class="toggle-input" x-model="$store.config.validateAudience">
+          <span class="toggle-switch"></span>
+          <span class="toggle-label">Audience Validation</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" class="toggle-input" x-model="$store.config.requireStateParam">
+          <span class="toggle-switch"></span>
+          <span class="toggle-label">State Param</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" class="toggle-input" x-model="$store.config.shortTokenLifetime">
+          <span class="toggle-switch"></span>
+          <span class="toggle-label">Short Token Life</span>
+        </label>
+      </div>
+
+      <div class="score-mini">
+        <span class="score-value" x-text="$store.config.securityScore"></span>
+        <span class="score-label">Security Score</span>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    document.addEventListener('alpine:init', () => {
+      Alpine.data('requestForge', () => ({
+        // State
+        activeEndpoint: 'authorize',
+        loading: false,
+        response: null,
+        compareResponse: null,
+        responseTime: null,
+        compareMode: false,
+        showJwtDetails: true,
+
+        // Saved values for convenience
+        lastAuthCode: null,
+        lastCodeVerifier: null,
+        lastAccessToken: null,
+
+        // Form data
+        authorize: {
+          email: 'demo@example.com',
+          client_id: 'demo-client',
+          redirect_uri: 'https://app.example.com/callback',
+          scope: 'openid profile',
+          state: '',
+          code_challenge: '',
+          code_challenge_method: 'S256'
+        },
+
+        token: {
+          grant_type: 'authorization_code',
+          code: '',
+          redirect_uri: 'https://app.example.com/callback',
+          client_id: 'demo-client',
+          code_verifier: '',
+          refresh_token: ''
+        },
+
+        resource: {
+          access_token: '',
+          target_audience: 'resource-server'
+        },
+
+        // Methods
+        generateState() {
+          return FormatUtils.generateRandomString(32);
+        },
+
+        async generatePkce() {
+          const verifier = FormatUtils.generateCodeVerifier();
+          const challenge = await FormatUtils.generateCodeChallenge(verifier);
+          this.authorize.code_challenge = challenge;
+          this.authorize.code_challenge_method = 'S256';
+          this.lastCodeVerifier = verifier;
+          this.token.code_verifier = verifier;
+        },
+
+        async sendRequest() {
+          this.loading = true;
+          this.response = null;
+          this.compareResponse = null;
+          const startTime = Date.now();
+
+          try {
+            const api = Alpine.store('mockApi');
+
+            if (this.activeEndpoint === 'authorize') {
+              this.response = await api.authorize(this.authorize);
+
+              if (this.response.success && this.response.code) {
+                this.lastAuthCode = this.response.code;
+                this.token.code = this.response.code;
+              }
+
+              // Compare mode
+              if (this.compareMode) {
+                const savedConfig = { ...Alpine.store('config') };
+                Alpine.store('config').applyPreset('secure');
+                this.compareResponse = await api.authorize(this.authorize);
+                Object.assign(Alpine.store('config'), savedConfig);
+              }
+            }
+            else if (this.activeEndpoint === 'token') {
+              this.response = await api.token(this.token);
+
+              if (this.response.success && this.response.access_token) {
+                this.lastAccessToken = this.response.access_token;
+                this.resource.access_token = this.response.access_token;
+              }
+
+              if (this.compareMode) {
+                const savedConfig = { ...Alpine.store('config') };
+                Alpine.store('config').applyPreset('secure');
+                this.compareResponse = await api.token(this.token);
+                Object.assign(Alpine.store('config'), savedConfig);
+              }
+            }
+            else if (this.activeEndpoint === 'resource') {
+              this.response = await api.resourceServer(
+                this.resource.access_token,
+                this.resource.target_audience
+              );
+
+              if (this.compareMode) {
+                const savedConfig = { ...Alpine.store('config') };
+                Alpine.store('config').applyPreset('secure');
+                this.compareResponse = await api.resourceServer(
+                  this.resource.access_token,
+                  this.resource.target_audience
+                );
+                Object.assign(Alpine.store('config'), savedConfig);
+              }
+            }
+
+            this.responseTime = Date.now() - startTime;
+          } catch (err) {
+            this.response = {
+              success: false,
+              error: 'request_failed',
+              error_description: err.message
+            };
+          } finally {
+            this.loading = false;
+          }
+        },
+
+        getSecurityIssues() {
+          const issues = [];
+
+          if (this.activeEndpoint === 'authorize') {
+            if (Alpine.store('config').requirePkce && !this.authorize.code_challenge) {
+              issues.push({ id: 'pkce', severity: 'error', message: 'PKCE is required but code_challenge is missing' });
+            }
+            if (!this.authorize.state && !Alpine.store('config').requireStateParam) {
+              issues.push({ id: 'state', severity: 'warning', message: 'No state parameter - vulnerable to CSRF' });
+            }
+            if (!Alpine.store('config').strictRedirectUri) {
+              issues.push({ id: 'redirect', severity: 'warning', message: 'Strict redirect validation is disabled' });
+            }
+          }
+
+          if (this.activeEndpoint === 'token') {
+            if (Alpine.store('config').requirePkce && !this.token.code_verifier) {
+              issues.push({ id: 'verifier', severity: 'error', message: 'PKCE is required but code_verifier is missing' });
+            }
+          }
+
+          if (this.activeEndpoint === 'resource') {
+            if (!Alpine.store('config').validateAudience) {
+              issues.push({ id: 'audience', severity: 'warning', message: 'Audience validation is disabled - token replay possible' });
+            }
+          }
+
+          return issues;
+        },
+
+        decodeJwt(token) {
+          if (!token) return null;
+          return JWTUtils.decode(token);
+        },
+
+        getTokenAudience(token) {
+          const decoded = this.decodeJwt(token);
+          return decoded?.payload?.aud;
+        },
+
+        getTokenClaims(token) {
+          const decoded = this.decodeJwt(token);
+          if (!decoded?.payload) return [];
+
+          return Object.entries(decoded.payload).map(([key, value]) => {
+            const info = JWTUtils.getClaimInfo(key);
+            let displayValue = value;
+
+            if (['exp', 'iat', 'nbf'].includes(key)) {
+              displayValue = JWTUtils.formatTimestamp(value);
+            } else if (typeof value === 'object') {
+              displayValue = JSON.stringify(value);
+            }
+
+            return {
+              key,
+              value,
+              displayValue,
+              name: info.name,
+              security: info.security
+            };
+          });
+        },
+
+        formatJson(obj) {
+          return FormatUtils.prettyJson(obj);
+        },
+
+        truncate(str, len) {
+          return FormatUtils.truncate(str, len);
+        },
+
+        getControlLabel(control) {
+          const labels = {
+            requirePkce: 'PKCE',
+            strictRedirectUri: 'Strict Redirect URI',
+            validateAudience: 'Audience Validation',
+            requireStateParam: 'State Parameter',
+            httpsOnlyRedirects: 'HTTPS Only'
+          };
+          return labels[control] || control;
+        }
+      }));
+    });
+  </script>
+</body>
+</html>
