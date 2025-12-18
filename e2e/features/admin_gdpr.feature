@@ -43,7 +43,7 @@ Feature: Admin GDPR User Deletion (PRD-001B)
     And the response field "error" should equal "not_found"
 
     @admin @gdpr @security
-  Scenario: Admin deletion without admin token returns 403
+  Scenario: Admin deletion without admin token returns 401
     When I initiate authorization with email "unauthorized-delete@example.com" and scopes "openid"
     Then the response status should be 200
     And I save the authorization code
@@ -56,11 +56,11 @@ Feature: Admin GDPR User Deletion (PRD-001B)
     And I save the user ID from the userinfo response
 
     When I delete the user via admin API with token ""
-    Then the response status should be 403
-    And the response field "error" should equal "forbidden"
+    Then the response status should be 401
+    And the response field "error" should equal "unauthorized"
 
     @admin @gdpr @security
-  Scenario: Admin deletion with wrong admin token returns 403
+  Scenario: Admin deletion with wrong admin token returns 401
     When I initiate authorization with email "wrong-token-delete@example.com" and scopes "openid"
     Then the response status should be 200
     And I save the authorization code
@@ -73,5 +73,5 @@ Feature: Admin GDPR User Deletion (PRD-001B)
     And I save the user ID from the userinfo response
 
     When I delete the user via admin API with token "wrong-admin-token"
-    Then the response status should be 403
-    And the response field "error" should equal "forbidden"
+    Then the response status should be 401
+    And the response field "error" should equal "unauthorized"
