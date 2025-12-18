@@ -244,32 +244,36 @@
           </div>
         </div>
 
-        <!-- Security Analysis -->
+        <!-- Security Evaluation Matrix -->
         <div class="security-analysis">
-          <h4>Security Analysis</h4>
-          <div class="analysis-items">
-            <template x-for="issue in getSecurityIssues()" :key="issue.id">
-              <div class="analysis-item" :class="`analysis-${issue.severity}`">
-                <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <template x-if="issue.severity === 'error'">
-                    <g><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></g>
+          <h4>
+            Security Evaluation Matrix
+            <span class="matrix-summary" x-text="getEvaluationSummary()"></span>
+          </h4>
+          <div class="evaluation-matrix">
+            <template x-for="item in getSecurityEvaluation()" :key="item.control">
+              <div class="matrix-row" :class="{ 'matrix-fail': item.status === 'fail', 'matrix-pass': item.status === 'pass', 'matrix-disabled': item.disabled }">
+                <span class="matrix-status">
+                  <template x-if="item.status === 'fail'">
+                    <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+                    </svg>
                   </template>
-                  <template x-if="issue.severity === 'warning'">
-                    <g><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></g>
+                  <template x-if="item.status === 'pass' && !item.disabled">
+                    <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                    </svg>
                   </template>
-                  <template x-if="issue.severity === 'info'">
-                    <g><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></g>
+                  <template x-if="item.disabled">
+                    <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/>
+                    </svg>
                   </template>
-                </svg>
-                <span x-text="issue.message"></span>
+                </span>
+                <span class="matrix-label" x-text="item.label"></span>
+                <span class="matrix-message" x-text="item.message"></span>
               </div>
             </template>
-            <div class="analysis-item analysis-success" x-show="getSecurityIssues().length === 0">
-              <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-              </svg>
-              <span>No security issues detected</span>
-            </div>
           </div>
         </div>
 
@@ -383,14 +387,43 @@
             </div>
           </div>
 
-          <!-- Blocked By Indicator -->
-          <div class="blocked-indicator" x-show="response?.blocked_by">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            </svg>
-            <div>
-              <strong>Blocked by: <span x-text="getControlLabel(response?.blocked_by)"></span></strong>
-              <p x-text="response?.error_description"></p>
+          <!-- Security Evaluation Results -->
+          <div class="evaluation-results" x-show="response?.all_issues || response?.passed_controls">
+            <h4>
+              Security Evaluation
+              <span class="eval-summary" x-text="response?.evaluation_summary"></span>
+            </h4>
+
+            <!-- Failed Controls -->
+            <div class="eval-section eval-failures" x-show="response?.all_issues?.length > 0">
+              <h5 class="eval-section-title eval-fail-title">
+                <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+                </svg>
+                Failed Controls (<span x-text="response?.all_issues?.length || 0"></span>)
+              </h5>
+              <template x-for="issue in response?.all_issues || []" :key="issue.control">
+                <div class="eval-item eval-item-fail">
+                  <span class="eval-label" x-text="issue.label"></span>
+                  <span class="eval-message" x-text="issue.message"></span>
+                </div>
+              </template>
+            </div>
+
+            <!-- Passed Controls -->
+            <div class="eval-section eval-passes" x-show="response?.passed_controls?.length > 0">
+              <h5 class="eval-section-title eval-pass-title">
+                <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+                Passed Controls (<span x-text="response?.passed_controls?.length || 0"></span>)
+              </h5>
+              <template x-for="ctrl in response?.passed_controls || []" :key="ctrl.control">
+                <div class="eval-item" :class="ctrl.disabled ? 'eval-item-disabled' : 'eval-item-pass'">
+                  <span class="eval-label" x-text="ctrl.label"></span>
+                  <span class="eval-message" x-text="ctrl.message"></span>
+                </div>
+              </template>
             </div>
           </div>
         </div>
@@ -619,34 +652,70 @@
           }
         },
 
-        getSecurityIssues() {
-          const issues = [];
+        /**
+         * Get full security evaluation using the mock API's evaluateRequest method
+         * Returns array of { control, label, message, status, disabled }
+         */
+        getSecurityEvaluation() {
+          const api = Alpine.store('mockApi');
+          let params;
 
           if (this.activeEndpoint === 'authorize') {
-            if (Alpine.store('config').requirePkce && !this.authorize.code_challenge) {
-              issues.push({ id: 'pkce', severity: 'error', message: 'PKCE is required but code_challenge is missing' });
-            }
-            if (!this.authorize.state && !Alpine.store('config').requireStateParam) {
-              issues.push({ id: 'state', severity: 'warning', message: 'No state parameter - vulnerable to CSRF' });
-            }
-            if (!Alpine.store('config').strictRedirectUri) {
-              issues.push({ id: 'redirect', severity: 'warning', message: 'Strict redirect validation is disabled' });
-            }
+            params = this.authorize;
+          } else if (this.activeEndpoint === 'token') {
+            params = this.token;
+          } else if (this.activeEndpoint === 'resource') {
+            params = this.resource;
           }
 
-          if (this.activeEndpoint === 'token') {
-            if (Alpine.store('config').requirePkce && !this.token.code_verifier) {
-              issues.push({ id: 'verifier', severity: 'error', message: 'PKCE is required but code_verifier is missing' });
-            }
+          const evaluation = api.evaluateRequest(this.activeEndpoint, params);
+          const results = [];
+
+          // Add failed controls first
+          for (const issue of evaluation.issues) {
+            results.push({
+              control: issue.control,
+              label: issue.label,
+              message: issue.message,
+              status: 'fail',
+              disabled: false
+            });
           }
 
-          if (this.activeEndpoint === 'resource') {
-            if (!Alpine.store('config').validateAudience) {
-              issues.push({ id: 'audience', severity: 'warning', message: 'Audience validation is disabled - token replay possible' });
-            }
+          // Add passed controls
+          for (const passed of evaluation.passed) {
+            results.push({
+              control: passed.control,
+              label: passed.label,
+              message: passed.message,
+              status: 'pass',
+              disabled: passed.disabled || false
+            });
           }
 
-          return issues;
+          return results;
+        },
+
+        /**
+         * Get a summary of the current evaluation
+         */
+        getEvaluationSummary() {
+          const evaluation = this.getSecurityEvaluation();
+          const failed = evaluation.filter(e => e.status === 'fail').length;
+          const passed = evaluation.filter(e => e.status === 'pass' && !e.disabled).length;
+          const disabled = evaluation.filter(e => e.disabled).length;
+
+          if (failed > 0) {
+            return `${failed} issue${failed > 1 ? 's' : ''} found`;
+          } else if (passed > 0) {
+            return `${passed} check${passed > 1 ? 's' : ''} passed`;
+          }
+          return '';
+        },
+
+        // Legacy method for backward compatibility
+        getSecurityIssues() {
+          return this.getSecurityEvaluation().filter(e => e.status === 'fail');
         },
 
         decodeJwt(token) {
