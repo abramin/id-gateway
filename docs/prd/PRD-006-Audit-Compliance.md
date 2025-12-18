@@ -258,6 +258,14 @@ func (h *Handler) handleDataExport(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
+### TR-5: Secure Audit Storage & Integrity
+
+- Append-only log with hash chaining per partition (e.g., daily partition); store chain heads separately for integrity verification.
+- Database requirements: partitioned tables by day/week with covering indexes on `(actor/user_id, action, timestamp)`; `EXPLAIN` plans must be documented.
+- Enforce write-once (no update/delete) at the storage layer (e.g., Postgres CHECKs/triggers) and require WORM-capable storage for exported archives.
+- Ingest path validates event schema and rejects missing correlation IDs/subjects; default deny on malformed events.
+- Reader interfaces are split: `AuditAppender` (write-only) and `AuditReader` (read-scoped per subject/tenant) to enforce least privilege.
+
 ### TR-5: Event Streaming & Indexing Pipeline
 
 - **Transport:** Publish audit events to Kafka/NATS topics so ingestion is decoupled from request latency; keep the synchronous
@@ -360,5 +368,6 @@ curl "http://localhost:8080/me/data-export?action=consent_granted" \
 
 | Version | Date       | Author       | Changes                                                                                         |
 | ------- | ---------- | ------------ | ----------------------------------------------------------------------------------------------- |
-| 1.0     | 2025-12-03 | Product Team | Initial PRD                                                                                     |
+| 1.3     | 2025-12-18 | Security Eng | Added secure storage/integrity (hash chaining, partitioning, least-privilege interfaces)        |
 | 1.2     | 2025-12-12 | Engineering  | Add FR-3: Searchable Audit Queries (Investigations) & TR-5: Event Streaming & Indexing Pipeline |
+| 1.0     | 2025-12-03 | Product Team | Initial PRD                                                                                     |

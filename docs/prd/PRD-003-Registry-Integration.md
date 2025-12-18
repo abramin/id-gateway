@@ -3,8 +3,8 @@
 **Status:** In Progress
 **Priority:** P0 (Critical)
 **Owner:** Engineering Team
-**Last Updated:** 2025-12-11
-**Version:** 1.2
+**Last Updated:** 2025-12-18
+**Version:** 1.3
 
 ---
 
@@ -829,10 +829,30 @@ curl -X POST http://localhost:8080/registry/citizen \
 
 ---
 
+## 17. Secure-by-Design Requirements
+
+- Value objects: `NationalID`, `TenantID`, `ConsentPurpose`, `RegistryRequest` must be constructed via validated constructors (Origin → Size → Lexical → Syntax → Semantics). Raw maps are not accepted at service boundaries.
+- Default deny: Missing consent, invalid regulated-mode config, or registry adapter misconfiguration results in audited denial (no implicit allow).
+- Immutability: Registry responses are immutable snapshots; regulated-mode minimization yields a distinct minimized type that cannot be re-expanded.
+- Fail-fast connectors: Registry adapters fail fast on bad endpoints/credentials and return typed results (found/missing/stale/error) rather than generic errors.
+- Sensitive data: National IDs and raw registry payloads are never logged; traces/audit use hashed/pseudonymous identifiers. Secrets/credentials are read-once and zeroized after use.
+- Least privilege: Separate interfaces for lookup and cache mutation; workers only receive the minimal interface they require.
+
+## 18. Testing Requirements
+
+- Feature/integration tests assert default-deny when consent or config is missing and verify audited denial.
+- Validation-order tests reject oversize/lexically invalid national IDs before downstream calls.
+- Regulated-mode tests ensure PII is stripped and minimized responses are used downstream.
+- Adapter tests cover typed results and fail-fast behavior on bad config/credentials.
+- Redaction tests ensure national IDs/PII do not appear in logs or audit events.
+
+---
+
 ## Revision History
 
 | Version | Date       | Author           | Changes                                                                                                                                          |
 | ------- | ---------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1.3     | 2025-12-18 | Security Eng     | Added secure-by-design and testing requirements (value objects, default-deny, immutability, typed results)                                       |
 | 1.0     | 2025-12-03 | Product Team     | Initial PRD                                                                                                                                      |
 | 1.1     | 2025-12-10 | Engineering Team | Add tracing requirements                                                                                                                         |
 | 1.2     | 2025-12-11 | Engineering Team | Document provider abstraction architecture implementation, add orchestration details, expand TR-6 with capability negotiation and error taxonomy |

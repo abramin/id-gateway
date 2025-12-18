@@ -699,6 +699,13 @@ curl -X POST http://localhost:8080/audit/verify-proof -d '{...}'
 
 ---
 
+### 11.1 Secure Ingestion & Anchoring
+
+- Ingestion validates event signatures/HMACs before adding leaves; unverifiable events are rejected (default deny).
+- Merkle roots are anchored periodically to an external trust store (e.g., WORM object storage or public ledger) with retained anchor receipts and rotation schedule.
+- Append-only property is enforced with structural checks: no rewriting of historical nodes; rebuilds must recompute and compare against anchored roots.
+- Reader/writer interfaces split: `MerkleAppender` (write-only) vs `MerkleVerifier` (read/verify) to enforce least privilege.
+
 ## 12. References
 
 - [Merkle Tree (Wikipedia)](https://en.wikipedia.org/wiki/Merkle_tree)
@@ -712,5 +719,6 @@ curl -X POST http://localhost:8080/audit/verify-proof -d '{...}'
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.1 | 2025-12-18 | Security Eng | Added secure ingestion/anchoring and least-privilege interfaces |
 | 1.0 | 2025-12-06 | Engineering Team | Initial PRD |
 ```

@@ -3,7 +3,7 @@
 **Status:** Implementation Required
 **Priority:** P0 (Critical)
 **Owner:** Engineering Team
-**Last Updated:** 2025-12-03
+**Last Updated:** 2025-12-18
 
 ---
 
@@ -262,6 +262,15 @@ func (h *Handler) handleVCVerify(w http.ResponseWriter, r *http.Request)
 4. **Phase 4:** Add MinimizeClaims logic for regulated mode (30 min)
 5. **Phase 5:** Testing - unit, integration, manual (1 hour)
 
+## 4.5 Secure-by-Design Requirements
+
+- Value objects: `NationalID`, `CredentialType`, `TenantID`, and `VCID` must be constructed via validated constructors (Origin → Size → Lexical → Syntax → Semantics). Raw maps are rejected at service boundaries.
+- Default deny: Missing consent, missing/invalid registry evidence, or invalid config results in audited denial (no implicit allow).
+- Immutability: Issued credentials are immutable; minimized (regulated) claims are a distinct type that cannot be re-expanded.
+- Fail-fast connectors: Registry/evidence adapters fail fast on bad config/credentials and return typed results (found/missing/stale/error) instead of generic errors.
+- Sensitive data: National IDs and raw registry payloads are never logged; signing keys/secrets are read-once and zeroized after use.
+- Least privilege: Separate interfaces for issuing vs verifying; stores expose read/write facets explicitly.
+
 ---
 
 ## 5. Acceptance Criteria
@@ -277,6 +286,13 @@ func (h *Handler) handleVCVerify(w http.ResponseWriter, r *http.Request)
 ---
 
 ## 6. Testing
+
+- Security-focused tests:
+  - Default-deny when consent/evidence/config is missing, with audited denial.
+  - Validation order rejects oversize/lexically invalid national IDs before registry calls.
+  - Regulated-mode issuance strips PII and returns minimized claims only.
+  - Adapter tests cover typed results and fail-fast on bad config/credentials.
+  - Redaction tests confirm national IDs/PII absent from logs/audit.
 
 ```bash
 # Issue VC (requires consent first)
@@ -317,3 +333,12 @@ curl -X POST http://localhost:8080/vc/verify \
 - [W3C Verifiable Credentials Data Model](https://www.w3.org/TR/vc-data-model/)
 - Tutorial: `docs/TUTORIAL.md` Section 4
 - Existing Code: `internal/evidence/vc/`
+
+---
+
+## Revision History
+
+| Version | Date       | Author         | Changes                                                           |
+| ------- | ---------- | -------------- | ----------------------------------------------------------------- |
+| 1.1     | 2025-12-18 | Security Eng   | Added secure-by-design requirements and security-focused testing  |
+| 1.0     | 2025-12-03 | Product Team   | Initial PRD                                                       |

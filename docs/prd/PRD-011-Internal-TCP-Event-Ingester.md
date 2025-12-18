@@ -112,6 +112,14 @@ Expose via HTTP `/metrics`:
 - batch flush frequency
 - sink latency
 
+### 5.7 Secure by Design
+
+- Default deny on malformed frames: unparseable or schema-invalid events are rejected before enqueue and counted.
+- Boundary auth: ingester requires mutual auth (mTLS or signed producer token) per connection; unauthenticated connections are dropped immediately.
+- Replay protection: producers include monotonic sequence numbers; ingester drops duplicates/out-of-order frames.
+- Least privilege: split interfaces `EventAppender` (write-only) vs any reader/debug tooling; sinks run with scoped credentials limited to append/insert.
+- Poison handling: batches that repeatedly fail are quarantined with alerts instead of being retried indefinitely.
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -173,3 +181,12 @@ Producers (Auth, Token, Session services) → multiline JSON over TCP → TCP Li
 - File, Postgres, and mock Kafka sinks are implemented with simple configuration toggles.
 - `/metrics` endpoint exposes ingest rate, queue depth, open connections, dropped events, batch flush frequency, and sink latency.
 - Load test demonstrates 10k events/sec with <5% queue saturation and no producer-side latency regression.
+
+---
+
+## Revision History
+
+| Version | Date       | Author       | Changes                                                |
+| ------- | ---------- | ------------ | ------------------------------------------------------ |
+| 1.1     | 2025-12-18 | Security Eng | Added secure-by-design requirements (auth, replay, LP) |
+| 1.0     | 2025-12-06 | Core Services| Initial draft                                          |

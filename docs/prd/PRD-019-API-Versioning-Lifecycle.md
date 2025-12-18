@@ -116,6 +116,14 @@ Link: </docs/migration/v1-to-v2>; rel="deprecation"
 - Timeline
 - Support contact
 
+### Secure-by-Design Guardrails
+
+- Default deny on unknown or missing version prefixes; no implicit upgrade/downgrade without explicit contract.
+- Schema-diff gates: breaking changes require a signed migration manifest and approval; CI blocks unsafe diffs without manifest.
+- Deprecation headers must include security impact notes; migrations that remove controls must ship with compensating safeguards.
+- Versioned auth/claims: tokens include API version audience/claim; handlers validate version match to prevent cross-version replay.
+- Rollback drills and revocation: every versioned deployment includes a tested rollback path and the ability to revoke a versioned manifest.
+
 ---
 
 ## 4. Acceptance Criteria
@@ -132,4 +140,5 @@ Link: </docs/migration/v1-to-v2>; rel="deprecation"
 
 | Version | Date       | Author       | Changes     |
 | ------- | ---------- | ------------ | ----------- |
+| 1.1     | 2025-12-18 | Security Eng | Added secure-by-design guardrails (default-deny, signed manifests, versioned claims) |
 | 1.0     | 2025-12-12 | Product Team | Initial PRD |

@@ -3,7 +3,7 @@
 **Status:** Implementation Required
 **Priority:** P0 (Critical)
 **Owner:** Engineering Team
-**Last Updated:** 2025-12-12
+**Last Updated:** 2025-12-18
 
 ---
 
@@ -350,6 +350,14 @@ func (h *Handler) handleDecisionEvaluate(w http.ResponseWriter, r *http.Request)
 - **Consistency:** Write path is source of truth; read model is eventually consistent (≤1s lag). On cache miss or suspected
   staleness, fall back to canonical evaluation or rebuild projection from audit log replay.
 
+### TR-6: Secure-by-Design Evaluation
+
+- Rule graphs must be modeled as DAGs with cycle detection at construction time; evaluation order determined by topological sort with memoization for shared sub-rules.
+- Default deny when required evidence (consent, registry response, VC) is absent, stale, or unverifiable; handlers cannot bypass this by passing raw maps.
+- Execution must be deterministic (no timing-based branching); include a bounded LRU cache for rule results with defined eviction.
+- Policies/rules are published as signed, immutable bundles (versioned); service only loads validated signatures and emits audit events on publish/activation.
+- Inputs must be value objects (purpose enum, tenant/user IDs, evidence structs stripped of PII). Reject unvalidated maps in service boundaries.
+
 ---
 
 ## 6. Implementation Steps
@@ -445,5 +453,6 @@ curl -X POST http://localhost:8080/decision/evaluate \
 
 | Version | Date       | Author       | Changes                                    |
 | ------- | ---------- | ------------ | ------------------------------------------ |
+| 1.2     | 2025-12-18 | Security Eng | Added secure-by-design evaluation (DAG, default-deny, signed policy bundles) |
 | 1.0     | 2025-12-03 | Product Team | Initial PRD                                |
 | 1.1     | 2025-12-12 | Engineering  | Add TR-5 CQRS & Read-Optimized Projections |

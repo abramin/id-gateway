@@ -4,7 +4,7 @@
 **Priority:** P0 (Critical)
 **Owner:** Engineering Team
 **Dependencies:** PRD-001 (Authentication), PRD-016 (Token Lifecycle)
-**Last Updated:** 2025-12-12
+**Last Updated:** 2025-12-18
 
 ---
 
@@ -105,13 +105,13 @@ Retry-After: 45 (seconds, only on 429 response)
 
 1. Extract client IP from request (handle X-Forwarded-For for proxies)
 2. Determine endpoint class from route
-3. Check rate limit for IP + endpoint class
+3. Check rate limit for IP + endpoint class; if config/limits are missing, default to deny and emit an operational alert.
 4. If limit exceeded:
    - Return 429 Too Many Requests
    - Include Retry-After header
    - Emit audit event: `rate_limit_exceeded`
 5. Else:
-   - Increment counter
+   - Increment counter atomically
    - Add rate limit headers to response
    - Continue processing
 
@@ -594,6 +594,14 @@ bombardier -c 20 -n 200 -m POST \
 # Send 10 at T=59s, 5 at T=61s → only 5 succeed
 ```
 
+### Security-Focused Tests
+
+- Default-deny when limit/config is missing or invalid; audited denial.
+- Atomicity under concurrency: remaining/reset values stay consistent when hit by concurrent requests.
+- Allowlist expiry and bypass validated; expired entries do not bypass.
+- Global throttle triggers 503 with Retry-After and audit when thresholds exceeded.
+- Lockout/FR-2b authentication throttles enforce backoff and shared counters across endpoints.
+
 ---
 
 ## 8. API Examples
@@ -670,5 +678,6 @@ curl -X POST http://localhost:8080/admin/rate-limit/allowlist \
 
 | Version | Date       | Author       | Changes     |
 | ------- | ---------- | ------------ | ----------- |
+| 1.2     | 2025-12-18 | Security Eng | Added default-deny posture when limits missing, atomicity, and security-focused tests |
 | 1.1     | 2025-12-12 | Product Team | Added OWASP authentication-specific throttling and lockout guidance |
 | 1.0     | 2025-12-12 | Product Team | Initial PRD |
