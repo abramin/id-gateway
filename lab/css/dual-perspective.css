@@ -569,6 +569,302 @@
   color: var(--text-primary);
 }
 
+/* Status Meters */
+.status-meters {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.meter {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.meter-label {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.meter-bar {
+  width: 80px;
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.meter-fill-risk {
+  background: linear-gradient(90deg, var(--warning), var(--error));
+}
+
+.meter-fill-success {
+  background: linear-gradient(90deg, var(--accent-primary), var(--success));
+}
+
+.meter-value {
+  font-weight: 600;
+  min-width: 35px;
+}
+
+.meter-risk .meter-value {
+  color: var(--warning);
+}
+
+.meter-success .meter-value {
+  color: var(--success);
+}
+
+/* Failure Box */
+.failure-box {
+  padding: 1.5rem;
+  border-radius: var(--radius-lg);
+  margin-bottom: 1.5rem;
+}
+
+.failure-detected {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(249, 115, 22, 0.1));
+  border: 1px solid var(--error);
+}
+
+.failure-blocked {
+  background: linear-gradient(135deg, rgba(234, 179, 8, 0.15), rgba(249, 115, 22, 0.1));
+  border: 1px solid var(--warning);
+}
+
+.failure-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.failure-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.failure-detected .failure-icon {
+  background: var(--error);
+  color: white;
+}
+
+.failure-blocked .failure-icon {
+  background: var(--warning);
+  color: white;
+}
+
+.failure-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.failure-type {
+  font-size: 1.25rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.failure-detected .failure-type {
+  color: var(--error);
+}
+
+.failure-blocked .failure-type {
+  color: var(--warning);
+}
+
+/* Learning Moment */
+.learning-moment {
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.learning-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.learning-header svg {
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.learning-header h4 {
+  font-size: 1rem;
+  color: var(--accent-primary);
+}
+
+.learning-explanation {
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 1rem;
+}
+
+.learning-recommendation {
+  padding: 0.75rem;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+}
+
+.learning-recommendation strong {
+  color: var(--success);
+}
+
+/* Choice Enhancements */
+.choice-content {
+  flex: 1;
+  text-align: left;
+}
+
+.choice-text {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.choice-meta {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.choice-delta {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.icon-xs {
+  width: 12px;
+  height: 12px;
+}
+
+.choice-delta-risk {
+  color: var(--warning);
+}
+
+.choice-delta-risk.delta-high {
+  color: var(--error);
+}
+
+.choice-delta-success {
+  color: var(--success);
+}
+
+.choice-delta-warn {
+  color: var(--error);
+}
+
+.choice-consequence {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: 0.5rem;
+}
+
+.choice-btn.choice-risky {
+  border-color: var(--warning);
+  background: linear-gradient(135deg, rgba(234, 179, 8, 0.05), transparent);
+}
+
+.choice-btn.choice-risky:hover {
+  border-color: var(--error);
+}
+
+.choice-arrow {
+  flex-shrink: 0;
+}
+
+/* Ending Variations */
+.completion-box.ending-success .completion-icon {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.completion-box.ending-blocked .completion-icon {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.completion-box.ending-detected .completion-icon {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.icon-success {
+  background: var(--success-bg) !important;
+  color: var(--success) !important;
+}
+
+.icon-blocked {
+  background: var(--warning-bg) !important;
+  color: var(--warning) !important;
+}
+
+.icon-detected {
+  background: var(--error-bg) !important;
+  color: var(--error) !important;
+}
+
+.ending-narrative {
+  color: var(--text-secondary);
+  margin-bottom: 1.5rem;
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.ending-stats {
+  display: flex;
+  gap: 2rem;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+}
+
+.ending-stat {
+  text-align: center;
+}
+
+.ending-stat .stat-label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.ending-stat .stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.ending-stat .stat-ok {
+  color: var(--success);
+}
+
+.ending-stat .stat-danger {
+  color: var(--error);
+}
+
 /* Responsive */
 @media (max-width: 900px) {
   .main-layout {
