@@ -81,17 +81,40 @@ func (s *Service) SetGlobalThrottleStore(store GlobalThrottleStore) {
 }
 
 // CheckIPRateLimit checks the per-IP rate limit for an endpoint class.
-//
-// TODO: Implement this method
-// 1. Check if IP is allowlisted - if so, return allowed with max limits
-// 2. Build rate limit key: "ip:{ip}:{class}"
-// 3. Get limit and window for endpoint class from config
-// 4. Call buckets.Allow() to check and increment
-// 5. If not allowed, emit audit event "rate_limit_exceeded"
-// 6. Return RateLimitResult with headers info
 func (s *Service) CheckIPRateLimit(ctx context.Context, ip string, class models.EndpointClass) (*models.RateLimitResult, error) {
-	// TODO: Implement - see steps above
-	return nil, dErrors.New(dErrors.CodeInternal, "not implemented")
+	// 1. Check if IP is allowlisted - if so, return allowed with max limits
+	a, err := s.allowlist.IsAllowlisted(ctx, ip)
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to check allowlist")
+	}
+	if a {
+		return &models.RateLimitResult{
+			Allowed:    true,
+			Limit:      s.config.Global.GlobalPerSecond,
+			Remaining:  s.config.Global.GlobalPerSecond,
+			ResetAt:    time.Now().Add(24 * time.Hour),
+			RetryAfter: 0,
+		}, nil
+	}
+
+	requestsPerWindow, window := s.config.GetIPLimit(class)
+	key := fmt.Sprintf("ip:%s:%d", ip, class)
+
+	result, err := s.buckets.Allow(ctx, key, requestsPerWindow, window)
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to check IP rate limit")
+	}
+
+	if !result.Allowed {
+		s.logAudit(ctx, "rate_limit_exceeded",
+			"identifier", ip,
+			"endpoint_class", class,
+			"limit", requestsPerWindow,
+			"window_seconds", int(window.Seconds()),
+		)
+	}
+
+	return result, nil
 }
 
 // CheckUserRateLimit checks the per-user rate limit for an endpoint class.

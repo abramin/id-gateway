@@ -90,7 +90,7 @@ func DefaultConfig() *Config {
 }
 
 // GetIPLimit returns the IP rate limit for an endpoint class.
-func (c *Config) GetIPLimit(class models.EndpointClass) (int, time.Duration) {
+func (c *Config) GetIPLimit(class models.EndpointClass) (requestsPerWindow int, window time.Duration) {
 	if limit, ok := c.IPLimits[class]; ok {
 		return limit.RequestsPerWindow, limit.Window
 	}
@@ -99,7 +99,7 @@ func (c *Config) GetIPLimit(class models.EndpointClass) (int, time.Duration) {
 }
 
 // GetUserLimit returns the user rate limit for an endpoint class.
-func (c *Config) GetUserLimit(class models.EndpointClass) (int, time.Duration) {
+func (c *Config) GetUserLimit(class models.EndpointClass) (requestsPerWindow int, window time.Duration) {
 	if limit, ok := c.UserLimits[class]; ok {
 		return limit.RequestsPerWindow, limit.Window
 	}
