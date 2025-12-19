@@ -60,13 +60,6 @@ func (m *Middleware) RateLimit(class models.EndpointClass) func(http.Handler) ht
 }
 
 // RateLimitAuthenticated returns middleware that enforces both IP and user rate limits.
-//
-// TODO: Implement this middleware
-// 1. Extract client IP and user ID from context
-// 2. Call limiter.CheckBothLimits
-// 3. Add rate limit headers (use the more restrictive values)
-// 4. If not allowed, return 429 with appropriate message
-// 5. Else call next handler
 func (m *Middleware) RateLimitAuthenticated(class models.EndpointClass) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -74,19 +67,19 @@ func (m *Middleware) RateLimitAuthenticated(class models.EndpointClass) func(htt
 			ip := platformMW.GetClientIP(ctx)
 			userID := platformMW.GetUserID(ctx)
 
-			// TODO: Implement combined rate limit check
-			// result, err := m.limiter.CheckBothLimits(ctx, ip, userID, class)
-			// if err != nil { ... log and allow through ... }
-			//
-			// addRateLimitHeaders(w, result)
-			//
-			// if !result.Allowed {
-			//     writeUserRateLimitExceeded(w, result)
-			//     return
-			// }
+			result, err := m.limiter.CheckBothLimits(ctx, ip, userID, class)
+			if err != nil {
+				m.logger.Error("failed to check combined rate limit", "error", err, "ip_prefix", privacy.AnonymizeIP(ip), "user_id", userID)
+				next.ServeHTTP(w, r)
+				return
+			}
 
-			_ = ip
-			_ = userID
+			addRateLimitHeaders(w, result)
+
+			if !result.Allowed {
+				writeUserRateLimitExceeded(w, result)
+				return
+			}
 
 			next.ServeHTTP(w, r)
 		})

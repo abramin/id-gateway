@@ -44,6 +44,9 @@ func WithConfig(cfg *Config) Option {
 	}
 }
 
+const keyPrefixUser = "user"
+const keyPrefixIP = "ip"
+
 func New(
 	buckets BucketStore,
 	allowlist AllowlistStore,
@@ -81,33 +84,49 @@ func (s *Service) SetGlobalThrottleStore(store GlobalThrottleStore) {
 	s.globalThrottle = store
 }
 
-// CheckIPRateLimit checks the per-IP rate limit for an endpoint class.
 func (s *Service) CheckIPRateLimit(ctx context.Context, ip string, class models.EndpointClass) (*models.RateLimitResult, error) {
-	a, err := s.allowlist.IsAllowlisted(ctx, ip)
+	requestsPerWindow, window := s.config.GetIPLimit(class)
+	return s.checkRateLimit(ctx, ip, class, keyPrefixIP, requestsPerWindow, window, privacy.AnonymizeIP(ip))
+}
+
+func (s *Service) CheckUserRateLimit(ctx context.Context, userID string, class models.EndpointClass) (*models.RateLimitResult, error) {
+	requestsPerWindow, window := s.config.GetUserLimit(class)
+	return s.checkRateLimit(ctx, userID, class, keyPrefixUser, requestsPerWindow, window, userID)
+}
+
+// checkRateLimit is the common rate limiting logic for both IP and user checks.
+func (s *Service) checkRateLimit(
+	ctx context.Context,
+	identifier string,
+	class models.EndpointClass,
+	keyPrefix string,
+	requestsPerWindow int,
+	window time.Duration,
+	logIdentifier string,
+) (*models.RateLimitResult, error) {
+	a, err := s.allowlist.IsAllowlisted(ctx, identifier)
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to check allowlist")
 	}
 	if a {
 		return &models.RateLimitResult{
 			Allowed:    true,
-			Limit:      s.config.Global.GlobalPerSecond,
-			Remaining:  s.config.Global.GlobalPerSecond,
-			ResetAt:    time.Now().Add(24 * time.Hour),
+			Limit:      requestsPerWindow,
+			Remaining:  requestsPerWindow,
+			ResetAt:    time.Now().Add(window),
 			RetryAfter: 0,
 		}, nil
 	}
 
-	requestsPerWindow, window := s.config.GetIPLimit(class)
-	key := fmt.Sprintf("ip:%s:%s", ip, class)
-
+	key := fmt.Sprintf("%s:%s:%s", keyPrefix, identifier, class)
 	result, err := s.buckets.Allow(ctx, key, requestsPerWindow, window)
 	if err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to check IP rate limit")
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to check rate limit")
 	}
 
 	if !result.Allowed {
-		s.logAudit(ctx, "rate_limit_exceeded",
-			"identifier", privacy.AnonymizeIP(ip),
+		s.logAudit(ctx, keyPrefix+"_rate_limit_exceeded",
+			"identifier", logIdentifier,
 			"endpoint_class", class,
 			"limit", requestsPerWindow,
 			"window_seconds", int(window.Seconds()),
@@ -117,30 +136,37 @@ func (s *Service) CheckIPRateLimit(ctx context.Context, ip string, class models.
 	return result, nil
 }
 
-// CheckUserRateLimit checks the per-user rate limit for an endpoint class.
-//
-// TODO: Implement this method
-// 1. Check if userID is allowlisted - if so, return allowed with max limits
-// 2. Build rate limit key: "user:{userID}:{class}"
-// 3. Get user limit and window for endpoint class from config
-// 4. Call buckets.Allow() to check and increment
-// 5. If not allowed, emit audit event "user_rate_limit_exceeded"
-// 6. Return RateLimitResult with quota info
-func (s *Service) CheckUserRateLimit(ctx context.Context, userID string, class models.EndpointClass) (*models.RateLimitResult, error) {
-	// TODO: Implement - see steps above
-	return nil, dErrors.New(dErrors.CodeInternal, "not implemented")
-}
-
-// CheckBothLimits checks both IP and user rate limits.
-//
-// TODO: Implement this method
-// 1. Check IP rate limit
-// 2. If IP limit exceeded, return immediately
-// 3. Check user rate limit
-// 4. Return the more restrictive result
 func (s *Service) CheckBothLimits(ctx context.Context, ip, userID string, class models.EndpointClass) (*models.RateLimitResult, error) {
-	// TODO: Implement - see steps above
-	return nil, dErrors.New(dErrors.CodeInternal, "not implemented")
+	requestsPerWindow, window := s.config.GetIPLimit(class)
+	ipRes, err := s.checkRateLimit(ctx, ip, class, keyPrefixIP, requestsPerWindow, window, privacy.AnonymizeIP(ip))
+	if err != nil {
+		return nil, err
+	}
+	if !ipRes.Allowed {
+		return ipRes, nil
+	}
+	requestsPerWindow, window = s.config.GetUserLimit(class)
+	userRes, err := s.checkRateLimit(ctx, userID, class, keyPrefixUser, requestsPerWindow, window, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !userRes.Allowed {
+		return userRes, nil
+	}
+
+	// **If both pass**, return a combined result that shows the more restrictive remaining count and reset time
+	if ipRes.Remaining < userRes.Remaining {
+		return ipRes, nil
+	} else if userRes.Remaining < ipRes.Remaining {
+		return userRes, nil
+	} else {
+		// If remaining counts are equal, return the one with the earlier reset time
+		if ipRes.ResetAt.Before(userRes.ResetAt) {
+			return ipRes, nil
+		} else {
+			return userRes, nil
+		}
+	}
 }
 
 // CheckAuthRateLimit checks authentication-specific rate limits with lockout.

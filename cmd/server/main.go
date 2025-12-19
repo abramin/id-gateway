@@ -337,7 +337,7 @@ func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consent
 
 	// Protected read endpoints - ClassRead (100 req/min)
 	r.Group(func(r chi.Router) {
-		r.Use(rateLimitMiddleware.RateLimit(rateLimitModels.ClassRead))
+		r.Use(rateLimitMiddleware.RateLimitAuthenticated(rateLimitModels.ClassRead))
 		r.Use(middleware.RequireAuth(infra.JWTValidator, authMod.Service, infra.Log))
 		r.Get("/auth/userinfo", authMod.Handler.HandleUserInfo)
 		r.Get("/auth/sessions", authMod.Handler.HandleListSessions)
@@ -346,7 +346,7 @@ func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consent
 
 	// Protected sensitive endpoints - ClassSensitive (30 req/min)
 	r.Group(func(r chi.Router) {
-		r.Use(rateLimitMiddleware.RateLimit(rateLimitModels.ClassSensitive))
+		r.Use(rateLimitMiddleware.RateLimitAuthenticated(rateLimitModels.ClassSensitive))
 		r.Use(middleware.RequireAuth(infra.JWTValidator, authMod.Service, infra.Log))
 		r.Post("/auth/consent", consentMod.Handler.HandleGrantConsent)
 		r.Post("/auth/consent/revoke", consentMod.Handler.HandleRevokeConsent)
@@ -357,7 +357,7 @@ func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consent
 	// Admin endpoints - ClassWrite (50 req/min)
 	if infra.Cfg.Security.AdminAPIToken != "" {
 		r.Group(func(r chi.Router) {
-			r.Use(rateLimitMiddleware.RateLimit(rateLimitModels.ClassWrite))
+			r.Use(rateLimitMiddleware.RateLimitAuthenticated(rateLimitModels.ClassWrite))
 			r.Use(middleware.RequireAdminToken(infra.Cfg.Security.AdminAPIToken, infra.Log))
 			authMod.Handler.RegisterAdmin(r)
 			tenantMod.Handler.Register(r)
