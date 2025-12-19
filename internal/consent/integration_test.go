@@ -26,7 +26,7 @@
 // Per Credo testing doctrine (testing.md, AGENTS.md): these are SECONDARY tests
 // that exist because the behavior cannot be expressed in Gherkin feature files.
 // Basic grant/list/revoke flows are covered by e2e/features/consent_flow.feature.
-package handler
+package consent_test
 
 import (
 	"bytes"
@@ -83,7 +83,10 @@ func newConsentTestHarness(userIDStr string) *consentTestHarness {
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})
-	h.Register(router)
+	router.Post("/auth/consent", h.HandleGrantConsent)
+	router.Post("/auth/consent/revoke", h.HandleRevokeConsent)
+	router.Get("/auth/consent", h.HandleGetConsents)
+	router.Delete("/auth/consent", h.HandleDeleteAllConsents)
 
 	userID, _ := id.ParseUserID(userIDStr)
 	return &consentTestHarness{

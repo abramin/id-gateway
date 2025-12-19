@@ -21,7 +21,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -65,7 +64,7 @@ func (s *ConsentHandlerSuite) TestHandleGrantConsent_ErrorMapping() {
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()
-		handler.handleGrantConsent(w, req)
+		handler.HandleGrantConsent(w, req)
 
 		assertStatusAndError(t, w, http.StatusInternalServerError, string(dErrors.CodeInternal))
 	})
@@ -77,7 +76,7 @@ func (s *ConsentHandlerSuite) TestHandleGrantConsent_ErrorMapping() {
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()
-		handler.handleGrantConsent(w, req)
+		handler.HandleGrantConsent(w, req)
 
 		assertStatusAndError(t, w, http.StatusBadRequest, "bad_request")
 	})
@@ -89,7 +88,7 @@ func (s *ConsentHandlerSuite) TestHandleGrantConsent_ErrorMapping() {
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()
-		handler.handleGrantConsent(w, req)
+		handler.HandleGrantConsent(w, req)
 
 		assertStatusAndError(t, w, http.StatusBadRequest, "bad_request")
 	})
@@ -110,7 +109,7 @@ func (s *ConsentHandlerSuite) TestHandleGrantConsent_ErrorMapping() {
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()
-		handler.handleGrantConsent(w, req)
+		handler.HandleGrantConsent(w, req)
 
 		assertStatusAndError(t, w, http.StatusInternalServerError, string(dErrors.CodeInternal))
 	})
@@ -127,7 +126,7 @@ func (s *ConsentHandlerSuite) TestHandleGetConsents_ErrorMapping() {
 		req := httptest.NewRequest(http.MethodGet, "/auth/consent", nil)
 		w := httptest.NewRecorder()
 
-		handler.handleGetConsents(w, req)
+		handler.HandleGetConsents(w, req)
 
 		assertStatusAndError(t, w, http.StatusInternalServerError, string(dErrors.CodeInternal))
 	})
@@ -144,7 +143,7 @@ func (s *ConsentHandlerSuite) TestHandleGetConsents_ErrorMapping() {
 		req = req.WithContext(ctx)
 		w := httptest.NewRecorder()
 
-		handler.handleGetConsents(w, req)
+		handler.HandleGetConsents(w, req)
 
 		assertStatusAndError(t, w, http.StatusInternalServerError, string(dErrors.CodeInternal))
 	})
@@ -157,7 +156,7 @@ func (s *ConsentHandlerSuite) TestHandleGetConsents_ErrorMapping() {
 		req = req.WithContext(ctx)
 		w := httptest.NewRecorder()
 
-		handler.handleGetConsents(w, req)
+		handler.HandleGetConsents(w, req)
 
 		assertStatusAndError(t, w, http.StatusBadRequest, "bad_request")
 	})
@@ -176,7 +175,7 @@ func (s *ConsentHandlerSuite) TestHandleRevokeConsent_ErrorMapping() {
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()
-		handler.handleRevokeConsent(w, req)
+		handler.HandleRevokeConsent(w, req)
 
 		assertStatusAndError(t, w, http.StatusInternalServerError, string(dErrors.CodeInternal))
 	})
@@ -188,7 +187,7 @@ func (s *ConsentHandlerSuite) TestHandleRevokeConsent_ErrorMapping() {
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()
-		handler.handleRevokeConsent(w, req)
+		handler.HandleRevokeConsent(w, req)
 
 		assertStatusAndError(t, w, http.StatusBadRequest, "bad_request")
 	})
@@ -205,7 +204,7 @@ func (s *ConsentHandlerSuite) TestHandleRevokeConsent_ErrorMapping() {
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()
-		handler.handleRevokeConsent(w, req)
+		handler.HandleRevokeConsent(w, req)
 
 		assertStatusAndError(t, w, http.StatusInternalServerError, string(dErrors.CodeInternal))
 	})
@@ -223,8 +222,6 @@ func newTestHandler(t *testing.T) (*Handler, *mocks.MockService) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	handler := New(mockService, logger, nil)
-	r := chi.NewRouter()
-	handler.Register(r)
 	return handler, mockService
 }
 
