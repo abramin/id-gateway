@@ -60,6 +60,10 @@ Rate limiting is **critical for production** and should be implemented before an
 **I want to** audit rate limit violations
 **So that** I can identify attack patterns
 
+**As a platform engineer**
+**I want to** rate limit OAuth clients by client_id
+**So that** compromised or misbehaving clients are isolated and don't affect other applications
+
 ---
 
 ## 3. Functional Requirements
@@ -181,6 +185,72 @@ Retry-After: 45 (seconds, only on 429 response)
 ```
 
 Note: This response intentionally does not reveal whether the account exists (prevents enumeration).
+
+---
+
+### FR-2c: Per-Client Rate Limiting (OAuth client_id)
+
+**Scope:** OAuth endpoints (`/auth/authorize`, `/auth/token`, `/auth/revoke`, `/auth/introspect`)
+
+**Description:** Rate limit requests by OAuth `client_id` to isolate misbehaving or compromised clients. Uses trust-based tiers where confidential clients (server-side with client_secret) get higher limits than public clients (SPAs, mobile apps).
+
+**Rationale:**
+
+- **Compromised client isolation** - If client credentials leak, limits prevent the compromised client from overwhelming the auth server
+- **Per-application quotas** - Different OAuth apps can have differentiated limits
+- **Harder to circumvent than IP** - Client IDs require registration; attackers can't easily create new ones
+
+**Rate Limit Tiers (Trust-Based):**
+
+| Client Type      | Rate Limit  | Window | Rationale                                      |
+| ---------------- | ----------- | ------ | ---------------------------------------------- |
+| **Confidential** | 100 req/min | 1 min  | Server-side clients with secure secret storage |
+| **Public**       | 30 req/min  | 1 min  | SPAs/mobile apps - higher abuse risk           |
+
+**Composite Key:** `client:{client_id}:{endpoint}`
+
+**Headers:** (same pattern as FR-1)
+
+```
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 85
+X-RateLimit-Reset: 1735934400
+```
+
+**Response on Limit Exceeded (429):**
+
+```json
+{
+  "error": "client_rate_limit_exceeded",
+  "message": "OAuth client has exceeded its request quota. Please retry later.",
+  "retry_after": 30
+}
+```
+
+**Business Logic:**
+
+1. Extract `client_id` from request (query param for authorize, body/header for token)
+2. Lookup client type (confidential vs public) from client registry
+3. Determine rate limit based on client type
+4. Check rate limit for `client:{client_id}:{endpoint}`
+5. If limit exceeded:
+   - Return 429 Too Many Requests
+   - Include Retry-After header
+   - Emit audit event: `client_rate_limit_exceeded`
+6. Else:
+   - Increment counter
+   - Add rate limit headers
+   - Continue processing
+
+**Interaction with Other Limits:**
+
+Client rate limits are checked **after** IP rate limits but **before** user rate limits:
+
+```
+Request → Global throttle → IP limit → Client limit → User limit → Handler
+```
+
+All limits must pass. The most restrictive result is returned to the client.
 
 ---
 
@@ -724,6 +794,9 @@ func (c ClientIP) Addr() netip.Addr { return c.addr }
 - [ ] Allowlist bypasses rate limits
 - [ ] Global throttling prevents service overload
 - [ ] Rate limit violations emit audit events
+- [ ] Per-client_id rate limiting enforced on OAuth endpoints
+- [ ] Confidential clients get higher limits than public clients
+- [ ] Client rate limit violations emit audit events with anonymized client_id
 - [ ] Rate limits configurable via environment variables
 - [ ] Load test shows rate limits hold under 10,000 req/sec
 - [ ] Sliding-window deque and time-wheel alternatives implemented with O(1) amortized ops and documented complexity
@@ -872,6 +945,42 @@ curl -X POST http://localhost:8080/admin/rate-limit/allowlist \
 
 ---
 
+## 10. GDPR/Privacy Compliance
+
+### PII in Rate Limiting
+
+IP addresses are considered personal data under GDPR (CJEU Breyer ruling, C-582/14).
+Rate limiting logs MUST NOT contain raw IP addresses.
+
+### Required Controls
+
+1. **Log Anonymization:** All operational logs must use truncated IPs
+   - IPv4: Zero last octet (e.g., `192.168.1.47` → `192.168.1.0`)
+   - IPv6: Zero last 80 bits (e.g., show only /48 prefix)
+2. **Error Responses:** Never return IP addresses in client-facing error responses
+3. **Audit Events:** Use anonymized IP prefix as identifier
+
+### Implementation
+
+Use the `privacy.AnonymizeIP()` helper for all logged IP values:
+
+```go
+import "credo/internal/platform/privacy"
+
+// Correct: anonymized
+m.logger.Error("rate limit check failed", "error", err, "ip_prefix", privacy.AnonymizeIP(ip))
+
+// Wrong: raw IP
+m.logger.Error("rate limit check failed", "error", err, "ip", ip)
+```
+
+### Future Enhancement
+
+See PRD-034 for tiered logging with pseudonymized security audit logs
+and differential retention policies.
+
+---
+
 ## References
 
 - [IETF Draft: RateLimit Header Fields](https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-ratelimit-headers)
@@ -884,6 +993,8 @@ curl -X POST http://localhost:8080/admin/rate-limit/allowlist \
 
 | Version | Date       | Author       | Changes                                                                                                         |
 | ------- | ---------- | ------------ | --------------------------------------------------------------------------------------------------------------- |
+| 1.9     | 2025-12-19 | Engineering  | Added FR-2c: Per-Client Rate Limiting for OAuth client_id with trust-based tiers (confidential vs public)       |
+| 1.8     | 2025-12-19 | Engineering  | Added Section 10: GDPR/Privacy Compliance - IP anonymization requirements for logging |
 | 1.7     | 2025-12-18 | Engineering  | Simplified TR-0: Replaced domain primitives with boundary validation strategy. Use simple string keys internally, validate at middleware/handler boundaries. Reduced complexity without sacrificing security. |
 | 1.6     | 2025-12-18 | Security Eng | Secure-by-design review: trusted proxy validation in TR-5, mandatory in-memory fallback with circuit breaker in FR-7, invariant-focused tests, no-echo rule for error responses |
 | 1.5     | 2025-12-18 | Security Eng | Added DSA/SQL requirements (deque/time-wheel, Postgres partitioning), atomic multi-key resets, expanded testing |
