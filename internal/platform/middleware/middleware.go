@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"credo/internal/platform/metrics"
+	"credo/internal/platform/privacy"
 
 	"github.com/google/uuid"
 )
@@ -81,7 +82,7 @@ func Logger(logger *slog.Logger) func(http.Handler) http.Handler {
 				"status", wrapped.statusCode,
 				"duration_ms", duration.Milliseconds(),
 				"request_id", requestID,
-				"remote_addr", r.RemoteAddr,
+				"remote_addr_prefix", privacy.AnonymizeIP(getClientIP(r)),
 			)
 		})
 	}

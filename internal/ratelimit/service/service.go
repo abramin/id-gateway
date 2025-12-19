@@ -8,6 +8,7 @@ import (
 
 	"credo/internal/audit"
 	"credo/internal/platform/middleware"
+	"credo/internal/platform/privacy"
 	"credo/internal/ratelimit/models"
 	dErrors "credo/pkg/domain-errors"
 )
@@ -82,7 +83,6 @@ func (s *Service) SetGlobalThrottleStore(store GlobalThrottleStore) {
 
 // CheckIPRateLimit checks the per-IP rate limit for an endpoint class.
 func (s *Service) CheckIPRateLimit(ctx context.Context, ip string, class models.EndpointClass) (*models.RateLimitResult, error) {
-	// 1. Check if IP is allowlisted - if so, return allowed with max limits
 	a, err := s.allowlist.IsAllowlisted(ctx, ip)
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to check allowlist")
@@ -107,7 +107,7 @@ func (s *Service) CheckIPRateLimit(ctx context.Context, ip string, class models.
 
 	if !result.Allowed {
 		s.logAudit(ctx, "rate_limit_exceeded",
-			"identifier", ip,
+			"identifier", privacy.AnonymizeIP(ip),
 			"endpoint_class", class,
 			"limit", requestsPerWindow,
 			"window_seconds", int(window.Seconds()),

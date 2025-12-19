@@ -8,36 +8,24 @@ import (
 	"time"
 
 	platformMW "credo/internal/platform/middleware"
+	"credo/internal/platform/privacy"
 	"credo/internal/ratelimit/models"
 	"credo/internal/transport/httputil"
 )
 
-// RateLimiter defines the interface for rate limit checking.
-// This is implemented by the ratelimit service.
 type RateLimiter interface {
-	// CheckIPRateLimit checks IP-based rate limit
 	CheckIPRateLimit(ctx context.Context, ip string, class models.EndpointClass) (*models.RateLimitResult, error)
-
-	// CheckUserRateLimit checks user-based rate limit
 	CheckUserRateLimit(ctx context.Context, userID string, class models.EndpointClass) (*models.RateLimitResult, error)
-
-	// CheckBothLimits checks both IP and user limits (both must pass)
 	CheckBothLimits(ctx context.Context, ip, userID string, class models.EndpointClass) (*models.RateLimitResult, error)
-
-	// CheckAuthRateLimit checks auth-specific limits with lockout
 	CheckAuthRateLimit(ctx context.Context, identifier, ip string) (*models.RateLimitResult, error)
-
-	// CheckGlobalThrottle checks global DDoS throttle
 	CheckGlobalThrottle(ctx context.Context) (bool, error)
 }
 
-// Middleware provides HTTP middleware for rate limiting.
 type Middleware struct {
 	limiter RateLimiter
 	logger  *slog.Logger
 }
 
-// New creates a new rate limit Middleware.
 func New(limiter RateLimiter, logger *slog.Logger) *Middleware {
 	return &Middleware{
 		limiter: limiter,
@@ -45,34 +33,26 @@ func New(limiter RateLimiter, logger *slog.Logger) *Middleware {
 	}
 }
 
-// RateLimit returns middleware that enforces per-IP rate limiting.
-//
-// TODO: Implement this middleware
-// 1. Extract client IP from context (set by ClientMetadata middleware)
-// 2. Check if allowlisted (via limiter)
-// 3. Call limiter.CheckIPRateLimit
-// 4. Add rate limit headers to response
-// 5. If not allowed, return 429 with retry-after
-// 6. Else call next handler
 func (m *Middleware) RateLimit(class models.EndpointClass) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 			ip := platformMW.GetClientIP(ctx)
 
-			// TODO: Implement rate limit check
-			// result, err := m.limiter.CheckIPRateLimit(ctx, ip, class)
-			// if err != nil { ... log and allow through ... }
-			//
-			// Add headers regardless of outcome
-			// addRateLimitHeaders(w, result)
-			//
-			// if !result.Allowed {
-			//     writeRateLimitExceeded(w, result)
-			//     return
-			// }
+			result, err := m.limiter.CheckIPRateLimit(ctx, ip, class)
+			if err != nil {
+				m.logger.Error("failed to check IP rate limit", "error", err, "ip_prefix", privacy.AnonymizeIP(ip))
+				next.ServeHTTP(w, r)
+				return
+			}
 
-			_ = ip // Remove when implemented
+			//Add headers regardless of outcome
+			addRateLimitHeaders(w, result)
+
+			if !result.Allowed {
+				writeRateLimitExceeded(w, result)
+				return
+			}
 
 			next.ServeHTTP(w, r)
 		})
@@ -191,9 +171,6 @@ func addRateLimitHeaders(w http.ResponseWriter, result *models.RateLimitResult) 
 	w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(result.ResetAt.Unix(), 10))
 }
 
-// writeRateLimitExceeded writes a 429 response for IP rate limit exceeded.
-//
-// TODO: Implement this helper
 func writeRateLimitExceeded(w http.ResponseWriter, result *models.RateLimitResult) {
 	w.Header().Set("Retry-After", strconv.Itoa(result.RetryAfter))
 	w.Header().Set("Content-Type", "application/json")
@@ -205,9 +182,6 @@ func writeRateLimitExceeded(w http.ResponseWriter, result *models.RateLimitResul
 	})
 }
 
-// writeUserRateLimitExceeded writes a 429 response for user rate limit exceeded.
-//
-// TODO: Implement this helper
 func writeUserRateLimitExceeded(w http.ResponseWriter, result *models.RateLimitResult) {
 	w.Header().Set("Retry-After", strconv.Itoa(result.RetryAfter))
 	w.Header().Set("Content-Type", "application/json")
@@ -221,9 +195,6 @@ func writeUserRateLimitExceeded(w http.ResponseWriter, result *models.RateLimitR
 	})
 }
 
-// writeServiceOverloaded writes a 503 response for global throttle exceeded.
-//
-// TODO: Implement this helper
 func writeServiceOverloaded(w http.ResponseWriter) {
 	w.Header().Set("Retry-After", "60")
 	w.Header().Set("Content-Type", "application/json")
