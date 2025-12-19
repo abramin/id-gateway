@@ -35,7 +35,7 @@ func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.Token
 		return nil, s.handleTokenError(ctx, err, req.ClientID, &sessionID, TokenFlowRefresh)
 	}
 
-	if models.UserStatus(tc.Client.Status) != models.UserStatusActive {
+	if !tc.Client.IsActive() {
 		return nil, dErrors.New(dErrors.CodeForbidden, "client is not active")
 	}
 

@@ -95,7 +95,7 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 		if err != nil {
 			return dErrors.Wrap(err, dErrors.CodeInternal, "failed to find or create user")
 		}
-		if user.Status != models.UserStatusActive {
+		if !user.IsActive() {
 			return dErrors.New(dErrors.CodeForbidden, "user is inactive")
 		}
 		userWasCreated = (user.ID == newUser.ID)

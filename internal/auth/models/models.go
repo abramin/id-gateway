@@ -47,6 +47,28 @@ type Session struct {
 	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
 }
 
+// IsActive returns true if the session is active.
+func (s *Session) IsActive() bool {
+	return s.Status == string(SessionStatusActive)
+}
+
+// IsPendingConsent returns true if the session is pending consent.
+func (s *Session) IsPendingConsent() bool {
+	return s.Status == string(SessionStatusPendingConsent)
+}
+
+// IsRevoked returns true if the session has been revoked.
+func (s *Session) IsRevoked() bool {
+	return s.Status == string(SessionStatusRevoked)
+}
+
+// Activate transitions a pending session to active status.
+func (s *Session) Activate() {
+	if s.IsPendingConsent() {
+		s.Status = string(SessionStatusActive)
+	}
+}
+
 type AuthorizationCodeRecord struct {
 	ID          uuid.UUID    `json:"id"`           // Unique identifier
 	Code        string       `json:"code"`         // Format: "authz_<random>"
@@ -67,6 +89,11 @@ type RefreshTokenRecord struct {
 	Used            bool         `json:"used"`       // For rotation detection
 	LastRefreshedAt *time.Time   `json:"last_refreshed_at,omitempty"`
 	CreatedAt       time.Time    `json:"created_at"`
+}
+
+// IsActive returns true if the user is active.
+func (u *User) IsActive() bool {
+	return u.Status == UserStatusActive
 }
 
 // NewUser creates a User with domain invariant checks.

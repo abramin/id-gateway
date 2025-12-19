@@ -59,7 +59,7 @@ func (s *Service) resolveTokenContext(
 	if err != nil {
 		return nil, err
 	}
-	if user.Status != models.UserStatusActive {
+	if !user.IsActive() {
 		return nil, dErrors.New(dErrors.CodeForbidden, "user inactive")
 	}
 

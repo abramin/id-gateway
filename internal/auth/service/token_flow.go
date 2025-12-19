@@ -43,8 +43,8 @@ func (s *Service) executeTokenFlowTx(
 	activate := false
 	if params.ActivateOnFirstUse {
 		// Code exchange: activate session if pending consent
-		if mutableSession.Status == models.SessionStatusPendingConsent {
-			mutableSession.Status = models.SessionStatusActive
+		if mutableSession.IsPendingConsent() {
+			mutableSession.Activate()
 			activate = true
 		}
 	}

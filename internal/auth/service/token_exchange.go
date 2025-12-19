@@ -32,7 +32,7 @@ func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.Tok
 		return nil, s.handleTokenError(ctx, err, req.ClientID, &sessionID, TokenFlowCode)
 	}
 
-	if models.UserStatus(tc.Client.Status) != models.UserStatusActive {
+	if !tc.Client.IsActive() {
 		return nil, dErrors.New(dErrors.CodeForbidden, "client is not active")
 	}
 

@@ -27,7 +27,7 @@ func (s *Service) ListSessions(ctx context.Context, userID id.UserID, currentSes
 		if session == nil {
 			continue
 		}
-		if session.Status != models.SessionStatusActive {
+		if !session.IsActive() {
 			continue
 		}
 		if session.ExpiresAt.Before(now) {

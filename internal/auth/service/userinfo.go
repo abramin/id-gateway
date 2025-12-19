@@ -44,7 +44,7 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to find session")
 	}
 
-	if session.Status != models.SessionStatusActive {
+	if !session.IsActive() {
 		s.authFailure(ctx, "session_not_active", false,
 			"session_id", parsedSessionID.String(),
 			"status", session.Status.String(),
