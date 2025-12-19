@@ -76,6 +76,11 @@ func Logger(logger *slog.Logger) func(http.Handler) http.Handler {
 			ctx := r.Context()
 			requestID := GetRequestID(ctx)
 
+			// Skip noisy health checks unless they fail.
+			if r.URL.Path == "/health" && wrapped.statusCode < http.StatusInternalServerError {
+				return
+			}
+
 			logger.InfoContext(ctx, "http request",
 				"method", r.Method,
 				"path", r.URL.Path,
