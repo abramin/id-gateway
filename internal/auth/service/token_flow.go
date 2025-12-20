@@ -17,16 +17,20 @@ type tokenFlowTxParams struct {
 	// ActivateOnFirstUse is true for code exchange (activates pending sessions),
 	// false for refresh (updates LastRefreshedAt instead).
 	ActivateOnFirstUse bool
+	// Artifacts are pre-generated BEFORE entering the transaction to avoid
+	// holding the mutex during CPU-intensive JWT generation.
+	Artifacts *tokenArtifacts
 }
 
 // tokenFlowTxResult holds the outputs from a successful token transaction.
 type tokenFlowTxResult struct {
-	Session   *models.Session
-	Artifacts *tokenArtifacts
+	Session *models.Session
 }
 
 // executeTokenFlowTx runs the common transactional portion of token issuance.
-// It handles device binding, token generation, session advancement, and refresh token creation.
+// It handles device binding, session advancement, and refresh token creation.
+// IMPORTANT: Token artifacts must be pre-generated BEFORE calling this function
+// to avoid holding the transaction lock during CPU-intensive JWT generation.
 func (s *Service) executeTokenFlowTx(
 	ctx context.Context,
 	stores TxAuthStores,
@@ -39,22 +43,18 @@ func (s *Service) executeTokenFlowTx(
 	activate := false
 	if params.ActivateOnFirstUse {
 		// Code exchange: activate session if pending consent
-		if mutableSession.Status == string(models.SessionStatusPendingConsent) {
-			mutableSession.Status = string(models.SessionStatusActive)
+		if mutableSession.Status == models.SessionStatusPendingConsent {
+			mutableSession.Status = models.SessionStatusActive
 			activate = true
 		}
-	} else {
-		// Refresh: update refresh timestamp
-		mutableSession.LastRefreshedAt = &params.Now
 	}
 
-	artifacts, err := s.generateTokenArtifacts(&mutableSession)
-	if err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate tokens")
-	}
+	// Use pre-generated artifacts (generated outside transaction lock)
+	artifacts := params.Artifacts
 
 	// Advance session state based on flow type
 	var session *models.Session
+	var err error
 	clientID := params.TokenContext.Client.ID.String()
 
 	if params.ActivateOnFirstUse {
@@ -88,7 +88,6 @@ func (s *Service) executeTokenFlowTx(
 	}
 
 	return &tokenFlowTxResult{
-		Session:   session,
-		Artifacts: artifacts,
+		Session: session,
 	}, nil
 }

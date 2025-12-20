@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/google/uuid"
+	id "credo/pkg/domain"
 
 	"credo/internal/sentinel"
 	"credo/internal/tenant/models"
@@ -45,10 +45,10 @@ func (s *InMemory) CreateIfNameAvailable(_ context.Context, t *models.Tenant) er
 }
 
 // FindByID retrieves a tenant by its UUID.
-func (s *InMemory) FindByID(_ context.Context, id uuid.UUID) (*models.Tenant, error) {
+func (s *InMemory) FindByID(_ context.Context, tenantID id.TenantID) (*models.Tenant, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if t, ok := s.tenants[id.String()]; ok {
+	if t, ok := s.tenants[tenantID.String()]; ok {
 		return t, nil
 	}
 	return nil, ErrNotFound

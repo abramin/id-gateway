@@ -1,12 +1,16 @@
 package audit
 
-import "time"
+import (
+	"time"
+
+	id "credo/pkg/domain"
+)
 
 // Event is emitted from domain logic to capture key actions. Keep it
 // transport-agnostic so stores and sinks can fan out.
 type Event struct {
 	Timestamp       time.Time
-	UserID          string
+	UserID          id.UserID
 	Subject         string
 	Action          string
 	Purpose         string

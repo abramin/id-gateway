@@ -15,6 +15,7 @@ import (
 	models "credo/internal/auth/models"
 	jwttoken "credo/internal/jwt_token"
 	models0 "credo/internal/tenant/models"
+	domain "credo/pkg/domain"
 	reflect "reflect"
 	time "time"
 
@@ -47,17 +48,17 @@ func (m *MockUserStore) EXPECT() *MockUserStoreMockRecorder {
 }
 
 // Delete mocks base method.
-func (m *MockUserStore) Delete(ctx context.Context, id uuid.UUID) error {
+func (m *MockUserStore) Delete(ctx context.Context, userID domain.UserID) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", ctx, id)
+	ret := m.ctrl.Call(m, "Delete", ctx, userID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Delete indicates an expected call of Delete.
-func (mr *MockUserStoreMockRecorder) Delete(ctx, id any) *gomock.Call {
+func (mr *MockUserStoreMockRecorder) Delete(ctx, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockUserStore)(nil).Delete), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockUserStore)(nil).Delete), ctx, userID)
 }
 
 // FindByEmail mocks base method.
@@ -76,22 +77,22 @@ func (mr *MockUserStoreMockRecorder) FindByEmail(ctx, email any) *gomock.Call {
 }
 
 // FindByID mocks base method.
-func (m *MockUserStore) FindByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
+func (m *MockUserStore) FindByID(ctx context.Context, userID domain.UserID) (*models.User, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FindByID", ctx, id)
+	ret := m.ctrl.Call(m, "FindByID", ctx, userID)
 	ret0, _ := ret[0].(*models.User)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // FindByID indicates an expected call of FindByID.
-func (mr *MockUserStoreMockRecorder) FindByID(ctx, id any) *gomock.Call {
+func (mr *MockUserStoreMockRecorder) FindByID(ctx, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByID", reflect.TypeOf((*MockUserStore)(nil).FindByID), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByID", reflect.TypeOf((*MockUserStore)(nil).FindByID), ctx, userID)
 }
 
 // FindOrCreateByTenantAndEmail mocks base method.
-func (m *MockUserStore) FindOrCreateByTenantAndEmail(ctx context.Context, tenantID uuid.UUID, email string, user *models.User) (*models.User, error) {
+func (m *MockUserStore) FindOrCreateByTenantAndEmail(ctx context.Context, tenantID domain.TenantID, email string, user *models.User) (*models.User, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FindOrCreateByTenantAndEmail", ctx, tenantID, email, user)
 	ret0, _ := ret[0].(*models.User)
@@ -144,33 +145,33 @@ func (m *MockSessionStore) EXPECT() *MockSessionStoreMockRecorder {
 }
 
 // AdvanceLastRefreshed mocks base method.
-func (m *MockSessionStore) AdvanceLastRefreshed(ctx context.Context, id uuid.UUID, clientID string, at time.Time, accessTokenJTI, deviceID, deviceFingerprintHash string) (*models.Session, error) {
+func (m *MockSessionStore) AdvanceLastRefreshed(ctx context.Context, sessionID domain.SessionID, clientID string, at time.Time, accessTokenJTI, deviceID, deviceFingerprintHash string) (*models.Session, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AdvanceLastRefreshed", ctx, id, clientID, at, accessTokenJTI, deviceID, deviceFingerprintHash)
+	ret := m.ctrl.Call(m, "AdvanceLastRefreshed", ctx, sessionID, clientID, at, accessTokenJTI, deviceID, deviceFingerprintHash)
 	ret0, _ := ret[0].(*models.Session)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AdvanceLastRefreshed indicates an expected call of AdvanceLastRefreshed.
-func (mr *MockSessionStoreMockRecorder) AdvanceLastRefreshed(ctx, id, clientID, at, accessTokenJTI, deviceID, deviceFingerprintHash any) *gomock.Call {
+func (mr *MockSessionStoreMockRecorder) AdvanceLastRefreshed(ctx, sessionID, clientID, at, accessTokenJTI, deviceID, deviceFingerprintHash any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdvanceLastRefreshed", reflect.TypeOf((*MockSessionStore)(nil).AdvanceLastRefreshed), ctx, id, clientID, at, accessTokenJTI, deviceID, deviceFingerprintHash)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdvanceLastRefreshed", reflect.TypeOf((*MockSessionStore)(nil).AdvanceLastRefreshed), ctx, sessionID, clientID, at, accessTokenJTI, deviceID, deviceFingerprintHash)
 }
 
 // AdvanceLastSeen mocks base method.
-func (m *MockSessionStore) AdvanceLastSeen(ctx context.Context, id uuid.UUID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID, deviceFingerprintHash string) (*models.Session, error) {
+func (m *MockSessionStore) AdvanceLastSeen(ctx context.Context, sessionID domain.SessionID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID, deviceFingerprintHash string) (*models.Session, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AdvanceLastSeen", ctx, id, clientID, at, accessTokenJTI, activate, deviceID, deviceFingerprintHash)
+	ret := m.ctrl.Call(m, "AdvanceLastSeen", ctx, sessionID, clientID, at, accessTokenJTI, activate, deviceID, deviceFingerprintHash)
 	ret0, _ := ret[0].(*models.Session)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AdvanceLastSeen indicates an expected call of AdvanceLastSeen.
-func (mr *MockSessionStoreMockRecorder) AdvanceLastSeen(ctx, id, clientID, at, accessTokenJTI, activate, deviceID, deviceFingerprintHash any) *gomock.Call {
+func (mr *MockSessionStoreMockRecorder) AdvanceLastSeen(ctx, sessionID, clientID, at, accessTokenJTI, activate, deviceID, deviceFingerprintHash any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdvanceLastSeen", reflect.TypeOf((*MockSessionStore)(nil).AdvanceLastSeen), ctx, id, clientID, at, accessTokenJTI, activate, deviceID, deviceFingerprintHash)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdvanceLastSeen", reflect.TypeOf((*MockSessionStore)(nil).AdvanceLastSeen), ctx, sessionID, clientID, at, accessTokenJTI, activate, deviceID, deviceFingerprintHash)
 }
 
 // Create mocks base method.
@@ -188,7 +189,7 @@ func (mr *MockSessionStoreMockRecorder) Create(ctx, session any) *gomock.Call {
 }
 
 // DeleteSessionsByUser mocks base method.
-func (m *MockSessionStore) DeleteSessionsByUser(ctx context.Context, userID uuid.UUID) error {
+func (m *MockSessionStore) DeleteSessionsByUser(ctx context.Context, userID domain.UserID) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteSessionsByUser", ctx, userID)
 	ret0, _ := ret[0].(error)
@@ -202,22 +203,22 @@ func (mr *MockSessionStoreMockRecorder) DeleteSessionsByUser(ctx, userID any) *g
 }
 
 // FindByID mocks base method.
-func (m *MockSessionStore) FindByID(ctx context.Context, id uuid.UUID) (*models.Session, error) {
+func (m *MockSessionStore) FindByID(ctx context.Context, sessionID domain.SessionID) (*models.Session, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FindByID", ctx, id)
+	ret := m.ctrl.Call(m, "FindByID", ctx, sessionID)
 	ret0, _ := ret[0].(*models.Session)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // FindByID indicates an expected call of FindByID.
-func (mr *MockSessionStoreMockRecorder) FindByID(ctx, id any) *gomock.Call {
+func (mr *MockSessionStoreMockRecorder) FindByID(ctx, sessionID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByID", reflect.TypeOf((*MockSessionStore)(nil).FindByID), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByID", reflect.TypeOf((*MockSessionStore)(nil).FindByID), ctx, sessionID)
 }
 
 // ListByUser mocks base method.
-func (m *MockSessionStore) ListByUser(ctx context.Context, userID uuid.UUID) ([]*models.Session, error) {
+func (m *MockSessionStore) ListByUser(ctx context.Context, userID domain.UserID) ([]*models.Session, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListByUser", ctx, userID)
 	ret0, _ := ret[0].([]*models.Session)
@@ -232,31 +233,31 @@ func (mr *MockSessionStoreMockRecorder) ListByUser(ctx, userID any) *gomock.Call
 }
 
 // RevokeSession mocks base method.
-func (m *MockSessionStore) RevokeSession(ctx context.Context, id uuid.UUID) error {
+func (m *MockSessionStore) RevokeSession(ctx context.Context, sessionID domain.SessionID) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RevokeSession", ctx, id)
+	ret := m.ctrl.Call(m, "RevokeSession", ctx, sessionID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // RevokeSession indicates an expected call of RevokeSession.
-func (mr *MockSessionStoreMockRecorder) RevokeSession(ctx, id any) *gomock.Call {
+func (mr *MockSessionStoreMockRecorder) RevokeSession(ctx, sessionID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokeSession", reflect.TypeOf((*MockSessionStore)(nil).RevokeSession), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokeSession", reflect.TypeOf((*MockSessionStore)(nil).RevokeSession), ctx, sessionID)
 }
 
 // RevokeSessionIfActive mocks base method.
-func (m *MockSessionStore) RevokeSessionIfActive(ctx context.Context, id uuid.UUID, now time.Time) error {
+func (m *MockSessionStore) RevokeSessionIfActive(ctx context.Context, sessionID domain.SessionID, now time.Time) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RevokeSessionIfActive", ctx, id, now)
+	ret := m.ctrl.Call(m, "RevokeSessionIfActive", ctx, sessionID, now)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // RevokeSessionIfActive indicates an expected call of RevokeSessionIfActive.
-func (mr *MockSessionStoreMockRecorder) RevokeSessionIfActive(ctx, id, now any) *gomock.Call {
+func (mr *MockSessionStoreMockRecorder) RevokeSessionIfActive(ctx, sessionID, now any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokeSessionIfActive", reflect.TypeOf((*MockSessionStore)(nil).RevokeSessionIfActive), ctx, id, now)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokeSessionIfActive", reflect.TypeOf((*MockSessionStore)(nil).RevokeSessionIfActive), ctx, sessionID, now)
 }
 
 // UpdateSession mocks base method.
@@ -424,7 +425,7 @@ func (mr *MockRefreshTokenStoreMockRecorder) Create(ctx, token any) *gomock.Call
 }
 
 // DeleteBySessionID mocks base method.
-func (m *MockRefreshTokenStore) DeleteBySessionID(ctx context.Context, sessionID uuid.UUID) error {
+func (m *MockRefreshTokenStore) DeleteBySessionID(ctx context.Context, sessionID domain.SessionID) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteBySessionID", ctx, sessionID)
 	ret0, _ := ret[0].(error)
@@ -453,18 +454,18 @@ func (mr *MockRefreshTokenStoreMockRecorder) Find(ctx, tokenString any) *gomock.
 }
 
 // FindBySessionID mocks base method.
-func (m *MockRefreshTokenStore) FindBySessionID(ctx context.Context, id uuid.UUID) (*models.RefreshTokenRecord, error) {
+func (m *MockRefreshTokenStore) FindBySessionID(ctx context.Context, sessionID domain.SessionID) (*models.RefreshTokenRecord, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FindBySessionID", ctx, id)
+	ret := m.ctrl.Call(m, "FindBySessionID", ctx, sessionID)
 	ret0, _ := ret[0].(*models.RefreshTokenRecord)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // FindBySessionID indicates an expected call of FindBySessionID.
-func (mr *MockRefreshTokenStoreMockRecorder) FindBySessionID(ctx, id any) *gomock.Call {
+func (mr *MockRefreshTokenStoreMockRecorder) FindBySessionID(ctx, sessionID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindBySessionID", reflect.TypeOf((*MockRefreshTokenStore)(nil).FindBySessionID), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindBySessionID", reflect.TypeOf((*MockRefreshTokenStore)(nil).FindBySessionID), ctx, sessionID)
 }
 
 // MockTokenGenerator is a mock of TokenGenerator interface.
@@ -538,7 +539,7 @@ func (mr *MockTokenGeneratorMockRecorder) GenerateAccessTokenWithJTI(userID, ses
 }
 
 // GenerateIDToken mocks base method.
-func (m *MockTokenGenerator) GenerateIDToken(userID, sessionID uuid.UUID, clientID string, tenantID string) (string, error) {
+func (m *MockTokenGenerator) GenerateIDToken(userID, sessionID uuid.UUID, clientID, tenantID string) (string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GenerateIDToken", userID, sessionID, clientID, tenantID)
 	ret0, _ := ret[0].(string)

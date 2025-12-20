@@ -12,6 +12,7 @@ package mocks
 import (
 	context "context"
 	models "credo/internal/consent/models"
+	id "credo/pkg/domain"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -42,7 +43,7 @@ func (m *MockService) EXPECT() *MockServiceMockRecorder {
 }
 
 // DeleteAll mocks base method.
-func (m *MockService) DeleteAll(ctx context.Context, userID string) error {
+func (m *MockService) DeleteAll(ctx context.Context, userID id.UserID) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteAll", ctx, userID)
 	ret0, _ := ret[0].(error)
@@ -56,7 +57,7 @@ func (mr *MockServiceMockRecorder) DeleteAll(ctx, userID any) *gomock.Call {
 }
 
 // Grant mocks base method.
-func (m *MockService) Grant(ctx context.Context, userID string, purposes []models.Purpose) ([]*models.Record, error) {
+func (m *MockService) Grant(ctx context.Context, userID id.UserID, purposes []models.Purpose) ([]*models.Record, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Grant", ctx, userID, purposes)
 	ret0, _ := ret[0].([]*models.Record)
@@ -71,7 +72,7 @@ func (mr *MockServiceMockRecorder) Grant(ctx, userID, purposes any) *gomock.Call
 }
 
 // List mocks base method.
-func (m *MockService) List(ctx context.Context, userID string, filter *models.RecordFilter) ([]*models.Record, error) {
+func (m *MockService) List(ctx context.Context, userID id.UserID, filter *models.RecordFilter) ([]*models.Record, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "List", ctx, userID, filter)
 	ret0, _ := ret[0].([]*models.Record)
@@ -86,7 +87,7 @@ func (mr *MockServiceMockRecorder) List(ctx, userID, filter any) *gomock.Call {
 }
 
 // Revoke mocks base method.
-func (m *MockService) Revoke(ctx context.Context, userID string, purposes []models.Purpose) ([]*models.Record, error) {
+func (m *MockService) Revoke(ctx context.Context, userID id.UserID, purposes []models.Purpose) ([]*models.Record, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Revoke", ctx, userID, purposes)
 	ret0, _ := ret[0].([]*models.Record)
@@ -101,7 +102,7 @@ func (mr *MockServiceMockRecorder) Revoke(ctx, userID, purposes any) *gomock.Cal
 }
 
 // RevokeAll mocks base method.
-func (m *MockService) RevokeAll(ctx context.Context, userID string) (int, error) {
+func (m *MockService) RevokeAll(ctx context.Context, userID id.UserID) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RevokeAll", ctx, userID)
 	ret0, _ := ret[0].(int)

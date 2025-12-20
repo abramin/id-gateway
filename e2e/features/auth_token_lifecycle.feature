@@ -143,3 +143,31 @@ Feature: Token lifecycle and session management (PRD-016)
     Then exactly one request should succeed with status 200
     And exactly one request should fail with status 400
     And the failed response field "error" should equal "invalid_grant"
+
+    # ============================================================
+    # Session Revocation Verification
+    # ============================================================
+
+    @token @sessions @revocation
+  Scenario: Revoked session cannot refresh tokens
+    # Security invariant: Once a session is revoked, the refresh token
+    # associated with that session must be rejected on subsequent refresh attempts.
+    When I initiate authorization with email "revoke-session@example.com" and scopes "openid"
+    Then the response status should be 200
+    And I save the authorization code
+
+    When I exchange the authorization code for tokens
+    Then the response status should be 200
+    And I save the tokens from the response
+
+    When I list sessions with the saved access token
+    Then the response status should be 200
+    And I save the current session id
+
+    When I revoke the current session
+    Then the response status should be 200
+    And the response field "revoked" should equal "true"
+
+    When I refresh tokens with the saved refresh token
+    Then the response status should be 400
+    And the response field "error" should equal "invalid_grant"

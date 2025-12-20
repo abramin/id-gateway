@@ -1,5 +1,7 @@
 package vc
 
+import id "credo/pkg/domain"
+
 // VCLifecycle owns verifiable credential issuance and verification rules.
 // Anything related to signing, persistence, or registries is orchestrated by
 // callers so this type can remain dependency-free.
@@ -12,7 +14,7 @@ func NewVCLifecycle() *VCLifecycle {
 type Claims map[string]interface{}
 
 type IssueRequest struct {
-	SubjectID string
+	SubjectID id.UserID
 	Claims    Claims
 }
 

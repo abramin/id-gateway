@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"credo/internal/tenant/models"
+	id "credo/pkg/domain"
 )
 
 func TestCreate_IndexesByClientID(t *testing.T) {
@@ -17,19 +18,19 @@ func TestCreate_IndexesByClientID(t *testing.T) {
 	ctx := context.Background()
 
 	client := &models.Client{
-		ID:        uuid.New(),
-		TenantID:  uuid.New(),
-		Name:      "Test Client",
-		ClientID:  "test-client-id",
-		Status:    "active",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:             id.ClientID(uuid.New()),
+		TenantID:       id.TenantID(uuid.New()),
+		Name:           "Test Client",
+		OAuthClientID:  "test-client-id",
+		Status:         "active",
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 
 	require.NoError(t, store.Create(ctx, client))
 
 	// Should be findable by ClientID
-	found, err := store.FindByClientID(ctx, "test-client-id")
+	found, err := store.FindByOAuthClientID(ctx, "test-client-id")
 	require.NoError(t, err)
 	assert.Equal(t, client.ID, found.ID)
 }
@@ -38,17 +39,17 @@ func TestFindByTenantAndID_WrongTenant(t *testing.T) {
 	store := NewInMemory()
 	ctx := context.Background()
 
-	tenantA := uuid.New()
-	tenantB := uuid.New()
+	tenantA := id.TenantID(uuid.New())
+	tenantB := id.TenantID(uuid.New())
 
 	client := &models.Client{
-		ID:        uuid.New(),
-		TenantID:  tenantA,
-		Name:      "Client A",
-		ClientID:  "client-a",
-		Status:    "active",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:             id.ClientID(uuid.New()),
+		TenantID:       tenantA,
+		Name:           "Client A",
+		OAuthClientID:  "client-a",
+		Status:         "active",
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 
 	require.NoError(t, store.Create(ctx, client))
@@ -67,7 +68,7 @@ func TestFindByID_NotFound(t *testing.T) {
 	store := NewInMemory()
 	ctx := context.Background()
 
-	_, err := store.FindByID(ctx, uuid.New())
+	_, err := store.FindByID(ctx, id.ClientID(uuid.New()))
 	require.ErrorIs(t, err, ErrNotFound)
 }
 
@@ -75,7 +76,7 @@ func TestFindByClientID_NotFound(t *testing.T) {
 	store := NewInMemory()
 	ctx := context.Background()
 
-	_, err := store.FindByClientID(ctx, "nonexistent")
+	_, err := store.FindByOAuthClientID(ctx, "nonexistent")
 	require.ErrorIs(t, err, ErrNotFound)
 }
 
@@ -83,19 +84,19 @@ func TestCountByTenant_OnlyCountsMatchingTenant(t *testing.T) {
 	store := NewInMemory()
 	ctx := context.Background()
 
-	tenantA := uuid.New()
-	tenantB := uuid.New()
+	tenantA := id.TenantID(uuid.New())
+	tenantB := id.TenantID(uuid.New())
 
 	// Create 2 clients for tenant A
 	for i := 0; i < 2; i++ {
 		client := &models.Client{
-			ID:        uuid.New(),
-			TenantID:  tenantA,
-			Name:      "Client A",
-			ClientID:  uuid.NewString(),
-			Status:    "active",
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			ID:             id.ClientID(uuid.New()),
+			TenantID:       tenantA,
+			Name:           "Client A",
+			OAuthClientID:  uuid.NewString(),
+			Status:         "active",
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
 		}
 		require.NoError(t, store.Create(ctx, client))
 	}
@@ -103,13 +104,13 @@ func TestCountByTenant_OnlyCountsMatchingTenant(t *testing.T) {
 	// Create 3 clients for tenant B
 	for i := 0; i < 3; i++ {
 		client := &models.Client{
-			ID:        uuid.New(),
-			TenantID:  tenantB,
-			Name:      "Client B",
-			ClientID:  uuid.NewString(),
-			Status:    "active",
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			ID:             id.ClientID(uuid.New()),
+			TenantID:       tenantB,
+			Name:           "Client B",
+			OAuthClientID:  uuid.NewString(),
+			Status:         "active",
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
 		}
 		require.NoError(t, store.Create(ctx, client))
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"credo/internal/ratelimit/models"
+	id "credo/pkg/domain"
 )
 
 // TestInMemoryAllowlistStore_Add tests adding entries to the allowlist.
@@ -197,7 +198,7 @@ func newAllowlistEntry(t *testing.T, entryType models.AllowlistEntryType, identi
 		Identifier: identifier,
 		Reason:     "test",
 		CreatedAt:  time.Now(),
-		CreatedBy:  "admin-user-id",
+		CreatedBy:  id.UserID(uuid.New()),
 	}
 	for _, opt := range opts {
 		opt(entry)

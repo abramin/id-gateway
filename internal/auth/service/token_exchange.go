@@ -17,7 +17,6 @@ func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.Tok
 	var (
 		codeRecord *models.AuthorizationCodeRecord
 		session    *models.Session
-		artifacts  *tokenArtifacts
 	)
 	code, err := s.codes.FindByCode(ctx, req.Code)
 	if err != nil {
@@ -36,7 +35,16 @@ func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.Tok
 	if models.UserStatus(tc.Client.Status) != models.UserStatusActive {
 		return nil, dErrors.New(dErrors.CodeForbidden, "client is not active")
 	}
-	txErr := s.tx.RunInTx(ctx, func(stores TxAuthStores) error {
+
+	// Generate tokens BEFORE entering transaction to avoid holding mutex during JWT generation
+	artifacts, err := s.generateTokenArtifacts(session)
+	if err != nil {
+		return nil, s.handleTokenError(ctx, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate tokens"), req.ClientID, &sessionID, TokenFlowCode)
+	}
+
+	// Add session ID to context for sharded locking
+	txCtx := context.WithValue(ctx, txSessionKeyCtx, sessionID)
+	txErr := s.tx.RunInTx(txCtx, func(stores TxAuthStores) error {
 		// Step 1: Consume authorization code (with replay attack protection)
 		var err error
 		codeRecord, err = stores.Codes.ConsumeAuthCode(ctx, req.Code, req.RedirectURI, now)
@@ -57,18 +65,18 @@ func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.Tok
 		}
 		session.TenantID = tc.Tenant.ID
 
-		// Step 3: Generate tokens, update session, persist refresh token
+		// Step 3: Update session and persist refresh token (artifacts pre-generated)
 		result, err := s.executeTokenFlowTx(ctx, stores, tokenFlowTxParams{
 			Session:            session,
 			TokenContext:       tc,
 			Now:                now,
 			ActivateOnFirstUse: true,
+			Artifacts:          artifacts,
 		})
 		if err != nil {
 			return err
 		}
 		session = result.Session
-		artifacts = result.Artifacts
 		return nil
 	})
 	if txErr != nil {

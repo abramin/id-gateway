@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"credo/internal/auth/models"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 
 	"github.com/google/uuid"
@@ -26,20 +27,20 @@ func (s *ServiceSuite) TestService_RevokeSession() {
 	ctx := context.Background()
 
 	s.T().Run("Given invalid user When revoke Then unauthorized", func(t *testing.T) {
-		err := s.service.RevokeSession(ctx, uuid.Nil, uuid.New())
+		err := s.service.RevokeSession(ctx, id.UserID(uuid.Nil), id.SessionID(uuid.New()))
 		assert.Error(t, err)
 		assert.True(t, dErrors.HasCode(err, dErrors.CodeUnauthorized))
 	})
 
 	s.T().Run("Given missing session id When revoke Then bad request", func(t *testing.T) {
-		err := s.service.RevokeSession(ctx, uuid.New(), uuid.Nil)
+		err := s.service.RevokeSession(ctx, id.UserID(uuid.New()), id.SessionID(uuid.Nil))
 		assert.Error(t, err)
 		assert.True(t, dErrors.HasCode(err, dErrors.CodeBadRequest))
 	})
 
 	s.T().Run("Given session not found When revoke Then not found", func(t *testing.T) {
-		userID := uuid.New()
-		sessionID := uuid.New()
+		userID := id.UserID(uuid.New())
+		sessionID := id.SessionID(uuid.New())
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(nil, dErrors.New(dErrors.CodeNotFound, "nope"))
 
 		err := s.service.RevokeSession(ctx, userID, sessionID)
@@ -48,13 +49,13 @@ func (s *ServiceSuite) TestService_RevokeSession() {
 	})
 
 	s.T().Run("Given session belongs to different user When revoke Then forbidden", func(t *testing.T) {
-		userID := uuid.New()
-		otherUserID := uuid.New()
-		sessionID := uuid.New()
+		userID := id.UserID(uuid.New())
+		otherUserID := id.UserID(uuid.New())
+		sessionID := id.SessionID(uuid.New())
 		session := &models.Session{
 			ID:     sessionID,
 			UserID: otherUserID,
-			Status: string(models.SessionStatusActive),
+			Status: models.SessionStatusActive,
 		}
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(session, nil)
 

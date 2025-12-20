@@ -8,6 +8,34 @@ const (
 	SessionStatusRevoked        SessionStatus = "revoked"
 )
 
+// IsValid checks if the session status is one of the supported enum values.
+func (s SessionStatus) IsValid() bool {
+	return s == SessionStatusPendingConsent || s == SessionStatusActive || s == SessionStatusRevoked
+}
+
+// String returns the string representation of the session status.
+func (s SessionStatus) String() string {
+	return string(s)
+}
+
+// CanTransitionTo checks if a transition from the current status to the target is valid.
+// Valid transitions:
+// - pending_consent -> active (after consent granted)
+// - active -> revoked (session revocation)
+// - pending_consent -> revoked (session revocation before consent)
+func (s SessionStatus) CanTransitionTo(target SessionStatus) bool {
+	switch s {
+	case SessionStatusPendingConsent:
+		return target == SessionStatusActive || target == SessionStatusRevoked
+	case SessionStatusActive:
+		return target == SessionStatusRevoked
+	case SessionStatusRevoked:
+		return false // revoked is terminal
+	default:
+		return false
+	}
+}
+
 type Grant string
 
 const (

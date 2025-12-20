@@ -6,26 +6,27 @@ import (
 
 	"github.com/google/uuid"
 
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
 
 type User struct {
-	ID        uuid.UUID  `json:"id"`
-	TenantID  uuid.UUID  `json:"tenant_id"`
-	Email     string     `json:"email"`
-	FirstName string     `json:"first_name"`
-	LastName  string     `json:"last_name"`
-	Verified  bool       `json:"verified"`
-	Status    UserStatus `json:"status"` // "active", "inactive"
+	ID        id.UserID   `json:"id"`
+	TenantID  id.TenantID `json:"tenant_id"`
+	Email     string      `json:"email"`
+	FirstName string      `json:"first_name"`
+	LastName  string      `json:"last_name"`
+	Verified  bool        `json:"verified"`
+	Status    UserStatus  `json:"status"` // "active", "inactive"
 }
 
 type Session struct {
-	ID             uuid.UUID `json:"id"`
-	UserID         uuid.UUID `json:"user_id"`
-	ClientID       uuid.UUID `json:"client_id"`
-	TenantID       uuid.UUID `json:"tenant_id"`
-	RequestedScope []string  `json:"requested_scope"`
-	Status         string    `json:"status"` // "active", "revoked", "pending_consent"
+	ID             id.SessionID  `json:"id"`
+	UserID         id.UserID     `json:"user_id"`
+	ClientID       id.ClientID   `json:"client_id"`
+	TenantID       id.TenantID   `json:"tenant_id"`
+	RequestedScope []string      `json:"requested_scope"`
+	Status         SessionStatus `json:"status"` // typed enum: pending_consent, active, revoked
 
 	// Refresh lifecycle
 	LastRefreshedAt    *time.Time `json:"last_refreshed_at,omitempty"` // last refresh action timestamp
@@ -47,35 +48,29 @@ type Session struct {
 }
 
 type AuthorizationCodeRecord struct {
-	ID          uuid.UUID `json:"id"`           // Unique identifier
-	Code        string    `json:"code"`         // Format: "authz_<random>"
-	SessionID   uuid.UUID `json:"session_id"`   // Links to parent Session
-	RedirectURI string    `json:"redirect_uri"` // Stored for validation at token exchange
-	ExpiresAt   time.Time `json:"expires_at"`   // 10 minutes from creation
-	Used        bool      `json:"used"`         // Prevent replay attacks
-	CreatedAt   time.Time `json:"created_at"`
+	ID          uuid.UUID    `json:"id"`           // Unique identifier
+	Code        string       `json:"code"`         // Format: "authz_<random>"
+	SessionID   id.SessionID `json:"session_id"`   // Links to parent Session
+	RedirectURI string       `json:"redirect_uri"` // Stored for validation at token exchange
+	ExpiresAt   time.Time    `json:"expires_at"`   // 10 minutes from creation
+	Used        bool         `json:"used"`         // Prevent replay attacks
+	CreatedAt   time.Time    `json:"created_at"`
 }
 
 // RefreshTokenRecord represents a long-lived token for access token renewal.
 // Lifetime: 30 days (configurable)
 type RefreshTokenRecord struct {
-	ID              uuid.UUID  `json:"id"`         // Unique identifier
-	Token           string     `json:"token"`      // Format: "ref_<uuid>"
-	SessionID       uuid.UUID  `json:"session_id"` // Links to parent Session
-	ExpiresAt       time.Time  `json:"expires_at"` // 30 days from creation
-	Used            bool       `json:"used"`       // For rotation detection
-	LastRefreshedAt *time.Time `json:"last_refreshed_at,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
+	ID              uuid.UUID    `json:"id"`         // Unique identifier
+	Token           string       `json:"token"`      // Format: "ref_<uuid>"
+	SessionID       id.SessionID `json:"session_id"` // Links to parent Session
+	ExpiresAt       time.Time    `json:"expires_at"` // 30 days from creation
+	Used            bool         `json:"used"`       // For rotation detection
+	LastRefreshedAt *time.Time   `json:"last_refreshed_at,omitempty"`
+	CreatedAt       time.Time    `json:"created_at"`
 }
 
 // NewUser creates a User with domain invariant checks.
-func NewUser(id uuid.UUID, tenantID uuid.UUID, email, firstName, lastName string, verified bool) (*User, error) {
-	if id == uuid.Nil {
-		return nil, dErrors.New(dErrors.CodeInvariantViolation, "user ID cannot be nil")
-	}
-	if tenantID == uuid.Nil {
-		return nil, dErrors.New(dErrors.CodeInvariantViolation, "user tenant ID cannot be nil")
-	}
+func NewUser(id id.UserID, tenantID id.TenantID, email, firstName, lastName string, verified bool) (*User, error) {
 	if email == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "user email cannot be empty")
 	}
@@ -91,24 +86,12 @@ func NewUser(id uuid.UUID, tenantID uuid.UUID, email, firstName, lastName string
 }
 
 // NewSession creates a Session with domain invariant checks.
-func NewSession(id, userID uuid.UUID, clientID uuid.UUID, tenantID uuid.UUID, scopes []string, status string, createdAt, expiresAt, lastSeenAt time.Time) (*Session, error) {
-	if id == uuid.Nil {
-		return nil, dErrors.New(dErrors.CodeInvariantViolation, "session ID cannot be nil")
-	}
-	if userID == uuid.Nil {
-		return nil, dErrors.New(dErrors.CodeInvariantViolation, "user ID cannot be nil")
-	}
-	if clientID == uuid.Nil {
-		return nil, dErrors.New(dErrors.CodeInvariantViolation, "client ID cannot be empty")
-	}
-	if tenantID == uuid.Nil {
-		return nil, dErrors.New(dErrors.CodeInvariantViolation, "tenant ID cannot be nil")
-	}
+func NewSession(id id.SessionID, userID id.UserID, clientID id.ClientID, tenantID id.TenantID, scopes []string, status SessionStatus, createdAt time.Time, expiresAt time.Time, lastSeenAt time.Time) (*Session, error) {
 	if len(scopes) == 0 {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "scopes cannot be empty")
 	}
-	if status == "" {
-		return nil, dErrors.New(dErrors.CodeInvariantViolation, "status cannot be empty")
+	if !status.IsValid() {
+		return nil, dErrors.New(dErrors.CodeInvariantViolation, fmt.Sprintf("invalid session status: %s", status))
 	}
 	if expiresAt.Before(createdAt) {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "session expiry must be after creation")
@@ -127,12 +110,9 @@ func NewSession(id, userID uuid.UUID, clientID uuid.UUID, tenantID uuid.UUID, sc
 }
 
 // NewAuthorizationCode creates an AuthorizationCodeRecord with domain invariant checks.
-func NewAuthorizationCode(code string, sessionID uuid.UUID, redirectURI string, createdAt, expiresAt time.Time) (*AuthorizationCodeRecord, error) {
+func NewAuthorizationCode(code string, sessionID id.SessionID, redirectURI string, createdAt time.Time, expiresAt time.Time) (*AuthorizationCodeRecord, error) {
 	if code == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "authorization code cannot be empty")
-	}
-	if sessionID == uuid.Nil {
-		return nil, dErrors.New(dErrors.CodeInvariantViolation, "session ID cannot be nil")
 	}
 	if redirectURI == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "redirect URI cannot be empty")
@@ -155,12 +135,9 @@ func NewAuthorizationCode(code string, sessionID uuid.UUID, redirectURI string, 
 }
 
 // NewRefreshToken creates a RefreshTokenRecord with domain invariant checks.
-func NewRefreshToken(token string, sessionID uuid.UUID, createdAt, expiresAt time.Time) (*RefreshTokenRecord, error) {
+func NewRefreshToken(token string, sessionID id.SessionID, createdAt time.Time, expiresAt time.Time) (*RefreshTokenRecord, error) {
 	if token == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "refresh token cannot be empty")
-	}
-	if sessionID == uuid.Nil {
-		return nil, dErrors.New(dErrors.CodeInvariantViolation, "session ID cannot be nil")
 	}
 	if expiresAt.Before(createdAt) {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "refresh token expiry must be after creation")

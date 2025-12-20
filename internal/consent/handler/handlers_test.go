@@ -30,6 +30,7 @@ import (
 	"credo/internal/consent/handler/mocks"
 	consentModel "credo/internal/consent/models"
 	"credo/internal/platform/middleware"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
 
@@ -72,7 +73,7 @@ func (s *ConsentHandlerSuite) TestHandleGrantConsent_ErrorMapping() {
 	s.T().Run("empty purposes array returns 400", func(t *testing.T) {
 		handler, _ := newTestHandler(t)
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent",
-			consentModel.GrantRequest{Purposes: []consentModel.Purpose{}}, "user123")
+			consentModel.GrantRequest{Purposes: []consentModel.Purpose{}}, "550e8400-e29b-41d4-a716-446655440000")
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()
@@ -84,7 +85,7 @@ func (s *ConsentHandlerSuite) TestHandleGrantConsent_ErrorMapping() {
 	s.T().Run("invalid purpose value returns 400", func(t *testing.T) {
 		handler, _ := newTestHandler(t)
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent",
-			consentModel.GrantRequest{Purposes: []consentModel.Purpose{"invalid_purpose"}}, "user123")
+			consentModel.GrantRequest{Purposes: []consentModel.Purpose{"invalid_purpose"}}, "550e8400-e29b-41d4-a716-446655440000")
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()
@@ -95,15 +96,17 @@ func (s *ConsentHandlerSuite) TestHandleGrantConsent_ErrorMapping() {
 
 	s.T().Run("service CodeInternal error returns 500", func(t *testing.T) {
 		handler, mockService := newTestHandler(t)
+		testUserIDStr := "550e8400-e29b-41d4-a716-446655440000"
+		userID, _ := id.ParseUserID(testUserIDStr)
 		mockService.EXPECT().Grant(
 			gomock.Any(),
-			"user123",
+			userID,
 			[]consentModel.Purpose{consentModel.PurposeLogin},
 		).Return(nil, dErrors.New(dErrors.CodeInternal, "storage system unavailable"))
 
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent",
 			consentModel.GrantRequest{Purposes: []consentModel.Purpose{consentModel.PurposeLogin}},
-			"user123")
+			testUserIDStr)
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()
@@ -131,11 +134,13 @@ func (s *ConsentHandlerSuite) TestHandleGetConsents_ErrorMapping() {
 
 	s.T().Run("service CodeInternal error returns 500", func(t *testing.T) {
 		handler, mockService := newTestHandler(t)
-		mockService.EXPECT().List(gomock.Any(), "user123", gomock.Any()).
+		testUserIDStr := "550e8400-e29b-41d4-a716-446655440000"
+		userID, _ := id.ParseUserID(testUserIDStr)
+		mockService.EXPECT().List(gomock.Any(), userID, gomock.Any()).
 			Return(nil, dErrors.New(dErrors.CodeInternal, "storage system unavailable"))
 
 		req := httptest.NewRequest(http.MethodGet, "/auth/consent", nil)
-		ctx := context.WithValue(req.Context(), middleware.ContextKeyUserID, "user123")
+		ctx := context.WithValue(req.Context(), middleware.ContextKeyUserID, testUserIDStr)
 		req = req.WithContext(ctx)
 		w := httptest.NewRecorder()
 
@@ -148,7 +153,7 @@ func (s *ConsentHandlerSuite) TestHandleGetConsents_ErrorMapping() {
 		// Handler-level validation of query param
 		handler, _ := newTestHandler(t)
 		req := httptest.NewRequest(http.MethodGet, "/auth/consent?status=unknown", nil)
-		ctx := context.WithValue(req.Context(), middleware.ContextKeyUserID, "user123")
+		ctx := context.WithValue(req.Context(), middleware.ContextKeyUserID, "550e8400-e29b-41d4-a716-446655440000")
 		req = req.WithContext(ctx)
 		w := httptest.NewRecorder()
 
@@ -179,7 +184,7 @@ func (s *ConsentHandlerSuite) TestHandleRevokeConsent_ErrorMapping() {
 	s.T().Run("empty purposes array returns 400", func(t *testing.T) {
 		handler, _ := newTestHandler(t)
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent/revoke",
-			consentModel.RevokeRequest{Purposes: []consentModel.Purpose{}}, "user123")
+			consentModel.RevokeRequest{Purposes: []consentModel.Purpose{}}, "550e8400-e29b-41d4-a716-446655440000")
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()
@@ -190,11 +195,13 @@ func (s *ConsentHandlerSuite) TestHandleRevokeConsent_ErrorMapping() {
 
 	s.T().Run("service CodeInternal error returns 500", func(t *testing.T) {
 		handler, mockService := newTestHandler(t)
-		mockService.EXPECT().Revoke(gomock.Any(), "user123", []consentModel.Purpose{consentModel.PurposeLogin}).
+		testUserIDStr := "550e8400-e29b-41d4-a716-446655440000"
+		userID, _ := id.ParseUserID(testUserIDStr)
+		mockService.EXPECT().Revoke(gomock.Any(), userID, []consentModel.Purpose{consentModel.PurposeLogin}).
 			Return(nil, dErrors.New(dErrors.CodeInternal, "storage system unavailable"))
 
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent/revoke",
-			consentModel.RevokeRequest{Purposes: []consentModel.Purpose{consentModel.PurposeLogin}}, "user123")
+			consentModel.RevokeRequest{Purposes: []consentModel.Purpose{consentModel.PurposeLogin}}, testUserIDStr)
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()

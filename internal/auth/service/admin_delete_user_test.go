@@ -7,6 +7,7 @@ import (
 
 	"credo/internal/auth/models"
 	userStore "credo/internal/auth/store/user"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 
 	"github.com/google/uuid"
@@ -20,7 +21,7 @@ import (
 // in e2e/features/admin_gdpr.feature. These unit tests focus on error propagation.
 func (s *ServiceSuite) TestDeleteUser() {
 	ctx := context.Background()
-	userID := uuid.New()
+	userID := id.UserID(uuid.New())
 	existingUser := &models.User{ID: userID, Email: "user@example.com"}
 
 	s.T().Run("user lookup fails", func(t *testing.T) {

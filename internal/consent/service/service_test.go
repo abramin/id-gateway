@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -30,6 +31,7 @@ import (
 	"credo/internal/consent/models"
 	"credo/internal/consent/service/mocks"
 	"credo/internal/consent/store"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
 
@@ -71,20 +73,14 @@ func TestServiceSuite(t *testing.T) {
 // Invariant: Invalid input must return appropriate domain error codes (CodeUnauthorized, CodeBadRequest).
 // Reason not a feature test: Feature tests verify HTTP status codes; this tests internal error code mapping.
 func (s *ServiceSuite) TestGrant_ValidationErrors() {
-	s.T().Run("missing userID returns CodeUnauthorized", func(t *testing.T) {
-		_, err := s.service.Grant(context.Background(), "", []models.Purpose{models.PurposeLogin})
-		require.Error(t, err)
-		assert.True(t, dErrors.HasCode(err, dErrors.CodeUnauthorized), "expected CodeUnauthorized for missing userID")
-	})
-
 	s.T().Run("empty purposes returns CodeBadRequest", func(t *testing.T) {
-		_, err := s.service.Grant(context.Background(), "user123", []models.Purpose{})
+		_, err := s.service.Grant(context.Background(), id.UserID(uuid.New()), []models.Purpose{})
 		require.Error(t, err)
 		assert.True(t, dErrors.HasCode(err, dErrors.CodeBadRequest), "expected CodeBadRequest for empty purposes")
 	})
 
 	s.T().Run("invalid purpose returns CodeBadRequest", func(t *testing.T) {
-		_, err := s.service.Grant(context.Background(), "user123", []models.Purpose{"invalid_purpose"})
+		_, err := s.service.Grant(context.Background(), id.UserID(uuid.New()), []models.Purpose{"invalid_purpose"})
 		require.Error(t, err)
 		assert.True(t, dErrors.HasCode(err, dErrors.CodeBadRequest), "expected CodeBadRequest for invalid purpose")
 	})
@@ -95,25 +91,27 @@ func (s *ServiceSuite) TestGrant_ValidationErrors() {
 // Reason not a feature test: Tests internal error wrapping boundary; feature tests cannot induce store failures.
 func (s *ServiceSuite) TestGrant_StoreErrorPropagation() {
 	s.T().Run("store error on find propagates as CodeInternal", func(t *testing.T) {
+		userID := id.UserID(uuid.New())
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeLogin).
+			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeLogin).
 			Return(nil, assert.AnError)
 
-		_, err := s.service.Grant(context.Background(), "user123", []models.Purpose{models.PurposeLogin})
+		_, err := s.service.Grant(context.Background(), userID, []models.Purpose{models.PurposeLogin})
 		require.Error(t, err)
 		assert.True(t, dErrors.HasCode(err, dErrors.CodeInternal), "expected CodeInternal for store find error")
 	})
 
 	s.T().Run("store error on save propagates as CodeInternal", func(t *testing.T) {
+		userID := id.UserID(uuid.New())
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeLogin).
+			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeLogin).
 			Return(nil, store.ErrNotFound)
 
 		s.mockStore.EXPECT().
 			Save(gomock.Any(), gomock.Any()).
 			Return(assert.AnError)
 
-		_, err := s.service.Grant(context.Background(), "user123", []models.Purpose{models.PurposeLogin})
+		_, err := s.service.Grant(context.Background(), userID, []models.Purpose{models.PurposeLogin})
 		require.Error(t, err)
 		assert.True(t, dErrors.HasCode(err, dErrors.CodeInternal), "expected CodeInternal for store save error")
 	})
@@ -127,14 +125,8 @@ func (s *ServiceSuite) TestGrant_StoreErrorPropagation() {
 // Invariant: Invalid input must return appropriate domain error codes.
 // Reason not a feature test: Feature tests verify HTTP status codes; this tests internal error code mapping.
 func (s *ServiceSuite) TestRevoke_ValidationErrors() {
-	s.T().Run("missing userID returns CodeUnauthorized", func(t *testing.T) {
-		_, err := s.service.Revoke(context.Background(), "", []models.Purpose{models.PurposeLogin})
-		require.Error(t, err)
-		assert.True(t, dErrors.HasCode(err, dErrors.CodeUnauthorized), "expected CodeUnauthorized for missing userID")
-	})
-
 	s.T().Run("invalid purpose returns CodeBadRequest", func(t *testing.T) {
-		_, err := s.service.Revoke(context.Background(), "user123", []models.Purpose{"invalid_purpose"})
+		_, err := s.service.Revoke(context.Background(), id.UserID(uuid.New()), []models.Purpose{"invalid_purpose"})
 		require.Error(t, err)
 		assert.True(t, dErrors.HasCode(err, dErrors.CodeBadRequest), "expected CodeBadRequest for invalid purpose")
 	})
@@ -145,30 +137,32 @@ func (s *ServiceSuite) TestRevoke_ValidationErrors() {
 // Reason not a feature test: Tests internal error wrapping boundary; feature tests cannot induce store failures.
 func (s *ServiceSuite) TestRevoke_StoreErrorPropagation() {
 	s.T().Run("store error on find propagates as CodeInternal", func(t *testing.T) {
+		userID := id.UserID(uuid.New())
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeLogin).
+			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeLogin).
 			Return(nil, assert.AnError)
 
-		_, err := s.service.Revoke(context.Background(), "user123", []models.Purpose{models.PurposeLogin})
+		_, err := s.service.Revoke(context.Background(), userID, []models.Purpose{models.PurposeLogin})
 		require.Error(t, err)
 		assert.True(t, dErrors.HasCode(err, dErrors.CodeInternal), "expected CodeInternal for store find error")
 	})
 
 	s.T().Run("store error on revoke propagates as CodeInternal", func(t *testing.T) {
+		userID := id.UserID(uuid.New())
 		existing := &models.Record{
-			ID:      "consent_1",
+			ID:      id.ConsentID(uuid.New()),
 			Purpose: models.PurposeLogin,
 		}
 
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeLogin).
+			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeLogin).
 			Return(existing, nil)
 
 		s.mockStore.EXPECT().
-			RevokeByUserAndPurpose(gomock.Any(), "user123", models.PurposeLogin, gomock.Any()).
+			RevokeByUserAndPurpose(gomock.Any(), userID, models.PurposeLogin, gomock.Any()).
 			Return(nil, assert.AnError)
 
-		_, err := s.service.Revoke(context.Background(), "user123", []models.Purpose{models.PurposeLogin})
+		_, err := s.service.Revoke(context.Background(), userID, []models.Purpose{models.PurposeLogin})
 		require.Error(t, err)
 		assert.True(t, dErrors.HasCode(err, dErrors.CodeInternal), "expected CodeInternal for store revoke error")
 	})
@@ -185,14 +179,8 @@ func (s *ServiceSuite) TestRevoke_StoreErrorPropagation() {
 // TestRequire_ValidationErrors verifies domain error code mapping for invalid input.
 // Invariant: Invalid input must return appropriate domain error codes.
 func (s *ServiceSuite) TestRequire_ValidationErrors() {
-	s.T().Run("missing userID returns CodeUnauthorized", func(t *testing.T) {
-		err := s.service.Require(context.Background(), "", models.PurposeVCIssuance)
-		require.Error(t, err)
-		assert.True(t, dErrors.HasCode(err, dErrors.CodeUnauthorized), "expected CodeUnauthorized for missing userID")
-	})
-
 	s.T().Run("invalid purpose returns CodeBadRequest", func(t *testing.T) {
-		err := s.service.Require(context.Background(), "user123", "invalid_purpose")
+		err := s.service.Require(context.Background(), id.UserID(uuid.New()), "invalid_purpose")
 		require.Error(t, err)
 		assert.True(t, dErrors.HasCode(err, dErrors.CodeBadRequest), "expected CodeBadRequest for invalid purpose")
 	})
@@ -207,59 +195,63 @@ func (s *ServiceSuite) TestRequire_ConsentStates() {
 	expired := now.Add(-time.Hour)
 
 	s.T().Run("missing consent returns CodeMissingConsent", func(t *testing.T) {
+		userID := id.UserID(uuid.New())
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeVCIssuance).
+			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeVCIssuance).
 			Return(nil, store.ErrNotFound)
 
-		err := s.service.Require(context.Background(), "user123", models.PurposeVCIssuance)
+		err := s.service.Require(context.Background(), userID, models.PurposeVCIssuance)
 		require.Error(t, err)
 		assert.True(t, dErrors.HasCode(err, dErrors.CodeMissingConsent), "expected CodeMissingConsent for missing consent")
 	})
 
 	s.T().Run("revoked consent returns CodeInvalidConsent", func(t *testing.T) {
+		userID := id.UserID(uuid.New())
 		record := &models.Record{
-			ID:        "consent_1",
+			ID:        id.ConsentID(uuid.New()),
 			Purpose:   models.PurposeVCIssuance,
 			RevokedAt: &now,
 		}
 
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeVCIssuance).
+			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeVCIssuance).
 			Return(record, nil)
 
-		err := s.service.Require(context.Background(), "user123", models.PurposeVCIssuance)
+		err := s.service.Require(context.Background(), userID, models.PurposeVCIssuance)
 		require.Error(t, err)
 		assert.True(t, dErrors.HasCode(err, dErrors.CodeInvalidConsent), "expected CodeInvalidConsent for revoked consent")
 	})
 
 	s.T().Run("expired consent returns CodeInvalidConsent", func(t *testing.T) {
+		userID := id.UserID(uuid.New())
 		record := &models.Record{
-			ID:        "consent_1",
+			ID:        id.ConsentID(uuid.New()),
 			Purpose:   models.PurposeVCIssuance,
 			ExpiresAt: &expired,
 		}
 
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeVCIssuance).
+			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeVCIssuance).
 			Return(record, nil)
 
-		err := s.service.Require(context.Background(), "user123", models.PurposeVCIssuance)
+		err := s.service.Require(context.Background(), userID, models.PurposeVCIssuance)
 		require.Error(t, err)
 		assert.True(t, dErrors.HasCode(err, dErrors.CodeInvalidConsent), "expected CodeInvalidConsent for expired consent")
 	})
 
 	s.T().Run("active consent returns nil", func(t *testing.T) {
+		userID := id.UserID(uuid.New())
 		record := &models.Record{
-			ID:        "consent_1",
+			ID:        id.ConsentID(uuid.New()),
 			Purpose:   models.PurposeVCIssuance,
 			ExpiresAt: &future,
 		}
 
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeVCIssuance).
+			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeVCIssuance).
 			Return(record, nil)
 
-		err := s.service.Require(context.Background(), "user123", models.PurposeVCIssuance)
+		err := s.service.Require(context.Background(), userID, models.PurposeVCIssuance)
 		assert.NoError(t, err)
 	})
 }
@@ -269,22 +261,23 @@ func (s *ServiceSuite) TestRequire_ConsentStates() {
 // Reason not a feature test: Tests precise timing boundary that cannot be controlled in e2e.
 func (s *ServiceSuite) TestRequire_TimeBoundary() {
 	s.T().Run("consent expiring exactly now is treated as expired", func(t *testing.T) {
+		userID := id.UserID(uuid.New())
 		// Set expiry to exactly now
 		exactlyNow := time.Now()
 		record := &models.Record{
-			ID:        "consent_boundary",
+			ID:        id.ConsentID(uuid.New()),
 			Purpose:   models.PurposeVCIssuance,
 			ExpiresAt: &exactlyNow,
 		}
 
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeVCIssuance).
+			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeVCIssuance).
 			Return(record, nil)
 
 		// Service uses time.Now() internally, so ExpiresAt.Before(now) will be false initially
 		// but by the time the comparison happens, exactlyNow.Before(time.Now()) should be true
 		// due to time passing. This test verifies the edge case behavior.
-		err := s.service.Require(context.Background(), "user123", models.PurposeVCIssuance)
+		err := s.service.Require(context.Background(), userID, models.PurposeVCIssuance)
 		// The result depends on exact timing - either expired or just barely valid
 		// We're testing that the boundary doesn't panic or cause unexpected behavior
 		if err != nil {
@@ -295,37 +288,39 @@ func (s *ServiceSuite) TestRequire_TimeBoundary() {
 	})
 
 	s.T().Run("consent expired 1 nanosecond ago is expired", func(t *testing.T) {
+		userID := id.UserID(uuid.New())
 		// Set expiry to 1 nanosecond ago to guarantee expired
 		justExpired := time.Now().Add(-time.Nanosecond)
 		record := &models.Record{
-			ID:        "consent_just_expired",
+			ID:        id.ConsentID(uuid.New()),
 			Purpose:   models.PurposeVCIssuance,
 			ExpiresAt: &justExpired,
 		}
 
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeVCIssuance).
+			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeVCIssuance).
 			Return(record, nil)
 
-		err := s.service.Require(context.Background(), "user123", models.PurposeVCIssuance)
+		err := s.service.Require(context.Background(), userID, models.PurposeVCIssuance)
 		require.Error(t, err)
 		assert.True(t, dErrors.HasCode(err, dErrors.CodeInvalidConsent), "expected CodeInvalidConsent for just-expired consent")
 	})
 
 	s.T().Run("consent expiring in 1 nanosecond is still valid", func(t *testing.T) {
+		userID := id.UserID(uuid.New())
 		// Set expiry to 1 nanosecond in the future
 		justBeforeExpiry := time.Now().Add(time.Nanosecond)
 		record := &models.Record{
-			ID:        "consent_about_to_expire",
+			ID:        id.ConsentID(uuid.New()),
 			Purpose:   models.PurposeVCIssuance,
 			ExpiresAt: &justBeforeExpiry,
 		}
 
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeVCIssuance).
+			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeVCIssuance).
 			Return(record, nil)
 
-		err := s.service.Require(context.Background(), "user123", models.PurposeVCIssuance)
+		err := s.service.Require(context.Background(), userID, models.PurposeVCIssuance)
 		// May or may not pass depending on exact timing, but should not panic
 		// The important thing is consistent error types
 		if err != nil {
@@ -334,17 +329,18 @@ func (s *ServiceSuite) TestRequire_TimeBoundary() {
 	})
 
 	s.T().Run("consent with nil ExpiresAt is valid (no expiry)", func(t *testing.T) {
+		userID := id.UserID(uuid.New())
 		record := &models.Record{
-			ID:        "consent_no_expiry",
+			ID:        id.ConsentID(uuid.New()),
 			Purpose:   models.PurposeVCIssuance,
 			ExpiresAt: nil, // No expiry set
 		}
 
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeVCIssuance).
+			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeVCIssuance).
 			Return(record, nil)
 
-		err := s.service.Require(context.Background(), "user123", models.PurposeVCIssuance)
+		err := s.service.Require(context.Background(), userID, models.PurposeVCIssuance)
 		assert.NoError(t, err, "consent with no expiry should be valid")
 	})
 }
@@ -353,11 +349,12 @@ func (s *ServiceSuite) TestRequire_TimeBoundary() {
 // Invariant: Store failures must surface as CodeInternal errors.
 func (s *ServiceSuite) TestRequire_StoreErrorPropagation() {
 	s.T().Run("store error propagates as CodeInternal", func(t *testing.T) {
+		userID := id.UserID(uuid.New())
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), "user123", models.PurposeVCIssuance).
+			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeVCIssuance).
 			Return(nil, assert.AnError)
 
-		err := s.service.Require(context.Background(), "user123", models.PurposeVCIssuance)
+		err := s.service.Require(context.Background(), userID, models.PurposeVCIssuance)
 		require.Error(t, err)
 		assert.True(t, dErrors.HasCode(err, dErrors.CodeInternal), "expected CodeInternal for store error")
 	})

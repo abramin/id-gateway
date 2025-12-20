@@ -12,6 +12,7 @@ package mocks
 import (
 	context "context"
 	models "credo/internal/consent/models"
+	domain "credo/pkg/domain"
 	reflect "reflect"
 	time "time"
 
@@ -43,7 +44,7 @@ func (m *MockStore) EXPECT() *MockStoreMockRecorder {
 }
 
 // DeleteByUser mocks base method.
-func (m *MockStore) DeleteByUser(ctx context.Context, userID string) error {
+func (m *MockStore) DeleteByUser(ctx context.Context, userID domain.UserID) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteByUser", ctx, userID)
 	ret0, _ := ret[0].(error)
@@ -57,7 +58,7 @@ func (mr *MockStoreMockRecorder) DeleteByUser(ctx, userID any) *gomock.Call {
 }
 
 // FindByUserAndPurpose mocks base method.
-func (m *MockStore) FindByUserAndPurpose(ctx context.Context, userID string, purpose models.Purpose) (*models.Record, error) {
+func (m *MockStore) FindByUserAndPurpose(ctx context.Context, userID domain.UserID, purpose models.Purpose) (*models.Record, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FindByUserAndPurpose", ctx, userID, purpose)
 	ret0, _ := ret[0].(*models.Record)
@@ -72,7 +73,7 @@ func (mr *MockStoreMockRecorder) FindByUserAndPurpose(ctx, userID, purpose any) 
 }
 
 // ListByUser mocks base method.
-func (m *MockStore) ListByUser(ctx context.Context, userID string, filter *models.RecordFilter) ([]*models.Record, error) {
+func (m *MockStore) ListByUser(ctx context.Context, userID domain.UserID, filter *models.RecordFilter) ([]*models.Record, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListByUser", ctx, userID, filter)
 	ret0, _ := ret[0].([]*models.Record)
@@ -86,23 +87,8 @@ func (mr *MockStoreMockRecorder) ListByUser(ctx, userID, filter any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByUser", reflect.TypeOf((*MockStore)(nil).ListByUser), ctx, userID, filter)
 }
 
-// RevokeByUserAndPurpose mocks base method.
-func (m *MockStore) RevokeByUserAndPurpose(ctx context.Context, userID string, purpose models.Purpose, revokedAt time.Time) (*models.Record, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RevokeByUserAndPurpose", ctx, userID, purpose, revokedAt)
-	ret0, _ := ret[0].(*models.Record)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// RevokeByUserAndPurpose indicates an expected call of RevokeByUserAndPurpose.
-func (mr *MockStoreMockRecorder) RevokeByUserAndPurpose(ctx, userID, purpose, revokedAt any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokeByUserAndPurpose", reflect.TypeOf((*MockStore)(nil).RevokeByUserAndPurpose), ctx, userID, purpose, revokedAt)
-}
-
 // RevokeAllByUser mocks base method.
-func (m *MockStore) RevokeAllByUser(ctx context.Context, userID string, revokedAt time.Time) (int, error) {
+func (m *MockStore) RevokeAllByUser(ctx context.Context, userID domain.UserID, revokedAt time.Time) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RevokeAllByUser", ctx, userID, revokedAt)
 	ret0, _ := ret[0].(int)
@@ -114,6 +100,21 @@ func (m *MockStore) RevokeAllByUser(ctx context.Context, userID string, revokedA
 func (mr *MockStoreMockRecorder) RevokeAllByUser(ctx, userID, revokedAt any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokeAllByUser", reflect.TypeOf((*MockStore)(nil).RevokeAllByUser), ctx, userID, revokedAt)
+}
+
+// RevokeByUserAndPurpose mocks base method.
+func (m *MockStore) RevokeByUserAndPurpose(ctx context.Context, userID domain.UserID, purpose models.Purpose, revokedAt time.Time) (*models.Record, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RevokeByUserAndPurpose", ctx, userID, purpose, revokedAt)
+	ret0, _ := ret[0].(*models.Record)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RevokeByUserAndPurpose indicates an expected call of RevokeByUserAndPurpose.
+func (mr *MockStoreMockRecorder) RevokeByUserAndPurpose(ctx, userID, purpose, revokedAt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokeByUserAndPurpose", reflect.TypeOf((*MockStore)(nil).RevokeByUserAndPurpose), ctx, userID, purpose, revokedAt)
 }
 
 // Save mocks base method.

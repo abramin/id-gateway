@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+
 	"credo/internal/audit"
 	"credo/internal/auth/device"
 	"credo/internal/auth/models"
@@ -19,6 +21,7 @@ import (
 	"credo/internal/platform/middleware"
 	"credo/internal/sentinel"
 	"credo/pkg/attrs"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
 
@@ -78,16 +81,74 @@ type TxAuthStores struct {
 	RefreshTokens RefreshTokenStore
 }
 
-type mutexAuthTx struct {
-	mu     *sync.Mutex
-	stores TxAuthStores
+// shardedAuthTx provides fine-grained locking using sharded mutexes.
+// Instead of a single global lock, operations are distributed across N shards
+// based on a hash of the resource key, reducing contention under concurrent load.
+const numAuthShards = 32
+
+// defaultTxTimeout is the maximum duration for a transaction before it's aborted.
+const defaultTxTimeout = 5 * time.Second
+
+type shardedAuthTx struct {
+	shards  [numAuthShards]sync.Mutex
+	stores  TxAuthStores
+	timeout time.Duration
 }
 
-func (t *mutexAuthTx) RunInTx(ctx context.Context, fn func(stores TxAuthStores) error) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+// RunInTx acquires a shard lock based on context and executes the transaction.
+// Falls back to shard 0 if no session key is in context.
+// Enforces a timeout to prevent runaway operations.
+func (t *shardedAuthTx) RunInTx(ctx context.Context, fn func(stores TxAuthStores) error) error {
+	// Check if context is already cancelled
+	if err := ctx.Err(); err != nil {
+		return dErrors.Wrap(err, dErrors.CodeTimeout, "transaction aborted: context cancelled")
+	}
+
+	// Apply timeout if not already set
+	timeout := t.timeout
+	if timeout == 0 {
+		timeout = defaultTxTimeout
+	}
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	shard := t.selectShard(ctx)
+	t.shards[shard].Lock()
+	defer t.shards[shard].Unlock()
+
+	// Check again after acquiring lock
+	if err := ctx.Err(); err != nil {
+		return dErrors.Wrap(err, dErrors.CodeTimeout, "transaction aborted: context cancelled")
+	}
+
 	return fn(t.stores)
 }
+
+// selectShard picks a shard based on session ID from context, or defaults to shard 0.
+func (t *shardedAuthTx) selectShard(ctx context.Context) int {
+	// Try to get session ID from context for consistent sharding
+	if sessionID, ok := ctx.Value(txSessionKeyCtx).(string); ok && sessionID != "" {
+		return int(hashString(sessionID) % numAuthShards)
+	}
+	return 0
+}
+
+// hashString provides a simple hash for shard selection.
+func hashString(s string) uint32 {
+	var h uint32
+	for i := 0; i < len(s); i++ {
+		h = h*31 + uint32(s[i])
+	}
+	return h
+}
+
+// txSessionKey is the context key for session-based sharding.
+type txSessionKey struct{}
+
+var txSessionKeyCtx = txSessionKey{}
 
 func WithLogger(logger *slog.Logger) Option {
 	return func(s *Service) {
@@ -170,8 +231,7 @@ func New(
 		sessions:      sessions,
 		codes:         codes,
 		refreshTokens: refreshTokens,
-		tx: &mutexAuthTx{
-			mu: &sync.Mutex{},
+		tx: &shardedAuthTx{
 			stores: TxAuthStores{
 				Users:         users,
 				Codes:         codes,
@@ -213,11 +273,12 @@ func (s *Service) logAudit(ctx context.Context, event string, attributes ...any)
 	if s.auditPublisher == nil {
 		return
 	}
-	userID := attrs.ExtractString(attributes, "user_id")
+	userIDStr := attrs.ExtractString(attributes, "user_id")
+	userID, _ := id.ParseUserID(userIDStr) // Best-effort for audit - ignore parse errors
 	// TODO: log errors from audit publisher?
 	_ = s.auditPublisher.Emit(ctx, audit.Event{
 		UserID:  userID,
-		Subject: userID,
+		Subject: userIDStr,
 		Action:  event,
 	})
 }
@@ -338,8 +399,8 @@ func (s *Service) handleTokenError(ctx context.Context, err error, clientID stri
 func (s *Service) generateTokenArtifacts(session *models.Session) (*tokenArtifacts, error) {
 	// Generate tokens before mutating persistence state so failures do not leave partial writes.
 	accessToken, accessTokenJTI, err := s.jwt.GenerateAccessTokenWithJTI(
-		session.UserID,
-		session.ID,
+		uuid.UUID(session.UserID),
+		uuid.UUID(session.ID),
 		session.ClientID.String(),
 		session.TenantID.String(),
 		session.RequestedScope,
@@ -348,7 +409,7 @@ func (s *Service) generateTokenArtifacts(session *models.Session) (*tokenArtifac
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate access token")
 	}
 
-	idToken, err := s.jwt.GenerateIDToken(session.UserID, session.ID, session.ClientID.String(), session.TenantID.String())
+	idToken, err := s.jwt.GenerateIDToken(uuid.UUID(session.UserID), uuid.UUID(session.ID), session.ClientID.String(), session.TenantID.String())
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate ID token")
 	}

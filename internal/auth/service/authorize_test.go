@@ -8,6 +8,7 @@ import (
 	"credo/internal/auth/models"
 	"credo/internal/platform/middleware"
 	tenant "credo/internal/tenant/models"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 
 	"github.com/google/uuid"
@@ -27,16 +28,16 @@ import (
 // - "happy path - user not found, creates user" - covered by "Complete OAuth2 authorization code flow"
 // - "happy path - user exists" - covered by "Complete OAuth2 authorization code flow"
 func (s *ServiceSuite) TestAuthorize() {
-	tenantID := uuid.New()
-	clientID := uuid.New()
+	tenantID := id.TenantID(uuid.New())
+	clientID := id.ClientID(uuid.New())
 
 	mockClient := &tenant.Client{
-		ID:           clientID,
-		TenantID:     tenantID,
-		ClientID:     "client-123",
-		Name:         "Test Client",
-		Status:       "active",
-		RedirectURIs: []string{"https://client.app/callback"},
+		ID:             clientID,
+		TenantID:       tenantID,
+		OAuthClientID:  "client-123",
+		Name:           "Test Client",
+		Status:         "active",
+		RedirectURIs:   []string{"https://client.app/callback"},
 	}
 
 	mockTenant := &tenant.Tenant{
@@ -45,7 +46,7 @@ func (s *ServiceSuite) TestAuthorize() {
 	}
 
 	var existingUser = &models.User{
-		ID:        uuid.New(),
+		ID:        id.UserID(uuid.New()),
 		TenantID:  tenantID,
 		Email:     "email@test.com",
 		FirstName: "Existing",
@@ -83,7 +84,7 @@ func (s *ServiceSuite) TestAuthorize() {
 		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), req.ClientID).Return(mockClient, mockTenant, nil)
 
 		s.mockUserStore.EXPECT().FindOrCreateByTenantAndEmail(gomock.Any(), tenantID, req.Email, gomock.Any()).DoAndReturn(
-			func(ctx context.Context, tid uuid.UUID, email string, user *models.User) (*models.User, error) {
+			func(ctx context.Context, tid id.TenantID, email string, user *models.User) (*models.User, error) {
 				return user, nil
 			})
 
@@ -178,17 +179,17 @@ func (s *ServiceSuite) TestAuthorizeClientValidation() {
 // not registered on the client (PRD-026A FR-8).
 // This test is expected to FAIL until the validation is implemented.
 func (s *ServiceSuite) TestAuthorizeRedirectURIValidation() {
-	tenantID := uuid.New()
-	clientID := uuid.New()
+	tenantID := id.TenantID(uuid.New())
+	clientID := id.ClientID(uuid.New())
 
 	// Client with specific registered redirect URIs
 	mockClient := &tenant.Client{
-		ID:           clientID,
-		TenantID:     tenantID,
-		ClientID:     "client-123",
-		Name:         "Test Client",
-		Status:       "active",
-		RedirectURIs: []string{"https://allowed.example.com/callback"},
+		ID:             clientID,
+		TenantID:       tenantID,
+		OAuthClientID:  "client-123",
+		Name:           "Test Client",
+		Status:         "active",
+		RedirectURIs:   []string{"https://allowed.example.com/callback"},
 	}
 
 	mockTenant := &tenant.Tenant{
@@ -229,7 +230,7 @@ func (s *ServiceSuite) TestAuthorizeRedirectURIValidation() {
 		ctx := context.Background()
 
 		existingUser := &models.User{
-			ID:       uuid.New(),
+			ID:       id.UserID(uuid.New()),
 			TenantID: tenantID,
 			Email:    req.Email,
 			Status:   models.UserStatusActive,
@@ -246,4 +247,3 @@ func (s *ServiceSuite) TestAuthorizeRedirectURIValidation() {
 		assert.NotNil(t, result)
 	})
 }
-

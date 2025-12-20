@@ -41,20 +41,35 @@ func (s *InMemoryAllowlistStore) IsAllowlisted(ctx context.Context, identifier s
 		return false, nil
 	}
 
+	// First pass: check with read lock
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
+	var expiredKeys []string
 	typesToCheck := []models.AllowlistEntryType{models.AllowlistTypeIP, models.AllowlistTypeUserID}
 	for _, entryType := range typesToCheck {
 		key := buildKey(entryType, identifier)
 		if entry, exists := s.entries[key]; exists {
 			if !isExpired(entry) {
+				s.mu.RUnlock()
 				return true, nil
 			}
-			delete(s.entries, key)
+			expiredKeys = append(expiredKeys, key)
 		}
 	}
-	return false, nil // Default to not allowlisted
+	s.mu.RUnlock()
+
+	// Second pass: clean up expired entries with write lock
+	if len(expiredKeys) > 0 {
+		s.mu.Lock()
+		for _, key := range expiredKeys {
+			// Re-check expiration under write lock (entry may have been updated)
+			if entry, exists := s.entries[key]; exists && isExpired(entry) {
+				delete(s.entries, key)
+			}
+		}
+		s.mu.Unlock()
+	}
+
+	return false, nil
 }
 
 // List returns all active (non-expired) allowlist entries.

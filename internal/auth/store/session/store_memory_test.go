@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"credo/internal/auth/models"
+	id "credo/pkg/domain"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -24,10 +25,10 @@ func (s *InMemorySessionStoreSuite) SetupTest() {
 
 func (s *InMemorySessionStoreSuite) TestCreateAndFind() {
 	session := &models.Session{
-		ID:             uuid.New(),
-		UserID:         uuid.New(),
+		ID:             id.SessionID(uuid.New()),
+		UserID:         id.UserID(uuid.New()),
 		RequestedScope: []string{"openid"},
-		Status:         "pending",
+		Status:         models.SessionStatusPendingConsent,
 		CreatedAt:      time.Now(),
 		ExpiresAt:      time.Now().Add(time.Hour),
 	}
@@ -42,16 +43,16 @@ func (s *InMemorySessionStoreSuite) TestCreateAndFind() {
 }
 
 func (s *InMemorySessionStoreSuite) TestFindNotFound() {
-	_, err := s.store.FindByID(context.Background(), uuid.New())
+	_, err := s.store.FindByID(context.Background(), id.SessionID(uuid.New()))
 	assert.ErrorIs(s.T(), err, ErrNotFound)
 }
 
 func (s *InMemorySessionStoreSuite) TestUpdateSession() {
 	session := &models.Session{
-		ID:             uuid.New(),
-		UserID:         uuid.New(),
+		ID:             id.SessionID(uuid.New()),
+		UserID:         id.UserID(uuid.New()),
 		RequestedScope: []string{"openid"},
-		Status:         "pending",
+		Status:         models.SessionStatusPendingConsent,
 		CreatedAt:      time.Now(),
 		ExpiresAt:      time.Now().Add(time.Hour),
 	}
@@ -61,22 +62,22 @@ func (s *InMemorySessionStoreSuite) TestUpdateSession() {
 	require.NoError(s.T(), err)
 
 	// Update session status
-	session.Status = "active"
+	session.Status = models.SessionStatusActive
 	err = s.store.UpdateSession(context.Background(), session)
 	require.NoError(s.T(), err)
 
 	// Verify the update
 	found, err := s.store.FindByID(context.Background(), session.ID)
 	require.NoError(s.T(), err)
-	assert.Equal(s.T(), "active", found.Status)
+	assert.Equal(s.T(), models.SessionStatusActive, found.Status)
 }
 
 func (s *InMemorySessionStoreSuite) TestUpdateSessionNotFound() {
 	session := &models.Session{
-		ID:             uuid.New(),
-		UserID:         uuid.New(),
+		ID:             id.SessionID(uuid.New()),
+		UserID:         id.UserID(uuid.New()),
 		RequestedScope: []string{"openid"},
-		Status:         "active",
+		Status:         models.SessionStatusActive,
 		CreatedAt:      time.Now(),
 		ExpiresAt:      time.Now().Add(time.Hour),
 	}
@@ -86,10 +87,10 @@ func (s *InMemorySessionStoreSuite) TestUpdateSessionNotFound() {
 }
 
 func (s *InMemorySessionStoreSuite) TestDeleteSessionsByUser() {
-	userID := uuid.New()
-	otherUserID := uuid.New()
-	matching := &models.Session{ID: uuid.New(), UserID: userID}
-	other := &models.Session{ID: uuid.New(), UserID: otherUserID}
+	userID := id.UserID(uuid.New())
+	otherUserID := id.UserID(uuid.New())
+	matching := &models.Session{ID: id.SessionID(uuid.New()), UserID: userID}
+	other := &models.Session{ID: id.SessionID(uuid.New()), UserID: otherUserID}
 
 	require.NoError(s.T(), s.store.Create(context.Background(), matching))
 	require.NoError(s.T(), s.store.Create(context.Background(), other))
@@ -110,9 +111,9 @@ func (s *InMemorySessionStoreSuite) TestDeleteSessionsByUser() {
 
 func (s *InMemorySessionStoreSuite) TestRevokeSessionMarksRevoked() {
 	session := &models.Session{
-		ID:        uuid.New(),
-		UserID:    uuid.New(),
-		Status:    "active",
+		ID:        id.SessionID(uuid.New()),
+		UserID:    id.UserID(uuid.New()),
+		Status:    models.SessionStatusActive,
 		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
@@ -124,7 +125,7 @@ func (s *InMemorySessionStoreSuite) TestRevokeSessionMarksRevoked() {
 
 	found, err := s.store.FindByID(context.Background(), session.ID)
 	require.NoError(s.T(), err)
-	assert.Equal(s.T(), "revoked", found.Status)
+	assert.Equal(s.T(), models.SessionStatusRevoked, found.Status)
 	require.NotNil(s.T(), found.RevokedAt)
 
 	err = s.store.RevokeSessionIfActive(context.Background(), session.ID, time.Now())
@@ -132,7 +133,7 @@ func (s *InMemorySessionStoreSuite) TestRevokeSessionMarksRevoked() {
 }
 
 func (s *InMemorySessionStoreSuite) TestRevokeSessionNotFound() {
-	err := s.store.RevokeSession(context.Background(), uuid.New())
+	err := s.store.RevokeSession(context.Background(), id.SessionID(uuid.New()))
 	assert.ErrorIs(s.T(), err, ErrNotFound)
 }
 
@@ -140,10 +141,10 @@ func (s *InMemorySessionStoreSuite) TestAdvanceLastSeen() {
 	ctx := context.Background()
 	now := time.Now()
 	session := &models.Session{
-		ID:         uuid.New(),
-		UserID:     uuid.New(),
-		ClientID:   uuid.New(),
-		Status:     "pending_consent",
+		ID:         id.SessionID(uuid.New()),
+		UserID:     id.UserID(uuid.New()),
+		ClientID:   id.ClientID(uuid.New()),
+		Status:     models.SessionStatusPendingConsent,
 		CreatedAt:  now.Add(-time.Hour),
 		ExpiresAt:  now.Add(time.Hour),
 		LastSeenAt: now.Add(-time.Minute),
@@ -152,7 +153,7 @@ func (s *InMemorySessionStoreSuite) TestAdvanceLastSeen() {
 
 	updated, err := s.store.AdvanceLastSeen(ctx, session.ID, session.ClientID.String(), now, "jti-1", true, "device-1", "fp-1")
 	require.NoError(s.T(), err)
-	assert.Equal(s.T(), "active", updated.Status)
+	assert.Equal(s.T(), models.SessionStatusActive, updated.Status)
 	assert.Equal(s.T(), "jti-1", updated.LastAccessTokenJTI)
 	assert.Equal(s.T(), "device-1", updated.DeviceID)
 	assert.Equal(s.T(), "fp-1", updated.DeviceFingerprintHash)
@@ -170,10 +171,10 @@ func (s *InMemorySessionStoreSuite) TestAdvanceLastSeenRejectsInvalid() {
 	ctx := context.Background()
 	now := time.Now()
 	session := &models.Session{
-		ID:         uuid.New(),
-		UserID:     uuid.New(),
-		ClientID:   uuid.New(),
-		Status:     "revoked",
+		ID:         id.SessionID(uuid.New()),
+		UserID:     id.UserID(uuid.New()),
+		ClientID:   id.ClientID(uuid.New()),
+		Status:     models.SessionStatusRevoked,
 		CreatedAt:  now.Add(-time.Hour),
 		ExpiresAt:  now.Add(time.Hour),
 		LastSeenAt: now.Add(-time.Minute),
@@ -188,10 +189,10 @@ func (s *InMemorySessionStoreSuite) TestAdvanceLastRefreshed() {
 	ctx := context.Background()
 	now := time.Now()
 	session := &models.Session{
-		ID:         uuid.New(),
-		UserID:     uuid.New(),
-		ClientID:   uuid.New(),
-		Status:     "active",
+		ID:         id.SessionID(uuid.New()),
+		UserID:     id.UserID(uuid.New()),
+		ClientID:   id.ClientID(uuid.New()),
+		Status:     models.SessionStatusActive,
 		CreatedAt:  now.Add(-time.Hour),
 		ExpiresAt:  now.Add(time.Hour),
 		LastSeenAt: now.Add(-time.Minute),

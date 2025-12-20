@@ -8,11 +8,11 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 
 	"credo/internal/auth/models"
 	"credo/internal/platform/middleware"
 	"credo/internal/transport/httputil"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
 
@@ -21,9 +21,9 @@ type Service interface {
 	Authorize(ctx context.Context, req *models.AuthorizationRequest) (*models.AuthorizationResult, error)
 	Token(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error)
 	UserInfo(ctx context.Context, sessionID string) (*models.UserInfoResult, error)
-	ListSessions(ctx context.Context, userID uuid.UUID, currentSessionID uuid.UUID) (*models.SessionsResult, error)
-	RevokeSession(ctx context.Context, userID uuid.UUID, sessionID uuid.UUID) error
-	DeleteUser(ctx context.Context, userID uuid.UUID) error
+	ListSessions(ctx context.Context, userID id.UserID, currentSessionID id.SessionID) (*models.SessionsResult, error)
+	RevokeSession(ctx context.Context, userID id.UserID, sessionID id.SessionID) error
+	DeleteUser(ctx context.Context, userID id.UserID) error
 	RevokeToken(ctx context.Context, token string, tokenTypeHint string) error
 }
 
@@ -193,7 +193,7 @@ func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 	userIDStr := middleware.GetUserID(ctx)
 	sessionIDStr := middleware.GetSessionID(ctx)
 
-	userID, err := uuid.Parse(userIDStr)
+	userID, err := id.ParseUserID(userIDStr)
 	if err != nil {
 		h.logger.WarnContext(ctx, "invalid user_id in auth context",
 			"user_id", userIDStr,
@@ -203,7 +203,7 @@ func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	currentSessionID, err := uuid.Parse(sessionIDStr)
+	currentSessionID, err := id.ParseSessionID(sessionIDStr)
 	if err != nil {
 		h.logger.WarnContext(ctx, "invalid session_id in auth context",
 			"session_id", sessionIDStr,
@@ -233,7 +233,7 @@ func (h *Handler) HandleRevokeSession(w http.ResponseWriter, r *http.Request) {
 	requestID := middleware.GetRequestID(ctx)
 	userIDStr := middleware.GetUserID(ctx)
 
-	userID, err := uuid.Parse(userIDStr)
+	userID, err := id.ParseUserID(userIDStr)
 	if err != nil {
 		h.logger.WarnContext(ctx, "invalid user id in context",
 			"error", err,
@@ -244,7 +244,7 @@ func (h *Handler) HandleRevokeSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sessionIDStr := chi.URLParam(r, "session_id")
-	sessionID, err := uuid.Parse(sessionIDStr)
+	sessionID, err := id.ParseSessionID(sessionIDStr)
 	if err != nil {
 		h.logger.WarnContext(ctx, "invalid session id in path",
 			"error", err,
@@ -275,7 +275,7 @@ func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
 	userIDParam := chi.URLParam(r, "user_id")
-	userID, err := uuid.Parse(userIDParam)
+	userID, err := id.ParseUserID(userIDParam)
 	if err != nil {
 		h.logger.WarnContext(ctx, "invalid user_id in delete request",
 			"user_id", userIDParam,

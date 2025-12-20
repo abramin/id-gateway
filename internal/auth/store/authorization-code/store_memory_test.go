@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"credo/internal/auth/models"
+	id "credo/pkg/domain"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -24,7 +25,7 @@ func (s *InMemoryAuthorizationCodeStoreSuite) SetupTest() {
 
 func (s *InMemoryAuthorizationCodeStoreSuite) TestSave() {
 	authCode := &models.AuthorizationCodeRecord{
-		SessionID:   uuid.New(),
+		SessionID:   id.SessionID(uuid.New()),
 		ExpiresAt:   time.Now().Add(time.Minute * 10),
 		Code:        "authz_123456",
 		CreatedAt:   time.Now(),
@@ -53,7 +54,7 @@ func (s *InMemoryAuthorizationCodeStoreSuite) TestConsumeAuthCode() {
 	now := time.Now()
 	record := &models.AuthorizationCodeRecord{
 		Code:        "authz_consume",
-		SessionID:   uuid.New(),
+		SessionID:   id.SessionID(uuid.New()),
 		RedirectURI: "https://app/callback",
 		ExpiresAt:   now.Add(time.Minute),
 		Used:        false,
@@ -77,7 +78,7 @@ func (s *InMemoryAuthorizationCodeStoreSuite) TestConsumeAuthCodeRejectsInvalid(
 	now := time.Now()
 	record := &models.AuthorizationCodeRecord{
 		Code:        "authz_expired",
-		SessionID:   uuid.New(),
+		SessionID:   id.SessionID(uuid.New()),
 		RedirectURI: "https://app/callback",
 		ExpiresAt:   now.Add(-time.Minute),
 		Used:        false,

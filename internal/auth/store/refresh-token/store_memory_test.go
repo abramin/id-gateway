@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"credo/internal/auth/models"
+	id "credo/pkg/domain"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -23,7 +24,7 @@ func (s *InMemoryRefreshTokenStoreSuite) SetupTest() {
 }
 
 func (s *InMemoryRefreshTokenStoreSuite) TestCreateAndFind() {
-	sessionID := uuid.New()
+	sessionID := id.SessionID(uuid.New())
 	record := &models.RefreshTokenRecord{
 		ID:        uuid.New(),
 		Token:     "ref_123",
@@ -41,13 +42,13 @@ func (s *InMemoryRefreshTokenStoreSuite) TestCreateAndFind() {
 }
 
 func (s *InMemoryRefreshTokenStoreSuite) TestFindNotFound() {
-	_, err := s.store.FindBySessionID(context.Background(), uuid.New())
+	_, err := s.store.FindBySessionID(context.Background(), id.SessionID(uuid.New()))
 	assert.ErrorIs(s.T(), err, ErrNotFound)
 }
 
 func (s *InMemoryRefreshTokenStoreSuite) TestDeleteSessionsByUser() {
-	sessionID := uuid.New()
-	otherSessionID := uuid.New()
+	sessionID := id.SessionID(uuid.New())
+	otherSessionID := id.SessionID(uuid.New())
 	matching := &models.RefreshTokenRecord{ID: uuid.New(), Token: "ref_match", SessionID: sessionID}
 	other := &models.RefreshTokenRecord{ID: uuid.New(), Token: "ref_other", SessionID: otherSessionID}
 
@@ -69,7 +70,7 @@ func (s *InMemoryRefreshTokenStoreSuite) TestDeleteSessionsByUser() {
 }
 
 func (s *InMemoryRefreshTokenStoreSuite) TestConsumeMarksUsedAndTouches() {
-	sessionID := uuid.New()
+	sessionID := id.SessionID(uuid.New())
 	now := time.Now()
 	record := &models.RefreshTokenRecord{
 		ID:        uuid.New(),
@@ -95,7 +96,7 @@ func (s *InMemoryRefreshTokenStoreSuite) TestConsumeMarksUsedAndTouches() {
 }
 
 func (s *InMemoryRefreshTokenStoreSuite) TestFindBySessionIDReturnsNewestActive() {
-	sessionID := uuid.New()
+	sessionID := id.SessionID(uuid.New())
 	now := time.Now()
 
 	old := &models.RefreshTokenRecord{
@@ -135,7 +136,7 @@ func (s *InMemoryRefreshTokenStoreSuite) TestConsumeRefreshTokenRejectsExpired()
 	record := &models.RefreshTokenRecord{
 		ID:        uuid.New(),
 		Token:     "ref_expired",
-		SessionID: uuid.New(),
+		SessionID: id.SessionID(uuid.New()),
 		CreatedAt: now.Add(-time.Hour),
 		ExpiresAt: now.Add(-time.Minute),
 		Used:      false,

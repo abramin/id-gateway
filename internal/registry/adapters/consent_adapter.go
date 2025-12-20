@@ -7,6 +7,7 @@ import (
 	"credo/internal/consent/models"
 	"credo/internal/consent/service"
 	"credo/internal/registry/ports"
+	id "credo/pkg/domain"
 )
 
 // ConsentAdapter is an in-process adapter that implements ports.ConsentPort
@@ -27,7 +28,12 @@ func NewConsentAdapter(consentService *service.Service) ports.ConsentPort {
 
 // HasConsent checks if user has valid consent for a purpose
 func (a *ConsentAdapter) HasConsent(ctx context.Context, userID string, purpose string) (bool, error) {
-	records, err := a.consentService.List(ctx, userID, nil)
+	parsedUserID, err := id.ParseUserID(userID)
+	if err != nil {
+		return false, err
+	}
+
+	records, err := a.consentService.List(ctx, parsedUserID, nil)
 	if err != nil {
 		return false, err
 	}
@@ -45,5 +51,9 @@ func (a *ConsentAdapter) HasConsent(ctx context.Context, userID string, purpose 
 
 // RequireConsent enforces consent requirement - returns error if not granted
 func (a *ConsentAdapter) RequireConsent(ctx context.Context, userID string, purpose string) error {
-	return a.consentService.Require(ctx, userID, models.Purpose(purpose))
+	parsedUserID, err := id.ParseUserID(userID)
+	if err != nil {
+		return err
+	}
+	return a.consentService.Require(ctx, parsedUserID, models.Purpose(purpose))
 }

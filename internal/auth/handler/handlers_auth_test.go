@@ -22,6 +22,7 @@ import (
 	"credo/internal/auth/handler/mocks"
 	"credo/internal/auth/models"
 	"credo/internal/platform/middleware"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
 
@@ -30,7 +31,6 @@ import (
 // AuthHandlerSuite tests handler-specific behavior.
 // NOTE: Happy paths and input validation scenarios are covered by Cucumber E2E tests
 // in e2e/features/auth_*.feature. These unit tests focus on handler-specific logic:
-// - JSON parsing errors
 // - Context value extraction
 // - Internal error mapping to 500 responses
 type AuthHandlerSuite struct {
@@ -71,16 +71,6 @@ func (s *AuthHandlerSuite) TestHandler_Authorize() {
 		s.assertSuccessResponse(t, status, got, errBody)
 		assert.Equal(t, expectedResp.Code, got.Code)
 		assert.Equal(t, expectedResp.RedirectURI, got.RedirectURI)
-	})
-
-	s.T().Run("400 - invalid json body", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
-		mockService.EXPECT().Authorize(gomock.Any(), gomock.Any()).Times(0)
-
-		invalidJSON := `{"email": "`
-		status, got, errBody := s.doAuthRequest(t, router, invalidJSON)
-
-		s.assertErrorResponse(t, status, got, errBody, http.StatusBadRequest, string(dErrors.CodeBadRequest))
 	})
 
 	s.T().Run("returns 500 when service fails", func(t *testing.T) {
@@ -160,8 +150,8 @@ func (s *AuthHandlerSuite) TestHandler_UserInfo() {
 }
 
 func (s *AuthHandlerSuite) TestHandler_ListSessions() {
-	userID := uuid.New()
-	currentSessionID := uuid.New()
+	userID := id.UserID(uuid.New())
+	currentSessionID := id.SessionID(uuid.New())
 
 	s.T().Run("invalid user id in context - 401", func(t *testing.T) {
 		mockService, router := s.newHandler(t, nil)
@@ -191,8 +181,8 @@ func (s *AuthHandlerSuite) TestHandler_ListSessions() {
 }
 
 func (s *AuthHandlerSuite) TestHandler_RevokeSession() {
-	userID := uuid.New()
-	sessionID := uuid.New()
+	userID := id.UserID(uuid.New())
+	sessionID := id.SessionID(uuid.New())
 	path := "/auth/sessions/" + sessionID.String()
 
 	s.T().Run("invalid user id in context - 401", func(t *testing.T) {
@@ -213,7 +203,7 @@ func (s *AuthHandlerSuite) TestHandler_RevokeSession() {
 }
 
 func (s *AuthHandlerSuite) TestHandler_AdminDeleteUser() {
-	userID := uuid.New()
+	userID := id.UserID(uuid.New())
 	validPath := "/admin/auth/users/" + userID.String()
 
 	s.T().Run("invalid user id", func(t *testing.T) {

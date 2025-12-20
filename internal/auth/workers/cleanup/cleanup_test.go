@@ -9,6 +9,7 @@ import (
 	authCodeStore "credo/internal/auth/store/authorization-code"
 	refreshtoken "credo/internal/auth/store/refresh-token"
 	sessionStore "credo/internal/auth/store/session"
+	id "credo/pkg/domain"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -21,11 +22,11 @@ func TestCleanupService_RunOnce_Integration(t *testing.T) {
 	codes := authCodeStore.NewInMemoryAuthorizationCodeStore()
 	refreshTokens := refreshtoken.NewInMemoryRefreshTokenStore()
 
-	expiredSessionID := uuid.New()
+	expiredSessionID := id.SessionID(uuid.New())
 	expiredSession := &models.Session{
 		ID:         expiredSessionID,
-		UserID:     uuid.New(),
-		ClientID:   uuid.New(),
+		UserID:     id.UserID(uuid.New()),
+		ClientID:   id.ClientID(uuid.New()),
 		Status:     "active",
 		CreatedAt:  time.Now().Add(-48 * time.Hour),
 		ExpiresAt:  time.Now().Add(-1 * time.Hour),
@@ -83,5 +84,5 @@ func TestCleanupService_RunOnce_Integration(t *testing.T) {
 
 	allSessions, err := sessions.ListAll(ctx)
 	require.NoError(t, err)
-	require.NotContains(t, allSessions, expiredSessionID.String())
+	require.NotContains(t, allSessions, expiredSessionID)
 }

@@ -7,11 +7,11 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 
 	"credo/internal/platform/middleware"
 	"credo/internal/tenant/models"
 	"credo/internal/transport/httputil"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
 
@@ -25,12 +25,12 @@ import (
 // - When tenant admin auth is added, handlers must extract tenant context and use scoped methods
 type Service interface {
 	CreateTenant(ctx context.Context, name string) (*models.Tenant, error)
-	GetTenant(ctx context.Context, id uuid.UUID) (*models.TenantDetails, error)
+	GetTenant(ctx context.Context, id id.TenantID) (*models.TenantDetails, error)
 	CreateClient(ctx context.Context, req *models.CreateClientRequest) (*models.Client, string, error)
-	GetClient(ctx context.Context, id uuid.UUID) (*models.Client, error)
-	GetClientForTenant(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*models.Client, error)
-	UpdateClient(ctx context.Context, id uuid.UUID, req *models.UpdateClientRequest) (*models.Client, string, error)
-	UpdateClientForTenant(ctx context.Context, tenantID uuid.UUID, id uuid.UUID, req *models.UpdateClientRequest) (*models.Client, string, error)
+	GetClient(ctx context.Context, id id.ClientID) (*models.Client, error)
+	GetClientForTenant(ctx context.Context, tenantID id.TenantID, id id.ClientID) (*models.Client, error)
+	UpdateClient(ctx context.Context, id id.ClientID, req *models.UpdateClientRequest) (*models.Client, string, error)
+	UpdateClientForTenant(ctx context.Context, tenantID id.TenantID, id id.ClientID, req *models.UpdateClientRequest) (*models.Client, string, error)
 }
 
 type Handler struct {
@@ -87,7 +87,7 @@ func (h *Handler) HandleGetTenant(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
 	idStr := chi.URLParam(r, "id")
-	tenantID, err := uuid.Parse(idStr)
+	tenantID, err := id.ParseTenantID(idStr)
 	if err != nil {
 		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid tenant id"))
 		return
@@ -127,15 +127,15 @@ func (h *Handler) HandleCreateClient(w http.ResponseWriter, r *http.Request) {
 // HandleGetClient returns client metadata.
 // PRD-026A FR-4: Currently uses platform admin auth (X-Admin-Token).
 // TODO: When tenant admin auth is implemented:
-//   1. Extract tenant context from auth token
-//   2. Use h.service.GetClientForTenant(ctx, tenantID, clientID) instead
-//   3. This enforces tenant isolation at the service layer (per PRD-026A §Tenant Boundary)
+//  1. Extract tenant context from auth token
+//  2. Use h.service.GetClientForTenant(ctx, tenantID, clientID) instead
+//  3. This enforces tenant isolation at the service layer (per PRD-026A §Tenant Boundary)
 func (h *Handler) HandleGetClient(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
 
 	idStr := chi.URLParam(r, "id")
-	clientID, err := uuid.Parse(idStr)
+	clientID, err := id.ParseClientID(idStr)
 	if err != nil {
 		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid client id"))
 		return
@@ -156,15 +156,15 @@ func (h *Handler) HandleGetClient(w http.ResponseWriter, r *http.Request) {
 // HandleUpdateClient updates metadata and optionally rotates secret.
 // PRD-026A FR-4: Currently uses platform admin auth (X-Admin-Token).
 // TODO: When tenant admin auth is implemented:
-//   1. Extract tenant context from auth token
-//   2. Use h.service.UpdateClientForTenant(ctx, tenantID, clientID, req) instead
-//   3. This enforces tenant isolation at the service layer (per PRD-026A §Tenant Boundary)
+//  1. Extract tenant context from auth token
+//  2. Use h.service.UpdateClientForTenant(ctx, tenantID, clientID, req) instead
+//  3. This enforces tenant isolation at the service layer (per PRD-026A §Tenant Boundary)
 func (h *Handler) HandleUpdateClient(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
 
 	idStr := chi.URLParam(r, "id")
-	clientID, err := uuid.Parse(idStr)
+	clientID, err := id.ParseClientID(idStr)
 	if err != nil {
 		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid client id"))
 		return
@@ -195,7 +195,7 @@ func toClientResponse(client *models.Client, secret string) *models.ClientRespon
 		ID:            client.ID,
 		TenantID:      client.TenantID,
 		Name:          client.Name,
-		ClientID:      client.ClientID,
+		OAuthClientID: client.OAuthClientID,
 		ClientSecret:  secret,
 		RedirectURIs:  client.RedirectURIs,
 		AllowedGrants: client.AllowedGrants,

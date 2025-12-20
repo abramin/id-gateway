@@ -23,6 +23,7 @@ import (
 	jwttoken "credo/internal/jwt_token"
 	"credo/internal/platform/middleware"
 	tenantModels "credo/internal/tenant/models"
+	id "credo/pkg/domain"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -32,18 +33,18 @@ import (
 
 // stubClientResolver provides a simple test implementation of ClientResolver
 type stubClientResolver struct {
-	defaultTenantID uuid.UUID
-	defaultClientID uuid.UUID
+	defaultTenantID id.TenantID
+	defaultClientID id.ClientID
 }
 
 func (r *stubClientResolver) ResolveClient(ctx context.Context, clientID string) (*tenantModels.Client, *tenantModels.Tenant, error) {
 	return &tenantModels.Client{
-			ID:           r.defaultClientID,
-			TenantID:     r.defaultTenantID,
-			ClientID:     clientID,
-			Name:         "Test Client",
-			Status:       "active",
-			RedirectURIs: []string{"https://client.app/callback"},
+			ID:             r.defaultClientID,
+			TenantID:       r.defaultTenantID,
+			OAuthClientID:  clientID,
+			Name:           "Test Client",
+			Status:         "active",
+			RedirectURIs:   []string{"https://client.app/callback"},
 		}, &tenantModels.Tenant{
 			ID:     r.defaultTenantID,
 			Name:   "Test Tenant",
@@ -74,8 +75,8 @@ func SetupSuite(t *testing.T) (
 	auditStore := audit.NewInMemoryStore()
 	jwtValidator := jwttoken.NewJWTServiceAdapter(jwtService)
 	clientResolver := &stubClientResolver{
-		defaultTenantID: uuid.New(),
-		defaultClientID: uuid.New(),
+		defaultTenantID: id.TenantID(uuid.New()),
+		defaultClientID: id.ClientID(uuid.New()),
 	}
 	cfg := service.Config{
 		SessionTTL:             24 * time.Hour,

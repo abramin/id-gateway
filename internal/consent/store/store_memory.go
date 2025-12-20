@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"credo/internal/consent/models"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
 
@@ -21,11 +22,11 @@ var ErrNotFound = dErrors.New(dErrors.CodeNotFound, "record not found")
 
 type InMemoryStore struct {
 	mu       sync.RWMutex
-	consents map[string][]*models.Record
+	consents map[id.UserID][]*models.Record
 }
 
 func NewInMemoryStore() *InMemoryStore {
-	return &InMemoryStore{consents: make(map[string][]*models.Record)}
+	return &InMemoryStore{consents: make(map[id.UserID][]*models.Record)}
 }
 
 func (s *InMemoryStore) Save(_ context.Context, consent *models.Record) error {
@@ -35,7 +36,7 @@ func (s *InMemoryStore) Save(_ context.Context, consent *models.Record) error {
 	return nil
 }
 
-func (s *InMemoryStore) FindByUserAndPurpose(_ context.Context, userID string, purpose models.Purpose) (*models.Record, error) {
+func (s *InMemoryStore) FindByUserAndPurpose(_ context.Context, userID id.UserID, purpose models.Purpose) (*models.Record, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	records := s.consents[userID]
@@ -48,7 +49,7 @@ func (s *InMemoryStore) FindByUserAndPurpose(_ context.Context, userID string, p
 	return nil, ErrNotFound
 }
 
-func (s *InMemoryStore) ListByUser(_ context.Context, userID string, filter *models.RecordFilter) ([]*models.Record, error) {
+func (s *InMemoryStore) ListByUser(_ context.Context, userID id.UserID, filter *models.RecordFilter) ([]*models.Record, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	records := s.consents[userID]
@@ -92,7 +93,7 @@ func (s *InMemoryStore) Update(_ context.Context, consent *models.Record) error 
 	return nil
 }
 
-func (s *InMemoryStore) RevokeByUserAndPurpose(_ context.Context, userID string, purpose models.Purpose, revokedAt time.Time) (*models.Record, error) {
+func (s *InMemoryStore) RevokeByUserAndPurpose(_ context.Context, userID id.UserID, purpose models.Purpose, revokedAt time.Time) (*models.Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	records := s.consents[userID]
@@ -108,7 +109,7 @@ func (s *InMemoryStore) RevokeByUserAndPurpose(_ context.Context, userID string,
 	return result, nil
 }
 
-func (s *InMemoryStore) DeleteByUser(_ context.Context, userID string) error {
+func (s *InMemoryStore) DeleteByUser(_ context.Context, userID id.UserID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.consents, userID)
@@ -117,7 +118,7 @@ func (s *InMemoryStore) DeleteByUser(_ context.Context, userID string) error {
 
 // RevokeAllByUser revokes all active consents for a user.
 // Returns the count of consents that were revoked.
-func (s *InMemoryStore) RevokeAllByUser(_ context.Context, userID string, revokedAt time.Time) (int, error) {
+func (s *InMemoryStore) RevokeAllByUser(_ context.Context, userID id.UserID, revokedAt time.Time) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	records := s.consents[userID]

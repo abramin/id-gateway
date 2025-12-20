@@ -3,6 +3,7 @@ package models
 import (
 	"time"
 
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
 
@@ -28,22 +29,16 @@ const (
 
 // Record captures a user's decision for a specific purpose.
 type Record struct {
-	ID        string     `json:"id"`
-	UserID    string     `json:"user_id"`
-	Purpose   Purpose    `json:"purpose"`
-	GrantedAt time.Time  `json:"granted_at"`
-	ExpiresAt *time.Time `json:"expires_at,omitempty"`
-	RevokedAt *time.Time `json:"revoked_at,omitempty"`
+	ID        id.ConsentID `json:"id"`
+	UserID    id.UserID    `json:"user_id"`
+	Purpose   Purpose      `json:"purpose"`
+	GrantedAt time.Time    `json:"granted_at"`
+	ExpiresAt *time.Time   `json:"expires_at,omitempty"`
+	RevokedAt *time.Time   `json:"revoked_at,omitempty"`
 }
 
 // NewRecord creates a Record with domain invariant checks.
-func NewRecord(id, userID string, purpose Purpose, grantedAt time.Time, expiresAt *time.Time) (*Record, error) {
-	if id == "" {
-		return nil, dErrors.New(dErrors.CodeInvariantViolation, "consent ID cannot be empty")
-	}
-	if userID == "" {
-		return nil, dErrors.New(dErrors.CodeInvariantViolation, "user ID cannot be empty")
-	}
+func NewRecord(consentID id.ConsentID, userID id.UserID, purpose Purpose, grantedAt time.Time, expiresAt *time.Time) (*Record, error) {
 	if !purpose.IsValid() {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "invalid consent purpose")
 	}
@@ -51,7 +46,7 @@ func NewRecord(id, userID string, purpose Purpose, grantedAt time.Time, expiresA
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "expiry must be after grant time")
 	}
 	return &Record{
-		ID:        id,
+		ID:        consentID,
 		UserID:    userID,
 		Purpose:   purpose,
 		GrantedAt: grantedAt,

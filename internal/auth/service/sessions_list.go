@@ -5,19 +5,16 @@ import (
 	"sort"
 	"time"
 
-	"github.com/google/uuid"
-
 	"credo/internal/auth/models"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
 
-func (s *Service) ListSessions(ctx context.Context, userID uuid.UUID, currentSessionID uuid.UUID) (*models.SessionsResult, error) {
-	if userID == uuid.Nil {
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid user")
+func (s *Service) ListSessions(ctx context.Context, userID id.UserID, currentSessionID id.SessionID) (*models.SessionsResult, error) {
+	if userID.IsNil() {
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "user ID required")
 	}
-	if currentSessionID == uuid.Nil {
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid session")
-	}
+	// Note: currentSessionID can be nil (zero value) if caller doesn't have a current session
 
 	sessions, err := s.sessions.ListByUser(ctx, userID)
 	if err != nil {
@@ -30,7 +27,7 @@ func (s *Service) ListSessions(ctx context.Context, userID uuid.UUID, currentSes
 		if session == nil {
 			continue
 		}
-		if session.Status != string(models.SessionStatusActive) {
+		if session.Status != models.SessionStatusActive {
 			continue
 		}
 		if session.ExpiresAt.Before(now) {

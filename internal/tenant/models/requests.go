@@ -6,9 +6,8 @@ import (
 	"slices"
 	"strings"
 
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
-
-	"github.com/google/uuid"
 )
 
 type CreateTenantRequest struct {
@@ -37,12 +36,12 @@ func (r *CreateTenantRequest) Validate() error {
 }
 
 type CreateClientRequest struct {
-	TenantID      uuid.UUID `json:"tenant_id"`
-	Name          string    `json:"name"`
-	RedirectURIs  []string  `json:"redirect_uris"`
-	AllowedGrants []string  `json:"allowed_grants"`
-	AllowedScopes []string  `json:"allowed_scopes"`
-	Public        bool      `json:"public_client"`
+	TenantID      id.TenantID `json:"tenant_id"`
+	Name          string      `json:"name"`
+	RedirectURIs  []string    `json:"redirect_uris"`
+	AllowedGrants []string    `json:"allowed_grants"`
+	AllowedScopes []string    `json:"allowed_scopes"`
+	Public        bool        `json:"public_client"`
 }
 
 // Normalize trims input and deduplicates collections for stable validation/storage.

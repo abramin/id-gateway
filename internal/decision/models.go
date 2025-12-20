@@ -6,6 +6,7 @@ import (
 	registrycontracts "credo/contracts/registry"
 	authModel "credo/internal/auth/models"
 	"credo/internal/evidence/vc"
+	id "credo/pkg/domain"
 )
 
 // DecisionOutcome enumerates the possible gateway decisions.
@@ -20,7 +21,7 @@ const (
 // DerivedIdentity holds non-PII attributes used in decision making.
 type DerivedIdentity struct {
 	// Derived fields only; no raw PII.
-	PseudonymousID string
+	PseudonymousID id.UserID
 	IsOver18       bool
 	CitizenValid   bool
 }
@@ -38,7 +39,7 @@ type DecisionInput struct {
 func DerivedIdentityFromCitizen(user authModel.User, citizen registrycontracts.CitizenRecord) DerivedIdentity {
 	isOver18 := deriveIsOver18(citizen.DateOfBirth)
 	return DerivedIdentity{
-		PseudonymousID: user.ID.String(), // treat as pseudonymous identifier; avoid emails/names.
+		PseudonymousID: user.ID, // treat as pseudonymous identifier; avoid emails/names.
 		IsOver18:       isOver18,
 		CitizenValid:   citizen.Valid,
 	}

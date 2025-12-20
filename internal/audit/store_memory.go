@@ -3,21 +3,23 @@ package audit
 import (
 	"context"
 	"sync"
+
+	id "credo/pkg/domain"
 )
 
 type InMemoryStore struct {
 	mu     sync.RWMutex
-	events map[string][]Event
+	events map[id.UserID][]Event
 }
 
 func (s *InMemoryStore) Clear() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.events = make(map[string][]Event)
+	s.events = make(map[id.UserID][]Event)
 }
 
 func NewInMemoryStore() *InMemoryStore {
-	return &InMemoryStore{events: make(map[string][]Event)}
+	return &InMemoryStore{events: make(map[id.UserID][]Event)}
 }
 
 func (s *InMemoryStore) Append(_ context.Context, event Event) error {
@@ -27,7 +29,7 @@ func (s *InMemoryStore) Append(_ context.Context, event Event) error {
 	return nil
 }
 
-func (s *InMemoryStore) ListByUser(_ context.Context, userID string) ([]Event, error) {
+func (s *InMemoryStore) ListByUser(_ context.Context, userID id.UserID) ([]Event, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return append([]Event{}, s.events[userID]...), nil

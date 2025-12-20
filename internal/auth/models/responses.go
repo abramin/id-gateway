@@ -7,7 +7,7 @@ import "time"
 type AuthorizationResult struct {
 	Code        string `json:"code"`
 	RedirectURI string `json:"redirect_uri"`
-	DeviceID    string `json:"-"`
+	DeviceID    string `json:"device_id,omitempty"`
 }
 
 // TokenResult represents the response to a successful token exchange,

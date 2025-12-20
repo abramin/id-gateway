@@ -15,7 +15,6 @@ func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.Token
 	var (
 		refreshRecord *models.RefreshTokenRecord
 		session       *models.Session
-		artifacts     *tokenArtifacts
 	)
 
 	// Find refresh token and session (non-transactional reads for validation)
@@ -40,8 +39,15 @@ func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.Token
 		return nil, dErrors.New(dErrors.CodeForbidden, "client is not active")
 	}
 
-	// Perform transactional updates
-	txErr := s.tx.RunInTx(ctx, func(stores TxAuthStores) error {
+	// Generate tokens BEFORE entering transaction to avoid holding mutex during JWT generation
+	artifacts, err := s.generateTokenArtifacts(session)
+	if err != nil {
+		return nil, s.handleTokenError(ctx, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate tokens"), req.ClientID, &sessionID, TokenFlowRefresh)
+	}
+
+	// Perform transactional updates with session-based sharding
+	txCtx := context.WithValue(ctx, txSessionKeyCtx, sessionID)
+	txErr := s.tx.RunInTx(txCtx, func(stores TxAuthStores) error {
 		// Step 1: Consume refresh token (prevents replay attacks)
 		var err error
 		refreshRecord, err = stores.RefreshTokens.ConsumeRefreshToken(ctx, req.RefreshToken, now)
@@ -55,18 +61,18 @@ func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.Token
 			return fmt.Errorf("fetch session: %w", err)
 		}
 
-		// Step 3: Generate tokens, update session, persist refresh token
+		// Step 3: Update session and persist refresh token (artifacts pre-generated)
 		result, err := s.executeTokenFlowTx(ctx, stores, tokenFlowTxParams{
 			Session:            session,
 			TokenContext:       tc,
 			Now:                now,
 			ActivateOnFirstUse: false,
+			Artifacts:          artifacts,
 		})
 		if err != nil {
 			return err
 		}
 		session = result.Session
-		artifacts = result.Artifacts
 		return nil
 	})
 	if txErr != nil {

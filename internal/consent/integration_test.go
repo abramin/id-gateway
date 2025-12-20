@@ -50,6 +50,7 @@ import (
 	"credo/internal/consent/service"
 	"credo/internal/consent/store"
 	"credo/internal/platform/middleware"
+	id "credo/pkg/domain"
 )
 
 // consentTestHarness provides common setup for consent integration tests.
@@ -58,10 +59,10 @@ type consentTestHarness struct {
 	server       *httptest.Server
 	consentStore *store.InMemoryStore
 	auditStore   *audit.InMemoryStore
-	userID       string
+	userID       id.UserID
 }
 
-func newConsentTestHarness(userID string) *consentTestHarness {
+func newConsentTestHarness(userIDStr string) *consentTestHarness {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	consentStore := store.NewInMemoryStore()
 	auditStore := audit.NewInMemoryStore()
@@ -76,14 +77,15 @@ func newConsentTestHarness(userID string) *consentTestHarness {
 	router := chi.NewRouter()
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := context.WithValue(r.Context(), middleware.ContextKeyUserID, userID)
-			ctx = context.WithValue(ctx, middleware.ContextKeySessionID, "session-"+userID)
-			ctx = context.WithValue(ctx, middleware.ContextKeyClientID, "client-"+userID)
+			ctx := context.WithValue(r.Context(), middleware.ContextKeyUserID, userIDStr)
+			ctx = context.WithValue(ctx, middleware.ContextKeySessionID, "session-"+userIDStr)
+			ctx = context.WithValue(ctx, middleware.ContextKeyClientID, "client-"+userIDStr)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})
 	h.Register(router)
 
+	userID, _ := id.ParseUserID(userIDStr)
 	return &consentTestHarness{
 		server:       httptest.NewServer(router),
 		consentStore: consentStore,
@@ -143,7 +145,7 @@ func (h *consentTestHarness) revokeConsent(t *testing.T, purposes []string) *con
 //
 // Note: Basic grant/list/revoke are covered by consent_flow.feature.
 func TestConsentExpiryAndIDReuse(t *testing.T) {
-	h := newConsentTestHarness("expiry-test-user")
+	h := newConsentTestHarness("550e8400-e29b-41d4-a716-446655440001")
 	defer h.Close()
 
 	// Setup: Create consents via HTTP (minimal setup, not testing grant itself)
@@ -226,7 +228,7 @@ func TestConsentExpiryAndIDReuse(t *testing.T) {
 // Note: consent_flow.feature:100 tests renewal (waits 2s), but that's still
 // within the 5-min window. This test verifies the boundary behavior.
 func TestIdempotencyWindowBoundary(t *testing.T) {
-	h := newConsentTestHarness("idempotency-test-user")
+	h := newConsentTestHarness("550e8400-e29b-41d4-a716-446655440002")
 	defer h.Close()
 
 	t.Log("Step 1: Initial consent grant")
@@ -279,7 +281,7 @@ func TestIdempotencyWindowBoundary(t *testing.T) {
 // This is an integration test (not Gherkin) because it tests race conditions which
 // cannot be reliably expressed or reproduced in feature scenarios.
 func TestConcurrentGrantRevoke(t *testing.T) {
-	h := newConsentTestHarness("concurrent-user")
+	h := newConsentTestHarness("550e8400-e29b-41d4-a716-446655440003")
 	defer h.Close()
 
 	// First, create an initial consent to operate on
@@ -340,7 +342,7 @@ func TestConcurrentGrantRevoke(t *testing.T) {
 	require.NotNil(t, record)
 
 	// Record should be in a valid state (not corrupted)
-	assert.NotEqual(t, uuid.Nil, record.ID, "record ID should be valid")
+	assert.NotEqual(t, id.ConsentID(uuid.Nil), record.ID, "record ID should be valid")
 	assert.Equal(t, h.userID, record.UserID, "record userID should match")
 
 	t.Log("Concurrent operations completed without panics or corrupted state")

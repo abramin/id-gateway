@@ -6,10 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-
 	"credo/internal/auth/models"
 	"credo/internal/sentinel"
+	id "credo/pkg/domain"
 )
 
 // ErrNotFound is returned when a requested record is not found in the store.
@@ -41,16 +40,16 @@ func (s *InMemorySessionStore) Create(_ context.Context, session *models.Session
 	return nil
 }
 
-func (s *InMemorySessionStore) FindByID(_ context.Context, id uuid.UUID) (*models.Session, error) {
+func (s *InMemorySessionStore) FindByID(_ context.Context, sessionID id.SessionID) (*models.Session, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if session, ok := s.sessions[id.String()]; ok {
+	if session, ok := s.sessions[sessionID.String()]; ok {
 		return session, nil
 	}
 	return nil, fmt.Errorf("session not found: %w", ErrNotFound)
 }
 
-func (s *InMemorySessionStore) ListByUser(_ context.Context, userID uuid.UUID) ([]*models.Session, error) {
+func (s *InMemorySessionStore) ListByUser(_ context.Context, userID id.UserID) ([]*models.Session, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -75,14 +74,14 @@ func (s *InMemorySessionStore) UpdateSession(_ context.Context, session *models.
 	return nil
 }
 
-func (s *InMemorySessionStore) DeleteSessionsByUser(_ context.Context, userID uuid.UUID) error {
+func (s *InMemorySessionStore) DeleteSessionsByUser(_ context.Context, userID id.UserID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	found := false
-	for id, session := range s.sessions {
+	for key, session := range s.sessions {
 		if session.UserID == userID {
-			delete(s.sessions, id)
+			delete(s.sessions, key)
 			found = true
 		}
 	}
@@ -94,15 +93,15 @@ func (s *InMemorySessionStore) DeleteSessionsByUser(_ context.Context, userID uu
 	return nil
 }
 
-func (s *InMemorySessionStore) RevokeSession(_ context.Context, id uuid.UUID) error {
-	return s.RevokeSessionIfActive(context.Background(), id, time.Now())
+func (s *InMemorySessionStore) RevokeSession(_ context.Context, sessionID id.SessionID) error {
+	return s.RevokeSessionIfActive(context.Background(), sessionID, time.Now())
 }
 
-func (s *InMemorySessionStore) RevokeSessionIfActive(_ context.Context, id uuid.UUID, now time.Time) error {
+func (s *InMemorySessionStore) RevokeSessionIfActive(_ context.Context, sessionID id.SessionID, now time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	key := id.String()
+	key := sessionID.String()
 	session, ok := s.sessions[key]
 	if !ok {
 		return ErrNotFound
@@ -148,11 +147,11 @@ func (s *InMemorySessionStore) ListAll(_ context.Context) (map[string]*models.Se
 	return copy, nil
 }
 
-func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, id uuid.UUID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID string, deviceFingerprintHash string) (*models.Session, error) {
+func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID string, deviceFingerprintHash string) (*models.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	session, ok := s.sessions[id.String()]
+	session, ok := s.sessions[sessionID.String()]
 	if !ok {
 		return nil, fmt.Errorf("session not found: %w", ErrNotFound)
 	}
@@ -185,15 +184,15 @@ func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, id uuid.UUID, 
 		session.DeviceFingerprintHash = deviceFingerprintHash
 	}
 
-	s.sessions[id.String()] = session
+	s.sessions[sessionID.String()] = session
 	return session, nil
 }
 
-func (s *InMemorySessionStore) AdvanceLastRefreshed(_ context.Context, id uuid.UUID, clientID string, at time.Time, accessTokenJTI string, deviceID string, deviceFingerprintHash string) (*models.Session, error) {
+func (s *InMemorySessionStore) AdvanceLastRefreshed(_ context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, deviceID string, deviceFingerprintHash string) (*models.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	session, ok := s.sessions[id.String()]
+	session, ok := s.sessions[sessionID.String()]
 	if !ok {
 		return nil, fmt.Errorf("session not found: %w", ErrNotFound)
 	}
@@ -226,6 +225,6 @@ func (s *InMemorySessionStore) AdvanceLastRefreshed(_ context.Context, id uuid.U
 		session.DeviceFingerprintHash = deviceFingerprintHash
 	}
 
-	s.sessions[id.String()] = session
+	s.sessions[sessionID.String()] = session
 	return session, nil
 }

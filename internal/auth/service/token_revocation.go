@@ -11,6 +11,7 @@ import (
 
 	"credo/internal/auth/models"
 	sessionStore "credo/internal/auth/store/session"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
 
@@ -101,7 +102,7 @@ func (s *Service) extractSessionFromAccessToken(ctx context.Context, token strin
 		return "", nil, fmt.Errorf("invalid session_id in token: %w", err)
 	}
 
-	session, err := s.sessions.FindByID(ctx, sessionID)
+	session, err := s.sessions.FindByID(ctx, id.SessionID(sessionID))
 	if err != nil {
 		return "", nil, fmt.Errorf("session not found: %w", err)
 	}

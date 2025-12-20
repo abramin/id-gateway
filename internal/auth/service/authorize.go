@@ -16,6 +16,7 @@ import (
 	"credo/internal/auth/models"
 	"credo/internal/platform/middleware"
 	"credo/internal/sentinel"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/email"
 )
@@ -51,14 +52,12 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 	userAgent := middleware.GetUserAgent(ctx)
 	deviceDisplayName := device.ParseUserAgent(userAgent)
 
-	deviceID := ""
+	// Always generate device ID for session tracking; DeviceBindingEnabled controls enforcement only
+	deviceID := middleware.GetDeviceID(ctx)
 	deviceIDToSet := ""
-	if s.DeviceBindingEnabled {
-		deviceID = middleware.GetDeviceID(ctx)
-		if deviceID == "" {
-			deviceID = s.deviceService.GenerateDeviceID()
-			deviceIDToSet = deviceID
-		}
+	if deviceID == "" {
+		deviceID = s.deviceService.GenerateDeviceID()
+		deviceIDToSet = deviceID
 	}
 
 	// Fingerprint is now pre-computed by Device middleware
@@ -88,7 +87,7 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 	txErr := s.tx.RunInTx(ctx, func(stores TxAuthStores) error {
 		// --- Step 1: Find or create user ---
 		firstName, lastName := email.DeriveNameFromEmail(req.Email)
-		newUser, err := models.NewUser(uuid.New(), tenant.ID, req.Email, firstName, lastName, false)
+		newUser, err := models.NewUser(id.UserID(uuid.New()), tenant.ID, req.Email, firstName, lastName, false)
 		if err != nil {
 			return dErrors.Wrap(err, dErrors.CodeInternal, "failed to create user")
 		}
@@ -102,7 +101,7 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 		userWasCreated = (user.ID == newUser.ID)
 
 		// --- Step 2: Generate authorization code ---
-		sessionID := uuid.New()
+		sessionID := id.SessionID(uuid.New())
 		authCode, err = models.NewAuthorizationCode(
 			"authz_"+uuid.New().String(),
 			sessionID,
@@ -124,7 +123,7 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 			client.ID,
 			tenant.ID,
 			scopes,
-			string(models.SessionStatusPendingConsent),
+			models.SessionStatusPendingConsent,
 			now,
 			now.Add(s.SessionTTL),
 			now,

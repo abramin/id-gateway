@@ -14,6 +14,7 @@ import (
 	"credo/internal/platform/metrics"
 	"credo/internal/platform/middleware"
 	"credo/internal/transport/httputil"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	s "credo/pkg/string"
 )
@@ -21,11 +22,11 @@ import (
 // Service defines the interface for consent operations.
 // Returns domain objects, not HTTP response DTOs.
 type Service interface {
-	Grant(ctx context.Context, userID string, purposes []models.Purpose) ([]*models.Record, error)
-	Revoke(ctx context.Context, userID string, purposes []models.Purpose) ([]*models.Record, error)
-	RevokeAll(ctx context.Context, userID string) (int, error)
-	DeleteAll(ctx context.Context, userID string) error
-	List(ctx context.Context, userID string, filter *models.RecordFilter) ([]*models.Record, error)
+	Grant(ctx context.Context, userID id.UserID, purposes []models.Purpose) ([]*models.Record, error)
+	Revoke(ctx context.Context, userID id.UserID, purposes []models.Purpose) ([]*models.Record, error)
+	RevokeAll(ctx context.Context, userID id.UserID) (int, error)
+	DeleteAll(ctx context.Context, userID id.UserID) error
+	List(ctx context.Context, userID id.UserID, filter *models.RecordFilter) ([]*models.Record, error)
 }
 
 // Handler handles consent-related endpoints.
@@ -64,11 +65,21 @@ func (h *Handler) handleGrantConsent(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	requestID := middleware.GetRequestID(ctx)
-	userID := middleware.GetUserID(ctx)
+	userIDStr := middleware.GetUserID(ctx)
 
-	if userID == "" {
+	if userIDStr == "" {
 		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
 			"request_id", requestID,
+		)
+		httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
+		return
+	}
+
+	userID, err := id.ParseUserID(userIDStr)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "invalid userID in context",
+			"request_id", requestID,
+			"error", err,
 		)
 		httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
 		return
@@ -110,11 +121,21 @@ func (h *Handler) handleGrantConsent(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
-	userID := middleware.GetUserID(ctx)
+	userIDStr := middleware.GetUserID(ctx)
 
-	if userID == "" {
+	if userIDStr == "" {
 		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
 			"request_id", requestID,
+		)
+		httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
+		return
+	}
+
+	userID, err := id.ParseUserID(userIDStr)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "invalid userID in context",
+			"request_id", requestID,
+			"error", err,
 		)
 		httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
 		return
@@ -156,11 +177,21 @@ func (h *Handler) handleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleRevokeAllConsents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
-	userID := middleware.GetUserID(ctx)
+	userIDStr := middleware.GetUserID(ctx)
 
-	if userID == "" {
+	if userIDStr == "" {
 		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
 			"request_id", requestID,
+		)
+		httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
+		return
+	}
+
+	userID, err := id.ParseUserID(userIDStr)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "invalid userID in context",
+			"request_id", requestID,
+			"error", err,
 		)
 		httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
 		return
@@ -185,11 +216,21 @@ func (h *Handler) handleRevokeAllConsents(w http.ResponseWriter, r *http.Request
 func (h *Handler) handleDeleteAllConsents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
-	userID := middleware.GetUserID(ctx)
+	userIDStr := middleware.GetUserID(ctx)
 
-	if userID == "" {
+	if userIDStr == "" {
 		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
 			"request_id", requestID,
+		)
+		httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
+		return
+	}
+
+	userID, err := id.ParseUserID(userIDStr)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "invalid userID in context",
+			"request_id", requestID,
+			"error", err,
 		)
 		httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
 		return
@@ -212,11 +253,21 @@ func (h *Handler) handleDeleteAllConsents(w http.ResponseWriter, r *http.Request
 func (h *Handler) handleGetConsents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := middleware.GetRequestID(ctx)
-	userID := middleware.GetUserID(ctx)
+	userIDStr := middleware.GetUserID(ctx)
 
-	if userID == "" {
+	if userIDStr == "" {
 		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
 			"request_id", requestID,
+		)
+		httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
+		return
+	}
+
+	userID, err := id.ParseUserID(userIDStr)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "invalid userID in context",
+			"request_id", requestID,
+			"error", err,
 		)
 		httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "authentication context error"))
 		return
@@ -291,7 +342,7 @@ func toListResponse(records []*models.Record, now time.Time) *models.ListRespons
 	for _, record := range records {
 		consents = append(consents, &models.ConsentWithStatus{
 			Consent: models.Consent{
-				ID:        record.ID,
+				ID:        record.ID.String(),
 				Purpose:   record.Purpose,
 				GrantedAt: record.GrantedAt,
 				ExpiresAt: record.ExpiresAt,

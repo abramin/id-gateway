@@ -4,15 +4,18 @@ import (
 	"context"
 	"errors"
 
-	"github.com/google/uuid"
-
 	"credo/internal/audit"
 	sessionStore "credo/internal/auth/store/session"
 	userStore "credo/internal/auth/store/user"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
 
-func (s *Service) DeleteUser(ctx context.Context, userID uuid.UUID) error {
+func (s *Service) DeleteUser(ctx context.Context, userID id.UserID) error {
+	if userID.IsNil() {
+		return dErrors.New(dErrors.CodeBadRequest, "user ID required")
+	}
+
 	_, err := s.users.FindByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, userStore.ErrNotFound) {

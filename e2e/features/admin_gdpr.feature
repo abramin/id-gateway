@@ -38,7 +38,7 @@ Feature: Admin GDPR User Deletion (PRD-001B)
 
     @admin @gdpr @validation
   Scenario: Admin deletion with non-existent user ID returns 404
-    When I attempt to delete user with ID "00000000-0000-0000-0000-000000000000" via admin API
+    When I attempt to delete user with ID "11111111-1111-1111-1111-111111111111" via admin API
     Then the response status should be 404
     And the response field "error" should equal "not_found"
 

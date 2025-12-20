@@ -10,6 +10,7 @@ import (
 	"credo/internal/auth/models"
 	sessionStore "credo/internal/auth/store/session"
 	userStore "credo/internal/auth/store/user"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
 
@@ -28,7 +29,7 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 		return nil, dErrors.New(dErrors.CodeUnauthorized, "invalid session ID")
 	}
 
-	session, err := s.sessions.FindByID(ctx, parsedSessionID)
+	session, err := s.sessions.FindByID(ctx, id.SessionID(parsedSessionID))
 	if err != nil {
 		if errors.Is(err, sessionStore.ErrNotFound) {
 			s.authFailure(ctx, "session_not_found", false,
@@ -43,10 +44,10 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to find session")
 	}
 
-	if session.Status != string(models.SessionStatusActive) {
+	if session.Status != models.SessionStatusActive {
 		s.authFailure(ctx, "session_not_active", false,
 			"session_id", parsedSessionID.String(),
-			"status", session.Status,
+			"status", session.Status.String(),
 		)
 		return nil, dErrors.New(dErrors.CodeUnauthorized, "session not active")
 	}

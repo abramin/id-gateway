@@ -9,6 +9,7 @@ import (
 	"credo/internal/auth/models"
 	"credo/internal/platform/middleware"
 	tenantModels "credo/internal/tenant/models"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 
 	"github.com/google/uuid"
@@ -29,10 +30,10 @@ import (
 // E2E coverage: e2e/features/auth_token_lifecycle.feature covers happy path
 // and reuse rejection. Unit tests add client/user inactive scenarios.
 func (s *ServiceSuite) TestToken_RefreshToken() {
-	sessionID := uuid.New()
-	userID := uuid.New()
-	clientUUID := uuid.New()
-	tenantID := uuid.New()
+	sessionID := id.SessionID(uuid.New())
+	userID := id.UserID(uuid.New())
+	clientUUID := id.ClientID(uuid.New())
+	tenantID := id.TenantID(uuid.New())
 	clientID := "client-123"
 	refreshTokenString := "ref_abc123xyz"
 
@@ -63,7 +64,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		TenantID:       tenantID,
 		RequestedScope: []string{"openid", "profile"},
 		DeviceID:       "device-123",
-		Status:         string(models.SessionStatusActive),
+		Status:         models.SessionStatusActive,
 		CreatedAt:      time.Now().Add(-1 * time.Hour),
 		ExpiresAt:      time.Now().Add(23 * time.Hour),
 	}
@@ -89,7 +90,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		// Inside RunInTx: Advance session, create new token
 		// Note: AdvanceLastRefreshed receives tc.Client.ID.String() (UUID string), not req.ClientID
 		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), sess.ID, clientUUID.String(), gomock.Any(), accessTokenJTI, sess.DeviceID, sess.DeviceFingerprintHash).DoAndReturn(
-			func(ctx context.Context, sessionID uuid.UUID, clientID string, ts time.Time, jti string, deviceID string, fingerprint string) (*models.Session, error) {
+			func(ctx context.Context, sessionID id.SessionID, clientID string, ts time.Time, jti string, deviceID string, fingerprint string) (*models.Session, error) {
 				assert.Equal(s.T(), sess.ID, sessionID)
 				assert.False(s.T(), ts.IsZero())
 				assert.Equal(s.T(), accessTokenJTI, jti)
@@ -126,8 +127,8 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		refreshRec := *validRefreshToken
 		sess := *validSession
 		otherClient := *mockClient
-		otherClient.ID = uuid.New()
-		otherClient.ClientID = req.ClientID
+		otherClient.ID = id.ClientID(uuid.New())
+		otherClient.OAuthClientID = req.ClientID
 
 		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(&refreshRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
@@ -212,7 +213,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
 		_, accessTokenJTI, _, _ := s.expectTokenGeneration(userID, sessionID, clientUUID, tenantID, sess.RequestedScope)
 		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), sess.ID, clientUUID.String(), gomock.Any(), accessTokenJTI, sess.DeviceID, sess.DeviceFingerprintHash).
-			DoAndReturn(func(ctx context.Context, sessionID uuid.UUID, client string, ts time.Time, jti string, deviceID string, fingerprint string) (*models.Session, error) {
+			DoAndReturn(func(ctx context.Context, sessionID id.SessionID, client string, ts time.Time, jti string, deviceID string, fingerprint string) (*models.Session, error) {
 				assert.Equal(s.T(), sess.DeviceID, deviceID)
 				return &sess, nil
 			})

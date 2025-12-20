@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/google/uuid"
+	id "credo/pkg/domain"
 
 	"credo/internal/sentinel"
 	"credo/internal/tenant/models"
@@ -33,7 +33,7 @@ func (s *InMemory) Create(_ context.Context, c *models.Client) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.clients[c.ID.String()] = c
-	s.byCode[c.ClientID] = c
+	s.byCode[c.OAuthClientID] = c
 	return nil
 }
 
@@ -42,25 +42,25 @@ func (s *InMemory) Update(_ context.Context, c *models.Client) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.clients[c.ID.String()] = c
-	s.byCode[c.ClientID] = c
+	s.byCode[c.OAuthClientID] = c
 	return nil
 }
 
 // FindByID retrieves a client by its UUID.
-func (s *InMemory) FindByID(_ context.Context, id uuid.UUID) (*models.Client, error) {
+func (s *InMemory) FindByID(_ context.Context, clientID id.ClientID) (*models.Client, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if c, ok := s.clients[id.String()]; ok {
+	if c, ok := s.clients[clientID.String()]; ok {
 		return c, nil
 	}
 	return nil, ErrNotFound
 }
 
 // FindByTenantAndID retrieves a client by tenant and ID, enforcing tenant isolation.
-func (s *InMemory) FindByTenantAndID(_ context.Context, tenantID uuid.UUID, id uuid.UUID) (*models.Client, error) {
+func (s *InMemory) FindByTenantAndID(_ context.Context, tenantID id.TenantID, clientID id.ClientID) (*models.Client, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if c, ok := s.clients[id.String()]; ok {
+	if c, ok := s.clients[clientID.String()]; ok {
 		if c.TenantID == tenantID {
 			return c, nil
 		}
@@ -68,18 +68,18 @@ func (s *InMemory) FindByTenantAndID(_ context.Context, tenantID uuid.UUID, id u
 	return nil, ErrNotFound
 }
 
-// FindByClientID retrieves a client by its OAuth client_id.
-func (s *InMemory) FindByClientID(_ context.Context, clientID string) (*models.Client, error) {
+// FindByOAuthClientID retrieves a client by its OAuth client_id.
+func (s *InMemory) FindByOAuthClientID(_ context.Context, oauthClientID string) (*models.Client, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if c, ok := s.byCode[clientID]; ok {
+	if c, ok := s.byCode[oauthClientID]; ok {
 		return c, nil
 	}
 	return nil, ErrNotFound
 }
 
 // CountByTenant returns the number of clients belonging to a specific tenant.
-func (s *InMemory) CountByTenant(_ context.Context, tenantID uuid.UUID) (int, error) {
+func (s *InMemory) CountByTenant(_ context.Context, tenantID id.TenantID) (int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	count := 0

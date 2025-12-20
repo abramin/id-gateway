@@ -11,6 +11,7 @@ import (
 
 	"credo/internal/sentinel"
 	"credo/internal/tenant/models"
+	id "credo/pkg/domain"
 )
 
 func TestCreateIfNameAvailable_Success(t *testing.T) {
@@ -18,7 +19,7 @@ func TestCreateIfNameAvailable_Success(t *testing.T) {
 	ctx := context.Background()
 
 	tenant := &models.Tenant{
-		ID:        uuid.New(),
+		ID:        id.TenantID(uuid.New()),
 		Name:      "Test Tenant",
 		Status:    "active",
 		CreatedAt: time.Now(),
@@ -37,13 +38,13 @@ func TestCreateIfNameAvailable_DuplicateNameReturnsError(t *testing.T) {
 	ctx := context.Background()
 
 	tenant1 := &models.Tenant{
-		ID:        uuid.New(),
+		ID:        id.TenantID(uuid.New()),
 		Name:      "Duplicate",
 		Status:    "active",
 		CreatedAt: time.Now(),
 	}
 	tenant2 := &models.Tenant{
-		ID:        uuid.New(),
+		ID:        id.TenantID(uuid.New()),
 		Name:      "Duplicate",
 		Status:    "active",
 		CreatedAt: time.Now(),
@@ -61,13 +62,13 @@ func TestCreateIfNameAvailable_CaseInsensitive(t *testing.T) {
 	ctx := context.Background()
 
 	tenant1 := &models.Tenant{
-		ID:        uuid.New(),
+		ID:        id.TenantID(uuid.New()),
 		Name:      "MyTenant",
 		Status:    "active",
 		CreatedAt: time.Now(),
 	}
 	tenant2 := &models.Tenant{
-		ID:        uuid.New(),
+		ID:        id.TenantID(uuid.New()),
 		Name:      "MYTENANT",
 		Status:    "active",
 		CreatedAt: time.Now(),
@@ -84,7 +85,7 @@ func TestFindByID_NotFound(t *testing.T) {
 	store := NewInMemory()
 	ctx := context.Background()
 
-	_, err := store.FindByID(ctx, uuid.New())
+	_, err := store.FindByID(ctx, id.TenantID(uuid.New()))
 	require.ErrorIs(t, err, ErrNotFound)
 }
 
@@ -93,7 +94,7 @@ func TestFindByName_CaseInsensitive(t *testing.T) {
 	ctx := context.Background()
 
 	tenant := &models.Tenant{
-		ID:        uuid.New(),
+		ID:        id.TenantID(uuid.New()),
 		Name:      "CaseSensitive",
 		Status:    "active",
 		CreatedAt: time.Now(),

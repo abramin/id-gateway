@@ -6,10 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-
 	"credo/internal/auth/models"
 	"credo/internal/sentinel"
+	id "credo/pkg/domain"
 )
 
 // ErrNotFound is returned when a requested record is not found in the store.
@@ -51,14 +50,14 @@ func (s *InMemoryRefreshTokenStore) Find(_ context.Context, token string) (*mode
 	return nil, fmt.Errorf("refresh token not found: %w", ErrNotFound)
 }
 
-func (s *InMemoryRefreshTokenStore) FindBySessionID(_ context.Context, id uuid.UUID) (*models.RefreshTokenRecord, error) {
+func (s *InMemoryRefreshTokenStore) FindBySessionID(_ context.Context, sessionID id.SessionID) (*models.RefreshTokenRecord, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	now := time.Now()
 	var best *models.RefreshTokenRecord
 	for _, token := range s.tokens {
-		if token.SessionID != id {
+		if token.SessionID != sessionID {
 			continue
 		}
 		if token.Used {
@@ -77,7 +76,7 @@ func (s *InMemoryRefreshTokenStore) FindBySessionID(_ context.Context, id uuid.U
 	return best, nil
 }
 
-func (s *InMemoryRefreshTokenStore) DeleteBySessionID(ctx context.Context, sessionID uuid.UUID) error {
+func (s *InMemoryRefreshTokenStore) DeleteBySessionID(_ context.Context, sessionID id.SessionID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	found := false

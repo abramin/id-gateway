@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"credo/internal/auth/models"
+	id "credo/pkg/domain"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -23,7 +24,7 @@ func (s *InMemoryUserStoreSuite) SetupTest() {
 
 func (s *InMemoryUserStoreSuite) TestSaveAndFind() {
 	user := &models.User{
-		ID:        uuid.New(),
+		ID:        id.UserID(uuid.New()),
 		Email:     "jane.doe@example.com",
 		FirstName: "Jane",
 		LastName:  "Doe",
@@ -43,7 +44,7 @@ func (s *InMemoryUserStoreSuite) TestSaveAndFind() {
 }
 
 func (s *InMemoryUserStoreSuite) TestFindNotFound() {
-	_, err := s.store.FindByID(context.Background(), uuid.New())
+	_, err := s.store.FindByID(context.Background(), id.UserID(uuid.New()))
 	assert.ErrorIs(s.T(), err, ErrNotFound)
 
 	_, err = s.store.FindByEmail(context.Background(), "missing@example.com")
@@ -52,7 +53,7 @@ func (s *InMemoryUserStoreSuite) TestFindNotFound() {
 
 func (s *InMemoryUserStoreSuite) TestDelete() {
 	user := &models.User{
-		ID:        uuid.New(),
+		ID:        id.UserID(uuid.New()),
 		Email:     "delete.me@example.com",
 		FirstName: "Delete",
 		LastName:  "Me",

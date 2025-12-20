@@ -4,18 +4,17 @@ import (
 	"context"
 
 	"credo/internal/audit"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
-
-	"github.com/google/uuid"
 )
 
 // RevokeSession implements PRD-016 FR-5: revoke a specific session owned by the user.
-func (s *Service) RevokeSession(ctx context.Context, userID uuid.UUID, sessionID uuid.UUID) error {
-	if userID == uuid.Nil {
-		return dErrors.New(dErrors.CodeUnauthorized, "invalid user")
+func (s *Service) RevokeSession(ctx context.Context, userID id.UserID, sessionID id.SessionID) error {
+	if userID.IsNil() {
+		return dErrors.New(dErrors.CodeUnauthorized, "user ID required")
 	}
-	if sessionID == uuid.Nil {
-		return dErrors.New(dErrors.CodeBadRequest, "session_id is required")
+	if sessionID.IsNil() {
+		return dErrors.New(dErrors.CodeBadRequest, "session ID required")
 	}
 
 	session, err := s.sessions.FindByID(ctx, sessionID)

@@ -4,22 +4,21 @@ import (
 	"context"
 	"time"
 
-	"github.com/google/uuid"
-
 	"credo/internal/audit"
 	"credo/internal/auth/models"
+	id "credo/pkg/domain"
 )
 
 // UserStore defines the interface for user storage operations
 type UserStore interface {
 	ListAll(ctx context.Context) (map[string]*models.User, error)
-	FindByID(ctx context.Context, id uuid.UUID) (*models.User, error)
+	FindByID(ctx context.Context, userID id.UserID) (*models.User, error)
 }
 
 // SessionStore defines the interface for session storage operations
 type SessionStore interface {
 	ListAll(ctx context.Context) (map[string]*models.Session, error)
-	ListByUser(ctx context.Context, userID uuid.UUID) ([]*models.Session, error)
+	ListByUser(ctx context.Context, userID id.UserID) ([]*models.Session, error)
 }
 
 // Service provides admin-level operations for monitoring and management
@@ -49,7 +48,7 @@ type Stats struct {
 
 // UserInfo contains user information with session details
 type UserInfo struct {
-	ID           uuid.UUID `json:"id"`
+	ID           id.UserID `json:"id"`
 	Email        string    `json:"email"`
 	FirstName    string    `json:"first_name"`
 	LastName     string    `json:"last_name"`

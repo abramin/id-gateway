@@ -9,6 +9,7 @@ import (
 	"credo/internal/audit"
 	"credo/internal/auth/models"
 	jwttoken "credo/internal/jwt_token"
+	id "credo/pkg/domain"
 	tenant "credo/internal/tenant/models"
 )
 
@@ -16,24 +17,24 @@ import (
 // Error Contract: All Find methods return store.ErrNotFound when the entity doesn't exist.
 type UserStore interface {
 	Save(ctx context.Context, user *models.User) error
-	FindByID(ctx context.Context, id uuid.UUID) (*models.User, error)
+	FindByID(ctx context.Context, userID id.UserID) (*models.User, error)
 	FindByEmail(ctx context.Context, email string) (*models.User, error)
-	FindOrCreateByTenantAndEmail(ctx context.Context, tenantID uuid.UUID, email string, user *models.User) (*models.User, error)
-	Delete(ctx context.Context, id uuid.UUID) error
+	FindOrCreateByTenantAndEmail(ctx context.Context, tenantID id.TenantID, email string, user *models.User) (*models.User, error)
+	Delete(ctx context.Context, userID id.UserID) error
 }
 
 // SessionStore defines the persistence interface for session data.
 // Error Contract: All Find methods return store.ErrNotFound when the entity doesn't exist.
 type SessionStore interface {
 	Create(ctx context.Context, session *models.Session) error
-	FindByID(ctx context.Context, id uuid.UUID) (*models.Session, error)
-	ListByUser(ctx context.Context, userID uuid.UUID) ([]*models.Session, error)
+	FindByID(ctx context.Context, sessionID id.SessionID) (*models.Session, error)
+	ListByUser(ctx context.Context, userID id.UserID) ([]*models.Session, error)
 	UpdateSession(ctx context.Context, session *models.Session) error
-	DeleteSessionsByUser(ctx context.Context, userID uuid.UUID) error
-	RevokeSession(ctx context.Context, id uuid.UUID) error
-	RevokeSessionIfActive(ctx context.Context, id uuid.UUID, now time.Time) error
-	AdvanceLastSeen(ctx context.Context, id uuid.UUID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID string, deviceFingerprintHash string) (*models.Session, error)
-	AdvanceLastRefreshed(ctx context.Context, id uuid.UUID, clientID string, at time.Time, accessTokenJTI string, deviceID string, deviceFingerprintHash string) (*models.Session, error)
+	DeleteSessionsByUser(ctx context.Context, userID id.UserID) error
+	RevokeSession(ctx context.Context, sessionID id.SessionID) error
+	RevokeSessionIfActive(ctx context.Context, sessionID id.SessionID, now time.Time) error
+	AdvanceLastSeen(ctx context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID string, deviceFingerprintHash string) (*models.Session, error)
+	AdvanceLastRefreshed(ctx context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, deviceID string, deviceFingerprintHash string) (*models.Session, error)
 }
 
 type AuthCodeStore interface {
@@ -46,10 +47,10 @@ type AuthCodeStore interface {
 
 type RefreshTokenStore interface {
 	Create(ctx context.Context, token *models.RefreshTokenRecord) error
-	FindBySessionID(ctx context.Context, id uuid.UUID) (*models.RefreshTokenRecord, error)
+	FindBySessionID(ctx context.Context, sessionID id.SessionID) (*models.RefreshTokenRecord, error)
 	Find(ctx context.Context, tokenString string) (*models.RefreshTokenRecord, error)
 	ConsumeRefreshToken(ctx context.Context, token string, now time.Time) (*models.RefreshTokenRecord, error)
-	DeleteBySessionID(ctx context.Context, sessionID uuid.UUID) error
+	DeleteBySessionID(ctx context.Context, sessionID id.SessionID) error
 }
 
 type TokenGenerator interface {

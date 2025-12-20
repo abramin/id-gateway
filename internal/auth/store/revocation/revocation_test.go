@@ -88,7 +88,7 @@ func (s *InMemoryTRLSuite) TestWithCleanupInterval() {
 	assert.Equal(s.T(), 123*time.Millisecond, s.store.cleanupInterval)
 
 	s.store = NewInMemoryTRL(WithCleanupInterval(0))
-	assert.Equal(s.T(), 5*time.Minute, s.store.cleanupInterval)
+	assert.Equal(s.T(), 1*time.Minute, s.store.cleanupInterval) // Default reduced from 5min for bounded memory
 }
 
 func TestInMemoryTRLSuite(t *testing.T) {

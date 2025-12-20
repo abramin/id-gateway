@@ -121,3 +121,37 @@ Feature: OAuth2 Security - Client and Tenant Validation
     And I revoke the expired access token
     Then the response status should be 200
     And the response field "revoked" should equal "true"
+
+    # ============================================================
+    # Device Binding Security
+    # ============================================================
+
+    @security @device-binding
+  Scenario: Device ID is assigned during authorization
+    # Security invariant: Each session is bound to a device identifier
+    # to enable device-based session management and security policies.
+    When I initiate authorization with email "device-test@example.com" and scopes "openid"
+    Then the response status should be 200
+    And the response should contain "device_id"
+    And the response field "device_id" should not be empty
+
+    @security @device-binding
+  Scenario: Device ID persists across token refresh
+    # Security invariant: The device binding established during authorization
+    # should persist through token refresh operations.
+    When I initiate authorization with email "device-persist@example.com" and scopes "openid"
+    Then the response status should be 200
+    And the response should contain "device_id"
+    And I save the device id from the response
+    And I save the authorization code
+
+    When I exchange the authorization code for tokens
+    Then the response status should be 200
+    And I save the tokens from the response
+
+    When I refresh tokens with the saved refresh token
+    Then the response status should be 200
+
+    When I list sessions with the saved access token
+    Then the response status should be 200
+    And the session should have the same device id

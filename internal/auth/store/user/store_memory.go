@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/google/uuid"
-
 	"credo/internal/auth/models"
 	"credo/internal/sentinel"
+	id "credo/pkg/domain"
 )
 
 // ErrNotFound is returned when a requested record is not found in the store.
@@ -43,10 +42,10 @@ func (s *InMemoryUserStore) Save(_ context.Context, user *models.User) error {
 	return nil
 }
 
-func (s *InMemoryUserStore) FindByID(_ context.Context, id uuid.UUID) (*models.User, error) {
+func (s *InMemoryUserStore) FindByID(_ context.Context, userID id.UserID) (*models.User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if user, ok := s.users[id.String()]; ok {
+	if user, ok := s.users[userID.String()]; ok {
 		return user, nil
 	}
 	return nil, fmt.Errorf("user not found: %w", ErrNotFound)
@@ -65,7 +64,7 @@ func (s *InMemoryUserStore) FindByEmail(ctx context.Context, email string) (*mod
 
 // FindOrCreateByTenantAndEmail atomically finds a user by tenant and email or creates it if not found.
 // This prevents duplicate user creation in concurrent scenarios while enforcing tenant isolation.
-func (s *InMemoryUserStore) FindOrCreateByTenantAndEmail(_ context.Context, tenantID uuid.UUID, email string, user *models.User) (*models.User, error) {
+func (s *InMemoryUserStore) FindOrCreateByTenantAndEmail(_ context.Context, tenantID id.TenantID, email string, user *models.User) (*models.User, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -81,10 +80,10 @@ func (s *InMemoryUserStore) FindOrCreateByTenantAndEmail(_ context.Context, tena
 	return user, nil
 }
 
-func (s *InMemoryUserStore) Delete(ctx context.Context, id uuid.UUID) error {
+func (s *InMemoryUserStore) Delete(_ context.Context, userID id.UserID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	key := id.String()
+	key := userID.String()
 	if _, ok := s.users[key]; ok {
 		delete(s.users, key)
 		return nil

@@ -13,6 +13,7 @@ import (
 	tenant "credo/internal/tenant/models"
 	clientstore "credo/internal/tenant/store/client"
 	tenantstore "credo/internal/tenant/store/tenant"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
 
@@ -42,7 +43,7 @@ func (s *ServiceSuite) createTestTenant(name string) *tenant.Tenant {
 	return t
 }
 
-func (s *ServiceSuite) createTestClient(tenantID uuid.UUID) *tenant.Client {
+func (s *ServiceSuite) createTestClient(tenantID id.TenantID) *tenant.Client {
 	client, _, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
 		TenantID:      tenantID,
 		Name:          "Web",
@@ -137,13 +138,13 @@ func (s *ServiceSuite) TestGetTenantCounts() {
 
 func (s *ServiceSuite) TestValidationErrors() {
 	s.T().Run("create client with missing fields", func(t *testing.T) {
-		_, _, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{TenantID: uuid.New()})
+		_, _, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{TenantID: id.TenantID(uuid.New())})
 		require.Error(s.T(), err)
 		assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeValidation) || dErrors.HasCode(err, dErrors.CodeNotFound))
 	})
 
 	s.T().Run("update client with invalid redirect uri", func(t *testing.T) {
-		_, _, err := s.service.UpdateClient(context.Background(), uuid.New(), &tenant.UpdateClientRequest{
+		_, _, err := s.service.UpdateClient(context.Background(), id.ClientID(uuid.New()), &tenant.UpdateClientRequest{
 			RedirectURIs: &[]string{"invalid"},
 		})
 		require.Error(s.T(), err)
@@ -214,7 +215,7 @@ func (s *ServiceSuite) TestResolveClient() {
 	tenantRecord := s.createTestTenant("Acme")
 	created := s.createTestClient(tenantRecord.ID)
 
-	client, tenantObj, err := s.service.ResolveClient(context.Background(), created.ClientID)
+	client, tenantObj, err := s.service.ResolveClient(context.Background(), created.OAuthClientID)
 	require.NoError(s.T(), err)
 	assert.Equal(s.T(), tenantRecord.ID, tenantObj.ID)
 	assert.Equal(s.T(), created.ID, client.ID)

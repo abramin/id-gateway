@@ -12,9 +12,9 @@ package mocks
 import (
 	context "context"
 	models "credo/internal/auth/models"
+	id "credo/pkg/domain"
 	reflect "reflect"
 
-	uuid "github.com/google/uuid"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -58,7 +58,7 @@ func (mr *MockServiceMockRecorder) Authorize(ctx, req any) *gomock.Call {
 }
 
 // DeleteUser mocks base method.
-func (m *MockService) DeleteUser(ctx context.Context, userID uuid.UUID) error {
+func (m *MockService) DeleteUser(ctx context.Context, userID id.UserID) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteUser", ctx, userID)
 	ret0, _ := ret[0].(error)
@@ -72,7 +72,7 @@ func (mr *MockServiceMockRecorder) DeleteUser(ctx, userID any) *gomock.Call {
 }
 
 // ListSessions mocks base method.
-func (m *MockService) ListSessions(ctx context.Context, userID, currentSessionID uuid.UUID) (*models.SessionsResult, error) {
+func (m *MockService) ListSessions(ctx context.Context, userID id.UserID, currentSessionID id.SessionID) (*models.SessionsResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListSessions", ctx, userID, currentSessionID)
 	ret0, _ := ret[0].(*models.SessionsResult)
@@ -87,7 +87,7 @@ func (mr *MockServiceMockRecorder) ListSessions(ctx, userID, currentSessionID an
 }
 
 // RevokeSession mocks base method.
-func (m *MockService) RevokeSession(ctx context.Context, userID, sessionID uuid.UUID) error {
+func (m *MockService) RevokeSession(ctx context.Context, userID id.UserID, sessionID id.SessionID) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RevokeSession", ctx, userID, sessionID)
 	ret0, _ := ret[0].(error)

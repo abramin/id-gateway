@@ -1,5 +1,11 @@
 package models
 
+import (
+	"fmt"
+
+	dErrors "credo/pkg/domain-errors"
+)
+
 // Purpose labels why data is processed. Purpose binding allows selective
 // revocation without affecting other flows.
 type Purpose string
@@ -19,9 +25,36 @@ var ValidPurposes = map[Purpose]bool{
 	PurposeDecision:      true,
 }
 
+// ParsePurpose creates a Purpose from a string, validating it against the allowed set.
+// Returns error if the purpose is empty or not in ValidPurposes.
+func ParsePurpose(s string) (Purpose, error) {
+	if s == "" {
+		return "", dErrors.New(dErrors.CodeInvalidInput, "purpose cannot be empty")
+	}
+	p := Purpose(s)
+	if !p.IsValid() {
+		return "", dErrors.New(dErrors.CodeInvalidInput, fmt.Sprintf("invalid purpose: %s", s))
+	}
+	return p, nil
+}
+
+// MustParsePurpose creates a Purpose or panics. For tests only.
+func MustParsePurpose(s string) Purpose {
+	p, err := ParsePurpose(s)
+	if err != nil {
+		panic(fmt.Sprintf("MustParsePurpose: %v", err))
+	}
+	return p
+}
+
 // IsValid checks if the consent purpose is one of the supported enum values.
 func (p Purpose) IsValid() bool {
 	return ValidPurposes[p]
+}
+
+// String returns the string representation of the purpose.
+func (p Purpose) String() string {
+	return string(p)
 }
 
 // Status represents the lifecycle state of a consent record.

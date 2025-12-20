@@ -8,6 +8,7 @@ import (
 
 	"credo/internal/auth/models"
 	jwttoken "credo/internal/jwt_token"
+	id "credo/pkg/domain"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -30,16 +31,16 @@ import (
 // - "token not found - idempotent success" - covered by "Revoking unknown token"
 // - "expired access token - can still revoke" - covered by "Revoking expired token"
 func (s *ServiceSuite) TestRevokeToken() {
-	sessionID := uuid.New()
-	userID := uuid.New()
-	clientUUID := uuid.New()
+	sessionID := id.SessionID(uuid.New())
+	userID := id.UserID(uuid.New())
+	clientUUID := id.ClientID(uuid.New())
 	jti := "access-token-jti-123"
 
 	validSession := &models.Session{
 		ID:                 sessionID,
 		UserID:             userID,
 		ClientID:           clientUUID,
-		Status:             string(models.SessionStatusActive),
+		Status: models.SessionStatusActive,
 		LastAccessTokenJTI: jti,
 		CreatedAt:          time.Now().Add(-1 * time.Hour),
 		ExpiresAt:          time.Now().Add(23 * time.Hour),
@@ -134,15 +135,15 @@ func (s *ServiceSuite) TestRevokeToken() {
 
 // TestExtractSessionFromAccessToken tests JWT signature verification
 func (s *ServiceSuite) TestExtractSessionFromAccessToken() {
-	sessionID := uuid.New()
-	userID := uuid.New()
-	clientUUID := uuid.New()
+	sessionID := id.SessionID(uuid.New())
+	userID := id.UserID(uuid.New())
+	clientUUID := id.ClientID(uuid.New())
 
 	validSession := &models.Session{
 		ID:        sessionID,
 		UserID:    userID,
 		ClientID:  clientUUID,
-		Status:    string(models.SessionStatusActive),
+		Status: models.SessionStatusActive,
 		CreatedAt: time.Now().Add(-1 * time.Hour),
 		ExpiresAt: time.Now().Add(23 * time.Hour),
 	}

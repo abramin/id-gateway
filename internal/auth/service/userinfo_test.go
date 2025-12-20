@@ -8,6 +8,7 @@ import (
 	"credo/internal/auth/models"
 	sessionStore "credo/internal/auth/store/session"
 	userStore "credo/internal/auth/store/user"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 
 	"github.com/google/uuid"
@@ -29,7 +30,7 @@ import (
 // - "happy path - returns user info" - covered by "Access userinfo endpoint"
 func (s *ServiceSuite) TestUserInfo() {
 	existingUser := &models.User{
-		ID:        uuid.New(),
+		ID:        id.UserID(uuid.New()),
 		Email:     "user@example.com",
 		FirstName: "John",
 		LastName:  "Doe",
@@ -47,7 +48,7 @@ func (s *ServiceSuite) TestUserInfo() {
 	s.T().Run("user not found", func(t *testing.T) {
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(&models.Session{
 			UserID: existingUser.ID,
-			Status: string(models.SessionStatusActive),
+			Status: models.SessionStatusActive,
 		}, nil)
 		s.mockUserStore.EXPECT().FindByID(gomock.Any(), existingUser.ID).Return(nil, userStore.ErrNotFound)
 
@@ -58,7 +59,7 @@ func (s *ServiceSuite) TestUserInfo() {
 
 	s.T().Run("session not active", func(t *testing.T) {
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(&models.Session{
-			Status: string(models.SessionStatusPendingConsent),
+			Status: models.SessionStatusPendingConsent,
 		}, nil)
 
 		result, err := s.service.UserInfo(context.Background(), uuid.New().String())
@@ -78,7 +79,7 @@ func (s *ServiceSuite) TestUserInfo() {
 	s.T().Run("user store error", func(t *testing.T) {
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(&models.Session{
 			UserID: existingUser.ID,
-			Status: string(models.SessionStatusActive),
+			Status: models.SessionStatusActive,
 		}, nil)
 		s.mockUserStore.EXPECT().FindByID(gomock.Any(), existingUser.ID).Return(nil, errors.New("db error"))
 

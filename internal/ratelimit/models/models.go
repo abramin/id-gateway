@@ -3,6 +3,7 @@ package models
 import (
 	"time"
 
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
 
@@ -29,6 +30,29 @@ const (
 	AllowlistTypeUserID AllowlistEntryType = "user_id"
 )
 
+// ParseAllowlistEntryType creates an AllowlistEntryType from a string, validating it.
+// Returns error if the type is empty or not one of the allowed values.
+func ParseAllowlistEntryType(s string) (AllowlistEntryType, error) {
+	if s == "" {
+		return "", dErrors.New(dErrors.CodeInvalidInput, "allowlist entry type cannot be empty")
+	}
+	t := AllowlistEntryType(s)
+	if !t.IsValid() {
+		return "", dErrors.New(dErrors.CodeInvalidInput, "invalid allowlist entry type: must be 'ip' or 'user_id'")
+	}
+	return t, nil
+}
+
+// IsValid checks if the allowlist entry type is one of the supported values.
+func (t AllowlistEntryType) IsValid() bool {
+	return t == AllowlistTypeIP || t == AllowlistTypeUserID
+}
+
+// String returns the string representation.
+func (t AllowlistEntryType) String() string {
+	return string(t)
+}
+
 // RateLimitResult represents the outcome of a rate limit check.
 // Per PRD-017 FR-1: Headers include X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset.
 type RateLimitResult struct {
@@ -48,7 +72,7 @@ type AllowlistEntry struct {
 	Reason     string             `json:"reason"`
 	ExpiresAt  *time.Time         `json:"expires_at,omitempty"`
 	CreatedAt  time.Time          `json:"created_at"`
-	CreatedBy  string             `json:"created_by"` // admin user_id
+	CreatedBy  id.UserID          `json:"created_by"` // admin user_id
 }
 
 // RateLimitViolation represents a recorded rate limit violation for audit.
@@ -98,7 +122,7 @@ type AuthLockout struct {
 }
 
 // NewAllowlistEntry creates an AllowlistEntry with domain invariant validation.
-func NewAllowlistEntry(entryType AllowlistEntryType, identifier, reason, createdBy string, expiresAt *time.Time) (*AllowlistEntry, error) {
+func NewAllowlistEntry(entryType AllowlistEntryType, identifier, reason string, createdBy id.UserID, expiresAt *time.Time) (*AllowlistEntry, error) {
 	if identifier == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "identifier cannot be empty")
 	}
@@ -107,9 +131,6 @@ func NewAllowlistEntry(entryType AllowlistEntryType, identifier, reason, created
 	}
 	if reason == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "reason cannot be empty")
-	}
-	if createdBy == "" {
-		return nil, dErrors.New(dErrors.CodeInvariantViolation, "created_by cannot be empty")
 	}
 
 	// TODO: Implement - generate unique ID

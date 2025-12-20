@@ -10,6 +10,7 @@ import (
 
 	"credo/internal/audit"
 	"credo/internal/auth/models"
+	id "credo/pkg/domain"
 )
 
 // UserStore defines methods for seeding users
@@ -106,7 +107,7 @@ func (s *Seeder) seedUsers(ctx context.Context) ([]*models.User, error) {
 	var users []*models.User
 	for _, u := range demoUsers {
 		user := &models.User{
-			ID:        uuid.New(),
+			ID:        id.UserID(uuid.New()),
 			Email:     u.email,
 			FirstName: u.firstName,
 			LastName:  u.lastName,
@@ -129,18 +130,18 @@ func (s *Seeder) seedSessions(ctx context.Context, users []*models.User) error {
 	// Create sessions for first 5 users (some active, some expired)
 	sessions := []struct {
 		userIdx       int
-		status        string
+		status        models.SessionStatus
 		createdOffset time.Duration
 		expiryOffset  time.Duration
 		codeUsed      bool
 		tokenUsed     bool
 	}{
-		{0, "active", -10 * time.Minute, 50 * time.Minute, true, false},
-		{0, "revoked", -2 * time.Hour, -1 * time.Hour, true, true},
-		{1, "active", -30 * time.Minute, 30 * time.Minute, true, false},
-		{2, "active", -1 * time.Hour, 23 * time.Hour, true, false},
-		{3, "revoked", -5 * time.Hour, -4 * time.Hour, true, true},
-		{4, "pending_consent", -15 * time.Minute, 45 * time.Minute, false, false},
+		{0, models.SessionStatusActive, -10 * time.Minute, 50 * time.Minute, true, false},
+		{0, models.SessionStatusRevoked, -2 * time.Hour, -1 * time.Hour, true, true},
+		{1, models.SessionStatusActive, -30 * time.Minute, 30 * time.Minute, true, false},
+		{2, models.SessionStatusActive, -1 * time.Hour, 23 * time.Hour, true, false},
+		{3, models.SessionStatusRevoked, -5 * time.Hour, -4 * time.Hour, true, true},
+		{4, models.SessionStatusPendingConsent, -15 * time.Minute, 45 * time.Minute, false, false},
 	}
 
 	for _, sess := range sessions {
@@ -152,15 +153,15 @@ func (s *Seeder) seedSessions(ctx context.Context, users []*models.User) error {
 		expiresAt := now.Add(sess.expiryOffset)
 		lastSeenAt := createdAt.Add(2 * time.Minute)
 		var revokedAt *time.Time
-		if sess.status == "revoked" {
+		if sess.status == models.SessionStatusRevoked {
 			revoked := lastSeenAt
 			revokedAt = &revoked
 		}
 
 		session := &models.Session{
-			ID:                  uuid.New(),
+			ID:                  id.SessionID(uuid.New()),
 			UserID:              users[sess.userIdx].ID,
-			ClientID:            uuid.New(),
+			ClientID:            id.ClientID(uuid.New()),
 			RequestedScope:      []string{"openid", "profile"},
 			Status:              sess.status,
 			DeviceID:            fmt.Sprintf("device_%s", uuid.New().String()),
@@ -245,7 +246,7 @@ func (s *Seeder) seedAuditEvents(ctx context.Context, users []*models.User) erro
 
 		event := audit.Event{
 			Timestamp: now.Add(e.offset),
-			UserID:    users[e.userIdx].ID.String(),
+			UserID:    users[e.userIdx].ID,
 			Action:    e.action,
 			Purpose:   e.purpose,
 			Decision:  e.decision,

@@ -15,13 +15,14 @@ import (
 	"credo/internal/sentinel"
 	"credo/internal/tenant/models"
 	"credo/pkg/attrs"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/secrets"
 )
 
 type TenantStore interface {
 	CreateIfNameAvailable(ctx context.Context, tenant *models.Tenant) error
-	FindByID(ctx context.Context, id uuid.UUID) (*models.Tenant, error)
+	FindByID(ctx context.Context, tenantID id.TenantID) (*models.Tenant, error)
 	FindByName(ctx context.Context, name string) (*models.Tenant, error)
 	Count(ctx context.Context) (int, error)
 }
@@ -29,14 +30,14 @@ type TenantStore interface {
 type ClientStore interface {
 	Create(ctx context.Context, client *models.Client) error
 	Update(ctx context.Context, client *models.Client) error
-	FindByID(ctx context.Context, id uuid.UUID) (*models.Client, error)
-	FindByTenantAndID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*models.Client, error)
-	FindByClientID(ctx context.Context, clientID string) (*models.Client, error)
-	CountByTenant(ctx context.Context, tenantID uuid.UUID) (int, error)
+	FindByID(ctx context.Context, clientID id.ClientID) (*models.Client, error)
+	FindByTenantAndID(ctx context.Context, tenantID id.TenantID, clientID id.ClientID) (*models.Client, error)
+	FindByOAuthClientID(ctx context.Context, oauthClientID string) (*models.Client, error)
+	CountByTenant(ctx context.Context, tenantID id.TenantID) (int, error)
 }
 
 type UserCounter interface {
-	CountByTenant(ctx context.Context, tenantID uuid.UUID) (int, error)
+	CountByTenant(ctx context.Context, tenantID id.TenantID) (int, error)
 }
 
 type AuditPublisher interface {
@@ -85,7 +86,7 @@ func New(tenants TenantStore, clients ClientStore, users UserCounter, opts ...Op
 func (s *Service) CreateTenant(ctx context.Context, name string) (*models.Tenant, error) {
 	name = strings.TrimSpace(name)
 
-	t, err := models.NewTenant(uuid.New(), name)
+	t, err := models.NewTenant(id.TenantID(uuid.New()), name)
 	if err != nil {
 		return nil, err
 	}
@@ -104,20 +105,23 @@ func (s *Service) CreateTenant(ctx context.Context, name string) (*models.Tenant
 }
 
 // GetTenant fetches tenant metadata with counts.
-func (s *Service) GetTenant(ctx context.Context, id uuid.UUID) (*models.TenantDetails, error) {
-	tenant, err := s.tenants.FindByID(ctx, id)
+func (s *Service) GetTenant(ctx context.Context, tenantID id.TenantID) (*models.TenantDetails, error) {
+	if tenantID.IsNil() {
+		return nil, dErrors.New(dErrors.CodeBadRequest, "tenant ID required")
+	}
+	tenant, err := s.tenants.FindByID(ctx, tenantID)
 	if err != nil {
 		return nil, wrapTenantErr(err, "failed to load tenant")
 	}
 
-	clientCount, err := s.clients.CountByTenant(ctx, id)
+	clientCount, err := s.clients.CountByTenant(ctx, tenantID)
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to count clients")
 	}
 
 	userCount := 0
 	if s.userCounter != nil {
-		userCount, err = s.userCounter.CountByTenant(ctx, id)
+		userCount, err = s.userCounter.CountByTenant(ctx, tenantID)
 		if err != nil {
 			return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to count users")
 		}
@@ -151,7 +155,7 @@ func (s *Service) CreateClient(ctx context.Context, req *models.CreateClientRequ
 	}
 
 	client, err := models.NewClient(
-		uuid.New(),
+		id.ClientID(uuid.New()),
 		req.TenantID,
 		req.Name,
 		uuid.NewString(),
@@ -179,8 +183,11 @@ func (s *Service) CreateClient(ctx context.Context, req *models.CreateClientRequ
 }
 
 // GetClient returns a registered client by id.
-func (s *Service) GetClient(ctx context.Context, id uuid.UUID) (*models.Client, error) {
-	client, err := s.clients.FindByID(ctx, id)
+func (s *Service) GetClient(ctx context.Context, clientID id.ClientID) (*models.Client, error) {
+	if clientID.IsNil() {
+		return nil, dErrors.New(dErrors.CodeBadRequest, "client ID required")
+	}
+	client, err := s.clients.FindByID(ctx, clientID)
 	if err != nil {
 		return nil, wrapClientErr(err, "failed to get client")
 	}
@@ -188,8 +195,14 @@ func (s *Service) GetClient(ctx context.Context, id uuid.UUID) (*models.Client, 
 }
 
 // GetClientForTenant enforces tenant scoping when retrieving a client.
-func (s *Service) GetClientForTenant(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*models.Client, error) {
-	client, err := s.clients.FindByTenantAndID(ctx, tenantID, id)
+func (s *Service) GetClientForTenant(ctx context.Context, tenantID id.TenantID, clientID id.ClientID) (*models.Client, error) {
+	if tenantID.IsNil() {
+		return nil, dErrors.New(dErrors.CodeBadRequest, "tenant ID required")
+	}
+	if clientID.IsNil() {
+		return nil, dErrors.New(dErrors.CodeBadRequest, "client ID required")
+	}
+	client, err := s.clients.FindByTenantAndID(ctx, tenantID, clientID)
 	if err != nil {
 		return nil, wrapClientErr(err, "failed to get client")
 	}
@@ -198,8 +211,11 @@ func (s *Service) GetClientForTenant(ctx context.Context, tenantID uuid.UUID, id
 
 // UpdateClient updates mutable fields and optionally rotates the secret.
 // Returns the updated client and the rotated secret (empty if not rotated).
-func (s *Service) UpdateClient(ctx context.Context, id uuid.UUID, req *models.UpdateClientRequest) (*models.Client, string, error) {
-	client, err := s.clients.FindByID(ctx, id)
+func (s *Service) UpdateClient(ctx context.Context, clientID id.ClientID, req *models.UpdateClientRequest) (*models.Client, string, error) {
+	if clientID.IsNil() {
+		return nil, "", dErrors.New(dErrors.CodeBadRequest, "client ID required")
+	}
+	client, err := s.clients.FindByID(ctx, clientID)
 	if err != nil {
 		return nil, "", wrapClientErr(err, "failed to get client")
 	}
@@ -208,8 +224,14 @@ func (s *Service) UpdateClient(ctx context.Context, id uuid.UUID, req *models.Up
 
 // UpdateClientForTenant enforces tenant scoping when updating a client.
 // Returns the updated client and the rotated secret (empty if not rotated).
-func (s *Service) UpdateClientForTenant(ctx context.Context, tenantID uuid.UUID, id uuid.UUID, req *models.UpdateClientRequest) (*models.Client, string, error) {
-	client, err := s.clients.FindByTenantAndID(ctx, tenantID, id)
+func (s *Service) UpdateClientForTenant(ctx context.Context, tenantID id.TenantID, clientID id.ClientID, req *models.UpdateClientRequest) (*models.Client, string, error) {
+	if tenantID.IsNil() {
+		return nil, "", dErrors.New(dErrors.CodeBadRequest, "tenant ID required")
+	}
+	if clientID.IsNil() {
+		return nil, "", dErrors.New(dErrors.CodeBadRequest, "client ID required")
+	}
+	client, err := s.clients.FindByTenantAndID(ctx, tenantID, clientID)
 	if err != nil {
 		return nil, "", wrapClientErr(err, "failed to get client")
 	}
@@ -267,7 +289,7 @@ func (s *Service) ResolveClient(ctx context.Context, clientID string) (*models.C
 		return nil, nil, dErrors.New(dErrors.CodeValidation, "client_id is required")
 	}
 
-	client, err := s.clients.FindByClientID(ctx, clientID)
+	client, err := s.clients.FindByOAuthClientID(ctx, clientID)
 	if err != nil {
 		return nil, nil, wrapClientErr(err, "failed to resolve client")
 	}
@@ -294,10 +316,11 @@ func (s *Service) logAudit(ctx context.Context, event string, attributes ...any)
 	if s.auditPublisher == nil {
 		return
 	}
-	userID := attrs.ExtractString(attributes, "user_id")
+	userIDStr := attrs.ExtractString(attributes, "user_id")
+	userID, _ := id.ParseUserID(userIDStr) // Best-effort for audit - ignore parse errors
 	_ = s.auditPublisher.Emit(ctx, audit.Event{
 		UserID:  userID,
-		Subject: userID,
+		Subject: userIDStr,
 		Action:  event,
 	})
 }

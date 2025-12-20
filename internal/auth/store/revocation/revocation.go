@@ -25,6 +25,7 @@ type InMemoryTRL struct {
 	mu              sync.RWMutex
 	revoked         map[string]time.Time // jti -> expiry timestamp
 	cleanupInterval time.Duration
+	stopCh          chan struct{}
 }
 
 type InMemoryTRLOption func(*InMemoryTRL)
@@ -41,7 +42,8 @@ func WithCleanupInterval(d time.Duration) InMemoryTRLOption {
 func NewInMemoryTRL(opts ...InMemoryTRLOption) *InMemoryTRL {
 	trl := &InMemoryTRL{
 		revoked:         make(map[string]time.Time),
-		cleanupInterval: 5 * time.Minute,
+		cleanupInterval: 1 * time.Minute, // Reduced from 5min for bounded memory growth
+		stopCh:          make(chan struct{}),
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -51,6 +53,11 @@ func NewInMemoryTRL(opts ...InMemoryTRLOption) *InMemoryTRL {
 	// Start cleanup goroutine to remove expired entries
 	go trl.cleanup()
 	return trl
+}
+
+// Close stops the cleanup goroutine.
+func (t *InMemoryTRL) Close() {
+	close(t.stopCh)
 }
 
 // RevokeToken adds a token to the revocation list with TTL.
@@ -97,14 +104,19 @@ func (t *InMemoryTRL) cleanup() {
 	ticker := time.NewTicker(t.cleanupInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		t.mu.Lock()
-		now := time.Now()
-		for jti, expiry := range t.revoked {
-			if now.After(expiry) {
-				delete(t.revoked, jti)
+	for {
+		select {
+		case <-t.stopCh:
+			return
+		case <-ticker.C:
+			t.mu.Lock()
+			now := time.Now()
+			for jti, expiry := range t.revoked {
+				if now.After(expiry) {
+					delete(t.revoked, jti)
+				}
 			}
+			t.mu.Unlock()
 		}
-		t.mu.Unlock()
 	}
 }
