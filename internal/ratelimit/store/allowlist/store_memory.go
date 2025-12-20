@@ -41,32 +41,14 @@ func (s *InMemoryAllowlistStore) IsAllowlisted(ctx context.Context, identifier s
 		return false, nil
 	}
 
-	// First pass: check with read lock
 	s.mu.RLock()
-	var expiredKeys []string
-	typesToCheck := []models.AllowlistEntryType{models.AllowlistTypeIP, models.AllowlistTypeUserID}
-	for _, entryType := range typesToCheck {
-		key := buildKey(entryType, identifier)
-		if entry, exists := s.entries[key]; exists {
-			if !isExpired(entry) {
-				s.mu.RUnlock()
-				return true, nil
-			}
-			expiredKeys = append(expiredKeys, key)
-		}
-	}
-	s.mu.RUnlock()
+	defer s.mu.RUnlock()
 
-	// Second pass: clean up expired entries with write lock
-	if len(expiredKeys) > 0 {
-		s.mu.Lock()
-		for _, key := range expiredKeys {
-			// Re-check expiration under write lock (entry may have been updated)
-			if entry, exists := s.entries[key]; exists && isExpired(entry) {
-				delete(s.entries, key)
-			}
+	for _, entryType := range []models.AllowlistEntryType{models.AllowlistTypeIP, models.AllowlistTypeUserID} {
+		key := buildKey(entryType, identifier)
+		if entry, exists := s.entries[key]; exists && !isExpired(entry) {
+			return true, nil
 		}
-		s.mu.Unlock()
 	}
 
 	return false, nil
@@ -83,6 +65,31 @@ func (s *InMemoryAllowlistStore) List(ctx context.Context) ([]*models.AllowlistE
 		}
 	}
 	return activeEntries, nil
+}
+
+// StartCleanup runs periodic cleanup of expired entries until ctx is cancelled.
+func (s *InMemoryAllowlistStore) StartCleanup(ctx context.Context, interval time.Duration) error {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			s.removeExpired()
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+func (s *InMemoryAllowlistStore) removeExpired() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, entry := range s.entries {
+		if isExpired(entry) {
+			delete(s.entries, key)
+		}
+	}
 }
 
 func buildKey(entryType models.AllowlistEntryType, identifier string) string {

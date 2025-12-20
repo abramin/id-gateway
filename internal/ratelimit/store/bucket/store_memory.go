@@ -35,7 +35,9 @@ func (sw *slidingWindow) tryConsume(cost, limit int, now time.Time) (allowed boo
 		sw.timestamps = append(sw.timestamps, now)
 	}
 
-	return true, limit - len(sw.timestamps), sw.timestamps[0].Add(sw.window)
+	remaining = limit - len(sw.timestamps)
+	resetAt = sw.timestamps[0].Add(sw.window)
+	return true, remaining, resetAt
 }
 
 func (sw *slidingWindow) count(now time.Time) int {

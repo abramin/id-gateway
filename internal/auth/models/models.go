@@ -49,23 +49,23 @@ type Session struct {
 
 // IsActive returns true if the session is active.
 func (s *Session) IsActive() bool {
-	return s.Status == string(SessionStatusActive)
+	return s.Status == SessionStatusActive
 }
 
 // IsPendingConsent returns true if the session is pending consent.
 func (s *Session) IsPendingConsent() bool {
-	return s.Status == string(SessionStatusPendingConsent)
+	return s.Status == SessionStatusPendingConsent
 }
 
 // IsRevoked returns true if the session has been revoked.
 func (s *Session) IsRevoked() bool {
-	return s.Status == string(SessionStatusRevoked)
+	return s.Status == SessionStatusRevoked
 }
 
 // Activate transitions a pending session to active status.
 func (s *Session) Activate() {
 	if s.IsPendingConsent() {
-		s.Status = string(SessionStatusActive)
+		s.Status = SessionStatusActive
 	}
 }
 

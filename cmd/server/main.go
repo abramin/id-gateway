@@ -83,7 +83,7 @@ func main() {
 		panic(err)
 	}
 
-	rateLimitService, err := buildRateLimitService(infra.Log)
+	rateLimitService, allowlistStore, err := buildRateLimitService(infra.Log)
 	if err != nil {
 		infra.Log.Error("failed to initialize rate limit service", "error", err)
 		os.Exit(1)
@@ -101,6 +101,11 @@ func main() {
 	consentMod := buildConsentModule(infra)
 
 	startCleanupWorker(appCtx, infra.Log, authMod.Cleanup)
+	go func() {
+		if err := allowlistStore.StartCleanup(appCtx, 5*time.Minute); err != nil && err != context.Canceled {
+			infra.Log.Error("rate limit cleanup stopped", "error", err)
+		}
+	}()
 
 	r := setupRouter(infra)
 	registerRoutes(r, infra, authMod, consentMod, tenantMod, rateLimitMiddleware)
@@ -118,7 +123,7 @@ func main() {
 	waitForShutdown([]*http.Server{mainSrv, adminSrv}, infra.Log, cancelApp)
 }
 
-func buildRateLimitService(logger *slog.Logger) (*rateLimit.Service, error) {
+func buildRateLimitService(logger *slog.Logger) (*rateLimit.Service, *rwallowlistStore.InMemoryAllowlistStore, error) {
 	bucketStore := rwbucketStore.NewInMemoryBucketStore()
 	allowlistStore := rwallowlistStore.NewInMemoryAllowlistStore()
 	svc, err := rateLimit.New(
@@ -128,9 +133,9 @@ func buildRateLimitService(logger *slog.Logger) (*rateLimit.Service, error) {
 	)
 	if err != nil {
 		logger.Error("failed to create rate limit service", "error", err)
-		return nil, err
+		return nil, nil, err
 	}
-	return svc, nil
+	return svc, allowlistStore, nil
 }
 
 func buildInfra() (*infraBundle, error) {
