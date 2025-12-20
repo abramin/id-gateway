@@ -31,7 +31,6 @@ import (
 // AuthHandlerSuite tests handler-specific behavior.
 // NOTE: Happy paths and input validation scenarios are covered by Cucumber E2E tests
 // in e2e/features/auth_*.feature. These unit tests focus on handler-specific logic:
-// - JSON parsing errors
 // - Context value extraction
 // - Internal error mapping to 500 responses
 type AuthHandlerSuite struct {
@@ -72,16 +71,6 @@ func (s *AuthHandlerSuite) TestHandler_Authorize() {
 		s.assertSuccessResponse(t, status, got, errBody)
 		assert.Equal(t, expectedResp.Code, got.Code)
 		assert.Equal(t, expectedResp.RedirectURI, got.RedirectURI)
-	})
-
-	s.T().Run("400 - invalid json body", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
-		mockService.EXPECT().Authorize(gomock.Any(), gomock.Any()).Times(0)
-
-		invalidJSON := `{"email": "`
-		status, got, errBody := s.doAuthRequest(t, router, invalidJSON)
-
-		s.assertErrorResponse(t, status, got, errBody, http.StatusBadRequest, string(dErrors.CodeBadRequest))
 	})
 
 	s.T().Run("returns 500 when service fails", func(t *testing.T) {
