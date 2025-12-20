@@ -44,23 +44,21 @@ make run
 docker compose up
 ```
 
-2. Create test data by running the E2E tests (requires server running):
+2. The script is self-bootstrapping in local/dev environments:
+   - It automatically uses `demo-admin-token` (matching the server's default)
+   - It creates a temporary tenant and client on each run
+   - No additional configuration needed for local testing
 
-```bash
-# Terminal 1: Start server
-make run
-
-# Terminal 2: Run E2E tests to create users/sessions
-make e2e
-
-# Verify test data exists
-curl http://localhost:8081/admin/users -H "X-Admin-Token: $ADMIN_TOKEN"
-```
+For custom environments, you can override:
+- `ADMIN_TOKEN`: Admin API token (default: `demo-admin-token`)
+- `CLIENT_ID`: Use an existing client instead of creating one
+- `USER_COUNT`: Number of test users to create (default: 100)
+- `SCOPES`: Comma-separated scopes (default: `openid,profile`)
 
 ### Run Scenarios
 
 ```bash
-# Run all scenarios
+# Run all scenarios (no config needed for local dev)
 k6 run loadtest/k6-credo.js
 
 # Run specific scenario
@@ -68,10 +66,14 @@ SCENARIO=token_refresh_storm k6 run loadtest/k6-credo.js
 SCENARIO=consent_burst k6 run loadtest/k6-credo.js
 SCENARIO=mixed_load k6 run loadtest/k6-credo.js
 
-# With custom configuration
-BASE_URL=http://localhost:8080 \
-CLIENT_ID=my-client \
-k6 run loadtest/k6-credo.js
+# With fewer users for quick testing
+USER_COUNT=10 k6 run loadtest/k6-credo.js
+
+# With custom admin token (for non-local environments)
+ADMIN_TOKEN=your-admin-token k6 run loadtest/k6-credo.js
+
+# With existing client (skip tenant/client creation)
+CLIENT_ID=clt_abc123xyz k6 run loadtest/k6-credo.js
 ```
 
 ## Scenarios
