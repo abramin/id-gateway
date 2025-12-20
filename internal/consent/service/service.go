@@ -18,17 +18,68 @@ import (
 	pkgerrors "credo/pkg/domain-errors"
 )
 
-// mutexConsentTx provides a mutex-based transaction boundary for in-memory stores.
-type mutexConsentTx struct {
-	mu    sync.Mutex
-	store Store
+// shardedConsentTx provides fine-grained locking using sharded mutexes.
+// Instead of a single global lock, operations are distributed across N shards
+// based on a hash of the user ID, reducing contention under concurrent load.
+const numConsentShards = 32
+
+// defaultConsentTxTimeout is the maximum duration for a consent transaction.
+const defaultConsentTxTimeout = 5 * time.Second
+
+type shardedConsentTx struct {
+	shards  [numConsentShards]sync.Mutex
+	store   Store
+	timeout time.Duration
 }
 
-func (t *mutexConsentTx) RunInTx(_ context.Context, fn func(store Store) error) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+func (t *shardedConsentTx) RunInTx(ctx context.Context, fn func(store Store) error) error {
+	// Check if context is already cancelled
+	if err := ctx.Err(); err != nil {
+		return pkgerrors.Wrap(err, pkgerrors.CodeTimeout, "transaction aborted: context cancelled")
+	}
+
+	// Apply timeout if not already set
+	timeout := t.timeout
+	if timeout == 0 {
+		timeout = defaultConsentTxTimeout
+	}
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	shard := t.selectShard(ctx)
+	t.shards[shard].Lock()
+	defer t.shards[shard].Unlock()
+
+	// Check again after acquiring lock
+	if err := ctx.Err(); err != nil {
+		return pkgerrors.Wrap(err, pkgerrors.CodeTimeout, "transaction aborted: context cancelled")
+	}
+
 	return fn(t.store)
 }
+
+// selectShard picks a shard based on user ID from context, or defaults to shard 0.
+func (t *shardedConsentTx) selectShard(ctx context.Context) int {
+	if userID, ok := ctx.Value(txUserKeyCtx).(string); ok && userID != "" {
+		return int(hashConsentString(userID) % numConsentShards)
+	}
+	return 0
+}
+
+func hashConsentString(s string) uint32 {
+	var h uint32
+	for i := 0; i < len(s); i++ {
+		h = h*31 + uint32(s[i])
+	}
+	return h
+}
+
+type txUserKey struct{}
+
+var txUserKeyCtx = txUserKey{}
 
 // Store defines the persistence interface for consent records.
 // Error Contract:
@@ -65,7 +116,7 @@ type Service struct {
 func NewService(store Store, auditor *audit.Publisher, logger *slog.Logger, opts ...Option) *Service {
 	svc := &Service{
 		store:                  store,
-		tx:                     &mutexConsentTx{store: store},
+		tx:                     &shardedConsentTx{store: store},
 		auditor:                auditor,
 		logger:                 logger,
 		consentTTL:             defaultConsentTTL,
@@ -142,7 +193,9 @@ func (s *Service) Grant(ctx context.Context, userID id.UserID, purposes []models
 
 	var granted []*models.Record
 	// Wrap multi-purpose grant in transaction to ensure atomicity per AGENTS.md
-	txErr := s.tx.RunInTx(ctx, func(txStore Store) error {
+	// Add user ID to context for sharded locking
+	txCtx := context.WithValue(ctx, txUserKeyCtx, userID.String())
+	txErr := s.tx.RunInTx(txCtx, func(txStore Store) error {
 		for _, purpose := range purposes {
 			record, err := s.upsertGrantTx(ctx, txStore, userID, purpose)
 			if err != nil {
@@ -241,7 +294,9 @@ func (s *Service) Revoke(ctx context.Context, userID id.UserID, purposes []model
 
 	var revoked []*models.Record
 	// Wrap multi-purpose revoke in transaction to ensure atomicity per AGENTS.md
-	txErr := s.tx.RunInTx(ctx, func(txStore Store) error {
+	// Add user ID to context for sharded locking
+	txCtx := context.WithValue(ctx, txUserKeyCtx, userID.String())
+	txErr := s.tx.RunInTx(txCtx, func(txStore Store) error {
 		for _, purpose := range purposes {
 			record, err := txStore.FindByUserAndPurpose(ctx, userID, purpose)
 			if err != nil {

@@ -86,17 +86,44 @@ type TxAuthStores struct {
 // based on a hash of the resource key, reducing contention under concurrent load.
 const numAuthShards = 32
 
+// defaultTxTimeout is the maximum duration for a transaction before it's aborted.
+const defaultTxTimeout = 5 * time.Second
+
 type shardedAuthTx struct {
-	shards [numAuthShards]sync.Mutex
-	stores TxAuthStores
+	shards  [numAuthShards]sync.Mutex
+	stores  TxAuthStores
+	timeout time.Duration
 }
 
 // RunInTx acquires a shard lock based on context and executes the transaction.
 // Falls back to shard 0 if no session key is in context.
+// Enforces a timeout to prevent runaway operations.
 func (t *shardedAuthTx) RunInTx(ctx context.Context, fn func(stores TxAuthStores) error) error {
+	// Check if context is already cancelled
+	if err := ctx.Err(); err != nil {
+		return dErrors.Wrap(err, dErrors.CodeTimeout, "transaction aborted: context cancelled")
+	}
+
+	// Apply timeout if not already set
+	timeout := t.timeout
+	if timeout == 0 {
+		timeout = defaultTxTimeout
+	}
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
 	shard := t.selectShard(ctx)
 	t.shards[shard].Lock()
 	defer t.shards[shard].Unlock()
+
+	// Check again after acquiring lock
+	if err := ctx.Err(); err != nil {
+		return dErrors.Wrap(err, dErrors.CodeTimeout, "transaction aborted: context cancelled")
+	}
+
 	return fn(t.stores)
 }
 
