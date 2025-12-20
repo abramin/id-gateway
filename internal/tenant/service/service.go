@@ -32,7 +32,7 @@ type ClientStore interface {
 	Update(ctx context.Context, client *models.Client) error
 	FindByID(ctx context.Context, clientID id.ClientID) (*models.Client, error)
 	FindByTenantAndID(ctx context.Context, tenantID id.TenantID, clientID id.ClientID) (*models.Client, error)
-	FindByPublicClientID(ctx context.Context, publicClientID string) (*models.Client, error)
+	FindByOAuthClientID(ctx context.Context, oauthClientID string) (*models.Client, error)
 	CountByTenant(ctx context.Context, tenantID id.TenantID) (int, error)
 }
 
@@ -289,7 +289,7 @@ func (s *Service) ResolveClient(ctx context.Context, clientID string) (*models.C
 		return nil, nil, dErrors.New(dErrors.CodeValidation, "client_id is required")
 	}
 
-	client, err := s.clients.FindByPublicClientID(ctx, clientID)
+	client, err := s.clients.FindByOAuthClientID(ctx, clientID)
 	if err != nil {
 		return nil, nil, wrapClientErr(err, "failed to resolve client")
 	}

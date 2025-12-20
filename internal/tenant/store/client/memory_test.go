@@ -21,7 +21,7 @@ func TestCreate_IndexesByClientID(t *testing.T) {
 		ID:             id.ClientID(uuid.New()),
 		TenantID:       id.TenantID(uuid.New()),
 		Name:           "Test Client",
-		PublicClientID: "test-client-id",
+		OAuthClientID:  "test-client-id",
 		Status:         "active",
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
@@ -30,7 +30,7 @@ func TestCreate_IndexesByClientID(t *testing.T) {
 	require.NoError(t, store.Create(ctx, client))
 
 	// Should be findable by ClientID
-	found, err := store.FindByPublicClientID(ctx, "test-client-id")
+	found, err := store.FindByOAuthClientID(ctx, "test-client-id")
 	require.NoError(t, err)
 	assert.Equal(t, client.ID, found.ID)
 }
@@ -46,7 +46,7 @@ func TestFindByTenantAndID_WrongTenant(t *testing.T) {
 		ID:             id.ClientID(uuid.New()),
 		TenantID:       tenantA,
 		Name:           "Client A",
-		PublicClientID: "client-a",
+		OAuthClientID:  "client-a",
 		Status:         "active",
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
@@ -76,7 +76,7 @@ func TestFindByClientID_NotFound(t *testing.T) {
 	store := NewInMemory()
 	ctx := context.Background()
 
-	_, err := store.FindByPublicClientID(ctx, "nonexistent")
+	_, err := store.FindByOAuthClientID(ctx, "nonexistent")
 	require.ErrorIs(t, err, ErrNotFound)
 }
 
@@ -93,7 +93,7 @@ func TestCountByTenant_OnlyCountsMatchingTenant(t *testing.T) {
 			ID:             id.ClientID(uuid.New()),
 			TenantID:       tenantA,
 			Name:           "Client A",
-			PublicClientID: uuid.NewString(),
+			OAuthClientID:  uuid.NewString(),
 			Status:         "active",
 			CreatedAt:      time.Now(),
 			UpdatedAt:      time.Now(),
@@ -107,7 +107,7 @@ func TestCountByTenant_OnlyCountsMatchingTenant(t *testing.T) {
 			ID:             id.ClientID(uuid.New()),
 			TenantID:       tenantB,
 			Name:           "Client B",
-			PublicClientID: uuid.NewString(),
+			OAuthClientID:  uuid.NewString(),
 			Status:         "active",
 			CreatedAt:      time.Now(),
 			UpdatedAt:      time.Now(),

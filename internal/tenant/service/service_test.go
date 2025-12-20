@@ -215,7 +215,7 @@ func (s *ServiceSuite) TestResolveClient() {
 	tenantRecord := s.createTestTenant("Acme")
 	created := s.createTestClient(tenantRecord.ID)
 
-	client, tenantObj, err := s.service.ResolveClient(context.Background(), created.PublicClientID)
+	client, tenantObj, err := s.service.ResolveClient(context.Background(), created.OAuthClientID)
 	require.NoError(s.T(), err)
 	assert.Equal(s.T(), tenantRecord.ID, tenantObj.ID)
 	assert.Equal(s.T(), created.ID, client.ID)

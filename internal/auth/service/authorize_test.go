@@ -34,7 +34,7 @@ func (s *ServiceSuite) TestAuthorize() {
 	mockClient := &tenant.Client{
 		ID:             clientID,
 		TenantID:       tenantID,
-		PublicClientID: "client-123",
+		OAuthClientID:  "client-123",
 		Name:           "Test Client",
 		Status:         "active",
 		RedirectURIs:   []string{"https://client.app/callback"},
@@ -186,7 +186,7 @@ func (s *ServiceSuite) TestAuthorizeRedirectURIValidation() {
 	mockClient := &tenant.Client{
 		ID:             clientID,
 		TenantID:       tenantID,
-		PublicClientID: "client-123",
+		OAuthClientID:  "client-123",
 		Name:           "Test Client",
 		Status:         "active",
 		RedirectURIs:   []string{"https://allowed.example.com/callback"},

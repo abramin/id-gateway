@@ -41,7 +41,7 @@ func (r *stubClientResolver) ResolveClient(ctx context.Context, clientID string)
 	return &tenantModels.Client{
 			ID:             r.defaultClientID,
 			TenantID:       r.defaultTenantID,
-			PublicClientID: clientID,
+			OAuthClientID:  clientID,
 			Name:           "Test Client",
 			Status:         "active",
 			RedirectURIs:   []string{"https://client.app/callback"},

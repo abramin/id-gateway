@@ -128,7 +128,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		sess := *validSession
 		otherClient := *mockClient
 		otherClient.ID = id.ClientID(uuid.New())
-		otherClient.PublicClientID = req.ClientID
+		otherClient.OAuthClientID = req.ClientID
 
 		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(&refreshRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)

@@ -192,14 +192,14 @@ func (h *Handler) HandleUpdateClient(w http.ResponseWriter, r *http.Request) {
 
 func toClientResponse(client *models.Client, secret string) *models.ClientResponse {
 	return &models.ClientResponse{
-		ID:             client.ID,
-		TenantID:       client.TenantID,
-		Name:           client.Name,
-		PublicClientID: client.PublicClientID,
-		ClientSecret:   secret,
-		RedirectURIs:   client.RedirectURIs,
-		AllowedGrants:  client.AllowedGrants,
-		AllowedScopes:  client.AllowedScopes,
-		Status:         client.Status.String(),
+		ID:            client.ID,
+		TenantID:      client.TenantID,
+		Name:          client.Name,
+		OAuthClientID: client.OAuthClientID,
+		ClientSecret:  secret,
+		RedirectURIs:  client.RedirectURIs,
+		AllowedGrants: client.AllowedGrants,
+		AllowedScopes: client.AllowedScopes,
+		Status:        client.Status.String(),
 	}
 }

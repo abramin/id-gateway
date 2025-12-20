@@ -33,7 +33,7 @@ func (s *InMemory) Create(_ context.Context, c *models.Client) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.clients[c.ID.String()] = c
-	s.byCode[c.PublicClientID] = c
+	s.byCode[c.OAuthClientID] = c
 	return nil
 }
 
@@ -42,7 +42,7 @@ func (s *InMemory) Update(_ context.Context, c *models.Client) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.clients[c.ID.String()] = c
-	s.byCode[c.PublicClientID] = c
+	s.byCode[c.OAuthClientID] = c
 	return nil
 }
 
@@ -68,11 +68,11 @@ func (s *InMemory) FindByTenantAndID(_ context.Context, tenantID id.TenantID, cl
 	return nil, ErrNotFound
 }
 
-// FindByPublicClientID retrieves a client by its Public client_id.
-func (s *InMemory) FindByPublicClientID(_ context.Context, publicClientID string) (*models.Client, error) {
+// FindByOAuthClientID retrieves a client by its OAuth client_id.
+func (s *InMemory) FindByOAuthClientID(_ context.Context, oauthClientID string) (*models.Client, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if c, ok := s.byCode[publicClientID]; ok {
+	if c, ok := s.byCode[oauthClientID]; ok {
 		return c, nil
 	}
 	return nil, ErrNotFound

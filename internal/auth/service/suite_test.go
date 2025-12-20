@@ -79,7 +79,7 @@ func (s *ServiceSuite) newTestClient(tenantID id.TenantID, clientUUID id.ClientI
 	return &tenant.Client{
 			ID:             clientUUID,
 			TenantID:       tenantID,
-			PublicClientID: "client-123",
+			OAuthClientID:  "client-123",
 			Name:           "Test Client",
 			Status:         "active",
 		}, &tenant.Tenant{

@@ -36,7 +36,7 @@ type Client struct {
 	ID               id.ClientID  `json:"id"`
 	TenantID         id.TenantID  `json:"tenant_id"`
 	Name             string       `json:"name"`
-	PublicClientID   string       `json:"client_id"`
+	OAuthClientID    string       `json:"client_id"`
 	ClientSecretHash string       `json:"client_secret_hash,omitempty"`
 	RedirectURIs     []string     `json:"redirect_uris"`
 	AllowedGrants    []string     `json:"allowed_grants"`
@@ -51,7 +51,7 @@ func NewClient(
 	clientID id.ClientID,
 	tenantID id.TenantID,
 	name string,
-	publicClientID string,
+	oauthClientID string,
 	clientSecretHash string,
 	redirectURIs []string,
 	allowedGrants []string,
@@ -64,7 +64,7 @@ func NewClient(
 	if len(name) > 128 {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "client name must be 128 characters or less")
 	}
-	if publicClientID == "" {
+	if oauthClientID == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "client_id cannot be empty")
 	}
 	if len(redirectURIs) == 0 {
@@ -80,7 +80,7 @@ func NewClient(
 		ID:               clientID,
 		TenantID:         tenantID,
 		Name:             name,
-		PublicClientID:   publicClientID,
+		OAuthClientID:    oauthClientID,
 		ClientSecretHash: clientSecretHash,
 		RedirectURIs:     redirectURIs,
 		AllowedGrants:    allowedGrants,
@@ -102,7 +102,7 @@ type ClientResponse struct {
 	ID             id.ClientID `json:"id"`
 	TenantID       id.TenantID `json:"tenant_id"`
 	Name           string      `json:"name"`
-	PublicClientID string      `json:"client_id"`
+	OAuthClientID  string      `json:"client_id"`
 	ClientSecret   string      `json:"client_secret"`
 	RedirectURIs   []string    `json:"redirect_uris"`
 	AllowedGrants  []string    `json:"allowed_grants"`
