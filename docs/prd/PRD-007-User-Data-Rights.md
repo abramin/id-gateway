@@ -327,6 +327,95 @@ func (h *Handler) handleDataDeletion(w http.ResponseWriter, r *http.Request) {
 - **Soft Delete Consideration:** For recovery window, use `deleted_at` timestamp instead of hard delete
 - **Referential Integrity Check:** Constraint triggers to verify cascade completion
 
+---
+
+**SQL Indexing Enhancements (from "Use The Index, Luke"):**
+
+**Pagination for Large Data Exports (Book Chapter 6):**
+
+```sql
+-- WHY THIS MATTERS: GDPR data export (GET /me/data-export) may return
+-- thousands of events across multiple tables. Offset pagination is slow.
+-- Seek (keyset) pagination is O(1) regardless of page number.
+
+-- ANTI-PATTERN: Offset pagination (slow for large offsets)
+SELECT * FROM audit_events
+WHERE user_id = :uid
+ORDER BY timestamp DESC
+OFFSET 5000 LIMIT 100;
+-- Problem: Scans and discards 5000 rows before returning 100
+-- Page 50 is 50x slower than page 1
+
+-- SOLUTION: Seek (keyset) pagination
+SELECT * FROM audit_events
+WHERE user_id = :uid
+  AND timestamp < :last_seen_timestamp  -- Seek to position
+ORDER BY timestamp DESC
+LIMIT 100;
+-- Uses index to jump directly; O(1) per page
+
+-- For UNION ALL export across tables, paginate per-table:
+WITH user_data AS (
+  -- Page through each table separately with seek
+  SELECT 'session' AS source, id, created_at
+  FROM sessions
+  WHERE user_id = :uid AND created_at < :last_session_ts
+  ORDER BY created_at DESC LIMIT 50
+  UNION ALL
+  SELECT 'consent' AS source, id, granted_at
+  FROM consent_records
+  WHERE user_id = :uid AND granted_at < :last_consent_ts
+  ORDER BY granted_at DESC LIMIT 50
+  -- ... more tables
+)
+SELECT * FROM user_data ORDER BY created_at DESC LIMIT 100;
+```
+
+**Covering Index for Export Queries:**
+
+```sql
+-- WHY THIS MATTERS: Export queries fetch specific columns repeatedly.
+-- Covering index avoids heap access for frequently exported fields.
+
+-- Data export only needs key fields, not full record:
+CREATE INDEX idx_sessions_export ON sessions (user_id, created_at)
+  INCLUDE (id, status, ip_hash);
+
+-- Export query becomes index-only scan:
+SELECT id, created_at, status, ip_hash
+FROM sessions
+WHERE user_id = :uid
+ORDER BY created_at DESC
+LIMIT 100;
+
+-- EXPLAIN shows: Index Only Scan (no heap fetches)
+```
+
+**Batch Deletion with Index Scan:**
+
+```sql
+-- WHY THIS MATTERS: CASCADE DELETE on large tables can be slow.
+-- Batch deletion with indexed lookup is faster and doesn't lock table.
+
+-- Index for deletion (if not using CASCADE):
+CREATE INDEX idx_sessions_user ON sessions (user_id);
+CREATE INDEX idx_consents_user ON consent_records (user_id);
+
+-- Batch delete with LIMIT to avoid long transactions:
+DELETE FROM sessions
+WHERE ctid IN (
+    SELECT ctid FROM sessions
+    WHERE user_id = :uid
+    LIMIT 1000
+);
+-- Repeat until no rows deleted
+
+-- EXPLAIN should show: Index Scan on idx_sessions_user
+-- NOT: Seq Scan on sessions
+```
+
+---
+
 **Acceptance Criteria (SQL):**
 - [ ] Data export uses UNION ALL to aggregate from all user tables
 - [ ] Deletion manifest uses CTE to count affected rows before deletion
@@ -334,6 +423,9 @@ func (h *Handler) handleDataDeletion(w http.ResponseWriter, r *http.Request) {
 - [ ] Audit pseudonymization preserves event ordering with window functions
 - [ ] Orphan detection uses anti-join patterns (LEFT JOIN WHERE NULL or NOT EXISTS)
 - [ ] Export statistics use aggregate functions with FILTER clause
+- [ ] **NEW:** Data export uses seek pagination, not offset
+- [ ] **NEW:** Export queries show Index Only Scan on covering indexes
+- [ ] **NEW:** Batch deletion uses indexed lookup, not sequential scan
 
 ---
 
@@ -498,6 +590,7 @@ curl http://localhost:8080/auth/userinfo -H "Authorization: Bearer $TOKEN"
 
 | Version | Date       | Author       | Changes                                                                                        |
 | ------- | ---------- | ------------ | ---------------------------------------------------------------------------------------------- |
+| 1.3     | 2025-12-21 | Engineering  | Enhanced TR-4: Added seek pagination, covering indexes, batch deletion patterns               |
 | 1.2     | 2025-12-21 | Engineering  | Added TR-4: SQL Query Patterns (UNION ALL, CTEs, cascade deletes, anti-joins, FK constraints) |
 | 1.1     | 2025-12-13 | Engineering  | Specify concurrent data-export fan-out, add service-layer orchestration TR, handler stays thin |
 | 1.0     | 2025-12-03 | Product Team | Initial PRD                                                                                    |

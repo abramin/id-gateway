@@ -436,13 +436,111 @@ func (h *Handler) handleDecisionEvaluate(w http.ResponseWriter, r *http.Request)
 - **Partitioning:** Decision history partitioned by month using range partitioning for efficient time-based queries
 - **Foreign Key Constraints:** `ON DELETE RESTRICT` for rule references to prevent orphaned conditions
 
+---
+
+**SQL Indexing Enhancements (from "Use The Index, Luke"):**
+
+**Join Strategy Comparison for Rule Resolution:**
+
+```sql
+-- WHY THIS MATTERS: Rule chain queries can use different join strategies.
+-- Understanding when PostgreSQL chooses Nested Loop vs Hash Join helps optimization.
+
+-- Nested Loop Join (good for small outer + indexed inner):
+-- EXPLAIN shows: "Nested Loop" when inner table is small and indexed
+SET enable_hashjoin = OFF;
+EXPLAIN ANALYZE
+SELECT r.*, rc.condition_type
+FROM decision_rules r
+JOIN rule_conditions rc ON r.id = rc.rule_id
+WHERE r.purpose = 'age_verification';
+-- Works well when: r filtered to few rows, rc has index on (rule_id)
+
+-- Hash Join (good for large tables without index on join key):
+SET enable_nestloop = OFF;
+EXPLAIN ANALYZE
+SELECT r.*, rc.condition_type
+FROM decision_rules r
+JOIN rule_conditions rc ON r.id = rc.rule_id;
+-- Works well when: both tables are large, no filtering
+
+-- For rule chains: Nested Loop is typically better because:
+-- 1. Rules are filtered by purpose/status (small result set)
+-- 2. Rule conditions indexed by rule_id
+-- 3. Recursive CTEs build small working sets per iteration
+```
+
+**Index Design for Decision History (High-Write Table):**
+
+```sql
+-- WHY THIS MATTERS: decision_history receives an INSERT for every evaluation.
+-- Too many indexes slow down writes. Choose indexes carefully.
+
+-- ANTI-PATTERN: Over-indexing high-write table
+CREATE INDEX idx_dh_user ON decision_history (user_id);
+CREATE INDEX idx_dh_purpose ON decision_history (purpose);
+CREATE INDEX idx_dh_status ON decision_history (status);
+CREATE INDEX idx_dh_evaluated ON decision_history (evaluated_at);
+-- 4 indexes = 4x write overhead for every INSERT
+
+-- SOLUTION: Minimal indexes covering actual query patterns
+CREATE INDEX idx_dh_user_purpose_time ON decision_history (user_id, purpose, evaluated_at DESC);
+-- Covers: user history, user+purpose history, recent decisions by user
+-- Single index serves multiple query patterns
+
+-- For analytics queries (infrequent), use the composite index:
+SELECT * FROM decision_history
+WHERE user_id = :uid AND purpose = 'age_verification'
+ORDER BY evaluated_at DESC LIMIT 10;
+-- Uses: idx_dh_user_purpose_time (one index scan)
+```
+
+**EXPLAIN ANALYZE Evidence for Rule Queries:**
+
+```sql
+-- Verify recursive CTE uses index for each iteration:
+EXPLAIN (ANALYZE, BUFFERS)
+WITH RECURSIVE rule_chain AS (
+  SELECT id, parent_id, rule_name, 1 AS depth
+  FROM decision_rules WHERE id = :root_rule_id
+  UNION ALL
+  SELECT r.id, r.parent_id, r.rule_name, rc.depth + 1
+  FROM decision_rules r
+  JOIN rule_chain rc ON r.parent_id = rc.id
+  WHERE rc.depth < 10
+)
+SELECT * FROM rule_chain ORDER BY depth;
+
+-- Look for:
+-- "Index Scan on decision_rules" at each recursion level
+-- NOT: "Seq Scan on decision_rules"
+-- Buffers: shared hit > read (cache efficiency)
+
+-- Verify decision history query uses composite index:
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT user_id, purpose, status, evaluated_at
+FROM decision_history
+WHERE user_id = :uid AND purpose = 'age_verification'
+ORDER BY evaluated_at DESC
+LIMIT 10;
+
+-- Expected:
+-- "Index Scan Backward using idx_dh_user_purpose_time"
+-- Limit does not require reading all matching rows
+```
+
+---
+
 **Acceptance Criteria (SQL):**
 - [ ] Rule chain resolution uses recursive CTE with depth limit
 - [ ] Decision analytics queries use window functions for trend analysis
 - [ ] Status aggregation uses CASE with GROUP BY/HAVING
 - [ ] Evidence freshness checks use correlated subqueries
 - [ ] Decision comparison uses self-joins
-- [ ] All queries validated with `EXPLAIN ANALYZE` showing index usage
+- [ ] **NEW:** Recursive CTE shows "Index Scan" for each iteration in EXPLAIN ANALYZE
+- [ ] **NEW:** Decision history uses single composite index (not multiple single-column)
+- [ ] **NEW:** Join strategy appropriate for query size (Nested Loop for filtered, Hash for bulk)
+- [ ] **NEW:** INSERT latency for decision_history <10ms p99 under load
 
 ---
 
@@ -541,9 +639,10 @@ curl -X POST http://localhost:8080/decision/evaluate \
 
 ## Revision History
 
-| Version | Date       | Author       | Changes                                                                                    |
-| ------- | ---------- | ------------ | ------------------------------------------------------------------------------------------ |
-| 1.5     | 2025-12-21 | Engineering  | Added TR-7: SQL Query Patterns (CTEs, window functions, CASE, subqueries, self-joins, 3NF) |
+| Version | Date       | Author       | Changes                                                                                        |
+| ------- | ---------- | ------------ | ---------------------------------------------------------------------------------------------- |
+| 1.6     | 2025-12-21 | Engineering  | Enhanced TR-7: Added join strategy comparison, index design for high-write tables, EXPLAIN    |
+| 1.5     | 2025-12-21 | Engineering  | Added TR-7: SQL Query Patterns (CTEs, window functions, CASE, subqueries, self-joins, 3NF)     |
 | 1.4     | 2025-12-18 | Security Eng | Added DSA/SQL requirements for rule DAGs and normalized, immutable rule storage            |
 | 1.3     | 2025-12-18 | Security Eng | Added secure-by-design evaluation (DAG, default-deny, signed policy bundles)               |
 | 1.2     | 2025-12-16 | Engineering  | Add concurrent evidence-gathering requirements and acceptance criteria                     |

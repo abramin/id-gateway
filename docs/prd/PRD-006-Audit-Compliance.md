@@ -393,6 +393,134 @@ func (h *Handler) handleDataExport(w http.ResponseWriter, r *http.Request) {
 
 - **WORM Storage Compliance:** Audit tables use `pg_dumpall` with append-only semantics; no UPDATE/DELETE triggers allowed
 
+---
+
+**SQL Indexing Enhancements (from "Use The Index, Luke"):**
+
+**Partition Pruning for Time-Based Queries:**
+
+```sql
+-- WHY THIS MATTERS: Audit tables can grow to billions of rows.
+-- Without partitioning, every query scans the entire table.
+-- Range partitioning by timestamp enables partition pruning.
+
+-- Create partitioned audit table:
+CREATE TABLE audit_events (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL,
+    request_id UUID,
+    details JSONB
+) PARTITION BY RANGE (timestamp);
+
+-- Monthly partitions:
+CREATE TABLE audit_events_2025_01 PARTITION OF audit_events
+    FOR VALUES FROM ('2025-01-01') TO ('2025-02-01');
+CREATE TABLE audit_events_2025_02 PARTITION OF audit_events
+    FOR VALUES FROM ('2025-02-01') TO ('2025-03-01');
+-- ... automated via pg_partman
+
+-- Query with partition pruning:
+EXPLAIN ANALYZE
+SELECT * FROM audit_events
+WHERE timestamp >= '2025-01-15' AND timestamp < '2025-01-20'
+  AND user_id = :uid;
+
+-- Expected: "Append" with only "audit_events_2025_01" scanned
+-- NOT: All partitions scanned
+```
+
+**Pagination: Offset vs Seek Method (Book Chapter 6):**
+
+```sql
+-- WHY THIS MATTERS: Data export (GET /me/data-export) may return thousands of events.
+-- Offset pagination degrades as page number increases.
+-- Seek (keyset) pagination is O(1) regardless of page.
+
+-- ANTI-PATTERN: Offset pagination
+SELECT * FROM audit_events
+WHERE user_id = :uid
+ORDER BY timestamp DESC
+OFFSET 10000 LIMIT 100;
+-- PostgreSQL scans and discards 10,000 rows, then returns 100
+-- Page 1000 is 10x slower than page 1
+
+-- SOLUTION: Seek (keyset) pagination
+SELECT * FROM audit_events
+WHERE user_id = :uid
+  AND timestamp < :last_seen_timestamp  -- Seek condition
+ORDER BY timestamp DESC
+LIMIT 100;
+-- Uses index to jump directly to position; O(1) per page
+
+-- For exact duplicate timestamps, use composite key:
+SELECT * FROM audit_events
+WHERE user_id = :uid
+  AND (timestamp, id) < (:last_ts, :last_id)
+ORDER BY timestamp DESC, id DESC
+LIMIT 100;
+-- Handles tie-breaker on duplicate timestamps
+```
+
+**Sort-Merge Join for Large Compliance Reports:**
+
+```sql
+-- WHY THIS MATTERS: Compliance reports may join audit_events with users or consents.
+-- For large datasets, Sort-Merge Join can outperform Nested Loop.
+-- PostgreSQL chooses automatically, but index on sort key helps.
+
+-- Index supporting sort-merge:
+CREATE INDEX idx_audit_user_time ON audit_events (user_id, timestamp);
+CREATE INDEX idx_consent_user_time ON consent_records (user_id, granted_at);
+
+-- Compliance report joining audit with consent:
+EXPLAIN ANALYZE
+SELECT a.user_id, a.action, a.timestamp, c.purpose, c.granted_at
+FROM audit_events a
+JOIN consent_records c
+  ON a.user_id = c.user_id
+  AND a.timestamp > c.granted_at
+WHERE a.action = 'decision_made'
+  AND a.timestamp BETWEEN '2025-01-01' AND '2025-02-01';
+
+-- EXPLAIN may show: "Merge Join" when both sides are pre-sorted
+-- Merge Join is efficient when:
+-- 1. Both inputs are sorted on join key
+-- 2. Output is also required sorted
+-- 3. Large datasets (Hash Join needs memory)
+```
+
+**EXPLAIN ANALYZE Evidence for Audit Queries:**
+
+```sql
+-- Verify partition pruning:
+EXPLAIN (ANALYZE, VERBOSE)
+SELECT * FROM audit_events
+WHERE timestamp >= '2025-01-01' AND timestamp < '2025-01-08'
+  AND user_id = :uid;
+-- Look for: "Partitions removed: X" or only one partition in Append
+
+-- Verify seek pagination uses index:
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT * FROM audit_events
+WHERE user_id = :uid AND timestamp < '2025-01-15'
+ORDER BY timestamp DESC LIMIT 100;
+-- Look for: "Index Scan Backward"
+-- NOT: "Seq Scan" or "Sort"
+
+-- Verify compliance join:
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT a.user_id, COUNT(*)
+FROM audit_events a
+JOIN consent_records c ON a.user_id = c.user_id
+WHERE a.timestamp > c.granted_at
+GROUP BY a.user_id;
+-- Look for: "Merge Join" or "Hash Join" (appropriate for data size)
+```
+
+---
+
 **Acceptance Criteria (SQL):**
 - [ ] Event correlation uses CTEs with window functions
 - [ ] Audit analytics use sliding window aggregations
@@ -401,6 +529,9 @@ func (h *Handler) handleDataExport(w http.ResponseWriter, r *http.Request) {
 - [ ] Suspicious pattern detection uses semi-joins and anti-joins
 - [ ] Partitioned tables verified with `EXPLAIN ANALYZE` showing partition pruning
 - [ ] Materialized views for summaries with scheduled refresh
+- [ ] **NEW:** Data export uses seek pagination, not offset
+- [ ] **NEW:** Partition pruning verified (only relevant partitions scanned)
+- [ ] **NEW:** Large compliance reports use appropriate join strategy (Merge/Hash)
 
 ---
 
@@ -492,6 +623,7 @@ curl "http://localhost:8080/me/data-export?action=consent_granted" \
 
 | Version | Date       | Author       | Changes                                                                                                     |
 | ------- | ---------- | ------------ | ----------------------------------------------------------------------------------------------------------- |
+| 1.7     | 2025-12-21 | Engineering  | Enhanced TR-6: Added partition pruning, seek pagination, sort-merge joins, EXPLAIN requirements             |
 | 1.6     | 2025-12-21 | Engineering  | Added TR-6: SQL Query Patterns (CTEs, window functions, aggregates, set operations, semi/anti-joins, views) |
 | 1.5     | 2025-12-18 | Security Eng | Added anchoring/verification requirements alongside partitioning and least-privilege interfaces             |
 | 1.4     | 2025-12-18 | Security Eng | Added secure storage/integrity (hash chaining, partitioning, least-privilege interfaces)                    |

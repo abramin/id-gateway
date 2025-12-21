@@ -40,6 +40,67 @@ The system cannot be deployed to production without operational tooling:
 
 ---
 
+## 1B. Storage Infrastructure Transition
+
+### In-Memory First Philosophy
+
+The codebase is intentionally designed with **in-memory stores first, production storage later**. This approach:
+
+- Enables rapid iteration during Phase 0-1 (no external dependencies)
+- Keeps tests fast and deterministic
+- Uses interfaces throughout, making swapping implementations trivial
+- Defers infrastructure complexity until proven necessary
+
+### When to Introduce Production Storage
+
+| Trigger | Required Tool | Rationale |
+|---------|--------------|-----------|
+| **Multi-instance deployment** | Redis | Rate limiting (PRD-017) must be distributed; in-memory state isn't shared across instances |
+| **Data durability requirements** | PostgreSQL | Audit logs (PRD-006), user data, consent records must survive restarts |
+| **Compliance/regulatory** | PostgreSQL | GDPR data export requires persistent storage; auditors need durable records |
+| **Session sharing** | Redis | Session validation across instances requires shared session store |
+| **Backup/DR requirements** | PostgreSQL | Can't backup in-memory stores; `pg_dump` enables point-in-time recovery |
+| **Production health checks** | Both | `/health/ready` checks database/Redis connectivity (this PRD) |
+
+### Transition Timeline
+
+```
+Phase 0-1 (MVP Development)     → In-memory stores only
+Phase 2 (Operational Baseline)  → PostgreSQL (users, consents, audit) + Redis (rate limiting, sessions)
+Phase 3+ (Production)           → Message queues (audit events), external caches (CDN)
+```
+
+### Migration Path
+
+All stores implement the same interface, so migration is DI wiring only:
+
+```go
+// Phase 0-1: In-memory (development/testing)
+userStore := inmemory.NewUserStore()
+
+// Phase 2+: PostgreSQL (production)
+userStore := postgres.NewUserStore(db)
+```
+
+**No business logic changes required.** Services depend on interfaces, not implementations.
+
+### Storage Decision Matrix
+
+| Store | Stay In-Memory When | Migrate to PostgreSQL When | Migrate to Redis When |
+|-------|--------------------|-----------------------------|----------------------|
+| `UserStore` | Single instance, ephemeral users | Users must persist across deploys | Never (not a cache) |
+| `SessionStore` | Single instance, no DR needs | Never (sessions are transient) | Multi-instance deployment |
+| `ConsentStore` | Development/testing only | GDPR compliance, audit requirements | Consent projections (CQRS read model) |
+| `AuditStore` | Development/testing only | Any production deployment | Never (requires durability) |
+| `RateLimitStore` | Single instance | Never | Multi-instance deployment |
+| `RegistryCache` | Small dataset, testing | Never (it's a cache) | Large dataset, multi-instance |
+
+### This PRD's Role
+
+PRD-020 marks the transition point. The health checks (`/health/ready`) defined here validate database and Redis connectivity, signaling that production storage is now required.
+
+---
+
 ## 2. Functional Requirements
 
 ### FR-1: Health Check Endpoints
@@ -310,6 +371,7 @@ psql -h localhost -U credo credo_db < backup_20251212.sql
 
 ## Revision History
 
-| Version | Date       | Author       | Changes     |
-| ------- | ---------- | ------------ | ----------- |
-| 1.0     | 2025-12-12 | Product Team | Initial PRD |
+| Version | Date       | Author       | Changes                                                                                          |
+| ------- | ---------- | ------------ | ------------------------------------------------------------------------------------------------ |
+| 1.1     | 2025-12-21 | Engineering  | Added Section 1B: Storage Infrastructure Transition (in-memory first philosophy, migration triggers, decision matrix) |
+| 1.0     | 2025-12-12 | Product Team | Initial PRD                                                                                      |

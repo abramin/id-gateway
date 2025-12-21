@@ -449,6 +449,256 @@ Maintains provider compatibility through:
 
 This architecture satisfies all TR-6 requirements while providing a foundation for future registry integrations.
 
+### TR-7: SQL Indexing for Cache & TTL Management
+
+**Objective:** Demonstrate SQL indexing concepts from "Use The Index, Luke" with production-ready patterns for registry cache management.
+
+**Topics Covered:**
+- Partial indexes (non-expired cache entries only)
+- Function-based indexes (TTL calculation)
+- Range queries for freshness checks
+- NULL handling for optional fields
+- Index-only scans for cache hit checks
+
+---
+
+#### Index Design
+
+| Table | Index | Type | Columns | Purpose |
+|-------|-------|------|---------|---------|
+| `citizen_cache` | `idx_citizen_national_id` | B-Tree | `(national_id)` | Primary lookup |
+| `citizen_cache` | `idx_citizen_fresh` | B-Tree (partial) | `(national_id) WHERE checked_at > NOW() - INTERVAL '5 minutes'` | Fresh entries only |
+| `citizen_cache` | `idx_citizen_expiry` | B-Tree | `(checked_at)` | Cleanup worker |
+| `sanctions_cache` | `idx_sanctions_national_id` | B-Tree | `(national_id)` | Primary lookup |
+| `sanctions_cache` | `idx_sanctions_listed` | B-Tree (partial) | `(national_id) WHERE listed = true` | Listed entities only |
+
+---
+
+#### Query Patterns with WHY
+
+**Pattern 1: Partial Index for Fresh Cache Entries (Book Chapter 2.2)**
+
+```sql
+-- WHY THIS MATTERS: Registry cache has a 5-minute TTL. Most queries only need
+-- fresh entries. A partial index on fresh entries is much smaller than indexing all.
+
+-- PROBLEM: Standard index includes ALL entries (including expired)
+CREATE INDEX idx_citizen_all ON citizen_cache (national_id);
+-- Index size: 100 MB (includes 90% expired entries we'll never query)
+
+-- SOLUTION: Partial index for fresh entries only
+-- Note: This requires a stable expression. NOW() changes, so we use a function.
+-- In practice, use checked_at + INTERVAL comparison in the query.
+
+-- For PostgreSQL, use a computed column or check freshness in query:
+CREATE INDEX idx_citizen_fresh ON citizen_cache (national_id, checked_at);
+
+-- Query pattern for cache lookup (cache hit check):
+SELECT national_id, full_name, date_of_birth, valid, checked_at
+FROM citizen_cache
+WHERE national_id = :national_id
+  AND checked_at > NOW() - INTERVAL '5 minutes';  -- TTL check
+
+-- EXPLAIN should show: Index Scan on idx_citizen_fresh
+-- The composite (national_id, checked_at) allows equality + range in one scan
+```
+
+**Pattern 2: Range Query for TTL Freshness (Book Chapter 3.2)**
+
+```sql
+-- WHY THIS MATTERS: TTL checks use range conditions (checked_at > threshold).
+-- For composite indexes, equality columns must come BEFORE range columns.
+
+-- CORRECT: national_id (equality) first, checked_at (range) second
+CREATE INDEX idx_citizen_lookup ON citizen_cache (national_id, checked_at);
+
+-- Cache lookup with TTL:
+SELECT * FROM citizen_cache
+WHERE national_id = '123456789'                    -- Equality: exact match
+  AND checked_at > NOW() - INTERVAL '5 minutes';  -- Range: freshness check
+
+-- ANTI-PATTERN: Range column first
+CREATE INDEX idx_citizen_bad ON citizen_cache (checked_at, national_id);
+-- Query must scan all "fresh" entries, then filter by national_id
+-- Much worse for high-cardinality national_id lookups
+```
+
+**Pattern 3: Partial Index for Flagged Entities (Sanctions)**
+
+```sql
+-- WHY THIS MATTERS: Most sanctions checks return listed=false.
+-- For compliance reporting, we only need the listed=true entries.
+-- Partial index is 95%+ smaller than full index.
+
+CREATE INDEX idx_sanctions_listed ON sanctions_cache (national_id)
+  WHERE listed = true;
+
+-- Compliance query: Get all listed entities
+SELECT national_id, source, checked_at
+FROM sanctions_cache
+WHERE listed = true
+ORDER BY checked_at DESC;
+
+-- Uses the tiny partial index instead of full table scan
+-- Index size comparison:
+-- Full index: 50 MB
+-- Partial index (listed=true, ~5% of rows): 2.5 MB
+```
+
+**Pattern 4: Index-Only Scan for Cache Hit Check**
+
+```sql
+-- WHY THIS MATTERS: Cache hit checks only need to know if a fresh entry EXISTS.
+-- We don't need full record data - just presence check.
+-- Covering index enables this without table heap access.
+
+CREATE INDEX idx_citizen_hit_check ON citizen_cache (national_id, checked_at)
+  INCLUDE (valid);  -- Include validity for quick response
+
+-- Cache hit check (no full record fetch needed):
+SELECT valid, checked_at
+FROM citizen_cache
+WHERE national_id = :national_id
+  AND checked_at > NOW() - INTERVAL '5 minutes';
+
+-- EXPLAIN shows: Index Only Scan (no heap fetches)
+-- If hit, we know the record is valid without fetching full PII data
+```
+
+**Pattern 5: NULL Handling for Optional Fields**
+
+```sql
+-- WHY THIS MATTERS: In regulated mode, PII fields are NULL.
+-- Standard B-Tree doesn't efficiently index NULL values.
+-- Design indexes with NULL semantics in mind.
+
+-- Schema with optional PII fields (regulated mode)
+CREATE TABLE citizen_cache (
+    national_id VARCHAR(20) NOT NULL,
+    full_name VARCHAR(255) NULL,       -- NULL in regulated mode
+    date_of_birth DATE NULL,           -- NULL in regulated mode
+    address TEXT NULL,                 -- NULL in regulated mode
+    valid BOOLEAN NOT NULL,
+    checked_at TIMESTAMPTZ NOT NULL
+);
+
+-- Index for regulated mode queries (PII is NULL):
+CREATE INDEX idx_citizen_regulated ON citizen_cache (national_id, valid)
+  WHERE full_name IS NULL;  -- Only regulated entries
+
+-- Query for regulated mode lookup:
+SELECT national_id, valid, checked_at
+FROM citizen_cache
+WHERE national_id = :national_id
+  AND full_name IS NULL
+  AND checked_at > NOW() - INTERVAL '5 minutes';
+
+-- ANTI-PATTERN: Trying to use index on NULL column
+SELECT * FROM citizen_cache WHERE full_name IS NULL;
+-- May not use index efficiently; use partial index instead
+```
+
+**Pattern 6: Cleanup Worker with Indexed Scan**
+
+```sql
+-- WHY THIS MATTERS: Background cleanup removes expired cache entries.
+-- Without proper index, cleanup is a full table scan.
+-- With index on checked_at, cleanup is an efficient index range scan.
+
+CREATE INDEX idx_citizen_expiry ON citizen_cache (checked_at);
+
+-- Cleanup query (run periodically):
+DELETE FROM citizen_cache
+WHERE checked_at < NOW() - INTERVAL '5 minutes';
+
+-- EXPLAIN shows: Index Scan on idx_citizen_expiry
+-- Efficiently finds and deletes expired entries
+
+-- Batch cleanup with LIMIT (avoid long transactions):
+DELETE FROM citizen_cache
+WHERE ctid IN (
+    SELECT ctid FROM citizen_cache
+    WHERE checked_at < NOW() - INTERVAL '5 minutes'
+    LIMIT 1000
+);
+```
+
+---
+
+#### EXPLAIN ANALYZE Evidence Requirements
+
+- [ ] Cache lookup shows Index Scan on `(national_id, checked_at)` for TTL queries
+- [ ] Partial index on `listed=true` is used for sanctions compliance reports
+- [ ] Cache hit check shows Index Only Scan (no heap fetches for presence check)
+- [ ] Cleanup worker uses index scan on `checked_at`, not sequential scan
+- [ ] Query for regulated mode entries uses partial index on `full_name IS NULL`
+- [ ] Cache miss + INSERT maintains <10ms latency for new entries
+
+---
+
+#### Exercises
+
+**Exercise 1: TTL Query Optimization**
+```sql
+-- Create citizen_cache with 100k records, 90% expired
+-- Compare EXPLAIN ANALYZE for:
+
+-- Query 1: No index
+SELECT * FROM citizen_cache WHERE national_id = 'TEST123'
+  AND checked_at > NOW() - INTERVAL '5 minutes';
+
+-- Query 2: Index on (national_id, checked_at)
+CREATE INDEX idx_ttl ON citizen_cache (national_id, checked_at);
+SELECT * FROM citizen_cache WHERE national_id = 'TEST123'
+  AND checked_at > NOW() - INTERVAL '5 minutes';
+
+-- Question: What is the speedup? How many rows scanned?
+-- Expected: Index reduces scan from 100k to 1-10 rows
+```
+
+**Exercise 2: Partial Index Size Comparison**
+```sql
+-- Create sanctions_cache with 100k records, 5% listed=true
+INSERT INTO sanctions_cache
+SELECT 'ID' || i, (random() < 0.05), 'source', NOW()
+FROM generate_series(1, 100000) i;
+
+-- Create full vs partial index
+CREATE INDEX idx_sanctions_full ON sanctions_cache (national_id);
+CREATE INDEX idx_sanctions_partial ON sanctions_cache (national_id) WHERE listed = true;
+
+-- Compare sizes:
+SELECT indexname, pg_size_pretty(pg_relation_size(indexname::regclass))
+FROM pg_indexes WHERE tablename = 'sanctions_cache';
+
+-- Expected: Partial index is ~5% of full index size
+```
+
+**Exercise 3: Cleanup Performance**
+```sql
+-- Without index:
+EXPLAIN ANALYZE DELETE FROM citizen_cache WHERE checked_at < NOW() - INTERVAL '5 minutes';
+-- Note: Seq Scan on citizen_cache
+
+-- With index:
+CREATE INDEX idx_cleanup ON citizen_cache (checked_at);
+EXPLAIN ANALYZE DELETE FROM citizen_cache WHERE checked_at < NOW() - INTERVAL '5 minutes';
+-- Note: Index Scan on idx_cleanup
+
+-- Question: What's the performance difference for 100k rows with 90% expired?
+```
+
+---
+
+#### Acceptance Criteria (SQL)
+
+- [ ] Composite index `(national_id, checked_at)` verified for TTL cache lookups
+- [ ] Partial index on `listed=true` reduces index size by >90%
+- [ ] Cache hit check uses Index Only Scan (0 heap fetches)
+- [ ] Cleanup worker query shows Index Scan, not Seq Scan
+- [ ] Cache lookup latency <5ms p99 for cache hits
+- [ ] NULL handling for regulated mode uses appropriate partial indexes
+
 ---
 
 ## 5. API Specifications
@@ -852,6 +1102,7 @@ curl -X POST http://localhost:8080/registry/citizen \
 
 | Version | Date       | Author           | Changes                                                                                                                                          |
 | ------- | ---------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1.5     | 2025-12-21 | Engineering      | Added TR-7: SQL Indexing for Cache & TTL (partial indexes, range queries, NULL handling, covering indexes, cleanup worker) with exercises        |
 | 1.4     | 2025-12-18 | Security Eng     | Added secure-by-design and testing requirements (value objects, default-deny, immutability, typed results)                                       |
 | 1.3     | 2025-12-13 | Engineering Team | Clarify concurrent Check() requirements (errgroup + context cancel), add tracing/metrics expectations, update acceptance criteria                |
 | 1.2     | 2025-12-11 | Engineering Team | Document provider abstraction architecture implementation, add orchestration details, expand TR-6 with capability negotiation and error taxonomy |

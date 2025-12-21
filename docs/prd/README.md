@@ -264,6 +264,30 @@ Strategic differentiation features that set Credo apart from competitors:
 
 ---
 
+## Storage Evolution Philosophy
+
+### In-Memory First, Production Storage Later
+
+The codebase intentionally uses **in-memory stores** through Phases 0-1, introducing PostgreSQL and Redis only at Phase 2 (Operational Baseline). This design:
+
+- Keeps development fast (no external dependencies during initial development)
+- Makes tests deterministic and quick
+- Uses interfaces throughout, so swapping `inmemory.Store` to `postgres.Store` is DI wiring only
+- Defers infrastructure complexity until functionality is proven
+
+### Transition Triggers
+
+| When you need... | Introduce... | Phase |
+|------------------|--------------|-------|
+| Multi-instance deployment | Redis (rate limiting, sessions) | Phase 2 |
+| Data durability | PostgreSQL (users, consents, audit) | Phase 2 |
+| Backup/DR capabilities | PostgreSQL | Phase 2 |
+| GDPR compliance | PostgreSQL (data export requires persistence) | Phase 2 |
+
+See [PRD-020: Storage Infrastructure Transition](./PRD-020-Operational-Readiness-SRE.md#1b-storage-infrastructure-transition) for detailed guidance and decision matrix.
+
+---
+
 ## Implementation Order Rationale
 
 ### Dependency-Driven Sequencing
@@ -468,6 +492,7 @@ Run with: `make test-e2e`
 
 | Version | Date       | Changes                                                                                   |
 | ------- | ---------- | ----------------------------------------------------------------------------------------- |
+| 2.4     | 2025-12-21 | Added Storage Evolution Philosophy section (in-memory first, transition triggers)          |
 | 2.3     | 2025-12-17 | Added Phase 7: Differentiation Pack (PRD-029 through PRD-033)                             |
 | 2.2     | 2025-12-17 | Moved PRD-028 from Phase 0 to Phase 2 (performance after functionality)                   |
 | 2.1     | 2025-12-16 | Added PRD-028 (Auth/Token performance), updated Phase 0 timelines/index, refreshed totals |
