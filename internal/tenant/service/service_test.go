@@ -45,7 +45,7 @@ func (s *ServiceSuite) createTestTenant(name string) *tenant.Tenant {
 
 func (s *ServiceSuite) createTestClient(tenantID id.TenantID) *tenant.Client {
 	client, _, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
-		TenantID:      tenantID,
+		TenantID:      tenantID.String(),
 		Name:          "Web",
 		RedirectURIs:  []string{"https://app.example.com/callback"},
 		AllowedGrants: []string{"authorization_code"},
@@ -93,7 +93,7 @@ func (s *ServiceSuite) TestCreateAndGetClient() {
 	tenantRecord := s.createTestTenant("Acme")
 
 	req := &tenant.CreateClientRequest{
-		TenantID:      tenantRecord.ID,
+		TenantID:      tenantRecord.ID.String(),
 		Name:          "Web",
 		RedirectURIs:  []string{"https://app.example.com/callback"},
 		AllowedGrants: []string{"authorization_code"},
@@ -138,7 +138,7 @@ func (s *ServiceSuite) TestGetTenantCounts() {
 
 func (s *ServiceSuite) TestValidationErrors() {
 	s.T().Run("create client with missing fields", func(t *testing.T) {
-		_, _, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{TenantID: id.TenantID(uuid.New())})
+		_, _, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{TenantID: uuid.New().String()})
 		require.Error(s.T(), err)
 		assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeValidation) || dErrors.HasCode(err, dErrors.CodeNotFound))
 	})
@@ -155,7 +155,7 @@ func (s *ServiceSuite) TestCreateClientHashesSecret() {
 	tenantRecord := s.createTestTenant("Acme")
 
 	client, secret, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
-		TenantID:      tenantRecord.ID,
+		TenantID:      tenantRecord.ID.String(),
 		Name:          "Web",
 		RedirectURIs:  []string{"https://app.example.com/callback"},
 		AllowedGrants: []string{"authorization_code"},
@@ -176,7 +176,7 @@ func (s *ServiceSuite) TestPublicClientValidation() {
 	tenantRecord := s.createTestTenant("Acme")
 
 	_, _, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
-		TenantID:      tenantRecord.ID,
+		TenantID:      tenantRecord.ID.String(),
 		Name:          "Public",
 		RedirectURIs:  []string{"https://app.example.com/callback"},
 		AllowedGrants: []string{"client_credentials"},
@@ -191,7 +191,7 @@ func (s *ServiceSuite) TestRedirectURIRequiresHost() {
 	tenantRecord := s.createTestTenant("Acme")
 
 	_, _, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
-		TenantID:      tenantRecord.ID,
+		TenantID:      tenantRecord.ID.String(),
 		Name:          "Web",
 		RedirectURIs:  []string{"https:///callback"},
 		AllowedGrants: []string{"authorization_code"},
@@ -225,7 +225,7 @@ func (s *ServiceSuite) TestCreateClientNormalizesInput() {
 	tenantRecord := s.createTestTenant("Acme")
 
 	client, _, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
-		TenantID:      tenantRecord.ID,
+		TenantID:      tenantRecord.ID.String(),
 		Name:          "  Web  ",
 		RedirectURIs:  []string{" https://app.example.com/callback ", "https://app.example.com/callback"},
 		AllowedGrants: []string{"AUTHORIZATION_CODE"},

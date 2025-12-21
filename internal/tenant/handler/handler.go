@@ -77,7 +77,10 @@ func (h *Handler) HandleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"tenant_id": tenant.ID, "tenant": tenant})
+	httputil.WriteJSON(w, http.StatusCreated, &models.TenantCreateResponse{
+		TenantID: tenant.ID.String(),
+		Tenant:   toTenantResponse(tenant),
+	})
 }
 
 // HandleGetTenant returns tenant metadata with counts.
@@ -100,7 +103,7 @@ func (h *Handler) HandleGetTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, res)
+	httputil.WriteJSON(w, http.StatusOK, toTenantDetailsResponse(res))
 }
 
 // HandleCreateClient registers a new client under a tenant.
@@ -190,10 +193,30 @@ func (h *Handler) HandleUpdateClient(w http.ResponseWriter, r *http.Request) {
 
 // Response mapping functions - convert domain objects to HTTP DTOs
 
+func toTenantResponse(t *models.Tenant) *models.TenantResponse {
+	return &models.TenantResponse{
+		ID:        t.ID.String(),
+		Name:      t.Name,
+		Status:    t.Status,
+		CreatedAt: t.CreatedAt,
+	}
+}
+
+func toTenantDetailsResponse(td *models.TenantDetails) *models.TenantDetailsResponse {
+	return &models.TenantDetailsResponse{
+		ID:          td.ID.String(),
+		Name:        td.Name,
+		Status:      td.Status,
+		CreatedAt:   td.CreatedAt,
+		UserCount:   td.UserCount,
+		ClientCount: td.ClientCount,
+	}
+}
+
 func toClientResponse(client *models.Client, secret string) *models.ClientResponse {
 	return &models.ClientResponse{
-		ID:            client.ID,
-		TenantID:      client.TenantID,
+		ID:            client.ID.String(),
+		TenantID:      client.TenantID.String(),
 		Name:          client.Name,
 		OAuthClientID: client.OAuthClientID,
 		ClientSecret:  secret,

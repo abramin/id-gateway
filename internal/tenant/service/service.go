@@ -144,7 +144,12 @@ func (s *Service) CreateClient(ctx context.Context, req *models.CreateClientRequ
 		return nil, "", dErrors.Wrap(err, dErrors.CodeValidation, "invalid client request")
 	}
 
-	if _, err := s.tenants.FindByID(ctx, req.TenantID); err != nil {
+	tenantID, err := id.ParseTenantID(req.TenantID)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if _, err := s.tenants.FindByID(ctx, tenantID); err != nil {
 		return nil, "", wrapTenantErr(err, "failed to load tenant")
 	}
 
@@ -155,7 +160,7 @@ func (s *Service) CreateClient(ctx context.Context, req *models.CreateClientRequ
 
 	client, err := models.NewClient(
 		id.ClientID(uuid.New()),
-		req.TenantID,
+		tenantID,
 		req.Name,
 		uuid.NewString(),
 		secretHash,
