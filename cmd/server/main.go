@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"credo/internal/admin"
-	auditpublisher "credo/pkg/platform/audit/publisher"
-	auditstore "credo/pkg/platform/audit/store/memory"
 	"credo/internal/auth/device"
 	authHandler "credo/internal/auth/handler"
 	authService "credo/internal/auth/service"
@@ -38,12 +36,14 @@ import (
 	tenantService "credo/internal/tenant/service"
 	clientstore "credo/internal/tenant/store/client"
 	tenantstore "credo/internal/tenant/store/tenant"
+	auditpublisher "credo/pkg/platform/audit/publisher"
+	auditstore "credo/pkg/platform/audit/store/memory"
+	"credo/pkg/platform/metrics"
 	adminmw "credo/pkg/platform/middleware/admin"
 	auth "credo/pkg/platform/middleware/auth"
 	devicemw "credo/pkg/platform/middleware/device"
 	metadata "credo/pkg/platform/middleware/metadata"
 	request "credo/pkg/platform/middleware/request"
-	"credo/pkg/platform/metrics"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -157,7 +157,7 @@ func buildInfra() (*infraBundle, error) {
 		"allowed_redirect_schemes", cfg.Auth.AllowedRedirectSchemes,
 	)
 	if cfg.DemoMode {
-		log.Info("CRENE_ENV=demo — starting isolated demo environment",
+		log.Info("CREDO_ENV=demo — starting isolated demo environment",
 			"stores", "in-memory",
 			"issuer_base_url", cfg.Auth.JWTIssuerBaseURL,
 		)

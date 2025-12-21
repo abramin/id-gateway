@@ -19,7 +19,7 @@ const (
 	// Dev signing key - matches config.go when JWT_SIGNING_KEY is not set
 	devSigningKey = "dev-secret-key-change-in-production"
 
-	// Demo signing key - matches config.go when CRENE_ENV=demo
+	// Demo signing key - matches config.go when CREDO_ENV=demo
 	demoSigningKey = "demo-signing-key-change-me-locally"
 
 	// Default admin token for local/dev environments
@@ -115,7 +115,7 @@ Examples:
   # Generate access token for specific tenant with custom TTL
   tokengen access -tenant-id "my-tenant" -ttl 1h
 
-  # Generate token using demo signing key (for CRENE_ENV=demo)
+  # Generate token using demo signing key (for CREDO_ENV=demo)
   tokengen access -demo
 
   # Get admin token for X-Admin-Token header
@@ -247,7 +247,7 @@ func showAdminToken(jsonOutput bool) {
 			Type:  "admin_token",
 			Usage: map[string]string{
 				"header": "X-Admin-Token: " + devAdminToken,
-				"note":   "Works when CRENE_ENV is local/dev/development/testing/test",
+				"note":   "Works when CREDO_ENV is local/dev/development/testing/test",
 			},
 		}
 		printJSON(output)
@@ -259,7 +259,7 @@ func showAdminToken(jsonOutput bool) {
 		fmt.Println("Usage:")
 		fmt.Println("  curl -H \"X-Admin-Token: " + devAdminToken + "\" http://localhost:8080/...")
 		fmt.Println()
-		fmt.Println("Note: This token works when CRENE_ENV is local/dev/development/testing/test")
+		fmt.Println("Note: This token works when CREDO_ENV is local/dev/development/testing/test")
 	}
 }
 

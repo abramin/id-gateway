@@ -70,7 +70,7 @@ var (
 
 // FromEnv builds config from environment variables
 func FromEnv() (Server, error) {
-	env := getEnv("CRENE_ENV", "local")
+	env := getEnv("CREDO_ENV", "local")
 	demoMode := env == "demo"
 
 	cfg := Server{
