@@ -51,6 +51,7 @@ jobs:
           ./bin/credo &
           echo $! > server.pid
         env:
+          CREDO_ENV: demo
           PORT: 8080
           CONSENT_GRANT_WINDOW: 1s
 
