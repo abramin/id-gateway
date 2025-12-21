@@ -73,20 +73,20 @@ System vulnerable to account takeover, identity fraud, credential stuffing, and 
 
 **Risk Factors:**
 
-| Factor                        | Weight | Detection Logic                                     | Score Impact |
-| ----------------------------- | ------ | --------------------------------------------------- | ------------ |
-| **IP Change**                 | High   | IP differs from session creation IP                 | +20          |
-| **User Agent Drift**          | Medium | UA string differs from session creation             | +15          |
-| **Geolocation Shift**         | High   | Country/region change without impossible travel     | +10          |
-| **High Failure Rate**         | High   | >5 failed operations in 10 minutes                  | +25          |
-| **Spike in Activity**         | Medium | Request rate >200% of user baseline                 | +15          |
-| **High Entropy Payload**      | Medium | Unusual characters in form fields                   | +10          |
-| **Known Bad IP**              | High   | IP in abuse database (AbuseIPDB, etc.)              | +30          |
-| **New Device (no history)**   | Low    | Device fingerprint never seen before                | +5           |
-| **Shared Device Pattern**     | Medium | Device used by >5 users in 24h                      | +15          |
-| **Clock Skew**                | Low    | Client clock differs from server by >5 minutes      | +5           |
-| **Missing Security Headers**  | Low    | No CSRF token, no nonce, etc.                       | +5           |
-| **Replay Detected**           | High   | Request signature matches recent request            | +40          |
+| Factor                       | Weight | Detection Logic                                 | Score Impact |
+| ---------------------------- | ------ | ----------------------------------------------- | ------------ |
+| **IP Change**                | High   | IP differs from session creation IP             | +20          |
+| **User Agent Drift**         | Medium | UA string differs from session creation         | +15          |
+| **Geolocation Shift**        | High   | Country/region change without impossible travel | +10          |
+| **High Failure Rate**        | High   | >5 failed operations in 10 minutes              | +25          |
+| **Spike in Activity**        | Medium | Request rate >200% of user baseline             | +15          |
+| **High Entropy Payload**     | Medium | Unusual characters in form fields               | +10          |
+| **Known Bad IP**             | High   | IP in abuse database (AbuseIPDB, etc.)          | +30          |
+| **New Device (no history)**  | Low    | Device fingerprint never seen before            | +5           |
+| **Shared Device Pattern**    | Medium | Device used by >5 users in 24h                  | +15          |
+| **Clock Skew**               | Low    | Client clock differs from server by >5 minutes  | +5           |
+| **Missing Security Headers** | Low    | No CSRF token, no nonce, etc.                   | +5           |
+| **Replay Detected**          | High   | Request signature matches recent request        | +40          |
 
 **Risk Score Bands:**
 
@@ -356,7 +356,7 @@ func TarpitMiddleware(riskScore int) http.Handler {
 **Action:**
 
 - Each anomaly → Risk +5
-- >3 anomalies → Risk +20
+- > 3 anomalies → Risk +20
 - Log to audit: `header_anomaly_detected`
 
 #### FR-4.2: Form Field Entropy Checks
@@ -448,14 +448,14 @@ func calculateEntropy(s string) float64 {
 
 **Collected Signals:**
 
-| Signal            | Example                  | Change Impact |
-| ----------------- | ------------------------ | ------------- |
-| **Platform**      | macOS, Windows, Linux    | High          |
-| **Browser Family**| Chrome, Firefox, Safari  | High          |
-| **Browser Version Major** | 120, 119, 121    | Low           |
-| **TLS Version**   | TLS 1.3, TLS 1.2         | Medium        |
-| **Screen Width**  | 1920, 1440, 2560         | Low           |
-| **Timezone**      | America/New_York, UTC    | Medium        |
+| Signal                    | Example                 | Change Impact |
+| ------------------------- | ----------------------- | ------------- |
+| **Platform**              | macOS, Windows, Linux   | High          |
+| **Browser Family**        | Chrome, Firefox, Safari | High          |
+| **Browser Version Major** | 120, 119, 121           | Low           |
+| **TLS Version**           | TLS 1.3, TLS 1.2        | Medium        |
+| **Screen Width**          | 1920, 1440, 2560        | Low           |
+| **Timezone**              | America/New_York, UTC   | Medium        |
 
 **Device Fingerprint:**
 
@@ -884,6 +884,7 @@ func RiskScoringMiddleware(engine RiskEngine) func(http.Handler) http.Handler {
 **Query Patterns Required:**
 
 - **Window Functions for Velocity Detection:** Use sliding windows to detect request bursts:
+
   ```sql
   SELECT user_id, session_id, timestamp,
          COUNT(*) OVER (
@@ -899,6 +900,7 @@ func RiskScoringMiddleware(engine RiskEngine) func(http.Handler) http.Handler {
   ```
 
 - **Self-Join for Impossible Travel Detection:**
+
   ```sql
   SELECT t1.user_id, t1.id AS trip1_id, t2.id AS trip2_id,
          t1.to_location->>'city' AS from_city,
@@ -916,6 +918,7 @@ func RiskScoringMiddleware(engine RiskEngine) func(http.Handler) http.Handler {
   ```
 
 - **CTE for Multi-Hop Account Graph (Mule Pattern):**
+
   ```sql
   WITH RECURSIVE device_network AS (
     -- Base: Start with suspicious device
@@ -940,6 +943,7 @@ func RiskScoringMiddleware(engine RiskEngine) func(http.Handler) http.Handler {
   ```
 
 - **Aggregate Functions for Risk Score Distribution:**
+
   ```sql
   SELECT
     DATE_TRUNC('hour', timestamp) AS hour,
@@ -955,6 +959,7 @@ func RiskScoringMiddleware(engine RiskEngine) func(http.Handler) http.Handler {
   ```
 
 - **Semi-Join for IP Reputation Check:**
+
   ```sql
   -- Find risky requests from known bad IPs
   SELECT rs.*
@@ -977,6 +982,7 @@ func RiskScoringMiddleware(engine RiskEngine) func(http.Handler) http.Handler {
   ```
 
 - **Materialized View for Hot Risk Signals:**
+
   ```sql
   CREATE MATERIALIZED VIEW hourly_risk_summary AS
   SELECT
@@ -1116,6 +1122,7 @@ CREATE INDEX idx_ip_reputation ON ip_reputation (ip) WHERE reputation = 'malicio
 ---
 
 **Acceptance Criteria (SQL):**
+
 - [ ] Velocity detection uses window functions with sliding ranges
 - [ ] Impossible travel detection uses self-joins with distance calculations
 - [ ] Account graphing uses recursive CTEs with hop limits
@@ -1336,15 +1343,19 @@ fraud_risk_scoring_duration_seconds
 ## 11. Open Questions
 
 1. **GeoIP Update Frequency:** Weekly sufficient or need daily?
+
    - **Recommendation:** Weekly for city DB, monthly for ASN DB
 
 2. **VPN Detection Accuracy:** How to handle corporate VPNs?
+
    - **Recommendation:** User-managed VPN allowlist + manual review
 
 3. **False Positive Tolerance:** What's acceptable rate?
+
    - **Recommendation:** <1% for impossible travel, <5% for bot detection
 
 4. **Regional Data Routing:** Do we need China-specific instance?
+
    - **Recommendation:** Defer until we have Chinese users
 
 5. **Consent Requirement:** Is security analytics exempt under GDPR?
@@ -1357,18 +1368,18 @@ fraud_risk_scoring_duration_seconds
 - [OWASP Fraud Detection](https://owasp.org/www-community/controls/Blocking_Brute_Force_Attacks)
 - [MaxMind GeoIP2](https://dev.maxmind.com/geoip/geoip2/geolite2/)
 - [Haversine Distance Formula](https://en.wikipedia.org/wiki/Haversine_formula)
-- [Shannon Entropy](https://en.wikipedia.org/wiki/Entropy_(information_theory))
+- [Shannon Entropy](<https://en.wikipedia.org/wiki/Entropy_(information_theory)>)
 - [GDPR Article 6(1)(f) - Legitimate Interest](https://gdpr-info.eu/art-6-gdpr/)
 
 ---
 
 ## Revision History
 
-| Version | Date       | Author       | Changes                                                                                                           |
-| ------- | ---------- | ------------ | ----------------------------------------------------------------------------------------------------------------- |
-| 2.3     | 2025-12-21 | Engineering  | Enhanced TR-6: Added anti-joins for orphaned tokens, token velocity, NULL handling, hash joins                    |
+| Version | Date       | Author       | Changes                                                                                                                 |
+| ------- | ---------- | ------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| 2.3     | 2025-12-21 | Engineering  | Enhanced TR-6: Added anti-joins for orphaned tokens, token velocity, NULL handling, hash joins                          |
 | 2.2     | 2025-12-21 | Engineering  | Added TR-6: SQL Query Patterns (window functions, self-joins, recursive CTEs, aggregates, semi/anti-joins, star schema) |
-| 2.1     | 2025-12-18 | Security Eng | Added DSA/SQL requirements (Count-Min/Bloom velocity checks, materialized views with EXPLAIN)                    |
-| 2.0     | 2025-12-12 | Engineering  | Comprehensive expansion with rule-based fraud detection (9 features): continuous risk scoring, impossible travel, |
-|         |            |              | bot detection, payload anomaly, device consistency, account graphing, privacy guardrails                         |
-| 1.0     | 2025-12-12 | Product Team | Initial skeletal PRD                                                                                              |
+| 2.1     | 2025-12-18 | Security Eng | Added DSA/SQL requirements (Count-Min/Bloom velocity checks, materialized views with EXPLAIN)                           |
+| 2.0     | 2025-12-12 | Engineering  | Comprehensive expansion with rule-based fraud detection (9 features): continuous risk scoring, impossible travel,       |
+|         |            |              | bot detection, payload anomaly, device consistency, account graphing, privacy guardrails                                |
+| 1.0     | 2025-12-12 | Product Team | Initial skeletal PRD                                                                                                    |

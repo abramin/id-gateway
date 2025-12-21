@@ -393,6 +393,7 @@ func (h *Handler) handleDataExport(w http.ResponseWriter, r *http.Request) {
 
 - **WORM Storage Compliance:** Audit tables use `pg_dumpall` with append-only semantics; no UPDATE/DELETE triggers allowed
 
+<<<<<<< HEAD
 ---
 
 **SQL Indexing Enhancements (from "Use The Index, Luke"):**
@@ -521,6 +522,8 @@ GROUP BY a.user_id;
 
 ---
 
+=======
+>>>>>>> b731cdb (update prds with sql practice)
 **Acceptance Criteria (SQL):**
 - [ ] Event correlation uses CTEs with window functions
 - [ ] Audit analytics use sliding window aggregations
@@ -529,9 +532,12 @@ GROUP BY a.user_id;
 - [ ] Suspicious pattern detection uses semi-joins and anti-joins
 - [ ] Partitioned tables verified with `EXPLAIN ANALYZE` showing partition pruning
 - [ ] Materialized views for summaries with scheduled refresh
+<<<<<<< HEAD
 - [ ] **NEW:** Data export uses seek pagination, not offset
 - [ ] **NEW:** Partition pruning verified (only relevant partitions scanned)
 - [ ] **NEW:** Large compliance reports use appropriate join strategy (Merge/Hash)
+=======
+>>>>>>> b731cdb (update prds with sql practice)
 
 ---
 
@@ -623,7 +629,10 @@ curl "http://localhost:8080/me/data-export?action=consent_granted" \
 
 | Version | Date       | Author       | Changes                                                                                                     |
 | ------- | ---------- | ------------ | ----------------------------------------------------------------------------------------------------------- |
+<<<<<<< HEAD
 | 1.7     | 2025-12-21 | Engineering  | Enhanced TR-6: Added partition pruning, seek pagination, sort-merge joins, EXPLAIN requirements             |
+=======
+>>>>>>> b731cdb (update prds with sql practice)
 | 1.6     | 2025-12-21 | Engineering  | Added TR-6: SQL Query Patterns (CTEs, window functions, aggregates, set operations, semi/anti-joins, views) |
 | 1.5     | 2025-12-18 | Security Eng | Added anchoring/verification requirements alongside partitioning and least-privilege interfaces             |
 | 1.4     | 2025-12-18 | Security Eng | Added secure storage/integrity (hash chaining, partitioning, least-privilege interfaces)                    |

@@ -371,6 +371,7 @@ func (h *Handler) handleDecisionEvaluate(w http.ResponseWriter, r *http.Request)
 **Query Patterns Required:**
 
 - **CTEs for Rule Chain Resolution:** Use Common Table Expressions to recursively resolve rule dependencies:
+
   ```sql
   WITH RECURSIVE rule_chain AS (
     SELECT id, parent_id, rule_name, 1 AS depth
@@ -385,6 +386,7 @@ func (h *Handler) handleDecisionEvaluate(w http.ResponseWriter, r *http.Request)
   ```
 
 - **Window Functions for Decision Analytics:** Use `RANK()`, `LAG()`, `LEAD()` for decision history analysis:
+
   ```sql
   SELECT user_id, purpose, status,
          LAG(status) OVER (PARTITION BY user_id, purpose ORDER BY evaluated_at) AS prev_status,
@@ -395,6 +397,7 @@ func (h *Handler) handleDecisionEvaluate(w http.ResponseWriter, r *http.Request)
   ```
 
 - **CASE Statements for Status Categorization:**
+
   ```sql
   SELECT purpose,
          COUNT(*) AS total,
@@ -407,6 +410,7 @@ func (h *Handler) handleDecisionEvaluate(w http.ResponseWriter, r *http.Request)
   ```
 
 - **Correlated Subqueries for Evidence Freshness:**
+
   ```sql
   SELECT d.id, d.user_id, d.evaluated_at,
          (SELECT MAX(e.fetched_at) FROM evidence_cache e
@@ -532,6 +536,7 @@ LIMIT 10;
 ---
 
 **Acceptance Criteria (SQL):**
+
 - [ ] Rule chain resolution uses recursive CTE with depth limit
 - [ ] Decision analytics queries use window functions for trend analysis
 - [ ] Status aggregation uses CASE with GROUP BY/HAVING
@@ -639,10 +644,10 @@ curl -X POST http://localhost:8080/decision/evaluate \
 
 ## Revision History
 
-| Version | Date       | Author       | Changes                                                                                        |
-| ------- | ---------- | ------------ | ---------------------------------------------------------------------------------------------- |
-| 1.6     | 2025-12-21 | Engineering  | Enhanced TR-7: Added join strategy comparison, index design for high-write tables, EXPLAIN    |
-| 1.5     | 2025-12-21 | Engineering  | Added TR-7: SQL Query Patterns (CTEs, window functions, CASE, subqueries, self-joins, 3NF)     |
+| Version | Date       | Author       | Changes                                                                                    |
+| ------- | ---------- | ------------ | ------------------------------------------------------------------------------------------ |
+| 1.6     | 2025-12-21 | Engineering  | Enhanced TR-7: Added join strategy comparison, index design for high-write tables, EXPLAIN |
+| 1.5     | 2025-12-21 | Engineering  | Added TR-7: SQL Query Patterns (CTEs, window functions, CASE, subqueries, self-joins, 3NF) |
 | 1.4     | 2025-12-18 | Security Eng | Added DSA/SQL requirements for rule DAGs and normalized, immutable rule storage            |
 | 1.3     | 2025-12-18 | Security Eng | Added secure-by-design evaluation (DAG, default-deny, signed policy bundles)               |
 | 1.2     | 2025-12-16 | Engineering  | Add concurrent evidence-gathering requirements and acceptance criteria                     |
