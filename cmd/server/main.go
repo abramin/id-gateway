@@ -342,7 +342,6 @@ func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consent
 		r.Post("/auth/authorize", authMod.Handler.HandleAuthorize)
 		r.Post("/auth/token", authMod.Handler.HandleToken)
 		r.Post("/auth/revoke", authMod.Handler.HandleRevoke)
-		r.Delete("/auth/sessions/{session_id}", authMod.Handler.HandleRevokeSession)
 	})
 
 	// Protected read endpoints - ClassRead (100 req/min)
@@ -358,6 +357,7 @@ func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consent
 	r.Group(func(r chi.Router) {
 		r.Use(rateLimitMiddleware.RateLimitAuthenticated(rateLimitModels.ClassSensitive))
 		r.Use(auth.RequireAuth(infra.JWTValidator, authMod.Service, infra.Log))
+		r.Delete("/auth/sessions/{session_id}", authMod.Handler.HandleRevokeSession)
 		r.Post("/auth/consent", consentMod.Handler.HandleGrantConsent)
 		r.Post("/auth/consent/revoke", consentMod.Handler.HandleRevokeConsent)
 		r.Post("/auth/consent/revoke-all", consentMod.Handler.HandleRevokeAllConsents)
