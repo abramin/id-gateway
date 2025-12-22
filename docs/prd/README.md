@@ -147,6 +147,22 @@ Credo is a **regulated identity and authorization system** that:
 
 ---
 
+### Phase 8: Banking Identity Pack (Fintech/Banking) - P1
+
+| PRD                                                         | Feature                              | Status         | Est. Time | Dependencies          |
+| ----------------------------------------------------------- | ------------------------------------ | -------------- | --------- | --------------------- |
+| [PRD-039](./PRD-039-SCA-Orchestration.md) 🆕                | SCA Orchestration (PSD2)             | 🔵 Not Started | 14-18h    | PRD-001, 021, 018     |
+| [PRD-035](./PRD-035-Identity-Assurance-Levels.md) 🆕        | Identity Assurance Levels            | 🔵 Not Started | 10-14h    | PRD-004, 003          |
+| [PRD-036](./PRD-036-Legal-Entity-Identity.md) 🆕            | Legal Entity Identity & Representation| 🔵 Not Started | 14-18h    | PRD-026A, 035         |
+| [PRD-037](./PRD-037-Multi-Party-Authorization.md) 🆕        | Multi-Party Authorization            | 🔵 Not Started | 18-22h    | PRD-036, 021, 039     |
+| [PRD-038](./PRD-038-Delegated-Authority.md) 🆕              | Delegated Authority (Power of Attorney)| 🔵 Not Started | 12-16h   | PRD-036, 037          |
+
+**Phase 8 Total:** ~68-88 hours (8.5-11 days)
+
+> **Note:** Phase 8 is designed for fintech/banking use cases. PRD-039 (SCA) is the foundation and can start after Phase 3. Other PRDs build on it progressively. This pack enables Credo to serve as an identity gateway for business banking platforms like Qonto.
+
+---
+
 ## Timeline Summary
 
 | Phase | Description     | PRDs                  | Time   | Cumulative   | Milestone             |
@@ -158,9 +174,10 @@ Credo is a **regulated identity and authorization system** that:
 | 4     | Assurance       | 13, 23, 6B, 7B, 8, 24 | 60-84h | 185-249h     | Regulated Ready       |
 | 5     | Decentralized   | 4B, 9, 10             | 46-58h | 231-307h     | Web3 Features         |
 | 6     | Integrations    | 11, 12, 14, 25, 26    | 46-64h | 277-371h     | Full Platform         |
-| 7     | Differentiation | 29, 30, 31, 32, 33    | 70-92h | **347-463h** | **Strategic Edge** 🎯 |
+| 7     | Differentiation | 29, 30, 31, 32, 33    | 70-92h | 347-463h     | Strategic Edge        |
+| 8     | Banking Identity| 35, 36, 37, 38, 39    | 68-88h | **415-551h** | **Banking Gateway** 🏦|
 
-**Total System Time:** ~347-463 hours (43-58 days)
+**Total System Time:** ~415-551 hours (52-69 days)
 
 ---
 
@@ -316,6 +333,15 @@ See [PRD-020: Storage Infrastructure Transition](./PRD-020-Operational-Readiness
 - Trust Score, Privacy Analytics, and Trust Network require Phase 5's ZKP foundation
 - These features differentiate Credo from Auth0/Okta/Keycloak
 
+**Phase 8 (Banking Identity):** Fintech/Banking-specific features (8.5-11 days)
+
+- SCA Orchestration (PRD-039) is the PSD2-compliant step-up auth foundation
+- Identity Assurance Levels (PRD-035) enables tiered KYC for transaction limits
+- Legal Entity Identity (PRD-036) models companies, directors, and signatories
+- Multi-Party Authorization (PRD-037) implements maker-checker and M-of-N approvals
+- Delegated Authority (PRD-038) enables vacation coverage and power-of-attorney patterns
+- These features position Credo as an identity gateway for business banking (Qonto-style)
+
 ### Module Bundle Alignment
 
 Module bundles organize PRDs by deployment scenario:
@@ -326,6 +352,7 @@ Module bundles organize PRDs by deployment scenario:
 - **Decentralized Pack:** Phase 5 (Web3)
 - **Integrations Pack:** Phase 6 (ecosystem)
 - **Differentiation Pack:** Phase 7 (strategic positioning)
+- **Banking Identity Pack:** Phase 8 (fintech/banking)
 
 See [ROADMAP.md](../ROADMAP.md#module-adoption-guide) for detailed bundle compositions.
 
