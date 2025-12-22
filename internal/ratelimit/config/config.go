@@ -6,37 +6,24 @@ import (
 	"credo/internal/ratelimit/models"
 )
 
-// Config holds rate limiting configuration.
 type Config struct {
-	// Per-IP rate limits by endpoint class
-	IPLimits map[models.EndpointClass]Limit
-
-	// Per-user rate limits by endpoint class
-	UserLimits map[models.EndpointClass]Limit
-
-	// Global limits for DDoS protection
-	Global GlobalLimit
-
-	// Auth-specific lockout configuration
+	IPLimits    map[models.EndpointClass]Limit
+	UserLimits  map[models.EndpointClass]Limit
+	Global      GlobalLimit
 	AuthLockout AuthLockoutConfig
-
-	// Partner quota tiers
-	QuotaTiers map[models.QuotaTier]QuotaLimit
+	QuotaTiers  map[models.QuotaTier]QuotaLimit
 }
 
-// Limit defines rate limit parameters for an endpoint class.
 type Limit struct {
 	RequestsPerWindow int
 	Window            time.Duration
 }
 
-// GlobalLimit defines global throttling parameters.
 type GlobalLimit struct {
 	PerInstancePerSecond int // 1000 req/sec per instance
 	GlobalPerSecond      int // 10000 req/sec across all instances
 }
 
-// AuthLockoutConfig defines authentication lockout parameters.
 type AuthLockoutConfig struct {
 	AttemptsPerWindow      int           // 5 attempts per 15 min
 	WindowDuration         time.Duration // 15 minutes
@@ -46,14 +33,12 @@ type AuthLockoutConfig struct {
 	ProgressiveBackoffBase time.Duration // 250ms base delay
 }
 
-// QuotaLimit defines monthly quota parameters for a tier.
 type QuotaLimit struct {
 	MonthlyRequests int
 	OverageAllowed  bool
 	OverageRate     float64 // cost per request over limit
 }
 
-// DefaultConfig returns sensible defaults per PRD-017.
 func DefaultConfig() *Config {
 	return &Config{
 		IPLimits: map[models.EndpointClass]Limit{
@@ -89,7 +74,6 @@ func DefaultConfig() *Config {
 	}
 }
 
-// GetIPLimit returns the IP rate limit for an endpoint class.
 func (c *Config) GetIPLimit(class models.EndpointClass) (requestsPerWindow int, window time.Duration) {
 	if limit, ok := c.IPLimits[class]; ok {
 		return limit.RequestsPerWindow, limit.Window
@@ -98,7 +82,6 @@ func (c *Config) GetIPLimit(class models.EndpointClass) (requestsPerWindow int, 
 	return c.IPLimits[models.ClassRead].RequestsPerWindow, c.IPLimits[models.ClassRead].Window
 }
 
-// GetUserLimit returns the user rate limit for an endpoint class.
 func (c *Config) GetUserLimit(class models.EndpointClass) (requestsPerWindow int, window time.Duration) {
 	if limit, ok := c.UserLimits[class]; ok {
 		return limit.RequestsPerWindow, limit.Window
