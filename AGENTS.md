@@ -87,6 +87,11 @@ All agents should:
 - Prefer refactors that simplify.
 - Provide “next step” changes you can do in one sitting.
 
+## Comment rules
+
+- Add comments only when they provide information not already obvious from names or structure.
+- Do not comment to restate self-documenting methods or code.
+
 ## When to consolidate agents
 
 If you repeatedly run both Security and Secure-by-Design and they duplicate work, remove Security and keep Secure-by-Design only.
