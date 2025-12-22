@@ -37,8 +37,6 @@ const (
 	AllowlistTypeUserID AllowlistEntryType = "user_id"
 )
 
-// ParseAllowlistEntryType creates an AllowlistEntryType from a string, validating it.
-// Returns error if the type is empty or not one of the allowed values.
 func ParseAllowlistEntryType(s string) (AllowlistEntryType, error) {
 	if s == "" {
 		return "", dErrors.New(dErrors.CodeInvalidInput, "allowlist entry type cannot be empty")
@@ -128,8 +126,7 @@ type AuthLockout struct {
 	RequiresCaptcha bool       `json:"requires_captcha"` // after 3 consecutive lockouts in 24h
 }
 
-// NewAllowlistEntry creates an AllowlistEntry with domain invariant validation.
-func NewAllowlistEntry(entryType AllowlistEntryType, identifier, reason string, createdBy id.UserID, expiresAt *time.Time) (*AllowlistEntry, error) {
+func NewAllowlistEntry(entryType AllowlistEntryType, identifier, reason string, createdBy id.UserID, expiresAt *time.Time, now time.Time) (*AllowlistEntry, error) {
 	if !entryType.IsValid() {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "invalid allowlist entry type")
 	}
@@ -146,7 +143,7 @@ func NewAllowlistEntry(entryType AllowlistEntryType, identifier, reason string, 
 		Identifier: identifier,
 		Reason:     reason,
 		ExpiresAt:  expiresAt,
-		CreatedAt:  time.Now(),
+		CreatedAt:  now,
 		CreatedBy:  createdBy,
 	}, nil
 }
@@ -158,7 +155,7 @@ func (e *AllowlistEntry) IsExpired() bool {
 	return time.Now().After(*e.ExpiresAt)
 }
 
-func NewAuthLockout(identifier string) (*AuthLockout, error) {
+func NewAuthLockout(identifier string, now time.Time) (*AuthLockout, error) {
 	if identifier == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "identifier cannot be empty")
 	}
@@ -167,7 +164,7 @@ func NewAuthLockout(identifier string) (*AuthLockout, error) {
 		FailureCount:    0,
 		DailyFailures:   0,
 		LockedUntil:     nil,
-		LastFailureAt:   time.Now(),
+		LastFailureAt:   now,
 		RequiresCaptcha: false,
 	}, nil
 }
@@ -179,7 +176,7 @@ func (l *AuthLockout) IsLocked() bool {
 	return time.Now().Before(*l.LockedUntil)
 }
 
-func NewAPIKeyQuota(apiKeyID id.APIKeyID, tier QuotaTier, monthlyLimit int, overageAllowed bool) (*APIKeyQuota, error) {
+func NewAPIKeyQuota(apiKeyID id.APIKeyID, tier QuotaTier, monthlyLimit int, overageAllowed bool, now time.Time) (*APIKeyQuota, error) {
 	if apiKeyID.IsNil() {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "api_key_id cannot be empty")
 	}
@@ -190,7 +187,6 @@ func NewAPIKeyQuota(apiKeyID id.APIKeyID, tier QuotaTier, monthlyLimit int, over
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "monthly_limit cannot be negative")
 	}
 
-	now := time.Now()
 	periodStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 	periodEnd := periodStart.AddDate(0, 1, 0).Add(-time.Nanosecond)
 
@@ -209,7 +205,7 @@ func (q *APIKeyQuota) IsOverQuota() bool {
 	return q.CurrentUsage >= q.MonthlyLimit
 }
 
-func NewRateLimitViolation(identifier string, class EndpointClass, endpoint string, limit, windowSeconds int) (*RateLimitViolation, error) {
+func NewRateLimitViolation(identifier string, class EndpointClass, endpoint string, limit, windowSeconds int, now time.Time) (*RateLimitViolation, error) {
 	if identifier == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "identifier cannot be empty")
 	}
@@ -233,6 +229,6 @@ func NewRateLimitViolation(identifier string, class EndpointClass, endpoint stri
 		Endpoint:      endpoint,
 		Limit:         limit,
 		WindowSeconds: windowSeconds,
-		OccurredAt:    time.Now(),
+		OccurredAt:    now,
 	}, nil
 }

@@ -10,13 +10,14 @@ import (
 
 	"github.com/google/uuid"
 
-	"credo/pkg/platform/audit"
-	auditpublisher "credo/pkg/platform/audit/publisher"
 	"credo/internal/consent/models"
 	"credo/internal/consent/store"
 	id "credo/pkg/domain"
 	pkgerrors "credo/pkg/domain-errors"
+	"credo/pkg/platform/audit"
+	auditpublisher "credo/pkg/platform/audit/publisher"
 	"credo/pkg/platform/metrics"
+	requesttime "credo/pkg/platform/middleware/requesttime"
 )
 
 // shardedConsentTx provides fine-grained locking using sharded mutexes.
@@ -214,7 +215,7 @@ func (s *Service) Grant(ctx context.Context, userID id.UserID, purposes []models
 }
 
 func (s *Service) upsertGrantTx(ctx context.Context, txStore Store, userID id.UserID, purpose models.Purpose) (*models.Record, error) {
-	now := time.Now()
+	now := requesttime.Now(ctx)
 	expiry := now.Add(s.consentTTL)
 	existing, err := txStore.FindByUserAndPurpose(ctx, userID, purpose)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
@@ -310,11 +311,11 @@ func (s *Service) Revoke(ctx context.Context, userID id.UserID, purposes []model
 			if record.RevokedAt != nil {
 				continue
 			}
-			if record.ExpiresAt != nil && record.ExpiresAt.Before(time.Now()) {
+			now := requesttime.Now(ctx)
+			if record.ExpiresAt != nil && record.ExpiresAt.Before(now) {
 				// Expired consents are effectively inactive; skip to keep revoke idempotent.
 				continue
 			}
-			now := time.Now()
 			revokedRecord, err := txStore.RevokeByUserAndPurpose(ctx, userID, record.Purpose, now)
 			if err != nil {
 				return pkgerrors.Wrap(err, pkgerrors.CodeInternal, "failed to revoke consent")
@@ -350,7 +351,7 @@ func (s *Service) RevokeAll(ctx context.Context, userID id.UserID) (int, error) 
 	if userID.IsNil() {
 		return 0, pkgerrors.New(pkgerrors.CodeBadRequest, "user ID required")
 	}
-	now := time.Now()
+	now := requesttime.Now(ctx)
 	count, err := s.store.RevokeAllByUser(ctx, userID, now)
 	if err != nil {
 		return 0, pkgerrors.Wrap(err, pkgerrors.CodeInternal, "failed to revoke all consents")
@@ -385,7 +386,7 @@ func (s *Service) DeleteAll(ctx context.Context, userID id.UserID) error {
 		Action:    "consent_deleted",
 		Decision:  "deleted",
 		Reason:    "bulk_deletion",
-		Timestamp: time.Now(),
+		Timestamp: requesttime.Now(ctx),
 	})
 
 	return nil
@@ -414,7 +415,7 @@ func (s *Service) Require(ctx context.Context, userID id.UserID, purpose models.
 	}
 
 	record, err := s.store.FindByUserAndPurpose(ctx, userID, purpose)
-	now := time.Now()
+	now := requesttime.Now(ctx)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			// Not found = missing consent

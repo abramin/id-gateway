@@ -6,22 +6,20 @@ import (
 	"time"
 
 	"credo/internal/ratelimit/models"
+	requesttime "credo/pkg/platform/middleware/requesttime"
 )
 
-// InMemoryAuthLockoutStore implements AuthLockoutStore using in-memory storage.
 type InMemoryAuthLockoutStore struct {
 	mu      sync.RWMutex
 	records map[string]*models.AuthLockout // keyed by identifier
 }
 
-// New creates a new in-memory auth lockout store.
 func New() *InMemoryAuthLockoutStore {
 	return &InMemoryAuthLockoutStore{
 		records: make(map[string]*models.AuthLockout),
 	}
 }
 
-// Get retrieves the current lockout state for an identifier.
 func (s *InMemoryAuthLockoutStore) Get(_ context.Context, identifier string) (*models.AuthLockout, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -32,12 +30,11 @@ func (s *InMemoryAuthLockoutStore) Get(_ context.Context, identifier string) (*m
 	return nil, nil
 }
 
-// RecordFailure records a failed authentication attempt and returns the updated state.
-func (s *InMemoryAuthLockoutStore) RecordFailure(_ context.Context, identifier string) (*models.AuthLockout, error) {
+func (s *InMemoryAuthLockoutStore) RecordFailure(ctx context.Context, identifier string) (*models.AuthLockout, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := time.Now()
+	now := requesttime.Now(ctx)
 	if existing, exists := s.records[identifier]; exists {
 		existing.FailureCount++
 		existing.DailyFailures++
@@ -57,7 +54,6 @@ func (s *InMemoryAuthLockoutStore) RecordFailure(_ context.Context, identifier s
 	return record, nil
 }
 
-// Clear clears the lockout state after successful authentication.
 func (s *InMemoryAuthLockoutStore) Clear(_ context.Context, identifier string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -66,7 +62,6 @@ func (s *InMemoryAuthLockoutStore) Clear(_ context.Context, identifier string) e
 	return nil
 }
 
-// IsLocked checks if an identifier is currently locked out.
 func (s *InMemoryAuthLockoutStore) IsLocked(_ context.Context, identifier string) (bool, *time.Time, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

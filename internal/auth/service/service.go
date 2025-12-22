@@ -68,9 +68,9 @@ type RefreshTokenStore interface {
 }
 
 type TokenGenerator interface {
-	GenerateAccessToken(userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string, scopes []string) (string, error)
-	GenerateAccessTokenWithJTI(userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string, scopes []string) (string, string, error)
-	GenerateIDToken(userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string) (string, error)
+	GenerateAccessToken(ctx context.Context, userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string, scopes []string) (string, error)
+	GenerateAccessTokenWithJTI(ctx context.Context, userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string, scopes []string) (string, string, error)
+	GenerateIDToken(ctx context.Context, userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string) (string, error)
 	CreateRefreshToken() (string, error)
 	// ParseTokenSkipClaimsValidation parses a JWT with signature verification but skips claims validation (e.g., expiration)
 	// This is used for token revocation where we need to verify the signature but accept expired tokens
@@ -455,9 +455,10 @@ func (s *Service) handleTokenError(ctx context.Context, err error, clientID stri
 	return dErrors.Wrap(err, dErrors.CodeInternal, "token handling failed")
 }
 
-func (s *Service) generateTokenArtifacts(session *models.Session) (*tokenArtifacts, error) {
+func (s *Service) generateTokenArtifacts(ctx context.Context, session *models.Session) (*tokenArtifacts, error) {
 	// Generate tokens before mutating persistence state so failures do not leave partial writes.
 	accessToken, accessTokenJTI, err := s.jwt.GenerateAccessTokenWithJTI(
+		ctx,
 		uuid.UUID(session.UserID),
 		uuid.UUID(session.ID),
 		session.ClientID.String(),
@@ -468,7 +469,7 @@ func (s *Service) generateTokenArtifacts(session *models.Session) (*tokenArtifac
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate access token")
 	}
 
-	idToken, err := s.jwt.GenerateIDToken(uuid.UUID(session.UserID), uuid.UUID(session.ID), session.ClientID.String(), session.TenantID.String())
+	idToken, err := s.jwt.GenerateIDToken(ctx, uuid.UUID(session.UserID), uuid.UUID(session.ID), session.ClientID.String(), session.TenantID.String())
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate ID token")
 	}

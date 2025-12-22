@@ -46,6 +46,7 @@ import (
 	devicemw "credo/pkg/platform/middleware/device"
 	metadata "credo/pkg/platform/middleware/metadata"
 	request "credo/pkg/platform/middleware/request"
+	requesttime "credo/pkg/platform/middleware/requesttime"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -313,6 +314,7 @@ func setupRouter(infra *infraBundle) *chi.Mux {
 
 	// Common middleware for all routes (must be defined before routes)
 	r.Use(metadata.ClientMetadata)
+	r.Use(requesttime.Middleware)
 	r.Use(devicemw.Device(&devicemw.DeviceConfig{
 		CookieName:    infra.Cfg.Auth.DeviceCookieName,
 		FingerprintFn: infra.DeviceService.ComputeFingerprint,
@@ -393,6 +395,7 @@ func setupAdminRouter(log *slog.Logger, adminSvc *admin.Service, tenantHandler *
 	r := chi.NewRouter()
 
 	// Common middleware for all routes
+	r.Use(requesttime.Middleware)
 	r.Use(request.Recovery(log))
 	r.Use(request.RequestID)
 	r.Use(request.Logger(log))

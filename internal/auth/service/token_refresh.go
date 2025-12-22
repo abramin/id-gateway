@@ -40,7 +40,7 @@ func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.Token
 	}
 
 	// Generate tokens BEFORE entering transaction to avoid holding mutex during JWT generation
-	artifacts, err := s.generateTokenArtifacts(session)
+	artifacts, err := s.generateTokenArtifacts(ctx, session)
 	if err != nil {
 		return nil, s.handleTokenError(ctx, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate tokens"), req.ClientID, &sessionID, TokenFlowRefresh)
 	}

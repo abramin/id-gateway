@@ -1,6 +1,7 @@
 package jwttoken
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	dErrors "credo/pkg/domain-errors"
+	requesttime "credo/pkg/platform/middleware/requesttime"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -76,13 +78,14 @@ func (s *JWTService) ExtractTenantFromIssuer(issuer string) (string, error) {
 }
 
 func (s *JWTService) GenerateAccessTokenWithJTI(
+	ctx context.Context,
 	userID uuid.UUID,
 	sessionID uuid.UUID,
 	clientID string,
 	tenantID string,
 	scopes []string,
 ) (string, string, error) {
-	newToken, err := s.GenerateAccessToken(userID, sessionID, clientID, tenantID, scopes)
+	newToken, err := s.GenerateAccessToken(ctx, userID, sessionID, clientID, tenantID, scopes)
 	if err != nil {
 		return "", "", err
 	}
@@ -101,6 +104,7 @@ func (s *JWTService) GenerateAccessTokenWithJTI(
 }
 
 func (s *JWTService) GenerateAccessToken(
+	ctx context.Context,
 	userID uuid.UUID,
 	sessionID uuid.UUID,
 	clientID string,
@@ -113,6 +117,7 @@ func (s *JWTService) GenerateAccessToken(
 		return "", err
 	}
 	jti := hex.EncodeToString(b)
+	now := requesttime.Now(ctx)
 
 	newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, AccessTokenClaims{
 		UserID:    userID.String(),
@@ -122,8 +127,8 @@ func (s *JWTService) GenerateAccessToken(
 		Env:       s.env,
 		Scope:     scopes,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(s.tokenTTL)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(now.Add(s.tokenTTL)),
+			IssuedAt:  jwt.NewNumericDate(now),
 			Issuer:    s.BuildIssuer(tenantID),
 			Audience:  []string{s.audience},
 			ID:        jti,
@@ -167,11 +172,12 @@ func (s *JWTService) ParseTokenSkipClaimsValidation(tokenString string) (*Access
 }
 
 func (s *JWTService) GenerateIDToken(
+	ctx context.Context,
 	userID uuid.UUID,
 	sessionID uuid.UUID,
 	clientID string,
 	tenantID string) (string, error) {
-	now := time.Now()
+	now := requesttime.Now(ctx)
 	newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, IDTokenClaims{
 		SessionID: sessionID.String(),
 		ClientID:  clientID,
