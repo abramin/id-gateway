@@ -66,6 +66,12 @@ type RateLimitResult struct {
 	RetryAfter int       `json:"retry_after,omitempty"` // seconds, only set when not allowed
 }
 
+type AuthRateLimitResult struct {
+	RateLimitResult
+	RequiresCaptcha bool `json:"requires_captcha"`
+	FailureCount    int  `json:"failure_count"`
+}
+
 type AllowlistEntry struct {
 	ID         string             `json:"id"`
 	Type       AllowlistEntryType `json:"type"`

@@ -12,9 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"credo/internal/ratelimit/service"
+	"credo/internal/ratelimit/admin"
 	"credo/internal/ratelimit/store/allowlist"
-	"credo/internal/ratelimit/store/authlockout"
 	"credo/internal/ratelimit/store/bucket"
 )
 
@@ -33,13 +32,12 @@ func (s *HandlerSuite) SetupTest() {
 	// Use real in-memory stores - no mocks per AGENTS.md
 	buckets := bucket.New()
 	allowlistStore := allowlist.New()
-	authLockoutStore := authlockout.New()
 
-	svc, err := service.New(buckets, allowlistStore, authLockoutStore)
+	adminSvc, err := admin.New(allowlistStore, buckets)
 	require.NoError(s.T(), err)
 
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	h := New(svc, logger)
+	h := New(adminSvc, logger)
 
 	r := chi.NewRouter()
 	h.RegisterAdmin(r)

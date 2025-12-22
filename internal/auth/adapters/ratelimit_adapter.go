@@ -4,28 +4,28 @@ import (
 	"context"
 
 	"credo/internal/auth/ports"
-	rlService "credo/internal/ratelimit/service"
+	"credo/internal/ratelimit/checker"
 )
 
 // RateLimitAdapter is an in-process adapter that implements ports.RateLimitPort
-// by directly calling the ratelimit service. This maintains the hexagonal
+// by directly calling the ratelimit checker service. This maintains the hexagonal
 // architecture boundaries while keeping everything in a single process.
 // When splitting into microservices, this can be replaced with a gRPC adapter
 // without changing the auth handler.
 type RateLimitAdapter struct {
-	ratelimit *rlService.Service
+	checker *checker.Service
 }
 
 // NewRateLimitAdapter creates a new in-process ratelimit adapter.
-func NewRateLimitAdapter(ratelimit *rlService.Service) ports.RateLimitPort {
+func NewRateLimitAdapter(checkerSvc *checker.Service) ports.RateLimitPort {
 	return &RateLimitAdapter{
-		ratelimit: ratelimit,
+		checker: checkerSvc,
 	}
 }
 
 // CheckAuthRateLimit checks if an auth request is allowed.
 func (a *RateLimitAdapter) CheckAuthRateLimit(ctx context.Context, identifier, ip string) (*ports.AuthRateLimitResult, error) {
-	result, err := a.ratelimit.CheckAuthRateLimit(ctx, identifier, ip)
+	result, err := a.checker.CheckAuthRateLimit(ctx, identifier, ip)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func (a *RateLimitAdapter) CheckAuthRateLimit(ctx context.Context, identifier, i
 
 // RecordAuthFailure records a failed authentication attempt.
 func (a *RateLimitAdapter) RecordAuthFailure(ctx context.Context, identifier, ip string) (*ports.AuthLockoutState, error) {
-	lockout, err := a.ratelimit.RecordAuthFailure(ctx, identifier, ip)
+	lockout, err := a.checker.RecordAuthFailure(ctx, identifier, ip)
 	if err != nil {
 		return nil, err
 	}
@@ -54,5 +54,5 @@ func (a *RateLimitAdapter) RecordAuthFailure(ctx context.Context, identifier, ip
 
 // ClearAuthFailures clears auth failure state after successful login.
 func (a *RateLimitAdapter) ClearAuthFailures(ctx context.Context, identifier, ip string) error {
-	return a.ratelimit.ClearAuthFailures(ctx, identifier, ip)
+	return a.checker.ClearAuthFailures(ctx, identifier, ip)
 }

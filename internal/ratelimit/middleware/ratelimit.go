@@ -18,7 +18,7 @@ type RateLimiter interface {
 	CheckIPRateLimit(ctx context.Context, ip string, class models.EndpointClass) (*models.RateLimitResult, error)
 	CheckUserRateLimit(ctx context.Context, userID string, class models.EndpointClass) (*models.RateLimitResult, error)
 	CheckBothLimits(ctx context.Context, ip, userID string, class models.EndpointClass) (*models.RateLimitResult, error)
-	CheckAuthRateLimit(ctx context.Context, identifier, ip string) (*models.RateLimitResult, error)
+	CheckAuthRateLimit(ctx context.Context, identifier, ip string) (*models.AuthRateLimitResult, error)
 	CheckGlobalThrottle(ctx context.Context) (bool, error)
 }
 

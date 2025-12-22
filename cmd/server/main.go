@@ -27,9 +27,9 @@ import (
 	"credo/internal/platform/config"
 	"credo/internal/platform/httpserver"
 	"credo/internal/platform/logger"
+	rateLimitChecker "credo/internal/ratelimit/checker"
 	rateLimitMW "credo/internal/ratelimit/middleware"
 	rateLimitModels "credo/internal/ratelimit/models"
-	rateLimit "credo/internal/ratelimit/service"
 	rwallowlistStore "credo/internal/ratelimit/store/allowlist"
 	authlockoutStore "credo/internal/ratelimit/store/authlockout"
 	rwbucketStore "credo/internal/ratelimit/store/bucket"
@@ -90,17 +90,17 @@ func main() {
 		panic(err)
 	}
 
-	rateLimitService, allowlistStore, err := buildRateLimitService(infra.Log)
+	checkerSvc, allowlistStore, err := buildRateLimitServices(infra.Log)
 	if err != nil {
-		infra.Log.Error("failed to initialize rate limit service", "error", err)
+		infra.Log.Error("failed to initialize rate limit services", "error", err)
 		os.Exit(1)
 	}
-	rateLimitMiddleware := rateLimitMW.New(rateLimitService, infra.Log, rateLimitMW.WithDisabled(infra.Cfg.DemoMode))
+	rateLimitMiddleware := rateLimitMW.New(checkerSvc, infra.Log, rateLimitMW.WithDisabled(infra.Cfg.DemoMode))
 
 	appCtx, cancelApp := context.WithCancel(context.Background())
 	defer cancelApp()
 	tenantMod := buildTenantModule(infra)
-	authMod, err := buildAuthModule(appCtx, infra, tenantMod.Service, rateLimitService)
+	authMod, err := buildAuthModule(appCtx, infra, tenantMod.Service, checkerSvc)
 	if err != nil {
 		infra.Log.Error("failed to initialize auth module", "error", err)
 		os.Exit(1)
@@ -130,21 +130,27 @@ func main() {
 	waitForShutdown([]*http.Server{mainSrv, adminSrv}, infra.Log, cancelApp)
 }
 
-func buildRateLimitService(logger *slog.Logger) (*rateLimit.Service, *rwallowlistStore.InMemoryAllowlistStore, error) {
+func buildRateLimitServices(logger *slog.Logger) (*rateLimitChecker.Service, *rwallowlistStore.InMemoryAllowlistStore, error) {
 	bucketStore := rwbucketStore.New()
 	allowlistStore := rwallowlistStore.New()
 	authLockout := authlockoutStore.New()
-	svc, err := rateLimit.New(
+
+	// Checker service (hot path - rate limit checks)
+	checkerSvc, err := rateLimitChecker.New(
 		bucketStore,
 		allowlistStore,
 		authLockout,
-		rateLimit.WithLogger(logger),
+		rateLimitChecker.WithLogger(logger),
 	)
 	if err != nil {
-		logger.Error("failed to create rate limit service", "error", err)
+		logger.Error("failed to create rate limit checker service", "error", err)
 		return nil, nil, err
 	}
-	return svc, allowlistStore, nil
+
+	// Note: Admin service would be created here if needed for rate limit admin handlers
+	// adminSvc, err := rateLimitAdmin.New(allowlistStore, bucketStore, rateLimitAdmin.WithLogger(logger))
+
+	return checkerSvc, allowlistStore, nil
 }
 
 func buildInfra() (*infraBundle, error) {
@@ -181,7 +187,7 @@ func buildInfra() (*infraBundle, error) {
 	}, nil
 }
 
-func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *tenantService.Service, rateLimitService *rateLimit.Service) (*authModule, error) {
+func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *tenantService.Service, checkerSvc *rateLimitChecker.Service) (*authModule, error) {
 	users := userStore.NewInMemoryUserStore()
 	sessions := sessionStore.NewInMemorySessionStore()
 	codes := authCodeStore.NewInMemoryAuthorizationCodeStore()
@@ -235,7 +241,7 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 	}
 
 	// Create rate limit adapter for auth handler
-	rateLimitAdapter := authAdapters.NewRateLimitAdapter(rateLimitService)
+	rateLimitAdapter := authAdapters.NewRateLimitAdapter(checkerSvc)
 
 	return &authModule{
 		Service:       authSvc,
