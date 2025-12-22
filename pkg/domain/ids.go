@@ -16,6 +16,9 @@ type (
 	ConsentID uuid.UUID
 )
 
+// APIKeyID is a prefixed string identifier for API keys (e.g., "ak_xxxx").
+type APIKeyID string
+
 // Parse functions - use at trust boundaries (handlers, API inputs).
 
 func ParseUserID(s string) (UserID, error) {
@@ -43,6 +46,13 @@ func ParseConsentID(s string) (ConsentID, error) {
 	return ConsentID(id), err
 }
 
+func ParseAPIKeyID(s string) (APIKeyID, error) {
+	if s == "" {
+		return "", dErrors.New(dErrors.CodeInvalidInput, "API key ID cannot be empty")
+	}
+	return APIKeyID(s), nil
+}
+
 // String methods - for logging and debugging.
 
 func (id UserID) String() string    { return uuid.UUID(id).String() }
@@ -50,6 +60,7 @@ func (id SessionID) String() string { return uuid.UUID(id).String() }
 func (id ClientID) String() string  { return uuid.UUID(id).String() }
 func (id TenantID) String() string  { return uuid.UUID(id).String() }
 func (id ConsentID) String() string { return uuid.UUID(id).String() }
+func (id APIKeyID) String() string  { return string(id) }
 
 // IsNil checks - used for service-layer validation.
 
@@ -58,6 +69,7 @@ func (id SessionID) IsNil() bool { return uuid.UUID(id) == uuid.Nil }
 func (id ClientID) IsNil() bool  { return uuid.UUID(id) == uuid.Nil }
 func (id TenantID) IsNil() bool  { return uuid.UUID(id) == uuid.Nil }
 func (id ConsentID) IsNil() bool { return uuid.UUID(id) == uuid.Nil }
+func (id APIKeyID) IsNil() bool  { return id == "" }
 
 // parseUUID is the shared validation logic.
 // Note: Nil UUIDs are allowed here. Use IsNil() at the service layer for
