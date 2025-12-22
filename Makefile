@@ -8,7 +8,7 @@ PROTO_FILES := $(wildcard $(PROTO_DIR)/*.proto)
 # === DEFAULT ===
 default: dev
 
-.PHONY: default build run test test-failed test-failures test-cover test-one e2e e2e-normal e2e-security e2e-report e2e-clean lint fmt imports openapi-lint openapi-build clean docker-clean proto-gen proto-check proto-clean help
+.PHONY: default build run test test-failed test-failures test-cover test-one test-slow e2e e2e-normal e2e-security e2e-report e2e-clean lint fmt imports openapi-lint openapi-build clean docker-clean proto-gen proto-check proto-clean help
 
 # === BUILD ===
 build:
@@ -37,6 +37,18 @@ test-one:
 	else \
 		go test -run "$(t)" $(PKG); \
 	fi
+
+test-slow:
+	@if ! command -v jq >/dev/null 2>&1; then \
+		echo "jq not installed. Install with: brew install jq"; \
+		exit 1; \
+	fi
+	@echo "Finding slowest tests (top $(or $(n),10))..."
+	@go test -json $(PKG) 2>/dev/null | \
+		jq -r 'select(.Action == "pass" and .Test != null and .Elapsed != null) | "\(.Elapsed)\t\(.Package)\t\(.Test)"' | \
+		sort -rn | \
+		head -$(or $(n),10) | \
+		awk 'BEGIN {printf "%-10s %-60s %s\n", "TIME (s)", "PACKAGE", "TEST"; print "---------- ------------------------------------------------------------ ----------"} {printf "%-10.3f %-60s %s\n", $$1, $$2, $$3}'
 
 # === LINT ===
 lint:
@@ -152,6 +164,7 @@ help:
 	@echo "  test-failed    Run tests, show only failures (hide skipped)"
 	@echo "  test-cover     Run tests with coverage"
 	@echo "  test-one       Run a single test (use: make test-one t=TestName)"
+	@echo "  test-slow      Find slowest tests (use: make test-slow n=5 for top 5)"
 	@echo "  e2e            Run E2E tests with godog"
 	@echo "  e2e-normal     Run only normal flow E2E tests"
 	@echo "  e2e-security   Run only security simulation tests"
