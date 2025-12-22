@@ -16,14 +16,14 @@ var ErrNotFound = sentinel.ErrNotFound
 // InMemory stores clients in memory for the demo environment.
 type InMemory struct {
 	mu      sync.RWMutex
-	clients map[string]*models.Client
-	byCode  map[string]*models.Client
+	clients map[id.ClientID]*models.Client
+	byCode  map[string]*models.Client // secondary index by OAuth client_id (external identifier)
 }
 
 // NewInMemory creates an in-memory client store.
 func NewInMemory() *InMemory {
 	return &InMemory{
-		clients: make(map[string]*models.Client),
+		clients: make(map[id.ClientID]*models.Client),
 		byCode:  make(map[string]*models.Client),
 	}
 }
@@ -32,7 +32,7 @@ func NewInMemory() *InMemory {
 func (s *InMemory) Create(_ context.Context, c *models.Client) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.clients[c.ID.String()] = c
+	s.clients[c.ID] = c
 	s.byCode[c.OAuthClientID] = c
 	return nil
 }
@@ -41,7 +41,7 @@ func (s *InMemory) Create(_ context.Context, c *models.Client) error {
 func (s *InMemory) Update(_ context.Context, c *models.Client) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.clients[c.ID.String()] = c
+	s.clients[c.ID] = c
 	s.byCode[c.OAuthClientID] = c
 	return nil
 }
@@ -50,7 +50,7 @@ func (s *InMemory) Update(_ context.Context, c *models.Client) error {
 func (s *InMemory) FindByID(_ context.Context, clientID id.ClientID) (*models.Client, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if c, ok := s.clients[clientID.String()]; ok {
+	if c, ok := s.clients[clientID]; ok {
 		return c, nil
 	}
 	return nil, ErrNotFound
@@ -60,7 +60,7 @@ func (s *InMemory) FindByID(_ context.Context, clientID id.ClientID) (*models.Cl
 func (s *InMemory) FindByTenantAndID(_ context.Context, tenantID id.TenantID, clientID id.ClientID) (*models.Client, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if c, ok := s.clients[clientID.String()]; ok {
+	if c, ok := s.clients[clientID]; ok {
 		if c.TenantID == tenantID {
 			return c, nil
 		}

@@ -110,13 +110,13 @@ func (t QuotaTier) IsValid() bool {
 }
 
 type APIKeyQuota struct {
-	APIKeyID       string    `json:"api_key_id"`
-	Tier           QuotaTier `json:"tier"`
-	MonthlyLimit   int       `json:"monthly_limit"`
-	CurrentUsage   int       `json:"current_usage"`
-	OverageAllowed bool      `json:"overage_allowed"`
-	PeriodStart    time.Time `json:"period_start"`
-	PeriodEnd      time.Time `json:"period_end"`
+	APIKeyID       id.APIKeyID `json:"api_key_id"`
+	Tier           QuotaTier   `json:"tier"`
+	MonthlyLimit   int         `json:"monthly_limit"`
+	CurrentUsage   int         `json:"current_usage"`
+	OverageAllowed bool        `json:"overage_allowed"`
+	PeriodStart    time.Time   `json:"period_start"`
+	PeriodEnd      time.Time   `json:"period_end"`
 }
 
 type AuthLockout struct {
@@ -179,8 +179,8 @@ func (l *AuthLockout) IsLocked() bool {
 	return time.Now().Before(*l.LockedUntil)
 }
 
-func NewAPIKeyQuota(apiKeyID string, tier QuotaTier, monthlyLimit int, overageAllowed bool) (*APIKeyQuota, error) {
-	if apiKeyID == "" {
+func NewAPIKeyQuota(apiKeyID id.APIKeyID, tier QuotaTier, monthlyLimit int, overageAllowed bool) (*APIKeyQuota, error) {
+	if apiKeyID.IsNil() {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "api_key_id cannot be empty")
 	}
 	if !tier.IsValid() {

@@ -5,26 +5,27 @@ import (
 	"time"
 
 	"credo/internal/ratelimit/models"
+	id "credo/pkg/domain"
 )
 
 type InMemoryQuotaStore struct {
-	quotas map[string]*models.APIKeyQuota // keyed by API key ID
+	quotas map[id.APIKeyID]*models.APIKeyQuota
 }
 
 func New() *InMemoryQuotaStore {
 	return &InMemoryQuotaStore{
-		quotas: make(map[string]*models.APIKeyQuota),
+		quotas: make(map[id.APIKeyID]*models.APIKeyQuota),
 	}
 }
 
-func (s *InMemoryQuotaStore) GetQuota(_ context.Context, apiKeyID string) (*models.APIKeyQuota, error) {
+func (s *InMemoryQuotaStore) GetQuota(_ context.Context, apiKeyID id.APIKeyID) (*models.APIKeyQuota, error) {
 	if quota, exists := s.quotas[apiKeyID]; exists {
 		return quota, nil
 	}
 	return nil, nil
 }
 
-func (s *InMemoryQuotaStore) IncrementUsage(_ context.Context, apiKeyID string, count int) (*models.APIKeyQuota, error) {
+func (s *InMemoryQuotaStore) IncrementUsage(_ context.Context, apiKeyID id.APIKeyID, count int) (*models.APIKeyQuota, error) {
 	quota, exists := s.quotas[apiKeyID]
 	if !exists {
 		quota = &models.APIKeyQuota{

@@ -24,28 +24,28 @@ var ErrNotFound = sentinel.ErrNotFound
 // They intentionally favor clarity over performance.
 type InMemoryUserStore struct {
 	mu    sync.RWMutex
-	users map[string]*models.User
+	users map[id.UserID]*models.User
 }
 
-func (s *InMemoryUserStore) ListAll(context context.Context) (map[string]*models.User, error) {
+func (s *InMemoryUserStore) ListAll(context context.Context) (map[id.UserID]*models.User, error) {
 	return s.users, nil
 }
 
 func NewInMemoryUserStore() *InMemoryUserStore {
-	return &InMemoryUserStore{users: make(map[string]*models.User)}
+	return &InMemoryUserStore{users: make(map[id.UserID]*models.User)}
 }
 
 func (s *InMemoryUserStore) Save(_ context.Context, user *models.User) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.users[user.ID.String()] = user
+	s.users[user.ID] = user
 	return nil
 }
 
 func (s *InMemoryUserStore) FindByID(_ context.Context, userID id.UserID) (*models.User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if user, ok := s.users[userID.String()]; ok {
+	if user, ok := s.users[userID]; ok {
 		return user, nil
 	}
 	return nil, fmt.Errorf("user not found: %w", ErrNotFound)
@@ -76,16 +76,15 @@ func (s *InMemoryUserStore) FindOrCreateByTenantAndEmail(_ context.Context, tena
 	}
 
 	// User doesn't exist, create it
-	s.users[user.ID.String()] = user
+	s.users[user.ID] = user
 	return user, nil
 }
 
 func (s *InMemoryUserStore) Delete(_ context.Context, userID id.UserID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	key := userID.String()
-	if _, ok := s.users[key]; ok {
-		delete(s.users, key)
+	if _, ok := s.users[userID]; ok {
+		delete(s.users, userID)
 		return nil
 	}
 	return fmt.Errorf("user not found: %w", ErrNotFound)

@@ -8,6 +8,7 @@ import (
 
 	"credo/internal/ratelimit/config"
 	"credo/internal/ratelimit/models"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
 	request "credo/pkg/platform/middleware/request"
@@ -46,15 +47,18 @@ type AuthLockoutStore interface {
 
 	// IsLocked checks if an identifier is currently locked out.
 	IsLocked(ctx context.Context, identifier string) (bool, *time.Time, error)
+
+	// Update updates an existing lockout record.
+	Update(ctx context.Context, record *models.AuthLockout) error
 }
 
 // QuotaStore defines the persistence interface for partner API quotas.
 type QuotaStore interface {
 	// GetQuota retrieves the quota for an API key.
-	GetQuota(ctx context.Context, apiKeyID string) (*models.APIKeyQuota, error)
+	GetQuota(ctx context.Context, apiKeyID id.APIKeyID) (*models.APIKeyQuota, error)
 
 	// IncrementUsage increments the usage counter for an API key.
-	IncrementUsage(ctx context.Context, apiKeyID string, count int) (*models.APIKeyQuota, error)
+	IncrementUsage(ctx context.Context, apiKeyID id.APIKeyID, count int) (*models.APIKeyQuota, error)
 }
 
 // GlobalThrottleStore defines the interface for global request throttling.
@@ -378,7 +382,7 @@ func (s *Service) GetProgressiveBackoff(failureCount int) time.Duration {
 }
 
 // CheckAPIKeyQuota checks quota for partner API key.
-func (s *Service) CheckAPIKeyQuota(ctx context.Context, apiKeyID string) (*models.APIKeyQuota, error) {
+func (s *Service) CheckAPIKeyQuota(ctx context.Context, apiKeyID id.APIKeyID) (*models.APIKeyQuota, error) {
 	quota, err := s.quotas.GetQuota(ctx, apiKeyID)
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to get API key quota")
