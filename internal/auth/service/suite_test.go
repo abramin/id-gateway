@@ -1,6 +1,6 @@
 package service
 
-//go:generate mockgen -source=interfaces.go -destination=mocks/mocks.go -package=mocks UserStore,SessionStore,AuthCodeStore,RefreshTokenStore,TokenGenerator,AuditPublisher
+//go:generate mockgen -source=service.go -destination=mocks/mocks.go -package=mocks UserStore,SessionStore,AuthCodeStore,RefreshTokenStore,TokenGenerator,AuditPublisher
 //go:generate mockgen -source=../store/revocation/revocation.go -destination=mocks/trl_mock.go -package=mocks TokenRevocationList
 
 import (

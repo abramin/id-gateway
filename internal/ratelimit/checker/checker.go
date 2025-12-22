@@ -18,6 +18,60 @@ const keyPrefixUser = "user"
 const keyPrefixIP = "ip"
 const keyPrefixAuth = "auth"
 
+// BucketStore defines the persistence interface for rate limit buckets/counters.
+type BucketStore interface {
+	// Allow checks if a request is allowed and increments the counter.
+	Allow(ctx context.Context, key string, limit int, window time.Duration) (*models.RateLimitResult, error)
+
+	// AllowN checks if a request with custom cost is allowed.
+	AllowN(ctx context.Context, key string, cost, limit int, window time.Duration) (*models.RateLimitResult, error)
+}
+
+// AllowlistStore defines the read-only interface for checking allowlist membership.
+type AllowlistStore interface {
+	// IsAllowlisted checks if an identifier is in the allowlist and not expired.
+	IsAllowlisted(ctx context.Context, identifier string) (bool, error)
+}
+
+// AuthLockoutStore defines the persistence interface for authentication lockouts.
+type AuthLockoutStore interface {
+	// RecordFailure records a failed authentication attempt.
+	RecordFailure(ctx context.Context, identifier string) (*models.AuthLockout, error)
+
+	// Get retrieves the current lockout state for an identifier.
+	Get(ctx context.Context, identifier string) (*models.AuthLockout, error)
+
+	// Clear clears the lockout state after successful authentication.
+	Clear(ctx context.Context, identifier string) error
+
+	// IsLocked checks if an identifier is currently locked out.
+	IsLocked(ctx context.Context, identifier string) (bool, *time.Time, error)
+}
+
+// QuotaStore defines the persistence interface for partner API quotas.
+type QuotaStore interface {
+	// GetQuota retrieves the quota for an API key.
+	GetQuota(ctx context.Context, apiKeyID string) (*models.APIKeyQuota, error)
+
+	// IncrementUsage increments the usage counter for an API key.
+	IncrementUsage(ctx context.Context, apiKeyID string, count int) (*models.APIKeyQuota, error)
+}
+
+// GlobalThrottleStore defines the interface for global request throttling.
+type GlobalThrottleStore interface {
+	// IncrementGlobal increments the global request counter.
+	// Returns current count and whether limit is exceeded.
+	IncrementGlobal(ctx context.Context) (int, bool, error)
+
+	// GetGlobalCount returns the current global request count.
+	GetGlobalCount(ctx context.Context) (int, error)
+}
+
+// AuditPublisher defines the interface for publishing audit events.
+type AuditPublisher interface {
+	Emit(ctx context.Context, event audit.Event) error
+}
+
 // Service handles high-traffic rate limit checking operations.
 type Service struct {
 	buckets        BucketStore
@@ -264,9 +318,8 @@ func (s *Service) CheckAuthRateLimit(ctx context.Context, identifier, ip string)
 
 // RecordAuthFailure records a failed authentication attempt.
 func (s *Service) RecordAuthFailure(ctx context.Context, identifier, ip string) (*models.AuthLockout, error) {
-	// TODO: Should use composite key (identifier:ip) per FR-2b
-	// key := fmt.Sprintf("%s:%s:%s", keyPrefixAuth, identifier, ip)
-	current, err := s.authLockout.RecordFailure(ctx, identifier)
+	key := fmt.Sprintf("%s:%s:%s", keyPrefixAuth, identifier, ip)
+	current, err := s.authLockout.RecordFailure(ctx, key)
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to record auth failure")
 	}
@@ -275,10 +328,10 @@ func (s *Service) RecordAuthFailure(ctx context.Context, identifier, ip string) 
 		lockDuration := s.config.AuthLockout.HardLockDuration
 		lockedUntil := time.Now().Add(lockDuration)
 		current.LockedUntil = &lockedUntil
-
-		// TODO: Lock is set on local struct but not persisted to store
-		// Need to add Update method to AuthLockoutStore interface
-
+		err = s.authLockout.Update(ctx, current)
+		if err != nil {
+			return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to update auth lockout record")
+		}
 		s.logAudit(ctx, "auth_lockout_triggered",
 			"identifier", identifier,
 			"ip", ip,
@@ -289,7 +342,10 @@ func (s *Service) RecordAuthFailure(ctx context.Context, identifier, ip string) 
 	// Require CAPTCHA after 3 consecutive lockouts within 24 hours
 	if current.DailyFailures >= s.config.AuthLockout.CaptchaAfterLockouts {
 		current.RequiresCaptcha = true
-		// TODO: RequiresCaptcha also not persisted (same issue as LockedUntil)
+		err = s.authLockout.Update(ctx, current)
+		if err != nil {
+			return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to update auth lockout record for captcha")
+		}
 	}
 
 	return current, nil
@@ -311,8 +367,6 @@ func (s *Service) ClearAuthFailures(ctx context.Context, identifier, ip string) 
 	return nil
 }
 
-// GetProgressiveBackoff calculates progressive backoff delay.
-// Per PRD-017 FR-2b: 250ms → 500ms → 1s (capped).
 func (s *Service) GetProgressiveBackoff(failureCount int) time.Duration {
 	if failureCount <= 0 {
 		return 0
@@ -325,14 +379,32 @@ func (s *Service) GetProgressiveBackoff(failureCount int) time.Duration {
 
 // CheckAPIKeyQuota checks quota for partner API key.
 func (s *Service) CheckAPIKeyQuota(ctx context.Context, apiKeyID string) (*models.APIKeyQuota, error) {
-	// TODO: Implement
-	return nil, dErrors.New(dErrors.CodeInternal, "not implemented")
+	quota, err := s.quotas.GetQuota(ctx, apiKeyID)
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to get API key quota")
+	}
+	if quota == nil {
+		return nil, dErrors.Wrap(fmt.Errorf("quota not found for API key %s", apiKeyID), dErrors.CodeNotFound, "quota not found")
+	}
+	return quota, nil
 }
 
 // CheckGlobalThrottle checks global request throttle for DDoS protection.
 func (s *Service) CheckGlobalThrottle(ctx context.Context) (bool, error) {
-	// TODO: Implement
-	return true, nil // Allow by default until implemented
+	count, blocked, err := s.globalThrottle.IncrementGlobal(ctx)
+	if err != nil {
+		return false, dErrors.Wrap(err, dErrors.CodeInternal, "failed to increment global throttle")
+	}
+
+	// Log if we are blocking due to global throttle
+	if blocked {
+		s.logAudit(ctx, "global_throttle_triggered",
+			"current_count", count,
+			"global_limit", s.config.Global.GlobalPerSecond,
+		)
+	}
+
+	return blocked, nil
 }
 
 // logAudit emits an audit event for rate limiting operations.

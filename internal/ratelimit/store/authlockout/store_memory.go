@@ -78,3 +78,11 @@ func (s *InMemoryAuthLockoutStore) IsLocked(_ context.Context, identifier string
 	}
 	return false, nil, nil
 }
+
+func (s *InMemoryAuthLockoutStore) Update(_ context.Context, record *models.AuthLockout) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.records[record.Identifier] = record
+	return nil
+}
