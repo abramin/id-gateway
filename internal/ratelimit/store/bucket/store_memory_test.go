@@ -28,7 +28,7 @@ func TestInMemoryBucketStoreSuite(t *testing.T) {
 }
 
 func (s *InMemoryBucketStoreSuite) SetupTest() {
-	s.store = NewInMemoryBucketStore()
+	s.store = New()
 	s.ctx = context.Background()
 }
 

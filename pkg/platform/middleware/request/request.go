@@ -8,9 +8,8 @@ import (
 	"runtime/debug"
 	"time"
 
-	"credo/pkg/platform/metrics"
-	"credo/pkg/platform/privacy"
 	metadata "credo/pkg/platform/middleware/metadata"
+	"credo/pkg/platform/privacy"
 
 	"github.com/google/uuid"
 )
@@ -129,7 +128,7 @@ func ContentTypeJSON(next http.Handler) http.Handler {
 	})
 }
 
-func LatencyMiddleware(m *metrics.Metrics) func(http.Handler) http.Handler {
+func LatencyMiddleware(m *Metrics) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()

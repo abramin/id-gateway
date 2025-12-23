@@ -72,6 +72,8 @@ services:
       - REGULATED_MODE=true
       - LOG_LEVEL=info
       - DEVICE_BINDING_ENABLED=true
+      - DISABLE_RATE_LIMITING=${DISABLE_RATE_LIMITING:-false}
+      - CONSENT_GRANT_WINDOW=${CONSENT_GRANT_WINDOW:-1s}
       - CITIZEN_REGISTRY_URL=http://citizen-registry:8081
       - CITIZEN_REGISTRY_API_KEY=citizen-registry-secret-key
       - SANCTIONS_REGISTRY_URL=http://sanctions-registry:8082

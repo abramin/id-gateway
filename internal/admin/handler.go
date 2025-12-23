@@ -8,8 +8,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	request "credo/pkg/platform/middleware/request"
 	"credo/pkg/platform/httputil"
+	request "credo/pkg/platform/middleware/request"
 )
 
 // Handler handles admin monitoring and stats endpoints

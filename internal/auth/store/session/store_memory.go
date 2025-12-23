@@ -26,24 +26,24 @@ var ErrSessionRevoked = fmt.Errorf("session has been revoked: %w", sentinel.ErrI
 // They intentionally favor clarity over performance.
 type InMemorySessionStore struct {
 	mu       sync.RWMutex
-	sessions map[string]*models.Session
+	sessions map[id.SessionID]*models.Session
 }
 
 func NewInMemorySessionStore() *InMemorySessionStore {
-	return &InMemorySessionStore{sessions: make(map[string]*models.Session)}
+	return &InMemorySessionStore{sessions: make(map[id.SessionID]*models.Session)}
 }
 
 func (s *InMemorySessionStore) Create(_ context.Context, session *models.Session) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.sessions[session.ID.String()] = session
+	s.sessions[session.ID] = session
 	return nil
 }
 
 func (s *InMemorySessionStore) FindByID(_ context.Context, sessionID id.SessionID) (*models.Session, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if session, ok := s.sessions[sessionID.String()]; ok {
+	if session, ok := s.sessions[sessionID]; ok {
 		return session, nil
 	}
 	return nil, fmt.Errorf("session not found: %w", ErrNotFound)
@@ -66,11 +66,10 @@ func (s *InMemorySessionStore) ListByUser(_ context.Context, userID id.UserID) (
 func (s *InMemorySessionStore) UpdateSession(_ context.Context, session *models.Session) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	key := session.ID.String()
-	if _, ok := s.sessions[key]; !ok {
+	if _, ok := s.sessions[session.ID]; !ok {
 		return fmt.Errorf("session not found: %w", ErrNotFound)
 	}
-	s.sessions[key] = session
+	s.sessions[session.ID] = session
 	return nil
 }
 
@@ -101,8 +100,7 @@ func (s *InMemorySessionStore) RevokeSessionIfActive(_ context.Context, sessionI
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	key := sessionID.String()
-	session, ok := s.sessions[key]
+	session, ok := s.sessions[sessionID]
 	if !ok {
 		return ErrNotFound
 	}
@@ -114,7 +112,7 @@ func (s *InMemorySessionStore) RevokeSessionIfActive(_ context.Context, sessionI
 	if session.RevokedAt == nil || now.After(*session.RevokedAt) {
 		session.RevokedAt = &now
 	}
-	s.sessions[key] = session
+	s.sessions[sessionID] = session
 	return nil
 }
 
@@ -135,23 +133,23 @@ func (s *InMemorySessionStore) DeleteExpiredSessions(ctx context.Context) (int, 
 	return deletedCount, nil
 }
 
-func (s *InMemorySessionStore) ListAll(_ context.Context) (map[string]*models.Session, error) {
+func (s *InMemorySessionStore) ListAll(_ context.Context) (map[id.SessionID]*models.Session, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	// Return a copy to avoid concurrent map iteration/write panics
-	copy := make(map[string]*models.Session, len(s.sessions))
+	result := make(map[id.SessionID]*models.Session, len(s.sessions))
 	for k, v := range s.sessions {
-		copy[k] = v
+		result[k] = v
 	}
-	return copy, nil
+	return result, nil
 }
 
 func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID string, deviceFingerprintHash string) (*models.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	session, ok := s.sessions[sessionID.String()]
+	session, ok := s.sessions[sessionID]
 	if !ok {
 		return nil, fmt.Errorf("session not found: %w", ErrNotFound)
 	}
@@ -184,7 +182,7 @@ func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, sessionID id.S
 		session.DeviceFingerprintHash = deviceFingerprintHash
 	}
 
-	s.sessions[sessionID.String()] = session
+	s.sessions[sessionID] = session
 	return session, nil
 }
 
@@ -192,7 +190,7 @@ func (s *InMemorySessionStore) AdvanceLastRefreshed(_ context.Context, sessionID
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	session, ok := s.sessions[sessionID.String()]
+	session, ok := s.sessions[sessionID]
 	if !ok {
 		return nil, fmt.Errorf("session not found: %w", ErrNotFound)
 	}
@@ -225,6 +223,6 @@ func (s *InMemorySessionStore) AdvanceLastRefreshed(_ context.Context, sessionID
 		session.DeviceFingerprintHash = deviceFingerprintHash
 	}
 
-	s.sessions[sessionID.String()] = session
+	s.sessions[sessionID] = session
 	return session, nil
 }

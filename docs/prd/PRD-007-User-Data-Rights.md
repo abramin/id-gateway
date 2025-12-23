@@ -222,6 +222,7 @@ func (h *Handler) handleDataDeletion(w http.ResponseWriter, r *http.Request) {
 **Query Patterns Required:**
 
 - **UNION ALL for Comprehensive Data Export:** Aggregate user data from multiple tables:
+
   ```sql
   -- Export all user data in single query with source tracking
   SELECT 'profile' AS source, id, email, first_name, last_name, NULL AS purpose, created_at
@@ -239,6 +240,7 @@ func (h *Handler) handleDataDeletion(w http.ResponseWriter, r *http.Request) {
   ```
 
 - **CTE for Cascade Deletion Verification:**
+
   ```sql
   WITH deletion_manifest AS (
     SELECT 'users' AS table_name, COUNT(*) AS row_count
@@ -262,6 +264,7 @@ func (h *Handler) handleDataDeletion(w http.ResponseWriter, r *http.Request) {
   ```
 
 - **Transactional Cascade Delete with Foreign Key Awareness:**
+
   ```sql
   BEGIN;
   -- Delete in correct order respecting foreign key constraints
@@ -274,6 +277,7 @@ func (h *Handler) handleDataDeletion(w http.ResponseWriter, r *http.Request) {
   ```
 
 - **Pseudonymization with Window Function for Audit Logs:**
+
   ```sql
   -- Pseudonymize while preserving event ordering
   UPDATE audit_events
@@ -288,6 +292,7 @@ func (h *Handler) handleDataDeletion(w http.ResponseWriter, r *http.Request) {
   ```
 
 - **Anti-Join to Find Orphaned Records:**
+
   ```sql
   -- Find consent records without valid users (data integrity check)
   SELECT c.id, c.user_id, c.purpose
@@ -417,6 +422,7 @@ WHERE ctid IN (
 ---
 
 **Acceptance Criteria (SQL):**
+
 - [ ] Data export uses UNION ALL to aggregate from all user tables
 - [ ] Deletion manifest uses CTE to count affected rows before deletion
 - [ ] Cascade deletes respect foreign key order or use ON DELETE CASCADE
@@ -590,7 +596,7 @@ curl http://localhost:8080/auth/userinfo -H "Authorization: Bearer $TOKEN"
 
 | Version | Date       | Author       | Changes                                                                                        |
 | ------- | ---------- | ------------ | ---------------------------------------------------------------------------------------------- |
-| 1.3     | 2025-12-21 | Engineering  | Enhanced TR-4: Added seek pagination, covering indexes, batch deletion patterns               |
-| 1.2     | 2025-12-21 | Engineering  | Added TR-4: SQL Query Patterns (UNION ALL, CTEs, cascade deletes, anti-joins, FK constraints) |
+| 1.3     | 2025-12-21 | Engineering  | Enhanced TR-4: Added seek pagination, covering indexes, batch deletion patterns                |
+| 1.2     | 2025-12-21 | Engineering  | Added TR-4: SQL Query Patterns (UNION ALL, CTEs, cascade deletes, anti-joins, FK constraints)  |
 | 1.1     | 2025-12-13 | Engineering  | Specify concurrent data-export fan-out, add service-layer orchestration TR, handler stays thin |
 | 1.0     | 2025-12-03 | Product Team | Initial PRD                                                                                    |

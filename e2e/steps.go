@@ -7,6 +7,7 @@ import (
 	"credo/e2e/steps/auth"
 	"credo/e2e/steps/common"
 	"credo/e2e/steps/consent"
+	"credo/e2e/steps/ratelimit"
 )
 
 // RegisterSteps registers all step definitions from modular packages
@@ -22,4 +23,7 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 
 	// Register admin-specific steps (tenant/client management)
 	admin.RegisterSteps(ctx, tc)
+
+	// Register rate-limiting steps (PRD-017 FR-2b)
+	ratelimit.RegisterSteps(ctx, tc)
 }

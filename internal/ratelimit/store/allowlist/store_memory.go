@@ -13,7 +13,7 @@ type InMemoryAllowlistStore struct {
 	entries map[string]*models.AllowlistEntry // keyed by "{type}:{identifier}"
 }
 
-func NewInMemoryAllowlistStore() *InMemoryAllowlistStore {
+func New() *InMemoryAllowlistStore {
 	return &InMemoryAllowlistStore{
 		entries: make(map[string]*models.AllowlistEntry),
 	}

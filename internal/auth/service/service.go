@@ -12,18 +12,78 @@ import (
 
 	"github.com/google/uuid"
 
-	"credo/pkg/platform/audit"
 	"credo/internal/auth/device"
+	"credo/internal/auth/metrics"
 	"credo/internal/auth/models"
 	"credo/internal/auth/store/revocation"
 	sessionStore "credo/internal/auth/store/session"
-	request "credo/pkg/platform/middleware/request"
+	jwttoken "credo/internal/jwt_token"
+	tenant "credo/internal/tenant/models"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/attrs"
-	"credo/pkg/platform/metrics"
+	"credo/pkg/platform/audit"
+	request "credo/pkg/platform/middleware/request"
 	"credo/pkg/platform/sentinel"
 )
+
+// UserStore defines the persistence interface for user data.
+// Error Contract: All Find methods return store.ErrNotFound when the entity doesn't exist.
+type UserStore interface {
+	Save(ctx context.Context, user *models.User) error
+	FindByID(ctx context.Context, userID id.UserID) (*models.User, error)
+	FindByEmail(ctx context.Context, email string) (*models.User, error)
+	FindOrCreateByTenantAndEmail(ctx context.Context, tenantID id.TenantID, email string, user *models.User) (*models.User, error)
+	Delete(ctx context.Context, userID id.UserID) error
+}
+
+// SessionStore defines the persistence interface for session data.
+// Error Contract: All Find methods return store.ErrNotFound when the entity doesn't exist.
+type SessionStore interface {
+	Create(ctx context.Context, session *models.Session) error
+	FindByID(ctx context.Context, sessionID id.SessionID) (*models.Session, error)
+	ListByUser(ctx context.Context, userID id.UserID) ([]*models.Session, error)
+	UpdateSession(ctx context.Context, session *models.Session) error
+	DeleteSessionsByUser(ctx context.Context, userID id.UserID) error
+	RevokeSession(ctx context.Context, sessionID id.SessionID) error
+	RevokeSessionIfActive(ctx context.Context, sessionID id.SessionID, now time.Time) error
+	AdvanceLastSeen(ctx context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID string, deviceFingerprintHash string) (*models.Session, error)
+	AdvanceLastRefreshed(ctx context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, deviceID string, deviceFingerprintHash string) (*models.Session, error)
+}
+
+type AuthCodeStore interface {
+	Create(ctx context.Context, authCode *models.AuthorizationCodeRecord) error
+	FindByCode(ctx context.Context, code string) (*models.AuthorizationCodeRecord, error)
+	MarkUsed(ctx context.Context, code string) error
+	ConsumeAuthCode(ctx context.Context, code string, redirectURI string, now time.Time) (*models.AuthorizationCodeRecord, error)
+	DeleteExpiredCodes(ctx context.Context) (int, error)
+}
+
+type RefreshTokenStore interface {
+	Create(ctx context.Context, token *models.RefreshTokenRecord) error
+	FindBySessionID(ctx context.Context, sessionID id.SessionID) (*models.RefreshTokenRecord, error)
+	Find(ctx context.Context, tokenString string) (*models.RefreshTokenRecord, error)
+	ConsumeRefreshToken(ctx context.Context, token string, now time.Time) (*models.RefreshTokenRecord, error)
+	DeleteBySessionID(ctx context.Context, sessionID id.SessionID) error
+}
+
+type TokenGenerator interface {
+	GenerateAccessToken(ctx context.Context, userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string, scopes []string) (string, error)
+	GenerateAccessTokenWithJTI(ctx context.Context, userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string, scopes []string) (string, string, error)
+	GenerateIDToken(ctx context.Context, userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string) (string, error)
+	CreateRefreshToken() (string, error)
+	// ParseTokenSkipClaimsValidation parses a JWT with signature verification but skips claims validation (e.g., expiration)
+	// This is used for token revocation where we need to verify the signature but accept expired tokens
+	ParseTokenSkipClaimsValidation(token string) (*jwttoken.AccessTokenClaims, error)
+}
+
+type AuditPublisher interface {
+	Emit(ctx context.Context, base audit.Event) error
+}
+
+type ClientResolver interface {
+	ResolveClient(ctx context.Context, clientID string) (*tenant.Client, *tenant.Tenant, error)
+}
 
 type Service struct {
 	users          UserStore
@@ -275,12 +335,14 @@ func (s *Service) logAudit(ctx context.Context, event string, attributes ...any)
 	}
 	userIDStr := attrs.ExtractString(attributes, "user_id")
 	userID, _ := id.ParseUserID(userIDStr) // Best-effort for audit - ignore parse errors
-	// TODO: log errors from audit publisher?
-	_ = s.auditPublisher.Emit(ctx, audit.Event{
+	err := s.auditPublisher.Emit(ctx, audit.Event{
 		UserID:  userID,
 		Subject: userIDStr,
 		Action:  event,
 	})
+	if err != nil {
+		s.logger.ErrorContext(ctx, "failed to emit audit event", "error", err)
+	}
 }
 
 func (s *Service) authFailure(ctx context.Context, reason string, isError bool, attributes ...any) {
@@ -395,9 +457,10 @@ func (s *Service) handleTokenError(ctx context.Context, err error, clientID stri
 	return dErrors.Wrap(err, dErrors.CodeInternal, "token handling failed")
 }
 
-func (s *Service) generateTokenArtifacts(session *models.Session) (*tokenArtifacts, error) {
+func (s *Service) generateTokenArtifacts(ctx context.Context, session *models.Session) (*tokenArtifacts, error) {
 	// Generate tokens before mutating persistence state so failures do not leave partial writes.
 	accessToken, accessTokenJTI, err := s.jwt.GenerateAccessTokenWithJTI(
+		ctx,
 		uuid.UUID(session.UserID),
 		uuid.UUID(session.ID),
 		session.ClientID.String(),
@@ -408,7 +471,7 @@ func (s *Service) generateTokenArtifacts(session *models.Session) (*tokenArtifac
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate access token")
 	}
 
-	idToken, err := s.jwt.GenerateIDToken(uuid.UUID(session.UserID), uuid.UUID(session.ID), session.ClientID.String(), session.TenantID.String())
+	idToken, err := s.jwt.GenerateIDToken(ctx, uuid.UUID(session.UserID), uuid.UUID(session.ID), session.ClientID.String(), session.TenantID.String())
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate ID token")
 	}

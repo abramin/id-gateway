@@ -11,13 +11,13 @@ import (
 
 // UserStore defines the interface for user storage operations
 type UserStore interface {
-	ListAll(ctx context.Context) (map[string]*models.User, error)
+	ListAll(ctx context.Context) (map[id.UserID]*models.User, error)
 	FindByID(ctx context.Context, userID id.UserID) (*models.User, error)
 }
 
 // SessionStore defines the interface for session storage operations
 type SessionStore interface {
-	ListAll(ctx context.Context) (map[string]*models.Session, error)
+	ListAll(ctx context.Context) (map[id.SessionID]*models.Session, error)
 	ListByUser(ctx context.Context, userID id.UserID) ([]*models.Session, error)
 }
 

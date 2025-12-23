@@ -12,14 +12,14 @@ Feature: Rate Limiting & Abuse Prevention
   # FR-1: Per-IP Rate Limiting
   # ============================================================
 
-  @ratelimit @ip @prd-017
+  @ratelimit @ip @prd-017 @simulation
   Scenario: IP rate limit headers present in response
     When I make a request to "/auth/userinfo" with valid token
     Then the response should contain header "X-RateLimit-Limit"
     And the response should contain header "X-RateLimit-Remaining"
     And the response should contain header "X-RateLimit-Reset"
 
-  @ratelimit @ip @prd-017
+  @ratelimit @ip @prd-017 @simulation
   Scenario: IP rate limit enforced on auth endpoint (10 req/min)
     Given I am making requests from IP "192.168.1.50"
     When I make 10 requests to "/auth/authorize" within 1 minute
@@ -29,7 +29,7 @@ Feature: Rate Limiting & Abuse Prevention
     And the response field "error" should equal "rate_limit_exceeded"
     And the response should contain header "Retry-After"
 
-  @ratelimit @ip @prd-017
+  @ratelimit @ip @prd-017 @simulation
   Scenario: IP rate limit enforced on sensitive endpoints (30 req/min)
     Given I am making requests from IP "192.168.1.51"
     When I make 30 requests to "/consent" within 1 minute
@@ -37,7 +37,7 @@ Feature: Rate Limiting & Abuse Prevention
     When I make the 31st request to "/consent"
     Then the response status should be 429
 
-  @ratelimit @ip @prd-017
+  @ratelimit @ip @prd-017 @simulation
   Scenario: IP rate limit enforced on read endpoints (100 req/min)
     Given I am making requests from IP "192.168.1.52"
     When I make 100 requests to "/auth/userinfo" within 1 minute
@@ -45,7 +45,7 @@ Feature: Rate Limiting & Abuse Prevention
     When I make the 101st request to "/auth/userinfo"
     Then the response status should be 429
 
-  @ratelimit @ip @prd-017
+  @ratelimit @ip @prd-017 @simulation
   Scenario: Rate limit resets after window expires
     Given I am making requests from IP "192.168.1.53"
     And I have exhausted the rate limit on "/auth/authorize"
@@ -57,7 +57,7 @@ Feature: Rate Limiting & Abuse Prevention
   # FR-2: Per-User Rate Limiting
   # ============================================================
 
-  @ratelimit @user @prd-017
+  @ratelimit @user @prd-017 @simulation
   Scenario: User rate limit enforced on consent operations (50 req/hour)
     Given I am authenticated as user "test-user-1"
     When I make 50 consent requests within 1 hour
@@ -68,7 +68,7 @@ Feature: Rate Limiting & Abuse Prevention
     And the response field "quota_limit" should equal 50
     And the response field "quota_remaining" should equal 0
 
-  @ratelimit @user @prd-017
+  @ratelimit @user @prd-017 @simulation
   Scenario: User rate limit for VC issuance (20 req/hour)
     Given I am authenticated as user "test-user-2"
     When I make 20 VC issuance requests within 1 hour
@@ -76,7 +76,7 @@ Feature: Rate Limiting & Abuse Prevention
     When I make the 21st VC issuance request
     Then the response status should be 429
 
-  @ratelimit @user @prd-017
+  @ratelimit @user @prd-017 @simulation
   Scenario: Both IP and user limits must pass
     Given I am authenticated as user "test-user-3"
     And I am making requests from IP "192.168.1.60"
@@ -88,21 +88,21 @@ Feature: Rate Limiting & Abuse Prevention
   # FR-2b: Authentication-Specific Protections (OWASP)
   # ============================================================
 
-  @ratelimit @auth @owasp @prd-017
+  @ratelimit @auth @owasp @prd-017 @simulation
   Scenario: Auth lockout after failed attempts (5 attempts/15 min)
     Given I am attempting login for user "locked-user@example.com" from IP "192.168.1.70"
     When I fail authentication 5 times within 15 minutes
     Then the 6th attempt should return 429
     And the response should indicate lockout
 
-  @ratelimit @auth @owasp @prd-017
+  @ratelimit @auth @owasp @prd-017 @simulation
   Scenario: Hard lockout after 10 daily failures
     Given I am attempting login for user "hardlock@example.com" from IP "192.168.1.71"
     When I fail authentication 10 times within 24 hours
     Then the account should be hard locked for 15 minutes
     And the audit event "auth.lockout" should be emitted
 
-  @ratelimit @auth @owasp @prd-017
+  @ratelimit @auth @owasp @prd-017 @simulation
   Scenario: Progressive backoff on auth failures
     Given I am attempting login for user "backoff@example.com" from IP "192.168.1.72"
     When I fail authentication once
@@ -110,14 +110,14 @@ Feature: Rate Limiting & Abuse Prevention
     When I fail authentication again
     Then the next response should be delayed by at least 500ms
 
-  @ratelimit @auth @owasp @prd-017
+  @ratelimit @auth @owasp @prd-017 @simulation
   Scenario: Generic error messages prevent enumeration
     When I attempt login with invalid username "nonexistent@example.com"
     Then the response error message should be generic
     When I attempt login with valid username but invalid password
     Then the response error message should be the same generic message
 
-  @ratelimit @auth @owasp @prd-017
+  @ratelimit @auth @owasp @prd-017 @simulation
   Scenario: CAPTCHA required after consecutive lockouts
     Given user "captcha@example.com" has been locked out 3 times in 24 hours
     When I attempt to login as "captcha@example.com"
@@ -127,7 +127,7 @@ Feature: Rate Limiting & Abuse Prevention
   # FR-3: Sliding Window Algorithm
   # ============================================================
 
-  @ratelimit @algorithm @prd-017
+  @ratelimit @algorithm @prd-017 @simulation
   Scenario: Sliding window prevents boundary attacks
     Given I am making requests from IP "192.168.1.80"
     And the rate limit is 10 requests per minute
@@ -140,21 +140,21 @@ Feature: Rate Limiting & Abuse Prevention
   # FR-4: Rate Limit Bypass (Allowlist)
   # ============================================================
 
-  @ratelimit @allowlist @admin @prd-017
+  @ratelimit @allowlist @admin @prd-017 @simulation
   Scenario: Admin can add IP to allowlist
     Given I am authenticated as admin
     When I add IP "10.0.0.100" to the rate limit allowlist with reason "Internal monitoring"
     Then the response should confirm allowlisting
     And the audit event "rate_limit_allowlist_added" should be emitted
 
-  @ratelimit @allowlist @prd-017
+  @ratelimit @allowlist @prd-017 @simulation
   Scenario: Allowlisted IP bypasses rate limits
     Given IP "10.0.0.100" is on the allowlist
     When I make 200 requests from IP "10.0.0.100" to "/auth/authorize"
     Then all 200 requests should succeed
     And no rate limit headers should indicate limit exceeded
 
-  @ratelimit @allowlist @prd-017
+  @ratelimit @allowlist @prd-017 @simulation
   Scenario: Allowlist entry with expiration
     Given I am authenticated as admin
     When I add IP "10.0.0.101" to allowlist with expiration in 1 hour
@@ -162,7 +162,7 @@ Feature: Rate Limiting & Abuse Prevention
     When the allowlist entry expires
     Then requests from IP "10.0.0.101" should be rate limited normally
 
-  @ratelimit @allowlist @admin @prd-017
+  @ratelimit @allowlist @admin @prd-017 @simulation
   Scenario: Admin can remove from allowlist
     Given IP "10.0.0.100" is on the allowlist
     And I am authenticated as admin
@@ -214,7 +214,7 @@ Feature: Rate Limiting & Abuse Prevention
   # Audit Events
   # ============================================================
 
-  @ratelimit @audit @prd-017
+  @ratelimit @audit @prd-017 @simulation
   Scenario: Rate limit violation emits audit event
     Given I am making requests from IP "192.168.1.90"
     When I exceed the rate limit on "/auth/authorize"
@@ -226,7 +226,7 @@ Feature: Rate Limiting & Abuse Prevention
   # Admin Reset Operations
   # ============================================================
 
-  @ratelimit @admin @prd-017
+  @ratelimit @admin @prd-017 @simulation
   Scenario: Admin can reset rate limit for IP
     Given IP "192.168.1.95" has exceeded its rate limit
     And I am authenticated as admin

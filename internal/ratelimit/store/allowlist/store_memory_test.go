@@ -14,9 +14,8 @@ import (
 	id "credo/pkg/domain"
 )
 
-// TestInMemoryAllowlistStore_Add tests adding entries to the allowlist.
 func TestInMemoryAllowlistStore_Add(t *testing.T) {
-	store := NewInMemoryAllowlistStore()
+	store := New()
 	ctx := context.Background()
 
 	testCases := []struct {
@@ -52,7 +51,7 @@ func TestInMemoryAllowlistStore_Add(t *testing.T) {
 }
 
 func TestInMemoryAllowlistStore_Remove(t *testing.T) {
-	store := NewInMemoryAllowlistStore()
+	store := New()
 	ctx := context.Background()
 	entry := newAllowlistEntry(t, models.AllowlistTypeIP, "transient-ip")
 
@@ -118,7 +117,7 @@ func TestInMemoryAllowlistStore_IsAllowlisted(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			store := NewInMemoryAllowlistStore()
+			store := New()
 			if tc.setup != nil {
 				tc.setup(t, store)
 			}
@@ -132,7 +131,7 @@ func TestInMemoryAllowlistStore_IsAllowlisted(t *testing.T) {
 func TestInMemoryAllowlistStore_List(t *testing.T) {
 	ctx := context.Background()
 
-	store := NewInMemoryAllowlistStore()
+	store := New()
 
 	t.Run("empty store returns empty list", func(t *testing.T) {
 		entries, err := store.List(ctx)
@@ -162,7 +161,7 @@ func TestInMemoryAllowlistStore_List(t *testing.T) {
 }
 
 func TestInMemoryAllowlistStore_Concurrent(t *testing.T) {
-	store := NewInMemoryAllowlistStore()
+	store := New()
 	ctx := context.Background()
 
 	numGoroutines := 50

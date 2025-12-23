@@ -16,6 +16,7 @@ type TestContext interface {
 	ResponseContains(field string) bool
 	GetLastResponseStatus() int
 	GetLastResponseBody() []byte
+	GetResponseHeader(header string) string
 }
 
 // RegisterSteps registers common step definitions used across features
@@ -35,6 +36,8 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc TestContext) {
 	ctx.Step(`^the response should contain an authorization code$`, steps.responseShouldContainAuthCode)
 	ctx.Step(`^the response field "([^"]*)" should equal "([^"]*)"$`, steps.responseFieldShouldEqual)
 	ctx.Step(`^the response field "([^"]*)" should contain "([^"]*)"$`, steps.responseFieldShouldContain)
+	ctx.Step(`^the response should contain header "([^"]*)"$`, steps.responseShouldContainHeader)
+	ctx.Step(`^the response should not contain "([^"]*)"$`, steps.responseShouldNotContain)
 
 	// Simulation/documentation steps (no-op for documentation purposes)
 	ctx.Step(`^PKCE is a recommended security feature$`, func(context.Context) error { return nil })
@@ -123,6 +126,22 @@ func (s *commonSteps) responseFieldShouldContain(ctx context.Context, field, exp
 
 func (s *commonSteps) logMessage(ctx context.Context, message string) error {
 	fmt.Println(message)
+	return nil
+}
+
+func (s *commonSteps) responseShouldContainHeader(ctx context.Context, header string) error {
+	value := s.tc.GetResponseHeader(header)
+	if value == "" {
+		return fmt.Errorf("expected header %s to be present, but it was not found", header)
+	}
+	return nil
+}
+
+func (s *commonSteps) responseShouldNotContain(ctx context.Context, text string) error {
+	body := string(s.tc.GetLastResponseBody())
+	if contains(body, text) {
+		return fmt.Errorf("response should not contain %q but it does: %s", text, body)
+	}
 	return nil
 }
 

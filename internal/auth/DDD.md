@@ -99,7 +99,7 @@ This aligns with Credo’s `AGENTS.md` rules:
 
 Current “domain service” style components include:
 
-- **Token generation** via `TokenGenerator` (`internal/auth/service/interfaces.go`)
+- **Token generation** via `TokenGenerator` (`internal/auth/service/service.go`)
 - **Device binding policy** via `internal/auth/device` and `internal/auth/service/device_binding.go`
 - **Revocation list** via `internal/auth/store/revocation` used by the service
 
@@ -107,7 +107,7 @@ These are good DDD fits: they express domain behavior that doesn’t naturally l
 
 ### 2.6 Repositories (stores) and transactional boundary (current)
 
-Repositories are expressed as interfaces in `internal/auth/service/interfaces.go`.
+Repositories are expressed as interfaces in `internal/auth/service/service.go`.
 
 The auth service uses a transaction boundary for multi-write operations:
 

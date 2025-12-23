@@ -18,15 +18,15 @@ var ErrNotFound = sentinel.ErrNotFound
 // InMemory stores tenants in memory for the demo environment.
 type InMemory struct {
 	mu      sync.RWMutex
-	tenants map[string]*models.Tenant
-	nameIdx map[string]string
+	tenants map[id.TenantID]*models.Tenant
+	nameIdx map[string]id.TenantID
 }
 
 // NewInMemory creates an in-memory tenant store.
 func NewInMemory() *InMemory {
 	return &InMemory{
-		tenants: make(map[string]*models.Tenant),
-		nameIdx: make(map[string]string),
+		tenants: make(map[id.TenantID]*models.Tenant),
+		nameIdx: make(map[string]id.TenantID),
 	}
 }
 
@@ -38,9 +38,8 @@ func (s *InMemory) CreateIfNameAvailable(_ context.Context, t *models.Tenant) er
 	if _, exists := s.nameIdx[lower]; exists {
 		return fmt.Errorf("tenant name must be unique: %w", sentinel.ErrAlreadyUsed)
 	}
-	key := t.ID.String()
-	s.tenants[key] = t
-	s.nameIdx[lower] = key
+	s.tenants[t.ID] = t
+	s.nameIdx[lower] = t.ID
 	return nil
 }
 
@@ -48,7 +47,7 @@ func (s *InMemory) CreateIfNameAvailable(_ context.Context, t *models.Tenant) er
 func (s *InMemory) FindByID(_ context.Context, tenantID id.TenantID) (*models.Tenant, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if t, ok := s.tenants[tenantID.String()]; ok {
+	if t, ok := s.tenants[tenantID]; ok {
 		return t, nil
 	}
 	return nil, ErrNotFound
@@ -58,8 +57,8 @@ func (s *InMemory) FindByID(_ context.Context, tenantID id.TenantID) (*models.Te
 func (s *InMemory) FindByName(_ context.Context, name string) (*models.Tenant, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if id, ok := s.nameIdx[strings.ToLower(name)]; ok {
-		return s.tenants[id], nil
+	if tenantID, ok := s.nameIdx[strings.ToLower(name)]; ok {
+		return s.tenants[tenantID], nil
 	}
 	return nil, ErrNotFound
 }

@@ -21,6 +21,9 @@ type Server struct {
 
 	// Security
 	Security SecurityConfig
+
+	// RateLimiting
+	DisableRateLimiting bool
 }
 
 // AuthConfig holds authentication and session configuration
@@ -72,15 +75,17 @@ var (
 func FromEnv() (Server, error) {
 	env := getEnv("CREDO_ENV", "local")
 	demoMode := env == "demo"
+	disableRateLimiting := os.Getenv("DISABLE_RATE_LIMITING") == "true"
 
 	cfg := Server{
-		Addr:        getEnv("ID_GATEWAY_ADDR", ":8080"),
-		Environment: env,
-		DemoMode:    demoMode,
-		Auth:        loadAuthConfig(env, demoMode),
-		Consent:     loadConsentConfig(),
-		Registry:    loadRegistryConfig(),
-		Security:    loadSecurityConfig(env, demoMode),
+		Addr:                getEnv("ID_GATEWAY_ADDR", ":8080"),
+		Environment:         env,
+		DemoMode:            demoMode,
+		Auth:                loadAuthConfig(env, demoMode),
+		Consent:             loadConsentConfig(),
+		Registry:            loadRegistryConfig(),
+		Security:            loadSecurityConfig(env, demoMode),
+		DisableRateLimiting: disableRateLimiting,
 	}
 
 	if demoMode {

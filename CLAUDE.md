@@ -120,8 +120,11 @@ This repo uses focused review agents for code review. Each has a narrow scope:
 3. **Performance Agent**: Scalability, measurement-first optimizations
 4. **Security Agent**: AuthN/AuthZ, secret handling, threat-focused review
 5. **Secure-by-Design Agent**: Trust boundaries, domain primitives, lifecycle safety
+6. **Complexity Agent**:
+   Readability and Cognitive Complexity
 
 **Conflict resolution (tie-breakers)**:
+
 1. Correctness beats performance
 2. Security beats convenience
 3. Contracts beat implementation details
@@ -130,6 +133,7 @@ This repo uses focused review agents for code review. Each has a narrow scope:
 ## Regulated Mode
 
 `REGULATED_MODE=true` enforces GDPR data minimization:
+
 - Registry records strip PII, keep only `Valid` flag
 - VC claims remove `full_name`, `national_id`, `date_of_birth`
 - Decision engine receives derived identity flags (`IsOver18`, `CitizenValid`), not raw PII

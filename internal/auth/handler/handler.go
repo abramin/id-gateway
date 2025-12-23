@@ -5,16 +5,19 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 
 	"credo/internal/auth/models"
-	auth "credo/pkg/platform/middleware/auth"
-	request "credo/pkg/platform/middleware/request"
+	"credo/internal/auth/ports"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/httputil"
+	auth "credo/pkg/platform/middleware/auth"
+	"credo/pkg/platform/middleware/metadata"
+	request "credo/pkg/platform/middleware/request"
 )
 
 // Service defines the interface for authentication operations.
@@ -32,13 +35,14 @@ type Service interface {
 // Implements the OIDC-lite flow described in PRD-001.
 type Handler struct {
 	auth             Service
+	ratelimit        ports.RateLimitPort
 	logger           *slog.Logger
 	deviceCookieName string
 	deviceCookieAge  int
 }
 
 // New creates a new auth Handler with the given service and logger.
-func New(auth Service, logger *slog.Logger, deviceCookieName string, deviceCookieMaxAge int) *Handler {
+func New(auth Service, ratelimit ports.RateLimitPort, logger *slog.Logger, deviceCookieName string, deviceCookieMaxAge int) *Handler {
 	// TODO: Make cookie name and age configurable via env vars.
 	if deviceCookieName == "" {
 		deviceCookieName = "__Secure-Device-ID"
@@ -49,6 +53,7 @@ func New(auth Service, logger *slog.Logger, deviceCookieName string, deviceCooki
 
 	return &Handler{
 		auth:             auth,
+		ratelimit:        ratelimit,
 		logger:           logger,
 		deviceCookieName: deviceCookieName,
 		deviceCookieAge:  deviceCookieMaxAge,
@@ -79,6 +84,7 @@ func (h *Handler) RegisterAdmin(r chi.Router) {
 func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
+	clientIP := metadata.GetClientIP(ctx)
 
 	var req models.AuthorizationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -90,7 +96,29 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Device ID is now extracted by Device middleware - no manual extraction needed
+	// Check auth rate limit using email + IP composite key (PRD-017 FR-2)
+	if h.ratelimit != nil {
+		result, err := h.ratelimit.CheckAuthRateLimit(ctx, req.Email, clientIP)
+		if err != nil {
+			h.logger.ErrorContext(ctx, "failed to check auth rate limit",
+				"error", err,
+				"request_id", requestID,
+			)
+			// Fail open - don't block auth if rate limiter is unavailable
+		} else if !result.Allowed {
+			h.logger.WarnContext(ctx, "auth rate limit exceeded",
+				"request_id", requestID,
+				"retry_after", result.RetryAfter,
+			)
+			w.Header().Set("Retry-After", strconv.Itoa(result.RetryAfter))
+			httputil.WriteJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error":       "rate_limit_exceeded",
+				"message":     "Too many authentication attempts. Please try again later.",
+				"retry_after": result.RetryAfter,
+			})
+			return
+		}
+	}
 
 	res, err := h.auth.Authorize(ctx, &req)
 	if err != nil {

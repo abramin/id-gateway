@@ -9,14 +9,14 @@ import (
 
 	"github.com/google/uuid"
 
-	"credo/pkg/platform/audit"
-	request "credo/pkg/platform/middleware/request"
+	tenantmetrics "credo/internal/tenant/metrics"
 	"credo/internal/tenant/models"
 	"credo/internal/tenant/secrets"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/attrs"
-	"credo/pkg/platform/metrics"
+	"credo/pkg/platform/audit"
+	request "credo/pkg/platform/middleware/request"
 	"credo/pkg/platform/sentinel"
 )
 
@@ -51,7 +51,7 @@ type Service struct {
 	userCounter    UserCounter
 	logger         *slog.Logger
 	auditPublisher AuditPublisher
-	metrics        *metrics.Metrics
+	metrics        *tenantmetrics.Metrics
 }
 
 type Option func(s *Service)
@@ -68,7 +68,7 @@ func WithAuditPublisher(publisher AuditPublisher) Option {
 	}
 }
 
-func WithMetrics(m *metrics.Metrics) Option {
+func WithMetrics(m *tenantmetrics.Metrics) Option {
 	return func(s *Service) {
 		s.metrics = m
 	}
@@ -331,7 +331,7 @@ func (s *Service) logAudit(ctx context.Context, event string, attributes ...any)
 
 func (s *Service) incrementTenantCreated() {
 	if s.metrics != nil {
-		s.metrics.TenantCreated.Inc()
+		s.metrics.IncrementTenantCreated()
 	}
 }
 

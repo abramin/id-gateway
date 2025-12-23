@@ -9,14 +9,14 @@ import (
 
 	"github.com/google/uuid"
 
-	"credo/pkg/platform/audit"
 	"credo/internal/auth/device"
 	"credo/internal/auth/email"
 	"credo/internal/auth/models"
-	devicemw "credo/pkg/platform/middleware/device"
-	metadata "credo/pkg/platform/middleware/metadata"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
+	"credo/pkg/platform/audit"
+	devicemw "credo/pkg/platform/middleware/device"
+	metadata "credo/pkg/platform/middleware/metadata"
 )
 
 func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationRequest) (*models.AuthorizationResult, error) {

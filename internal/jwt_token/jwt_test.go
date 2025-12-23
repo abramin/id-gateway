@@ -1,6 +1,7 @@
 package jwttoken
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -26,7 +27,8 @@ var jwtService = NewJWTService(
 )
 
 func Test_GenerateAccessToken(t *testing.T) {
-	token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, tenantID, []string{"read", "write"})
+	ctx := context.Background()
+	token, err := jwtService.GenerateAccessToken(ctx, userID, sessionID, clientID, tenantID, []string{"read", "write"})
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
 	claims, err := jwtService.ValidateToken(token)
@@ -44,7 +46,8 @@ func Test_ValidateToken_InvalidToken(t *testing.T) {
 }
 
 func Test_ValidateToken_ExpiredToken(t *testing.T) {
-	token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, tenantID, []string{"read", "write"})
+	ctx := context.Background()
+	token, err := jwtService.GenerateAccessToken(ctx, userID, sessionID, clientID, tenantID, []string{"read", "write"})
 	time.Sleep(expiresIn + time.Second)
 	require.NoError(t, err)
 
@@ -53,7 +56,8 @@ func Test_ValidateToken_ExpiredToken(t *testing.T) {
 }
 
 func Test_ValidateToken_ValidTokent(t *testing.T) {
-	token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, tenantID, []string{"read", "write"})
+	ctx := context.Background()
+	token, err := jwtService.GenerateAccessToken(ctx, userID, sessionID, clientID, tenantID, []string{"read", "write"})
 	require.NoError(t, err)
 
 	claims, err := jwtService.ValidateToken(token)
@@ -111,7 +115,8 @@ func Test_ValidateToken_RejectsAlgorithmConfusion(t *testing.T) {
 }
 
 func Test_GenerateIDToken(t *testing.T) {
-	token, err := jwtService.GenerateIDToken(userID, sessionID, clientID, tenantID)
+	ctx := context.Background()
+	token, err := jwtService.GenerateIDToken(ctx, userID, sessionID, clientID, tenantID)
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
 	claims, err := jwtService.ValidateIDToken(token)
@@ -123,8 +128,9 @@ func Test_GenerateIDToken(t *testing.T) {
 	assert.WithinDuration(t, time.Now().Add(expiresIn), claims.ExpiresAt.Time, time.Minute)
 }
 func Test_ParseTokenSkipClaimsValidation(t *testing.T) {
+	ctx := context.Background()
 	t.Run("valid token", func(t *testing.T) {
-		token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, tenantID, []string{"read", "write"})
+		token, err := jwtService.GenerateAccessToken(ctx, userID, sessionID, clientID, tenantID, []string{"read", "write"})
 		require.NoError(t, err)
 
 		claims, err := jwtService.ParseTokenSkipClaimsValidation(token)
@@ -136,7 +142,7 @@ func Test_ParseTokenSkipClaimsValidation(t *testing.T) {
 	})
 
 	t.Run("expired token still parses", func(t *testing.T) {
-		token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, tenantID, []string{"read", "write"})
+		token, err := jwtService.GenerateAccessToken(ctx, userID, sessionID, clientID, tenantID, []string{"read", "write"})
 		require.NoError(t, err)
 		time.Sleep(expiresIn + time.Second)
 
@@ -169,7 +175,7 @@ func Test_ParseTokenSkipClaimsValidation(t *testing.T) {
 			{
 				name: "invalid signature",
 				tokenFunc: func() string {
-					token, err := jwtService.GenerateAccessToken(userID, sessionID, clientID, tenantID, []string{"read"})
+					token, err := jwtService.GenerateAccessToken(ctx, userID, sessionID, clientID, tenantID, []string{"read"})
 					require.NoError(t, err)
 					return token
 				},
@@ -240,11 +246,12 @@ func Test_ExtractTenantFromIssuer(t *testing.T) {
 }
 
 func Test_PerTenantIssuerInToken(t *testing.T) {
+	ctx := context.Background()
 	service := NewJWTService("signing-key", "https://auth.example.com", "audience", time.Hour)
 	testTenantID := "tenant-abc-123"
 
 	t.Run("access token has per-tenant issuer", func(t *testing.T) {
-		token, err := service.GenerateAccessToken(userID, sessionID, clientID, testTenantID, []string{"openid"})
+		token, err := service.GenerateAccessToken(ctx, userID, sessionID, clientID, testTenantID, []string{"openid"})
 		require.NoError(t, err)
 
 		claims, err := service.ValidateToken(token)
@@ -255,7 +262,7 @@ func Test_PerTenantIssuerInToken(t *testing.T) {
 	})
 
 	t.Run("ID token has per-tenant issuer", func(t *testing.T) {
-		token, err := service.GenerateIDToken(userID, sessionID, clientID, testTenantID)
+		token, err := service.GenerateIDToken(ctx, userID, sessionID, clientID, testTenantID)
 		require.NoError(t, err)
 
 		claims, err := service.ValidateIDToken(token)

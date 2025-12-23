@@ -1,5 +1,7 @@
 package handler
 
+//go:generate mockgen -source=handler.go -destination=mocks/handler_mock.go -package=mocks Service
+
 import (
 	"bytes"
 	"log/slog"
@@ -9,12 +11,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/mock/gomock"
 
-	"credo/internal/ratelimit/service"
-	"credo/internal/ratelimit/store/allowlist"
-	"credo/internal/ratelimit/store/bucket"
+	"credo/internal/ratelimit/handler/mocks"
 )
 
 // HandlerSuite provides shared test setup for rate limit handler tests.
@@ -25,23 +25,24 @@ import (
 // - E2E coverage: ratelimit.feature covers all valid request scenarios
 type HandlerSuite struct {
 	suite.Suite
-	router http.Handler
+	router      http.Handler
+	ctrl        *gomock.Controller
+	mockService *mocks.MockService
 }
 
 func (s *HandlerSuite) SetupTest() {
-	// Use real in-memory stores - no mocks per AGENTS.md
-	buckets := bucket.NewInMemoryBucketStore()
-	allowlistStore := allowlist.NewInMemoryAllowlistStore()
-
-	svc, err := service.New(buckets, allowlistStore)
-	require.NoError(s.T(), err)
-
+	s.ctrl = gomock.NewController(s.T())
+	s.mockService = mocks.NewMockService(s.ctrl)
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	h := New(svc, logger)
+	h := New(s.mockService, logger)
 
 	r := chi.NewRouter()
 	h.RegisterAdmin(r)
 	s.router = r
+}
+
+func (s *HandlerSuite) TearDownTest() {
+	s.ctrl.Finish()
 }
 
 func TestHandlerSuite(t *testing.T) {

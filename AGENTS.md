@@ -28,6 +28,7 @@ This repo uses small, focused review agents. Each agent has a narrow scope and a
 - Aggregates, invariants, value objects, domain primitives, transitions.
 - Boundary hygiene between transport, application, domain, persistence.
 - Avoids framework-specific styling unless it impacts domain integrity.
+- **Typed IDs:** Prefer custom ID types (e.g., `UserID`, `SessionID`) over raw `uuid.UUID` or `string`. This prevents mixing up identifiers across aggregates and makes function signatures self-documenting.
 
 ### 3) Performance Agent
 
@@ -86,6 +87,11 @@ All agents should:
 - Keep reviews short and ranked by impact.
 - Prefer refactors that simplify.
 - Provide “next step” changes you can do in one sitting.
+
+## Comment rules
+
+- Add comments only when they provide information not already obvious from names or structure.
+- Do not comment to restate self-documenting methods or code.
 
 ## When to consolidate agents
 

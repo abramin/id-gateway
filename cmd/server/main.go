@@ -10,8 +10,11 @@ import (
 	"time"
 
 	"credo/internal/admin"
+	authAdapters "credo/internal/auth/adapters"
 	"credo/internal/auth/device"
 	authHandler "credo/internal/auth/handler"
+	authPorts "credo/internal/auth/ports"
+	authmetrics "credo/internal/auth/metrics"
 	authService "credo/internal/auth/service"
 	authCodeStore "credo/internal/auth/store/authorization-code"
 	refreshTokenStore "credo/internal/auth/store/refresh-token"
@@ -20,42 +23,55 @@ import (
 	userStore "credo/internal/auth/store/user"
 	cleanupWorker "credo/internal/auth/workers/cleanup"
 	consentHandler "credo/internal/consent/handler"
+	consentmetrics "credo/internal/consent/metrics"
 	consentService "credo/internal/consent/service"
 	consentStore "credo/internal/consent/store"
 	jwttoken "credo/internal/jwt_token"
 	"credo/internal/platform/config"
 	"credo/internal/platform/httpserver"
 	"credo/internal/platform/logger"
+	rateLimitConfig "credo/internal/ratelimit/config"
 	rateLimitMW "credo/internal/ratelimit/middleware"
 	rateLimitModels "credo/internal/ratelimit/models"
-	rateLimit "credo/internal/ratelimit/service"
+	"credo/internal/ratelimit/service/authlockout"
+	rateLimitChecker "credo/internal/ratelimit/service/checker"
+	"credo/internal/ratelimit/service/globalthrottle"
+	"credo/internal/ratelimit/service/quota"
+	"credo/internal/ratelimit/service/requestlimit"
 	rwallowlistStore "credo/internal/ratelimit/store/allowlist"
+	authlockoutStore "credo/internal/ratelimit/store/authlockout"
 	rwbucketStore "credo/internal/ratelimit/store/bucket"
+	globalthrottleStore "credo/internal/ratelimit/store/globalthrottle"
+	quotaStore "credo/internal/ratelimit/store/quota"
 	"credo/internal/seeder"
 	tenantHandler "credo/internal/tenant/handler"
+	tenantmetrics "credo/internal/tenant/metrics"
 	tenantService "credo/internal/tenant/service"
 	clientstore "credo/internal/tenant/store/client"
 	tenantstore "credo/internal/tenant/store/tenant"
 	auditpublisher "credo/pkg/platform/audit/publisher"
 	auditstore "credo/pkg/platform/audit/store/memory"
-	"credo/pkg/platform/metrics"
 	adminmw "credo/pkg/platform/middleware/admin"
 	auth "credo/pkg/platform/middleware/auth"
 	devicemw "credo/pkg/platform/middleware/device"
 	metadata "credo/pkg/platform/middleware/metadata"
 	request "credo/pkg/platform/middleware/request"
+	requesttime "credo/pkg/platform/middleware/requesttime"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type infraBundle struct {
-	Cfg           *config.Server
-	Log           *slog.Logger
-	Metrics       *metrics.Metrics
-	JWTService    *jwttoken.JWTService
-	JWTValidator  *jwttoken.JWTServiceAdapter
-	DeviceService *device.Service
+	Cfg            *config.Server
+	Log            *slog.Logger
+	AuthMetrics    *authmetrics.Metrics
+	ConsentMetrics *consentmetrics.Metrics
+	TenantMetrics  *tenantmetrics.Metrics
+	RequestMetrics *request.Metrics
+	JWTService     *jwttoken.JWTService
+	JWTValidator   *jwttoken.JWTServiceAdapter
+	DeviceService  *device.Service
 }
 
 type authModule struct {
@@ -88,17 +104,17 @@ func main() {
 		panic(err)
 	}
 
-	rateLimitService, allowlistStore, err := buildRateLimitService(infra.Log)
+	checkerSvc, allowlistStore, err := buildRateLimitServices(infra.Log)
 	if err != nil {
-		infra.Log.Error("failed to initialize rate limit service", "error", err)
+		infra.Log.Error("failed to initialize rate limit services", "error", err)
 		os.Exit(1)
 	}
-	rateLimitMiddleware := rateLimitMW.New(rateLimitService, infra.Log, rateLimitMW.WithDisabled(infra.Cfg.DemoMode))
+	rateLimitMiddleware := rateLimitMW.New(checkerSvc, infra.Log, rateLimitMW.WithDisabled(infra.Cfg.DemoMode || infra.Cfg.DisableRateLimiting))
 
 	appCtx, cancelApp := context.WithCancel(context.Background())
 	defer cancelApp()
 	tenantMod := buildTenantModule(infra)
-	authMod, err := buildAuthModule(appCtx, infra, tenantMod.Service)
+	authMod, err := buildAuthModule(appCtx, infra, tenantMod.Service, checkerSvc)
 	if err != nil {
 		infra.Log.Error("failed to initialize auth module", "error", err)
 		os.Exit(1)
@@ -128,19 +144,66 @@ func main() {
 	waitForShutdown([]*http.Server{mainSrv, adminSrv}, infra.Log, cancelApp)
 }
 
-func buildRateLimitService(logger *slog.Logger) (*rateLimit.Service, *rwallowlistStore.InMemoryAllowlistStore, error) {
-	bucketStore := rwbucketStore.NewInMemoryBucketStore()
-	allowlistStore := rwallowlistStore.NewInMemoryAllowlistStore()
-	svc, err := rateLimit.New(
-		bucketStore,
-		allowlistStore,
-		rateLimit.WithLogger(logger),
+func buildRateLimitServices(logger *slog.Logger) (*rateLimitChecker.Service, *rwallowlistStore.InMemoryAllowlistStore, error) {
+	cfg := rateLimitConfig.DefaultConfig()
+
+	// Create stores
+	bucketStore := rwbucketStore.New()
+	allowlistStore := rwallowlistStore.New()
+	authLockoutSt := authlockoutStore.New()
+	quotaSt := quotaStore.New(cfg)
+	globalThrottleSt := globalthrottleStore.New()
+
+	// Create focused services
+	requestSvc, err := requestlimit.New(bucketStore, allowlistStore,
+		requestlimit.WithLogger(logger),
 	)
 	if err != nil {
-		logger.Error("failed to create rate limit service", "error", err)
+		logger.Error("failed to create request limit service", "error", err)
 		return nil, nil, err
 	}
-	return svc, allowlistStore, nil
+
+	authLockoutSvc, err := authlockout.New(authLockoutSt,
+		authlockout.WithLogger(logger),
+	)
+	if err != nil {
+		logger.Error("failed to create auth lockout service", "error", err)
+		return nil, nil, err
+	}
+
+	quotaSvc, err := quota.New(quotaSt,
+		quota.WithLogger(logger),
+	)
+	if err != nil {
+		logger.Error("failed to create quota service", "error", err)
+		return nil, nil, err
+	}
+
+	globalThrottleSvc, err := globalthrottle.New(globalThrottleSt,
+		globalthrottle.WithLogger(logger),
+	)
+	if err != nil {
+		logger.Error("failed to create global throttle service", "error", err)
+		return nil, nil, err
+	}
+
+	// Create facade
+	checkerSvc, err := rateLimitChecker.New(
+		requestSvc,
+		authLockoutSvc,
+		quotaSvc,
+		globalThrottleSvc,
+		rateLimitChecker.WithLogger(logger),
+	)
+	if err != nil {
+		logger.Error("failed to create rate limit checker service", "error", err)
+		return nil, nil, err
+	}
+
+	// Note: Admin service would be created here if needed for rate limit admin handlers
+	// adminSvc, err := rateLimitAdmin.New(allowlistStore, bucketStore, rateLimitAdmin.WithLogger(logger))
+
+	return checkerSvc, allowlistStore, nil
 }
 
 func buildInfra() (*infraBundle, error) {
@@ -163,21 +226,27 @@ func buildInfra() (*infraBundle, error) {
 		)
 	}
 
-	m := metrics.New()
+	authMetrics := authmetrics.New()
+	consentMetrics := consentmetrics.New()
+	tenantMetrics := tenantmetrics.New()
+	requestMetrics := request.NewMetrics()
 	jwtService, jwtValidator := initializeJWTService(&cfg)
 	deviceSvc := device.NewService(cfg.Auth.DeviceBindingEnabled)
 
 	return &infraBundle{
-		Cfg:           &cfg,
-		Log:           log,
-		Metrics:       m,
-		JWTService:    jwtService,
-		JWTValidator:  jwtValidator,
-		DeviceService: deviceSvc,
+		Cfg:            &cfg,
+		Log:            log,
+		AuthMetrics:    authMetrics,
+		ConsentMetrics: consentMetrics,
+		TenantMetrics:  tenantMetrics,
+		RequestMetrics: requestMetrics,
+		JWTService:     jwtService,
+		JWTValidator:   jwtValidator,
+		DeviceService:  deviceSvc,
 	}, nil
 }
 
-func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *tenantService.Service) (*authModule, error) {
+func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *tenantService.Service, checkerSvc *rateLimitChecker.Service) (*authModule, error) {
 	users := userStore.NewInMemoryUserStore()
 	sessions := sessionStore.NewInMemorySessionStore()
 	codes := authCodeStore.NewInMemoryAuthorizationCodeStore()
@@ -207,7 +276,7 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 		codes,
 		refreshTokens,
 		authCfg,
-		authService.WithMetrics(infra.Metrics),
+		authService.WithMetrics(infra.AuthMetrics),
 		authService.WithLogger(infra.Log),
 		authService.WithJWTService(infra.JWTService),
 		authService.WithTRL(trl),
@@ -230,9 +299,15 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 		return nil, err
 	}
 
+	// Create rate limit adapter for auth handler (nil if rate limiting is disabled)
+	var rateLimitAdapter authPorts.RateLimitPort
+	if !infra.Cfg.DemoMode && !infra.Cfg.DisableRateLimiting {
+		rateLimitAdapter = authAdapters.NewRateLimitAdapter(checkerSvc)
+	}
+
 	return &authModule{
 		Service:       authSvc,
-		Handler:       authHandler.New(authSvc, infra.Log, infra.Cfg.Auth.DeviceCookieName, infra.Cfg.Auth.DeviceCookieMaxAge),
+		Handler:       authHandler.New(authSvc, rateLimitAdapter, infra.Log, infra.Cfg.Auth.DeviceCookieName, infra.Cfg.Auth.DeviceCookieMaxAge),
 		AdminSvc:      admin.NewService(users, sessions, auditStore),
 		Cleanup:       cleanupSvc,
 		Users:         users,
@@ -250,18 +325,24 @@ func buildConsentModule(infra *infraBundle) *consentModule {
 		infra.Log,
 		consentService.WithConsentTTL(infra.Cfg.Consent.ConsentTTL),
 		consentService.WithGrantWindow(infra.Cfg.Consent.ConsentGrantWindow),
+		consentService.WithMetrics(infra.ConsentMetrics),
 	)
 
 	return &consentModule{
 		Service: consentSvc,
-		Handler: consentHandler.New(consentSvc, infra.Log, infra.Metrics),
+		Handler: consentHandler.New(consentSvc, infra.Log, infra.ConsentMetrics),
 	}
 }
 
 func buildTenantModule(infra *infraBundle) *tenantModule {
 	tenants := tenantstore.NewInMemory()
 	clients := clientstore.NewInMemory()
-	service := tenantService.New(tenants, clients, nil)
+	service := tenantService.New(
+		tenants,
+		clients,
+		nil,
+		tenantService.WithMetrics(infra.TenantMetrics),
+	)
 
 	return &tenantModule{
 		Service: service,
@@ -300,6 +381,7 @@ func setupRouter(infra *infraBundle) *chi.Mux {
 
 	// Common middleware for all routes (must be defined before routes)
 	r.Use(metadata.ClientMetadata)
+	r.Use(requesttime.Middleware)
 	r.Use(devicemw.Device(&devicemw.DeviceConfig{
 		CookieName:    infra.Cfg.Auth.DeviceCookieName,
 		FingerprintFn: infra.DeviceService.ComputeFingerprint,
@@ -309,7 +391,7 @@ func setupRouter(infra *infraBundle) *chi.Mux {
 	r.Use(request.Logger(infra.Log))
 	r.Use(request.Timeout(30 * time.Second)) // TODO: make configurable
 	r.Use(request.ContentTypeJSON)
-	r.Use(request.LatencyMiddleware(infra.Metrics))
+	r.Use(request.LatencyMiddleware(infra.RequestMetrics))
 
 	// Add Prometheus metrics endpoint (no auth required)
 	r.Handle("/metrics", promhttp.Handler())
@@ -380,6 +462,7 @@ func setupAdminRouter(log *slog.Logger, adminSvc *admin.Service, tenantHandler *
 	r := chi.NewRouter()
 
 	// Common middleware for all routes
+	r.Use(requesttime.Middleware)
 	r.Use(request.Recovery(log))
 	r.Use(request.RequestID)
 	r.Use(request.Logger(log))

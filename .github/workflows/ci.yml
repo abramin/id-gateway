@@ -67,6 +67,7 @@ jobs:
           go test -v -- -godog.format=cucumber:$(pwd)/reports/cucumber.json
         env:
           BASE_URL: http://localhost:8080
+          DISABLE_RATE_LIMITING: "true"
 
       - name: Generate HTML report
         if: always()

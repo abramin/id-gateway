@@ -210,7 +210,7 @@ func (s *AuthHandlerSuite) TestHandler_AdminDeleteUser() {
 		ctrl := gomock.NewController(t)
 		mockService := mocks.NewMockService(ctrl)
 		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-		handler := New(mockService, logger, "__Secure-Device-ID", 31536000)
+		handler := New(mockService, nil, logger, "__Secure-Device-ID", 31536000)
 
 		r := chi.NewRouter()
 		handler.RegisterAdmin(r)
@@ -227,7 +227,7 @@ func (s *AuthHandlerSuite) TestHandler_AdminDeleteUser() {
 		ctrl := gomock.NewController(t)
 		mockService := mocks.NewMockService(ctrl)
 		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-		handler := New(mockService, logger, "__Secure-Device-ID", 31536000)
+		handler := New(mockService, nil, logger, "__Secure-Device-ID", 31536000)
 
 		r := chi.NewRouter()
 		handler.RegisterAdmin(r)
@@ -258,7 +258,7 @@ func (s *AuthHandlerSuite) newHandler(t *testing.T, allowedSchemes *[]string) (*
 	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	mockService := mocks.NewMockService(ctrl)
-	handler := New(mockService, logger, "__Secure-Device-ID", 31536000)
+	handler := New(mockService, nil, logger, "__Secure-Device-ID", 31536000)
 	r := chi.NewRouter()
 	handler.Register(r)
 	return mockService, r

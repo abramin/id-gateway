@@ -518,6 +518,83 @@ For authentication endpoints (`/auth/*`, `/mfa/*`), maintain a local in-memory r
 
 ---
 
+### FR-8: Observability & Metrics
+
+**Scope:** All rate limiting components (checker, stores, cleanup workers)
+
+**Description:** Define Prometheus metrics emitted by the rate limiting module for monitoring, alerting, and operational visibility.
+
+**Naming Convention:** All metrics use the prefix `credo_ratelimit_` following the existing pattern in module metrics packages (for example, `internal/auth/metrics/metrics.go`).
+
+#### Request-Level Metrics (Counters)
+
+| Metric                                     | Labels              | Description                                                                                                           |
+| ------------------------------------------ | ------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `credo_ratelimit_requests_total`           | `class`, `decision` | All rate limit checks. `class` is the endpoint class (auth, api, partner, etc). `decision` is `allowed` or `blocked`. |
+| `credo_ratelimit_blocks_total`             | `limit_type`        | Blocked requests by limit type: `ip`, `user`, `global`, `auth_lockout`, `quota`.                                      |
+| `credo_ratelimit_fallback_allows_total`    | -                   | Requests allowed due to fallback mode (Redis unavailable).                                                            |
+| `credo_ratelimit_allowlist_bypasses_total` | `type`              | Requests that bypassed rate limiting via allowlist. `type` is `ip` or `user_id`.                                      |
+
+#### Auth Lockout Metrics
+
+| Metric                                         | Labels | Description                                                                        |
+| ---------------------------------------------- | ------ | ---------------------------------------------------------------------------------- |
+| `credo_ratelimit_auth_failures_recorded_total` | -      | Auth failures recorded to lockout store.                                           |
+| `credo_ratelimit_auth_lockouts_total`          | `type` | Lockouts triggered. `type` is `soft` (CAPTCHA required) or `hard` (access denied). |
+| `credo_ratelimit_auth_locked_identifiers`      | -      | Gauge of currently locked identifiers (hard locks only).                           |
+
+#### Quota Metrics
+
+| Metric                                 | Labels | Description                                                                |
+| -------------------------------------- | ------ | -------------------------------------------------------------------------- |
+| `credo_ratelimit_quota_usage_total`    | `tier` | API quota increments by tier: `free`, `starter`, `business`, `enterprise`. |
+| `credo_ratelimit_quota_exceeded_total` | `tier` | Quota exceeded events by tier.                                             |
+
+#### Cleanup Worker Metrics
+
+| Metric                                          | Labels   | Description                                                                 |
+| ----------------------------------------------- | -------- | --------------------------------------------------------------------------- |
+| `credo_ratelimit_cleanup_runs_total`            | `status` | Cleanup runs. `status` is `success` or `error`.                             |
+| `credo_ratelimit_cleanup_entries_removed_total` | `type`   | Entries removed per cleanup. `type` is `failure_count` or `daily_failures`. |
+| `credo_ratelimit_cleanup_duration_seconds`      | -        | Histogram of cleanup run duration.                                          |
+
+#### Store-Level Metrics (Gauges)
+
+| Metric                                | Labels | Description                                 |
+| ------------------------------------- | ------ | ------------------------------------------- |
+| `credo_ratelimit_bucket_entries`      | -      | Active buckets in memory.                   |
+| `credo_ratelimit_allowlist_entries`   | `type` | Allowlist entries by type: `ip`, `user_id`. |
+| `credo_ratelimit_authlockout_records` | -      | Active lockout records in store.            |
+
+#### Latency Metrics (Histograms)
+
+| Metric                                   | Labels  | Description                                      |
+| ---------------------------------------- | ------- | ------------------------------------------------ |
+| `credo_ratelimit_check_duration_seconds` | `class` | Duration of rate limit checks by endpoint class. |
+
+#### Cleanup Worker Result Logging
+
+The cleanup worker (`internal/ratelimit/workers/cleanup/`) MUST log cleanup outcomes and emit metrics.
+
+**CleanupResult structure:**
+
+```go
+type CleanupResult struct {
+    FailureCountsReset int           // Number of window failure counts reset
+    DailyFailuresReset int           // Number of daily failure counts reset
+    Duration           time.Duration // Time taken for cleanup run
+}
+```
+
+**Logging requirements:**
+
+- **On success (INFO):** Log `auth_lockout_cleanup_completed` with fields: `failure_counts_reset`, `daily_failures_reset`, `duration_ms`
+- **On error (ERROR):** Log `auth_lockout_cleanup_failed` with `error` field
+
+**Note:** Current implementation at `internal/ratelimit/workers/cleanup/cleanup.go` returns `(any, any)` and is unimplemented. This must be fixed to use the typed `CleanupResult` struct.
+
+---
+
 ## 4. Technical Requirements
 
 ### TR-0: Validation Strategy (Boundary Validation)
@@ -525,18 +602,42 @@ For authentication endpoints (`/auth/*`, `/mfa/*`), maintain a local in-memory r
 **Approach:** Validate at system boundaries (middleware, handlers), use simple types internally.
 
 **Rationale:** Domain primitives add complexity without proportional benefit for internal infrastructure code like rate limiting. The cost of over-engineering (development time, cognitive load, testing surface) exceeds the benefit when:
+<<<<<<< HEAD
+<<<<<<< HEAD
+
+=======
+
+> > > > > > > # 04966fa (clarify design)
+> > > > > > >
+> > > > > > > 37a0e5d (clarify design)
 
 - Inputs come from trusted internal sources (already validated at API boundaries)
 - The domain is well-understood with few edge cases
 - Code is not exposed to external consumers
 
 **When to use strict domain primitives:**
+<<<<<<< HEAD
+<<<<<<< HEAD
+
+=======
+
+> > > > > > > # 04966fa (clarify design)
+> > > > > > >
+> > > > > > > 37a0e5d (clarify design)
 
 - External-facing APIs with untrusted input
 - Cross-service boundaries
 - Complex business rules that vary by type
 
 **When simple types suffice:**
+<<<<<<< HEAD
+<<<<<<< HEAD
+
+=======
+
+> > > > > > > # 04966fa (clarify design)
+> > > > > > >
+> > > > > > > 37a0e5d (clarify design)
 
 - Internal infrastructure (rate limiting, caching, logging)
 - Single-service, single-team ownership
@@ -708,6 +809,14 @@ func LoadRateLimitConfig() RateLimitConfig {
 **Secure-by-Design:** IP extraction must validate against trusted proxy list. Never blindly trust X-Forwarded-For as attackers can spoof headers to bypass rate limits.
 
 **Validation Order (per AGENTS.md Principle #5):**
+<<<<<<< HEAD
+<<<<<<< HEAD
+
+=======
+
+> > > > > > > # 04966fa (clarify design)
+> > > > > > >
+> > > > > > > 37a0e5d (clarify design)
 
 1. **Origin:** Request must come from known proxy or direct connection
 2. **Size:** Limit X-Forwarded-For header length (max 500 chars)
@@ -761,6 +870,7 @@ func (c ClientIP) Addr() netip.Addr { return c.addr }
 **Objective:** Demonstrate SQL indexing concepts from "Use The Index, Luke" with production-ready patterns for rate limiting.
 
 **Topics Covered:**
+
 - B-Tree anatomy (sliding window key structure)
 - Composite/concatenated keys (key ordering for range queries)
 - Covering indexes (Allow() without table access)
@@ -773,13 +883,13 @@ func (c ClientIP) Addr() netip.Addr { return c.addr }
 
 #### Index Design
 
-| Table | Index | Type | Columns | Purpose |
-|-------|-------|------|---------|---------|
-| `rate_limits` | `idx_ratelimit_key_window` | B-Tree | `(key, window_end)` | Primary lookup for Allow() |
-| `rate_limits` | `idx_ratelimit_covering` | B-Tree | `(key, window_end) INCLUDE (remaining, limit_value)` | Index-only scan for Allow() |
-| `rate_limits` | `idx_ratelimit_blocked` | B-Tree (partial) | `(key) WHERE remaining = 0` | Abuse reporting queries |
-| `rate_limits` | `idx_ratelimit_cleanup` | B-Tree | `(window_end)` | Background cleanup worker |
-| `allowlist` | `idx_allowlist_type_id` | B-Tree | `(type, identifier)` | Allowlist bypass check |
+| Table         | Index                      | Type             | Columns                                              | Purpose                     |
+| ------------- | -------------------------- | ---------------- | ---------------------------------------------------- | --------------------------- |
+| `rate_limits` | `idx_ratelimit_key_window` | B-Tree           | `(key, window_end)`                                  | Primary lookup for Allow()  |
+| `rate_limits` | `idx_ratelimit_covering`   | B-Tree           | `(key, window_end) INCLUDE (remaining, limit_value)` | Index-only scan for Allow() |
+| `rate_limits` | `idx_ratelimit_blocked`    | B-Tree (partial) | `(key) WHERE remaining = 0`                          | Abuse reporting queries     |
+| `rate_limits` | `idx_ratelimit_cleanup`    | B-Tree           | `(window_end)`                                       | Background cleanup worker   |
+| `allowlist`   | `idx_allowlist_type_id`    | B-Tree           | `(type, identifier)`                                 | Allowlist bypass check      |
 
 ---
 
@@ -951,6 +1061,7 @@ CREATE TABLE rate_limits_1 PARTITION OF rate_limits FOR VALUES WITH (MODULUS 8, 
 #### Exercises
 
 **Exercise 1: Index Ordering Matters**
+
 ```sql
 -- Create both indexes and compare EXPLAIN ANALYZE for the Allow() query:
 CREATE INDEX idx_good ON rate_limits (key, window_end);
@@ -964,6 +1075,7 @@ SELECT remaining FROM rate_limits WHERE key = 'test:key' AND window_end > NOW();
 ```
 
 **Exercise 2: Covering Index Saves Heap Fetches**
+
 ```sql
 -- Compare heap fetches with and without INCLUDE columns:
 -- Step 1: Basic index
@@ -978,6 +1090,7 @@ EXPLAIN (ANALYZE, BUFFERS) SELECT remaining, limit_value FROM rate_limits WHERE 
 ```
 
 **Exercise 3: Measure INSERT Overhead**
+
 ```sql
 -- Benchmark INSERT with different index counts:
 -- Setup: Create table with 0, 1, 2, 3 indexes
@@ -1055,6 +1168,12 @@ INSERT INTO rate_limits_indexed SELECT 'key:' || i, NOW() + INTERVAL '1 minute',
 - [ ] Sliding-window deque and time-wheel alternatives implemented with O(1) amortized ops and documented complexity
 - [ ] Postgres-backed limiter with `INSERT ... ON CONFLICT`, hash partitioning, and EXPLAIN-verified indexes on `(key, window_end)`
 - [ ] Multi-key resets are atomic (transactional) and abuse thresholds emit lockouts + audit
+- [ ] All rate limit checks emit `credo_ratelimit_requests_total` with `class` and `decision` labels
+- [ ] Blocked requests emit `credo_ratelimit_blocks_total` with `limit_type` label
+- [ ] Auth lockouts emit `credo_ratelimit_auth_lockouts_total` with `soft`/`hard` label
+- [ ] Cleanup worker logs results and emits `credo_ratelimit_cleanup_*` metrics
+- [ ] Quota usage emits `credo_ratelimit_quota_usage_total` by tier
+- [ ] Fallback mode emits `credo_ratelimit_fallback_allows_total`
 
 ---
 
@@ -1246,6 +1365,7 @@ and differential retention policies.
 
 | Version | Date       | Author       | Changes                                                                                                                                                                                                       |
 | ------- | ---------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2.1     | 2025-12-22 | Engineering  | Added FR-8: Add Observability and Metrics sections                                                                                                                                                            |
 | 2.0     | 2025-12-21 | Engineering  | Added TR-6: SQL Indexing Patterns (B-Tree anatomy, composite keys, covering indexes, partial indexes, DML impact, NULL handling, hash partitioning) with exercises from "Use The Index, Luke"                 |
 | 1.9     | 2025-12-19 | Engineering  | Added FR-2c: Per-Client Rate Limiting for OAuth client_id with trust-based tiers (confidential vs public)                                                                                                     |
 | 1.8     | 2025-12-19 | Engineering  | Added Section 10: GDPR/Privacy Compliance - IP anonymization requirements for logging                                                                                                                         |

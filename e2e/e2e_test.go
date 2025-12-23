@@ -28,6 +28,14 @@ func init() {
 func TestMain(m *testing.M) {
 	flag.Parse()
 
+	// Set tags from environment variable if provided
+	if tags := os.Getenv("GODOG_TAGS"); tags != "" {
+		opts.Tags = tags
+	} else if os.Getenv("DISABLE_RATE_LIMITING") == "true" {
+		// Exclude simulation tests when rate limiting is disabled
+		opts.Tags = "~@simulation"
+	}
+
 	// Set up tenant and client once before all tests
 	if err := setupTestInfrastructure(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to set up test infrastructure: %v\n", err)

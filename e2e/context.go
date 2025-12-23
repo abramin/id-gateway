@@ -267,6 +267,17 @@ func (tc *TestContext) GetLastResponseBody() []byte {
 	return tc.LastResponseBody
 }
 
+func (tc *TestContext) GetLastResponse() *http.Response {
+	return tc.LastResponse
+}
+
+func (tc *TestContext) GetResponseHeader(header string) string {
+	if tc.LastResponse == nil {
+		return ""
+	}
+	return tc.LastResponse.Header.Get(header)
+}
+
 func (tc *TestContext) GetUserID() string {
 	return tc.UserID
 }
