@@ -57,6 +57,10 @@ func (s *ServiceSuite) createTestClient(tenantID id.TenantID) *tenant.Client {
 
 // Tenant Tests
 
+// TestCreateTenantValidation tests domain invariants for tenant creation.
+// While feature file tests cover the HTTP-level "empty name returns 400" behavior,
+// these tests verify the specific error CODE (CodeInvariantViolation) and the
+// exact boundary (129 chars) that cannot be easily asserted in Gherkin.
 func (s *ServiceSuite) TestCreateTenantValidation() {
 	s.T().Run("validates empty name", func(t *testing.T) {
 		_, err := s.service.CreateTenant(context.Background(), "")
@@ -151,6 +155,9 @@ func (s *ServiceSuite) TestValidationErrors() {
 	})
 }
 
+// TestCreateClientHashesSecret verifies the security invariant that client secrets
+// are stored as bcrypt hashes, not plaintext. This cannot be tested via feature files
+// because they cannot inspect the stored hash value.
 func (s *ServiceSuite) TestCreateClientHashesSecret() {
 	tenantRecord := s.createTestTenant("Acme")
 
@@ -201,6 +208,11 @@ func (s *ServiceSuite) TestRedirectURIRequiresHost() {
 	assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeValidation), "expected validation error for redirect without host")
 }
 
+// TestTenantScopedClientAccess verifies the multi-tenancy security invariant:
+// a client cannot be accessed via a different tenant's scope. This is tested here
+// because the feature file tests use platform admin auth (X-Admin-Token) which
+// bypasses tenant scoping. When tenant admin auth is implemented, this should be
+// covered by a feature scenario.
 func (s *ServiceSuite) TestTenantScopedClientAccess() {
 	t1 := s.createTestTenant("Acme")
 	t2 := s.createTestTenant("Beta")
@@ -221,16 +233,36 @@ func (s *ServiceSuite) TestResolveClient() {
 	assert.Equal(s.T(), created.ID, client.ID)
 }
 
+// TestResolveClientRejectsInactiveTenant verifies that OAuth flows reject clients
+// when their parent tenant is inactive. This is a service-level test because there
+// is no admin endpoint to deactivate tenants yet. When a deactivate endpoint is added,
+// this behavior should be tested via a feature scenario instead.
 func (s *ServiceSuite) TestResolveClientRejectsInactiveTenant() {
 	tenantRecord := s.createTestTenant("Acme")
 	created := s.createTestClient(tenantRecord.ID)
 
-	// Deactivate the tenant
+	// Deactivate the tenant (direct mutation works because in-memory store uses pointers)
 	tenantRecord.Status = tenant.TenantStatusInactive
 
 	_, _, err := s.service.ResolveClient(context.Background(), created.OAuthClientID)
 	require.Error(s.T(), err)
 	assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeInvalidClient), "expected invalid_client for inactive tenant")
+}
+
+// TestResolveClientRejectsInactiveClient verifies that OAuth flows reject clients
+// that have been deactivated. This is a service-level test because there is no admin
+// endpoint to deactivate clients yet. When a deactivate endpoint is added, this
+// behavior should be tested via a feature scenario instead.
+func (s *ServiceSuite) TestResolveClientRejectsInactiveClient() {
+	tenantRecord := s.createTestTenant("Acme")
+	created := s.createTestClient(tenantRecord.ID)
+
+	// Deactivate the client (direct mutation works because in-memory store uses pointers)
+	created.Status = tenant.ClientStatusInactive
+
+	_, _, err := s.service.ResolveClient(context.Background(), created.OAuthClientID)
+	require.Error(s.T(), err)
+	assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeInvalidClient), "expected invalid_client for inactive client")
 }
 
 func (s *ServiceSuite) TestCreateClientNormalizesInput() {
