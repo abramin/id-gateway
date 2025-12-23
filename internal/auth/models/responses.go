@@ -52,3 +52,7 @@ type SessionRevocationResult struct {
 	SessionID string `json:"session_id"`
 	Message   string `json:"message"`
 }
+
+type LogoutAllResult struct {
+	RevokedCount int `json:"revoked_count"`
+}

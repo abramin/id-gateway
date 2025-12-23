@@ -171,3 +171,75 @@ Feature: Token lifecycle and session management
     When I refresh tokens with the saved refresh token
     Then the response status should be 400
     And the response field "error" should equal "invalid_grant"
+
+    # ============================================================
+    # FR-6: Global Logout (Revoke All Sessions)
+    # ============================================================
+
+    @token @sessions @logout-all
+  Scenario: User can revoke all sessions except current (PRD-016 FR-6)
+    # Create first session
+    When I initiate authorization with email "logout-all@example.com" and scopes "openid"
+    Then the response status should be 200
+    And I save the authorization code
+
+    When I exchange the authorization code for tokens
+    Then the response status should be 200
+    And I save the tokens from the response as "session1"
+
+    # Create second session
+    When I initiate authorization with email "logout-all@example.com" and scopes "openid"
+    Then the response status should be 200
+    And I save the authorization code
+
+    When I exchange the authorization code for tokens
+    Then the response status should be 200
+    And I save the tokens from the response as "session2"
+
+    # Create third session
+    When I initiate authorization with email "logout-all@example.com" and scopes "openid"
+    Then the response status should be 200
+    And I save the authorization code
+
+    When I exchange the authorization code for tokens
+    Then the response status should be 200
+    And I save the tokens from the response as "session3"
+
+    # Verify we have 3 sessions
+    When I list sessions with access token "session3"
+    Then the response status should be 200
+    And the response should list at least 3 sessions
+
+    # Logout all except current (session3)
+    When I call logout-all with access token "session3" and except_current "true"
+    Then the response status should be 200
+    And the response field "revoked_count" should equal 2
+
+    # session3 should still work
+    When I request user info with access token "session3"
+    Then the response status should be 200
+
+    # session1 and session2 should be revoked
+    When I request user info with access token "session1"
+    Then the response status should be 401
+
+    When I request user info with access token "session2"
+    Then the response status should be 401
+
+    @token @sessions @logout-all
+  Scenario: User can revoke all sessions including current (PRD-016 FR-6)
+    When I initiate authorization with email "logout-all-inclusive@example.com" and scopes "openid"
+    Then the response status should be 200
+    And I save the authorization code
+
+    When I exchange the authorization code for tokens
+    Then the response status should be 200
+    And I save the tokens from the response
+
+    When I call logout-all with the saved access token and except_current "false"
+    Then the response status should be 200
+    And the response field "revoked_count" should be at least 1
+
+    # Current session should also be revoked
+    When I attempt to get user info with the saved access token
+    Then the response status should be 401

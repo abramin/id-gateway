@@ -3,9 +3,10 @@ package service
 import (
 	"context"
 
-	"credo/pkg/platform/audit"
+	"credo/internal/auth/models"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
+	"credo/pkg/platform/audit"
 )
 
 // RevokeSession implements PRD-016 FR-5: revoke a specific session owned by the user.
@@ -48,4 +49,38 @@ func (s *Service) RevokeSession(ctx context.Context, userID id.UserID, sessionID
 	)
 
 	return nil
+}
+
+func (s *Service) LogoutAll(ctx context.Context, userID id.UserID, currentSessionID id.SessionID, exceptCurrent bool) (*models.LogoutAllResult, error) {
+	if userID.IsNil() {
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "user ID required")
+	}
+
+	sessions, err := s.sessions.ListByUser(ctx, userID)
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to list sessions")
+	}
+
+	revokedCount := 0
+	for _, session := range sessions {
+		if exceptCurrent && session.ID == currentSessionID {
+			continue
+		}
+		outcome, err := s.revokeSessionInternal(ctx, session, "")
+		if err != nil {
+			return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to revoke session")
+		}
+		if outcome == revokeSessionOutcomeRevoked {
+			revokedCount++
+			s.logAudit(ctx, string(audit.EventSessionRevoked),
+				"user_id", session.UserID.String(),
+				"session_id", session.ID.String(),
+				"client_id", session.ClientID,
+			)
+		}
+	}
+
+	return &models.LogoutAllResult{
+		RevokedCount: revokedCount,
+	}, nil
 }

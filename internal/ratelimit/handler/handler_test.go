@@ -87,3 +87,82 @@ func (s *HandlerSuite) TestResetRateLimit_InvalidJSON() {
 	assert.Equal(s.T(), http.StatusBadRequest, rec.Code,
 		"expected 400 for invalid JSON")
 }
+
+// =============================================================================
+// Quota API Endpoint Tests (PRD-017 FR-5)
+// =============================================================================
+// These tests document the expected quota API endpoints per PRD-017 FR-5.
+// NOTE: These tests are expected to FAIL until quota endpoints are wired to HTTP.
+// PRD-017 FR-5: "Partner API Quotas (API Keys)" - service layer complete but not wired.
+
+func (s *HandlerSuite) TestGetQuotaUsage_ReturnsUsage() {
+	// This test verifies the GET /admin/rate-limit/quota/:api_key endpoint
+	req := httptest.NewRequest(http.MethodGet, "/admin/rate-limit/quota/partner-free-123", nil)
+	rec := httptest.NewRecorder()
+
+	s.router.ServeHTTP(rec, req)
+
+	// PRD-017 FR-5: Should return quota usage for API key
+	// Expected to fail until endpoint is implemented
+	assert.Equal(s.T(), http.StatusOK, rec.Code,
+		"GET /admin/rate-limit/quota/:api_key should return 200")
+	assert.Contains(s.T(), rec.Body.String(), "usage",
+		"response should contain usage field")
+	assert.Contains(s.T(), rec.Body.String(), "limit",
+		"response should contain limit field")
+	assert.Contains(s.T(), rec.Body.String(), "tier",
+		"response should contain tier field")
+}
+
+func (s *HandlerSuite) TestGetQuotaUsage_NotFound() {
+	req := httptest.NewRequest(http.MethodGet, "/admin/rate-limit/quota/nonexistent-key", nil)
+	rec := httptest.NewRecorder()
+
+	s.router.ServeHTTP(rec, req)
+
+	// PRD-017 FR-5: Should return 404 for unknown API key
+	assert.Equal(s.T(), http.StatusNotFound, rec.Code,
+		"GET /admin/rate-limit/quota/:api_key should return 404 for unknown key")
+}
+
+func (s *HandlerSuite) TestResetQuota_Success() {
+	// This test verifies the POST /admin/rate-limit/quota/:api_key/reset endpoint
+	req := httptest.NewRequest(http.MethodPost, "/admin/rate-limit/quota/partner-free-123/reset",
+		bytes.NewReader([]byte(`{"reason": "Customer support request"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	s.router.ServeHTTP(rec, req)
+
+	// PRD-017 FR-5: Admin should be able to reset quota usage
+	assert.Equal(s.T(), http.StatusOK, rec.Code,
+		"POST /admin/rate-limit/quota/:api_key/reset should return 200")
+}
+
+func (s *HandlerSuite) TestListQuotas_ReturnsList() {
+	// This test verifies the GET /admin/rate-limit/quotas endpoint
+	req := httptest.NewRequest(http.MethodGet, "/admin/rate-limit/quotas", nil)
+	rec := httptest.NewRecorder()
+
+	s.router.ServeHTTP(rec, req)
+
+	// PRD-017 FR-5: Should return list of all quota records
+	assert.Equal(s.T(), http.StatusOK, rec.Code,
+		"GET /admin/rate-limit/quotas should return 200")
+	assert.Contains(s.T(), rec.Body.String(), "[",
+		"response should be a JSON array")
+}
+
+func (s *HandlerSuite) TestUpdateQuotaTier_Success() {
+	// This test verifies updating an API key's quota tier
+	req := httptest.NewRequest(http.MethodPut, "/admin/rate-limit/quota/partner-free-123/tier",
+		bytes.NewReader([]byte(`{"tier": "starter"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	s.router.ServeHTTP(rec, req)
+
+	// PRD-017 FR-5: Admin should be able to upgrade/downgrade tier
+	assert.Equal(s.T(), http.StatusOK, rec.Code,
+		"PUT /admin/rate-limit/quota/:api_key/tier should return 200")
+}

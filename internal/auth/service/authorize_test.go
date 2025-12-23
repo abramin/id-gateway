@@ -248,3 +248,117 @@ func (s *ServiceSuite) TestAuthorizeRedirectURIValidation() {
 		assert.NotNil(t, result)
 	})
 }
+
+// TestAuthorizeScopeEnforcement tests that authorize rejects requests
+// when requested scopes are not a subset of client.AllowedScopes (PRD-026A FR-7).
+//
+// NOTE: This test is expected to FAIL until scope enforcement is implemented.
+// PRD-026A FR-7: "Scope Enforcement: Requested scopes must be subset of client allowed_scopes"
+func (s *ServiceSuite) TestAuthorizeScopeEnforcement() {
+	tenantID := id.TenantID(uuid.New())
+	clientID := id.ClientID(uuid.New())
+
+	// Client with restricted allowed scopes
+	mockClient := &tenant.Client{
+		ID:            clientID,
+		TenantID:      tenantID,
+		OAuthClientID: "restricted-client",
+		Name:          "Restricted Client",
+		Status:        "active",
+		RedirectURIs:  []string{"https://app.example.com/callback"},
+		AllowedScopes: []string{"openid", "profile"}, // Only openid and profile allowed
+	}
+
+	mockTenant := &tenant.Tenant{
+		ID:   tenantID,
+		Name: "Test Tenant",
+	}
+
+	s.T().Run("requested scope not in client.AllowedScopes rejected", func(t *testing.T) {
+		req := models.AuthorizationRequest{
+			ClientID:    "restricted-client",
+			Scopes:      []string{"openid", "email", "admin"}, // email and admin NOT in AllowedScopes
+			RedirectURI: "https://app.example.com/callback",
+			Email:       "user@test.com",
+		}
+		ctx := context.Background()
+
+		// Client resolution succeeds
+		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), req.ClientID).Return(mockClient, mockTenant, nil)
+
+		// Expect failure BEFORE user lookup - scope validation should happen early
+		result, err := s.service.Authorize(ctx, &req)
+
+		// This test documents the expected behavior per PRD-026A FR-7:
+		// "Scope Enforcement: Requested scopes must be subset of client allowed_scopes; reject otherwise."
+		assert.Error(t, err, "expected error when requested scopes exceed client.AllowedScopes")
+		assert.Nil(t, result)
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeBadRequest), "expected bad_request error code")
+		assert.Contains(t, err.Error(), "scope", "error message should mention scope")
+	})
+
+	s.T().Run("requested scopes within client.AllowedScopes accepted", func(t *testing.T) {
+		req := models.AuthorizationRequest{
+			ClientID:    "restricted-client",
+			Scopes:      []string{"openid", "profile"}, // Both in AllowedScopes
+			RedirectURI: "https://app.example.com/callback",
+			Email:       "user@test.com",
+		}
+		ctx := context.Background()
+
+		existingUser := &models.User{
+			ID:       id.UserID(uuid.New()),
+			TenantID: tenantID,
+			Email:    req.Email,
+			Status:   models.UserStatusActive,
+		}
+
+		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), req.ClientID).Return(mockClient, mockTenant, nil)
+		s.mockUserStore.EXPECT().FindOrCreateByTenantAndEmail(gomock.Any(), tenantID, req.Email, gomock.Any()).Return(existingUser, nil)
+		s.mockCodeStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		s.mockSessionStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
+
+		result, err := s.service.Authorize(ctx, &req)
+		assert.NoError(t, err, "expected success when scopes are within client.AllowedScopes")
+		assert.NotNil(t, result)
+	})
+
+	s.T().Run("empty client.AllowedScopes allows any scope", func(t *testing.T) {
+		// Client with no scope restrictions (legacy behavior)
+		clientNoRestrictions := &tenant.Client{
+			ID:            clientID,
+			TenantID:      tenantID,
+			OAuthClientID: "unrestricted-client",
+			Name:          "Unrestricted Client",
+			Status:        "active",
+			RedirectURIs:  []string{"https://app.example.com/callback"},
+			AllowedScopes: []string{}, // Empty = no restrictions
+		}
+
+		req := models.AuthorizationRequest{
+			ClientID:    "unrestricted-client",
+			Scopes:      []string{"openid", "profile", "email", "anything"},
+			RedirectURI: "https://app.example.com/callback",
+			Email:       "user@test.com",
+		}
+		ctx := context.Background()
+
+		existingUser := &models.User{
+			ID:       id.UserID(uuid.New()),
+			TenantID: tenantID,
+			Email:    req.Email,
+			Status:   models.UserStatusActive,
+		}
+
+		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), req.ClientID).Return(clientNoRestrictions, mockTenant, nil)
+		s.mockUserStore.EXPECT().FindOrCreateByTenantAndEmail(gomock.Any(), tenantID, req.Email, gomock.Any()).Return(existingUser, nil)
+		s.mockCodeStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		s.mockSessionStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil)
+
+		result, err := s.service.Authorize(ctx, &req)
+		assert.NoError(t, err, "expected success when client has no scope restrictions")
+		assert.NotNil(t, result)
+	})
+}

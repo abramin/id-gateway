@@ -7,6 +7,7 @@ import (
 	"time"
 
 	id "credo/pkg/domain"
+	dErrors "credo/pkg/domain-errors"
 	audit "credo/pkg/platform/audit"
 )
 
@@ -82,10 +83,12 @@ func (p *Publisher) Emit(ctx context.Context, base audit.Event) error {
 		base.Timestamp = time.Now()
 	}
 	if p.async {
-		// Non-blocking send; drop event if buffer is full to avoid blocking hot path
+		// Non-blocking send with context cancellation support
 		select {
 		case p.events <- base:
 			return nil
+		case <-ctx.Done():
+			return ctx.Err()
 		default:
 			if p.logger != nil {
 				p.logger.Warn("audit buffer full, event dropped",
@@ -93,7 +96,7 @@ func (p *Publisher) Emit(ctx context.Context, base audit.Event) error {
 					"user_id", base.UserID,
 				)
 			}
-			return nil
+			return dErrors.New(dErrors.CodeInternal, "audit buffer full")
 		}
 	}
 	return p.store.Append(ctx, base)
