@@ -7,6 +7,7 @@ type TenantResponse struct {
 	Name      string       `json:"name"`
 	Status    TenantStatus `json:"status"`
 	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
 }
 
 type TenantCreateResponse struct {
@@ -19,6 +20,7 @@ type TenantDetailsResponse struct {
 	Name        string       `json:"name"`
 	Status      TenantStatus `json:"status"`
 	CreatedAt   time.Time    `json:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at"`
 	UserCount   int          `json:"user_count"`
 	ClientCount int          `json:"client_count"`
 }

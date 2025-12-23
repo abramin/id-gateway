@@ -13,6 +13,7 @@ type Tenant struct {
 	Name      string       `json:"name"`
 	Status    TenantStatus `json:"status"`
 	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
 }
 
 // IsActive returns true if the tenant is in active status.
@@ -20,13 +21,32 @@ func (t *Tenant) IsActive() bool {
 	return t.Status == TenantStatusActive
 }
 
+// IsInactive returns true if the tenant is in inactive status.
+func (t *Tenant) IsInactive() bool {
+	return t.Status == TenantStatusInactive
+}
+
 // Deactivate transitions the tenant to inactive status.
+// Updates the timestamp to track when the transition occurred.
 // Returns an error if the tenant is already inactive.
-func (t *Tenant) Deactivate() error {
-	if t.Status == TenantStatusInactive {
+func (t *Tenant) Deactivate(now time.Time) error {
+	if t.IsInactive() {
 		return dErrors.New(dErrors.CodeInvariantViolation, "tenant is already inactive")
 	}
 	t.Status = TenantStatusInactive
+	t.UpdatedAt = now
+	return nil
+}
+
+// Reactivate transitions the tenant to active status.
+// Updates the timestamp to track when the transition occurred.
+// Returns an error if the tenant is already active.
+func (t *Tenant) Reactivate(now time.Time) error {
+	if t.IsActive() {
+		return dErrors.New(dErrors.CodeInvariantViolation, "tenant is already active")
+	}
+	t.Status = TenantStatusActive
+	t.UpdatedAt = now
 	return nil
 }
 
@@ -38,11 +58,13 @@ func NewTenant(tenantID id.TenantID, name string) (*Tenant, error) {
 	if len(name) > 128 {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "tenant name must be 128 characters or less")
 	}
+	now := time.Now()
 	return &Tenant{
 		ID:        tenantID,
 		Name:      name,
 		Status:    TenantStatusActive,
-		CreatedAt: time.Now(),
+		CreatedAt: now,
+		UpdatedAt: now,
 	}, nil
 }
 
@@ -110,13 +132,32 @@ func (c *Client) IsActive() bool {
 	return c.Status == ClientStatusActive
 }
 
+// IsInactive returns true if the client is in inactive status.
+func (c *Client) IsInactive() bool {
+	return c.Status == ClientStatusInactive
+}
+
 // Deactivate transitions the client to inactive status.
+// Updates the timestamp to track when the transition occurred.
 // Returns an error if the client is already inactive.
-func (c *Client) Deactivate() error {
-	if c.Status == ClientStatusInactive {
+func (c *Client) Deactivate(now time.Time) error {
+	if c.IsInactive() {
 		return dErrors.New(dErrors.CodeInvariantViolation, "client is already inactive")
 	}
 	c.Status = ClientStatusInactive
+	c.UpdatedAt = now
+	return nil
+}
+
+// Reactivate transitions the client to active status.
+// Updates the timestamp to track when the transition occurred.
+// Returns an error if the client is already active.
+func (c *Client) Reactivate(now time.Time) error {
+	if c.IsActive() {
+		return dErrors.New(dErrors.CodeInvariantViolation, "client is already active")
+	}
+	c.Status = ClientStatusActive
+	c.UpdatedAt = now
 	return nil
 }
 
@@ -134,6 +175,7 @@ type TenantDetails struct {
 	Name        string
 	Status      TenantStatus
 	CreatedAt   time.Time
+	UpdatedAt   time.Time
 	UserCount   int
 	ClientCount int
 }

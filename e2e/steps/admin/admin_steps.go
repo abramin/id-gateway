@@ -20,6 +20,7 @@ type TestContext interface {
 	GetLastResponseStatus() int
 	GetLastResponseBody() []byte
 	GetAdminToken() string
+	GetRedirectURI() string
 
 	// Tenant/Client management
 	GetTenantID() string
@@ -28,6 +29,8 @@ type TestContext interface {
 	SetTestClientID(clientID string)
 	GetClientSecret() string
 	SetClientSecret(secret string)
+	GetOAuthClientID() string
+	SetOAuthClientID(oauthClientID string)
 }
 
 // RegisterSteps registers admin-related step definitions
@@ -39,6 +42,8 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc TestContext) {
 	ctx.Step(`^I create a tenant with name "([^"]*)" and token "([^"]*)"$`, steps.createTenantWithToken)
 	ctx.Step(`^I save the tenant ID from the response$`, steps.saveTenantIDFromResponse)
 	ctx.Step(`^I get the tenant details$`, steps.getTenantDetails)
+	ctx.Step(`^I deactivate the tenant$`, steps.deactivateTenant)
+	ctx.Step(`^I reactivate the tenant$`, steps.reactivateTenant)
 
 	// Client steps
 	ctx.Step(`^I create a client "([^"]*)" under the tenant$`, steps.createClientUnderTenant)
@@ -46,10 +51,22 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc TestContext) {
 	ctx.Step(`^I create a client "([^"]*)" under the tenant without admin token$`, steps.createClientWithoutAdminToken)
 	ctx.Step(`^I save the client ID from the response$`, steps.saveClientIDFromResponse)
 	ctx.Step(`^I save the client secret from the response$`, steps.saveClientSecretFromResponse)
+	ctx.Step(`^I save the OAuth client_id from the response$`, steps.saveOAuthClientIDFromResponse)
 	ctx.Step(`^I get the client details$`, steps.getClientDetails)
 	ctx.Step(`^I update the client name to "([^"]*)"$`, steps.updateClientName)
 	ctx.Step(`^I rotate the client secret$`, steps.rotateClientSecret)
 	ctx.Step(`^the new secret should be different from the saved secret$`, steps.newSecretShouldBeDifferent)
+	ctx.Step(`^I deactivate the client$`, steps.deactivateClient)
+	ctx.Step(`^I reactivate the client$`, steps.reactivateClient)
+	ctx.Step(`^I deactivate the client without admin token$`, steps.deactivateClientWithoutAdminToken)
+	ctx.Step(`^I deactivate client with id "([^"]*)"$`, steps.deactivateClientByID)
+
+	// OAuth flow with dynamic client
+	ctx.Step(`^I initiate authorization with the client$`, steps.initiateAuthorizationWithClient)
+
+	// Security tests for tenant lifecycle
+	ctx.Step(`^I deactivate the tenant without admin token$`, steps.deactivateTenantWithoutAdminToken)
+	ctx.Step(`^I deactivate tenant with id "([^"]*)"$`, steps.deactivateTenantByID)
 }
 
 type adminSteps struct {
@@ -231,4 +248,111 @@ func (s *adminSteps) newSecretShouldBeDifferent(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// Tenant Lifecycle Steps
+
+func (s *adminSteps) deactivateTenant(ctx context.Context) error {
+	tenantID := s.tc.GetTenantID()
+	if tenantID == "" {
+		return fmt.Errorf("tenant ID not set")
+	}
+	return s.tc.POSTWithHeaders("/admin/tenants/"+tenantID+"/deactivate", nil, map[string]string{
+		"X-Admin-Token": s.tc.GetAdminToken(),
+	})
+}
+
+func (s *adminSteps) reactivateTenant(ctx context.Context) error {
+	tenantID := s.tc.GetTenantID()
+	if tenantID == "" {
+		return fmt.Errorf("tenant ID not set")
+	}
+	return s.tc.POSTWithHeaders("/admin/tenants/"+tenantID+"/reactivate", nil, map[string]string{
+		"X-Admin-Token": s.tc.GetAdminToken(),
+	})
+}
+
+// Client Lifecycle Steps
+
+func (s *adminSteps) deactivateClient(ctx context.Context) error {
+	clientID := s.tc.GetTestClientID()
+	if clientID == "" {
+		return fmt.Errorf("client ID not set")
+	}
+	return s.tc.POSTWithHeaders("/admin/clients/"+clientID+"/deactivate", nil, map[string]string{
+		"X-Admin-Token": s.tc.GetAdminToken(),
+	})
+}
+
+func (s *adminSteps) reactivateClient(ctx context.Context) error {
+	clientID := s.tc.GetTestClientID()
+	if clientID == "" {
+		return fmt.Errorf("client ID not set")
+	}
+	return s.tc.POSTWithHeaders("/admin/clients/"+clientID+"/reactivate", nil, map[string]string{
+		"X-Admin-Token": s.tc.GetAdminToken(),
+	})
+}
+
+func (s *adminSteps) saveOAuthClientIDFromResponse(ctx context.Context) error {
+	var data map[string]interface{}
+	if err := json.Unmarshal(s.tc.GetLastResponseBody(), &data); err != nil {
+		return fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	oauthClientID, ok := data["client_id"].(string)
+	if !ok {
+		return fmt.Errorf("client_id not found in response: %s", string(s.tc.GetLastResponseBody()))
+	}
+	s.tc.SetOAuthClientID(oauthClientID)
+	return nil
+}
+
+func (s *adminSteps) initiateAuthorizationWithClient(ctx context.Context) error {
+	oauthClientID := s.tc.GetOAuthClientID()
+	if oauthClientID == "" {
+		return fmt.Errorf("OAuth client_id not set")
+	}
+	body := map[string]interface{}{
+		"email":        "lifecycle-test@example.com",
+		"client_id":    oauthClientID,
+		"scopes":       []string{"openid", "profile"},
+		"redirect_uri": s.tc.GetRedirectURI(),
+		"state":        "test-state-lifecycle",
+	}
+	return s.tc.POST("/auth/authorize", body)
+}
+
+// Security test steps
+
+func (s *adminSteps) deactivateTenantWithoutAdminToken(ctx context.Context) error {
+	tenantID := s.tc.GetTenantID()
+	if tenantID == "" {
+		return fmt.Errorf("tenant ID not set")
+	}
+	return s.tc.POSTWithHeaders("/admin/tenants/"+tenantID+"/deactivate", nil, map[string]string{
+		"X-Admin-Token": "", // Empty token
+	})
+}
+
+func (s *adminSteps) deactivateTenantByID(ctx context.Context, tenantID string) error {
+	return s.tc.POSTWithHeaders("/admin/tenants/"+tenantID+"/deactivate", nil, map[string]string{
+		"X-Admin-Token": s.tc.GetAdminToken(),
+	})
+}
+
+func (s *adminSteps) deactivateClientWithoutAdminToken(ctx context.Context) error {
+	clientID := s.tc.GetTestClientID()
+	if clientID == "" {
+		return fmt.Errorf("client ID not set")
+	}
+	return s.tc.POSTWithHeaders("/admin/clients/"+clientID+"/deactivate", nil, map[string]string{
+		"X-Admin-Token": "", // Empty token
+	})
+}
+
+func (s *adminSteps) deactivateClientByID(ctx context.Context, clientID string) error {
+	return s.tc.POSTWithHeaders("/admin/clients/"+clientID+"/deactivate", nil, map[string]string{
+		"X-Admin-Token": s.tc.GetAdminToken(),
+	})
 }

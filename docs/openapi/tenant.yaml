@@ -105,6 +105,90 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /admin/tenants/{id}/deactivate:
+    post:
+      summary: Deactivate a tenant
+      description: |
+        Transitions a tenant to inactive status. Deactivated tenants block OAuth
+        flows for all clients under them. Existing tokens remain valid until expiry.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Tenant identifier
+      responses:
+        "200":
+          description: Tenant deactivated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Tenant is already inactive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                already_inactive:
+                  value:
+                    error: conflict
+                    error_description: tenant is already inactive
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /admin/tenants/{id}/reactivate:
+    post:
+      summary: Reactivate a tenant
+      description: |
+        Transitions a tenant to active status. Reactivated tenants restore OAuth
+        flows for their clients.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Tenant identifier
+      responses:
+        "200":
+          description: Tenant reactivated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Tenant is already active
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                already_active:
+                  value:
+                    error: conflict
+                    error_description: tenant is already active
+        "500":
+          $ref: "#/components/responses/InternalError"
   /admin/clients:
     post:
       summary: Register a new OAuth client
@@ -298,6 +382,90 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /admin/clients/{id}/deactivate:
+    post:
+      summary: Deactivate a client
+      description: |
+        Transitions a client to inactive status. Deactivated clients block OAuth
+        flows. Existing tokens remain valid until expiry.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Client identifier (internal UUID, not the client_id)
+      responses:
+        "200":
+          description: Client deactivated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Client is already inactive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                already_inactive:
+                  value:
+                    error: conflict
+                    error_description: client is already inactive
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /admin/clients/{id}/reactivate:
+    post:
+      summary: Reactivate a client
+      description: |
+        Transitions a client to active status. Reactivated clients restore OAuth
+        flows.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Client identifier (internal UUID, not the client_id)
+      responses:
+        "200":
+          description: Client reactivated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Client is already active
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                already_active:
+                  value:
+                    error: conflict
+                    error_description: client is already active
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   securitySchemes:
     bearerAuth:
@@ -328,7 +496,7 @@ components:
           $ref: "#/components/schemas/Tenant"
     Tenant:
       type: object
-      required: [id, name, status, created_at]
+      required: [id, name, status, created_at, updated_at]
       properties:
         id:
           type: string
@@ -346,6 +514,10 @@ components:
           type: string
           format: date-time
           description: Timestamp when the tenant was created
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when the tenant was last modified
     TenantDetails:
       type: object
       required: [tenant, user_count, client_count]

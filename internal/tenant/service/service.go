@@ -22,6 +22,7 @@ import (
 
 type TenantStore interface {
 	CreateIfNameAvailable(ctx context.Context, tenant *models.Tenant) error
+	Update(ctx context.Context, tenant *models.Tenant) error
 	FindByID(ctx context.Context, tenantID id.TenantID) (*models.Tenant, error)
 	FindByName(ctx context.Context, name string) (*models.Tenant, error)
 	Count(ctx context.Context) (int, error)
@@ -131,9 +132,66 @@ func (s *Service) GetTenant(ctx context.Context, tenantID id.TenantID) (*models.
 		Name:        tenant.Name,
 		Status:      tenant.Status,
 		CreatedAt:   tenant.CreatedAt,
+		UpdatedAt:   tenant.UpdatedAt,
 		UserCount:   userCount,
 		ClientCount: clientCount,
 	}, nil
+}
+
+// DeactivateTenant transitions a tenant to inactive status.
+// Returns the updated tenant or an error if tenant is not found or already inactive.
+func (s *Service) DeactivateTenant(ctx context.Context, tenantID id.TenantID) (*models.Tenant, error) {
+	if tenantID.IsNil() {
+		return nil, dErrors.New(dErrors.CodeBadRequest, "tenant ID required")
+	}
+	tenant, err := s.tenants.FindByID(ctx, tenantID)
+	if err != nil {
+		return nil, wrapTenantErr(err, "failed to load tenant")
+	}
+
+	if err := tenant.Deactivate(time.Now()); err != nil {
+		if dErrors.HasCode(err, dErrors.CodeInvariantViolation) {
+			return nil, dErrors.New(dErrors.CodeConflict, "tenant is already inactive")
+		}
+		return nil, err
+	}
+
+	if err := s.tenants.Update(ctx, tenant); err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to update tenant")
+	}
+
+	s.logAudit(ctx, string(audit.EventTenantDeactivated),
+		"tenant_id", tenant.ID)
+
+	return tenant, nil
+}
+
+// ReactivateTenant transitions a tenant to active status.
+// Returns the updated tenant or an error if tenant is not found or already active.
+func (s *Service) ReactivateTenant(ctx context.Context, tenantID id.TenantID) (*models.Tenant, error) {
+	if tenantID.IsNil() {
+		return nil, dErrors.New(dErrors.CodeBadRequest, "tenant ID required")
+	}
+	tenant, err := s.tenants.FindByID(ctx, tenantID)
+	if err != nil {
+		return nil, wrapTenantErr(err, "failed to load tenant")
+	}
+
+	if err := tenant.Reactivate(time.Now()); err != nil {
+		if dErrors.HasCode(err, dErrors.CodeInvariantViolation) {
+			return nil, dErrors.New(dErrors.CodeConflict, "tenant is already active")
+		}
+		return nil, err
+	}
+
+	if err := s.tenants.Update(ctx, tenant); err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to update tenant")
+	}
+
+	s.logAudit(ctx, string(audit.EventTenantReactivated),
+		"tenant_id", tenant.ID)
+
+	return tenant, nil
 }
 
 // CreateClient registers a client under a tenant.
@@ -240,6 +298,64 @@ func (s *Service) UpdateClientForTenant(ctx context.Context, tenantID id.TenantI
 		return nil, "", wrapClientErr(err, "failed to get client")
 	}
 	return s.applyClientUpdate(ctx, client, req)
+}
+
+// DeactivateClient transitions a client to inactive status.
+// Returns the updated client or an error if client is not found or already inactive.
+func (s *Service) DeactivateClient(ctx context.Context, clientID id.ClientID) (*models.Client, error) {
+	if clientID.IsNil() {
+		return nil, dErrors.New(dErrors.CodeBadRequest, "client ID required")
+	}
+	client, err := s.clients.FindByID(ctx, clientID)
+	if err != nil {
+		return nil, wrapClientErr(err, "failed to get client")
+	}
+
+	if err := client.Deactivate(time.Now()); err != nil {
+		if dErrors.HasCode(err, dErrors.CodeInvariantViolation) {
+			return nil, dErrors.New(dErrors.CodeConflict, "client is already inactive")
+		}
+		return nil, err
+	}
+
+	if err := s.clients.Update(ctx, client); err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to update client")
+	}
+
+	s.logAudit(ctx, string(audit.EventClientDeactivated),
+		"client_id", client.ID,
+		"tenant_id", client.TenantID)
+
+	return client, nil
+}
+
+// ReactivateClient transitions a client to active status.
+// Returns the updated client or an error if client is not found or already active.
+func (s *Service) ReactivateClient(ctx context.Context, clientID id.ClientID) (*models.Client, error) {
+	if clientID.IsNil() {
+		return nil, dErrors.New(dErrors.CodeBadRequest, "client ID required")
+	}
+	client, err := s.clients.FindByID(ctx, clientID)
+	if err != nil {
+		return nil, wrapClientErr(err, "failed to get client")
+	}
+
+	if err := client.Reactivate(time.Now()); err != nil {
+		if dErrors.HasCode(err, dErrors.CodeInvariantViolation) {
+			return nil, dErrors.New(dErrors.CodeConflict, "client is already active")
+		}
+		return nil, err
+	}
+
+	if err := s.clients.Update(ctx, client); err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to update client")
+	}
+
+	s.logAudit(ctx, string(audit.EventClientReactivated),
+		"client_id", client.ID,
+		"tenant_id", client.TenantID)
+
+	return client, nil
 }
 
 // applyClientUpdate contains the shared update logic for client modifications.

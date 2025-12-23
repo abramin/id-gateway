@@ -69,3 +69,14 @@ func (s *InMemory) Count(_ context.Context) (int, error) {
 	defer s.mu.RUnlock()
 	return len(s.tenants), nil
 }
+
+// Update updates an existing tenant. Returns ErrNotFound if tenant doesn't exist.
+func (s *InMemory) Update(_ context.Context, t *models.Tenant) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.tenants[t.ID]; !exists {
+		return ErrNotFound
+	}
+	s.tenants[t.ID] = t
+	return nil
+}

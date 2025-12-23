@@ -32,6 +32,7 @@ type TestContext struct {
 	TenantID             string
 	TestClientID         string // UUID of client for admin API tests
 	ClientSecret         string // Saved client secret for rotation tests
+	OAuthClientID        string // OAuth client_id for dynamic client tests
 	AccessTokens         map[string]string
 	RefreshTokens        map[string]string
 	SessionIDs           map[string]string
@@ -374,6 +375,14 @@ func (tc *TestContext) GetClientSecret() string {
 
 func (tc *TestContext) SetClientSecret(secret string) {
 	tc.ClientSecret = secret
+}
+
+func (tc *TestContext) GetOAuthClientID() string {
+	return tc.OAuthClientID
+}
+
+func (tc *TestContext) SetOAuthClientID(oauthClientID string) {
+	tc.OAuthClientID = oauthClientID
 }
 
 func (tc *TestContext) GetDeviceID() string {

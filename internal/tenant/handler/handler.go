@@ -25,11 +25,15 @@ import (
 type Service interface {
 	CreateTenant(ctx context.Context, name string) (*models.Tenant, error)
 	GetTenant(ctx context.Context, id id.TenantID) (*models.TenantDetails, error)
+	DeactivateTenant(ctx context.Context, id id.TenantID) (*models.Tenant, error)
+	ReactivateTenant(ctx context.Context, id id.TenantID) (*models.Tenant, error)
 	CreateClient(ctx context.Context, req *models.CreateClientRequest) (*models.Client, string, error)
 	GetClient(ctx context.Context, id id.ClientID) (*models.Client, error)
 	GetClientForTenant(ctx context.Context, tenantID id.TenantID, id id.ClientID) (*models.Client, error)
 	UpdateClient(ctx context.Context, id id.ClientID, req *models.UpdateClientRequest) (*models.Client, string, error)
 	UpdateClientForTenant(ctx context.Context, tenantID id.TenantID, id id.ClientID, req *models.UpdateClientRequest) (*models.Client, string, error)
+	DeactivateClient(ctx context.Context, id id.ClientID) (*models.Client, error)
+	ReactivateClient(ctx context.Context, id id.ClientID) (*models.Client, error)
 }
 
 type Handler struct {
@@ -44,9 +48,13 @@ func New(service Service, logger *slog.Logger) *Handler {
 func (h *Handler) Register(r chi.Router) {
 	r.Post("/admin/tenants", h.HandleCreateTenant)
 	r.Get("/admin/tenants/{id}", h.HandleGetTenant)
+	r.Post("/admin/tenants/{id}/deactivate", h.HandleDeactivateTenant)
+	r.Post("/admin/tenants/{id}/reactivate", h.HandleReactivateTenant)
 	r.Post("/admin/clients", h.HandleCreateClient)
 	r.Get("/admin/clients/{id}", h.HandleGetClient)
 	r.Put("/admin/clients/{id}", h.HandleUpdateClient)
+	r.Post("/admin/clients/{id}/deactivate", h.HandleDeactivateClient)
+	r.Post("/admin/clients/{id}/reactivate", h.HandleReactivateClient)
 }
 
 // HandleCreateTenant creates a tenant.
@@ -93,6 +101,50 @@ func (h *Handler) HandleGetTenant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, toTenantDetailsResponse(res))
+}
+
+// HandleDeactivateTenant deactivates a tenant.
+// PRD-026B FR-1: Deactivated tenants block OAuth flows for all clients under them.
+func (h *Handler) HandleDeactivateTenant(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	requestID := request.GetRequestID(ctx)
+	idStr := chi.URLParam(r, "id")
+	tenantID, err := id.ParseTenantID(idStr)
+	if err != nil {
+		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid tenant id"))
+		return
+	}
+
+	tenant, err := h.service.DeactivateTenant(ctx, tenantID)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "deactivate tenant failed", "error", err, "request_id", requestID, "tenant_id", tenantID)
+		httputil.WriteError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, toTenantResponse(tenant))
+}
+
+// HandleReactivateTenant reactivates a tenant.
+// PRD-026B FR-2: Reactivated tenants restore OAuth flows for their clients.
+func (h *Handler) HandleReactivateTenant(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	requestID := request.GetRequestID(ctx)
+	idStr := chi.URLParam(r, "id")
+	tenantID, err := id.ParseTenantID(idStr)
+	if err != nil {
+		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid tenant id"))
+		return
+	}
+
+	tenant, err := h.service.ReactivateTenant(ctx, tenantID)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "reactivate tenant failed", "error", err, "request_id", requestID, "tenant_id", tenantID)
+		httputil.WriteError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, toTenantResponse(tenant))
 }
 
 // HandleCreateClient registers a new client under a tenant.
@@ -178,6 +230,52 @@ func (h *Handler) HandleUpdateClient(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, toClientResponse(client, secret))
 }
 
+// HandleDeactivateClient deactivates a client.
+// PRD-026B FR-3: Deactivated clients block OAuth flows.
+func (h *Handler) HandleDeactivateClient(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	requestID := request.GetRequestID(ctx)
+
+	idStr := chi.URLParam(r, "id")
+	clientID, err := id.ParseClientID(idStr)
+	if err != nil {
+		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid client id"))
+		return
+	}
+
+	client, err := h.service.DeactivateClient(ctx, clientID)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "deactivate client failed", "error", err, "request_id", requestID, "client_id", clientID)
+		httputil.WriteError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, toClientResponse(client, ""))
+}
+
+// HandleReactivateClient reactivates a client.
+// PRD-026B FR-4: Reactivated clients restore OAuth flows.
+func (h *Handler) HandleReactivateClient(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	requestID := request.GetRequestID(ctx)
+
+	idStr := chi.URLParam(r, "id")
+	clientID, err := id.ParseClientID(idStr)
+	if err != nil {
+		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid client id"))
+		return
+	}
+
+	client, err := h.service.ReactivateClient(ctx, clientID)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "reactivate client failed", "error", err, "request_id", requestID, "client_id", clientID)
+		httputil.WriteError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, toClientResponse(client, ""))
+}
+
 // Response mapping functions - convert domain objects to HTTP DTOs
 
 func toTenantResponse(t *models.Tenant) *models.TenantResponse {
@@ -186,6 +284,7 @@ func toTenantResponse(t *models.Tenant) *models.TenantResponse {
 		Name:      t.Name,
 		Status:    t.Status,
 		CreatedAt: t.CreatedAt,
+		UpdatedAt: t.UpdatedAt,
 	}
 }
 
@@ -195,6 +294,7 @@ func toTenantDetailsResponse(td *models.TenantDetails) *models.TenantDetailsResp
 		Name:        td.Name,
 		Status:      td.Status,
 		CreatedAt:   td.CreatedAt,
+		UpdatedAt:   td.UpdatedAt,
 		UserCount:   td.UserCount,
 		ClientCount: td.ClientCount,
 	}
