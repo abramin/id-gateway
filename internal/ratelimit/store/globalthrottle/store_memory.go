@@ -48,6 +48,7 @@ func New(opts ...Option) *InMemoryGlobalThrottleStore {
 	for _, opt := range opts {
 		opt(s)
 	}
+}
 
 	return s
 }
