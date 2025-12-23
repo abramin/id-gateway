@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"credo/internal/ratelimit/config"
 	"credo/internal/ratelimit/models"
 	"credo/pkg/platform/middleware/requesttime"
 
@@ -22,7 +23,7 @@ func TestInMemoryAuthLockoutStoreSuite(t *testing.T) {
 }
 
 func (s *InMemoryAuthLockoutStoreSuite) SetupTest() {
-	s.store = New()
+	s.store = New(WithConfig(&config.DefaultConfig().AuthLockout))
 }
 
 func (s *InMemoryAuthLockoutStoreSuite) TestGet() {
@@ -35,7 +36,6 @@ func (s *InMemoryAuthLockoutStoreSuite) TestGet() {
 	})
 
 	s.Run("existing record is returned without mutation", func() {
-		// Setup: create a record via RecordFailure
 		fixedTime := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
 		ctx := requesttime.WithTime(context.Background(), fixedTime)
 		identifier := "test-user"
@@ -99,20 +99,16 @@ func (s *InMemoryAuthLockoutStoreSuite) TestClear() {
 	s.Run("clearing existing record removes it", func() {
 		identifier := "to-be-cleared"
 
-		// Create record
 		_, err := s.store.RecordFailure(ctx, identifier)
 		s.NoError(err)
 
-		// Verify it exists
 		record, err := s.store.Get(ctx, identifier)
 		s.NoError(err)
 		s.NotNil(record)
 
-		// Clear it
 		err = s.store.Clear(ctx, identifier)
 		s.NoError(err)
 
-		// Verify it's gone
 		record, err = s.store.Get(ctx, identifier)
 		s.NoError(err)
 		s.Nil(record)
@@ -147,7 +143,6 @@ func (s *InMemoryAuthLockoutStoreSuite) TestIsLocked() {
 		err = s.store.Update(ctx, record)
 		s.NoError(err)
 
-		// Check lock status
 		locked, lockedUntil, err := s.store.IsLocked(ctx, identifier)
 		s.NoError(err)
 		s.True(locked)
@@ -167,7 +162,6 @@ func (s *InMemoryAuthLockoutStoreSuite) TestIsLocked() {
 		err = s.store.Update(ctx, record)
 		s.NoError(err)
 
-		// Check lock status - should be unlocked since lock expired
 		locked, _, err := s.store.IsLocked(ctx, identifier)
 		s.NoError(err)
 		assert.False(s.T(), locked)
@@ -180,11 +174,9 @@ func (s *InMemoryAuthLockoutStoreSuite) TestUpdate() {
 	s.Run("update modifies existing record", func() {
 		identifier := "updatable-user"
 
-		// Create record
 		_, err := s.store.RecordFailure(ctx, identifier)
 		s.NoError(err)
 
-		// Update with new values
 		updatedRecord := &models.AuthLockout{
 			Identifier:      identifier,
 			FailureCount:    5,
@@ -194,11 +186,67 @@ func (s *InMemoryAuthLockoutStoreSuite) TestUpdate() {
 		err = s.store.Update(ctx, updatedRecord)
 		s.NoError(err)
 
-		// Verify update took effect
 		record, err := s.store.Get(ctx, identifier)
 		s.NoError(err)
 		s.Equal(5, record.FailureCount)
 		s.Equal(10, record.DailyFailures)
 		s.True(record.RequiresCaptcha)
 	})
+}
+
+func (s *InMemoryAuthLockoutStoreSuite) TestResetFailureCount() {
+	ctx := context.Background()
+	identifier1 := "old-failure-user"
+	identifier2 := "recent-failure-user"
+
+	// Record failures at different times
+	oldTime := time.Now().Add(-30 * time.Minute)
+	recentTime := time.Now().Add(-5 * time.Minute)
+
+	ctxOld := requesttime.WithTime(ctx, oldTime)
+	ctxRecent := requesttime.WithTime(ctx, recentTime)
+
+	_, err := s.store.RecordFailure(ctxOld, identifier1)
+	s.NoError(err)
+	_, err = s.store.RecordFailure(ctxRecent, identifier2)
+	s.NoError(err)
+
+	// Reset failure counts
+	resetCount, err := s.store.ResetFailureCount(ctx)
+	s.NoError(err)
+	s.Equal(1, resetCount, "should reset 1 record's failure count")
+
+	// Verify counts
+	record1, _ := s.store.Get(ctx, identifier1)
+	s.Equal(0, record1.FailureCount, "old failure user's count should be reset")
+
+	record2, _ := s.store.Get(ctx, identifier2)
+	s.Equal(1, record2.FailureCount, "recent failure user's count should remain unchanged")
+}
+
+func (s *InMemoryAuthLockoutStoreSuite) TestResetDailyFailures() {
+	ctx := context.Background()
+	identifier1 := "user-one"
+	identifier2 := "user-two"
+
+	oldTime := time.Now().Add(-30 * time.Hour)
+
+	ctxOld := requesttime.WithTime(ctx, oldTime)
+
+	_, err := s.store.RecordFailure(ctxOld, identifier1)
+	s.NoError(err)
+	_, err = s.store.RecordFailure(ctx, identifier2)
+	s.NoError(err)
+
+	// Reset daily failures
+	resetCount, err := s.store.ResetDailyFailures(ctx)
+	s.NoError(err)
+	s.Equal(1, resetCount, "should reset daily failures for 1 records")
+
+	// Verify daily failures
+	record1, _ := s.store.Get(ctx, identifier1)
+	s.Equal(0, record1.DailyFailures, "user one daily failures should be reset")
+
+	record2, _ := s.store.Get(ctx, identifier2)
+	s.Equal(1, record2.DailyFailures, "user two daily failures should not be reset")
 }

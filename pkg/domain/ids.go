@@ -53,16 +53,12 @@ func ParseAPIKeyID(s string) (APIKeyID, error) {
 	return APIKeyID(s), nil
 }
 
-// String methods - for logging and debugging.
-
 func (id UserID) String() string    { return uuid.UUID(id).String() }
 func (id SessionID) String() string { return uuid.UUID(id).String() }
 func (id ClientID) String() string  { return uuid.UUID(id).String() }
 func (id TenantID) String() string  { return uuid.UUID(id).String() }
 func (id ConsentID) String() string { return uuid.UUID(id).String() }
 func (id APIKeyID) String() string  { return string(id) }
-
-// IsNil checks - used for service-layer validation.
 
 func (id UserID) IsNil() bool    { return uuid.UUID(id) == uuid.Nil }
 func (id SessionID) IsNil() bool { return uuid.UUID(id) == uuid.Nil }

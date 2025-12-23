@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"credo/internal/ratelimit/config"
 	"credo/internal/ratelimit/models"
 	requesttime "credo/pkg/platform/middleware/requesttime"
 )
@@ -12,12 +13,27 @@ import (
 type InMemoryAuthLockoutStore struct {
 	mu      sync.RWMutex
 	records map[string]*models.AuthLockout // keyed by identifier
+	config  *config.AuthLockoutConfig
 }
 
-func New() *InMemoryAuthLockoutStore {
-	return &InMemoryAuthLockoutStore{
+type Option func(*InMemoryAuthLockoutStore)
+
+func WithConfig(cfg *config.AuthLockoutConfig) func(*InMemoryAuthLockoutStore) {
+	return func(s *InMemoryAuthLockoutStore) {
+		s.config = cfg
+	}
+}
+
+func New(opts ...Option) *InMemoryAuthLockoutStore {
+	store := &InMemoryAuthLockoutStore{
 		records: make(map[string]*models.AuthLockout),
 	}
+
+	for _, opt := range opts {
+		opt(store)
+	}
+
+	return store
 }
 
 func (s *InMemoryAuthLockoutStore) Get(_ context.Context, identifier string) (*models.AuthLockout, error) {
@@ -80,4 +96,30 @@ func (s *InMemoryAuthLockoutStore) Update(_ context.Context, record *models.Auth
 
 	s.records[record.Identifier] = record
 	return nil
+}
+
+func (s *InMemoryAuthLockoutStore) ResetFailureCount(ctx context.Context) (failuresReset int, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, record := range s.records {
+		if time.Since(record.LastFailureAt) > s.config.WindowDuration {
+			failuresReset += record.FailureCount
+			record.FailureCount = 0
+		}
+	}
+	return failuresReset, nil
+}
+
+func (s *InMemoryAuthLockoutStore) ResetDailyFailures(ctx context.Context) (failuresReset int, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, record := range s.records {
+		if time.Since(record.LastFailureAt) > 24*time.Hour {
+			failuresReset += record.DailyFailures
+			record.DailyFailures = 0
+		}
+	}
+	return failuresReset, nil
 }
