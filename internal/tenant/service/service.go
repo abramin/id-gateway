@@ -312,14 +312,27 @@ func (s *Service) ResolveClient(ctx context.Context, clientID string) (*models.C
 }
 
 func (s *Service) logAudit(ctx context.Context, event string, attributes ...any) {
-	// Add request_id from context if available
+	attributes = s.enrichAttributes(ctx, attributes)
+	s.logToText(ctx, event, attributes)
+	s.emitToAudit(ctx, event, attributes)
+}
+
+func (s *Service) enrichAttributes(ctx context.Context, attributes []any) []any {
 	if requestID := request.GetRequestID(ctx); requestID != "" {
 		attributes = append(attributes, "request_id", requestID)
 	}
-	args := append(attributes, "event", event, "log_type", "audit")
-	if s.logger != nil {
-		s.logger.InfoContext(ctx, event, args...)
+	return attributes
+}
+
+func (s *Service) logToText(ctx context.Context, event string, attributes []any) {
+	if s.logger == nil {
+		return
 	}
+	args := append(attributes, "event", event, "log_type", "audit")
+	s.logger.InfoContext(ctx, event, args...)
+}
+
+func (s *Service) emitToAudit(ctx context.Context, event string, attributes []any) {
 	if s.auditPublisher == nil {
 		return
 	}

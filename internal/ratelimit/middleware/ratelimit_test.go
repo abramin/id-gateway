@@ -449,7 +449,7 @@ func (s *MiddlewareSecuritySuite) TestCircuitBreaker() {
 		}
 
 		// Make successful requests - circuit should eventually close
-		for i := 0; i < 3; i++ { // 3 successful probes threshold
+		for range 3 { // 3 successful probes threshold
 			req := httptest.NewRequest(http.MethodGet, "/test", nil)
 			ctx := metadata.WithClientMetadata(req.Context(), "192.168.1.1", "test-agent")
 			req = req.WithContext(ctx)
@@ -659,7 +659,7 @@ func (s *MiddlewareSecuritySuite) TestClientRateLimitMiddleware() {
 
 		handler := middleware.RateLimitClient()(next)
 
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?client_id=client-999", nil)
 			rr := httptest.NewRecorder()
 			handler.ServeHTTP(rr, req)

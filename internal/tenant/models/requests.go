@@ -79,8 +79,10 @@ func (r *CreateClientRequest) Validate() error {
 	if len(r.AllowedGrants) == 0 {
 		return dErrors.New(dErrors.CodeValidation, "allowed_grants are required")
 	}
-	if err := validateGrants(r.AllowedGrants); err != nil {
-		return dErrors.Wrap(err, dErrors.CodeValidation, "invalid allowed_grants")
+	for _, grant := range r.AllowedGrants {
+		if err := validateGrant(grant); err != nil {
+			return dErrors.Wrap(err, dErrors.CodeValidation, "invalid allowed_grants")
+		}
 	}
 	if r.Public {
 		if slices.Contains(r.AllowedGrants, "client_credentials") {
@@ -90,8 +92,10 @@ func (r *CreateClientRequest) Validate() error {
 	if len(r.AllowedScopes) == 0 {
 		return dErrors.New(dErrors.CodeValidation, "allowed_scopes are required")
 	}
-	if err := validateScopes(r.AllowedScopes); err != nil {
-		return dErrors.Wrap(err, dErrors.CodeValidation, "invalid allowed_scopes")
+	for _, scope := range r.AllowedScopes {
+		if err := validateScope(scope); err != nil {
+			return dErrors.Wrap(err, dErrors.CodeValidation, "invalid allowed_scopes")
+		}
 	}
 	return nil
 }
@@ -104,22 +108,32 @@ func validateRedirectURI(uri string) error {
 	if parsed.Host == "" {
 		return dErrors.New(dErrors.CodeValidation, "redirect_uri must include host")
 	}
-	if parsed.Scheme != "https" && (parsed.Scheme != "http" || !strings.HasPrefix(parsed.Host, "localhost")) {
+	if !isAllowedScheme(parsed.Scheme, parsed.Host) {
 		return dErrors.New(dErrors.CodeValidation, "redirect_uri must be https or localhost for development")
 	}
 	return nil
 }
 
-func validateGrants(grants []string) error {
-	allowed := map[string]struct{}{
-		"authorization_code": {},
-		"refresh_token":      {},
-		"client_credentials": {},
+// isAllowedScheme returns true if the URI scheme is acceptable:
+// - https is always allowed
+// - http is allowed only for localhost (development)
+func isAllowedScheme(scheme, host string) bool {
+	if scheme == "https" {
+		return true
 	}
-	for _, grant := range grants {
-		if _, ok := allowed[grant]; !ok {
-			return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("unsupported grant: %s", grant))
-		}
+	return scheme == "http" && strings.HasPrefix(host, "localhost")
+}
+
+// allowedGrants defines the valid OAuth grants clients can use.
+var allowedGrants = map[string]struct{}{
+	"authorization_code": {},
+	"refresh_token":      {},
+	"client_credentials": {},
+}
+
+func validateGrant(grant string) error {
+	if _, ok := allowedGrants[grant]; !ok {
+		return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("unsupported grant: %s", grant))
 	}
 	return nil
 }
@@ -132,11 +146,42 @@ var allowedScopes = map[string]struct{}{
 	"offline": {}, // For refresh tokens
 }
 
-func validateScopes(scopes []string) error {
-	for _, scope := range scopes {
-		if _, ok := allowedScopes[scope]; !ok {
-			return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("unsupported scope: %s", scope))
+func validateScope(scope string) error {
+	if _, ok := allowedScopes[scope]; !ok {
+		return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("unsupported scope: %s", scope))
+	}
+	return nil
+}
+
+// validateOptionalSlice validates an optional slice field.
+// Returns nil if field is nil, error if empty or any item fails validation.
+func validateOptionalSlice(field *[]string, fieldName string, validateItem func(string) error) error {
+	if field == nil {
+		return nil
+	}
+	if len(*field) == 0 {
+		return dErrors.New(dErrors.CodeValidation, fieldName+" cannot be empty")
+	}
+	for _, item := range *field {
+		if err := validateItem(item); err != nil {
+			return dErrors.Wrap(err, dErrors.CodeValidation, "invalid "+fieldName)
 		}
+	}
+	return nil
+}
+
+// validateOptionalName validates an optional name field.
+// Returns nil if name is nil, error if empty or too long.
+func validateOptionalName(name *string) error {
+	if name == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*name)
+	if trimmed == "" {
+		return dErrors.New(dErrors.CodeValidation, "name cannot be empty")
+	}
+	if len(trimmed) > 128 {
+		return dErrors.New(dErrors.CodeValidation, "name must be 128 characters or less")
 	}
 	return nil
 }
@@ -171,44 +216,33 @@ func (r *UpdateClientRequest) Normalize() {
 	}
 }
 
+// IsEmpty returns true if the request contains no updates.
+func (r *UpdateClientRequest) IsEmpty() bool {
+	if r == nil {
+		return true
+	}
+	return r.Name == nil &&
+		r.RedirectURIs == nil &&
+		r.AllowedGrants == nil &&
+		r.AllowedScopes == nil &&
+		!r.RotateSecret
+}
+
 func (r *UpdateClientRequest) Validate() error {
 	if r == nil {
 		return dErrors.New(dErrors.CodeBadRequest, "request is required")
 	}
-	if r.Name != nil {
-		trimmed := strings.TrimSpace(*r.Name)
-		if trimmed == "" {
-			return dErrors.New(dErrors.CodeValidation, "name cannot be empty")
-		}
-		if len(trimmed) > 128 {
-			return dErrors.New(dErrors.CodeValidation, "name must be 128 characters or less")
-		}
+	if err := validateOptionalName(r.Name); err != nil {
+		return err
 	}
-	if r.RedirectURIs != nil {
-		if len(*r.RedirectURIs) == 0 {
-			return dErrors.New(dErrors.CodeValidation, "redirect_uris cannot be empty")
-		}
-		for _, uri := range *r.RedirectURIs {
-			if err := validateRedirectURI(uri); err != nil {
-				return dErrors.Wrap(err, dErrors.CodeValidation, "invalid redirect_uri")
-			}
-		}
+	if err := validateOptionalSlice(r.RedirectURIs, "redirect_uris", validateRedirectURI); err != nil {
+		return err
 	}
-	if r.AllowedGrants != nil {
-		if len(*r.AllowedGrants) == 0 {
-			return dErrors.New(dErrors.CodeValidation, "allowed_grants cannot be empty")
-		}
-		if err := validateGrants(*r.AllowedGrants); err != nil {
-			return dErrors.Wrap(err, dErrors.CodeValidation, "invalid allowed_grants")
-		}
+	if err := validateOptionalSlice(r.AllowedGrants, "allowed_grants", validateGrant); err != nil {
+		return err
 	}
-	if r.AllowedScopes != nil {
-		if len(*r.AllowedScopes) == 0 {
-			return dErrors.New(dErrors.CodeValidation, "allowed_scopes cannot be empty")
-		}
-		if err := validateScopes(*r.AllowedScopes); err != nil {
-			return dErrors.Wrap(err, dErrors.CodeValidation, "invalid allowed_scopes")
-		}
+	if err := validateOptionalSlice(r.AllowedScopes, "allowed_scopes", validateScope); err != nil {
+		return err
 	}
 	return nil
 }
