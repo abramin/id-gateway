@@ -149,7 +149,7 @@ Every unit test should answer:
 
 Credo uses two error packages with clear boundaries:
 
-### Sentinel errors (`internal/sentinel`)
+### Sentinel errors (`pkg/platform/sentinel`)
 
 **Purpose:** Infrastructure facts returned by stores (persistence layer only).
 
