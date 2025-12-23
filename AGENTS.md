@@ -55,10 +55,28 @@ This repo uses small, focused review agents. Each agent has a narrow scope and a
 - Lifecycle safety (identity, tokens/sessions, consents/permissions) in generic terms.
 - Rejects patches that do not change unsafe structure.
 
-### 6) Complexity Review Agent
+### 6) Complexity Review Agent
 
-- Readability
-- Cognitive complexity
+**Scope:** readability and cognitive complexity.
+
+- Simplify long functions, deep nesting, and unclear naming.
+- Preserve behavior while reducing mental stack.
+
+### 7) SRP Review Agent
+
+**Scope:** single responsibility and cohesion.
+
+- Flags mixed concerns across packages, types, and functions.
+- Prefers small, same-package helpers over new layers or interfaces.
+- Keeps validation/auth boundaries explicit.
+
+### 8) Balance Review Agent
+
+**Scope:** Go idioms and abstraction/duplication balance.
+
+- Pass A: simplify over-abstraction and non-idiomatic layering.
+- Pass B: reduce harmful repetition with minimal, local helpers.
+- Avoids clever indirection; favors concrete types and clear control flow.
 
 ## Overlap boundaries (to prevent conflicts)
 
@@ -83,8 +101,10 @@ This repo uses small, focused review agents. Each agent has a narrow scope and a
 2. DDD (if changing domain logic or service boundaries)
 3. Security (if changing exposed surfaces, auth, config, deps)
 4. Performance (if changing hot paths, concurrency, caching, DB access)
-5. Complexity
-6. Testing (if changing behavior, contracts, or refactoring internals)
+5. SRP (if responsibility/cohesion is unclear)
+6. Complexity (if readability or cognitive load is high)
+7. Balance (if abstraction/duplication tradeoffs are in play)
+8. Testing (if changing behavior, contracts, or refactoring internals)
 
 ## Output expectations
 
