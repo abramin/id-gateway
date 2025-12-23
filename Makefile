@@ -8,7 +8,7 @@ PROTO_FILES := $(wildcard $(PROTO_DIR)/*.proto)
 # === DEFAULT ===
 default: dev
 
-.PHONY: default build run test test-failed test-failures test-cover test-one test-slow e2e e2e-normal e2e-security e2e-report e2e-clean lint fmt imports openapi-lint openapi-build clean docker-clean proto-gen proto-check proto-clean help
+.PHONY: default build run test test-failed test-failures test-cover test-one test-slow e2e e2e-normal e2e-security e2e-simulation e2e-report e2e-clean lint fmt imports openapi-lint openapi-build clean docker-clean proto-gen proto-check proto-clean help
 
 # === BUILD ===
 build:
@@ -84,20 +84,24 @@ docker-demo:
 
 # === E2E TESTS ===
 e2e:
-	@echo "Running E2E tests with godog..."
-	@cd e2e && go test -v 
+	@echo "Running E2E tests with godog (excluding @simulation tests)..."
+	@cd e2e && GODOG_TAGS="~@simulation" go test -v
 
 e2e-normal:
 	@echo "Running normal flow E2E tests..."
-	@cd e2e && go test -v --godog.tags=@normal
+	@cd e2e && GODOG_TAGS="@normal" go test -v
 
 e2e-security:
 	@echo "Running security simulation tests..."
-	@cd e2e && go test -v --godog.tags=@security
+	@cd e2e && GODOG_TAGS="@security" go test -v
+
+e2e-simulation:
+	@echo "Running simulation tests (requires rate limiting enabled)..."
+	@cd e2e && GODOG_TAGS="@simulation" go test -v
 
 e2e-report:
 	@echo "Running E2E tests with JSON report..."
-	@cd e2e && go test -v --godog.format=cucumber:reports/cucumber.json
+	@cd e2e && GODOG_TAGS="~@simulation" go test -v
 	@echo "Report generated at: e2e/reports/cucumber.json"
 
 e2e-clean:
@@ -165,9 +169,10 @@ help:
 	@echo "  test-cover     Run tests with coverage"
 	@echo "  test-one       Run a single test (use: make test-one t=TestName)"
 	@echo "  test-slow      Find slowest tests (use: make test-slow n=5 for top 5)"
-	@echo "  e2e            Run E2E tests with godog"
+	@echo "  e2e            Run E2E tests with godog (excludes @simulation)"
 	@echo "  e2e-normal     Run only normal flow E2E tests"
 	@echo "  e2e-security   Run only security simulation tests"
+	@echo "  e2e-simulation Run rate limit simulation tests (requires DISABLE_RATE_LIMITING=false)"
 	@echo "  e2e-report     Run E2E tests and generate JSON report"
 	@echo "  e2e-clean      Clean E2E test artifacts"
 	@echo "  proto-gen      Generate Go code from protobuf definitions"
