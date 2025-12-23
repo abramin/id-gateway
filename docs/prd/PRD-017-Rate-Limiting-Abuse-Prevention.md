@@ -809,14 +809,6 @@ func LoadRateLimitConfig() RateLimitConfig {
 **Secure-by-Design:** IP extraction must validate against trusted proxy list. Never blindly trust X-Forwarded-For as attackers can spoof headers to bypass rate limits.
 
 **Validation Order (per AGENTS.md Principle #5):**
-<<<<<<< HEAD
-<<<<<<< HEAD
-
-=======
-
-> > > > > > > # 04966fa (clarify design)
-> > > > > > >
-> > > > > > > 37a0e5d (clarify design)
 
 1. **Origin:** Request must come from known proxy or direct connection
 2. **Size:** Limit X-Forwarded-For header length (max 500 chars)
