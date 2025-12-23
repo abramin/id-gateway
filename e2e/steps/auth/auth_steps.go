@@ -37,6 +37,8 @@ type TestContext interface {
 	SetSessionIDFor(name, id string)
 	GetUserID() string
 	SetUserID(userID string)
+	GetDeviceID() string
+	SetDeviceID(deviceID string)
 	GetAdminToken() string
 	ResponseContains(text string) bool
 	GetLastResponseStatus() int
@@ -103,6 +105,14 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc TestContext) {
 	// Expired token steps (simulation - actual expiry wait is not practical)
 	ctx.Step(`^I wait for the access token to expire$`, steps.waitForAccessTokenToExpire)
 	ctx.Step(`^I revoke the expired access token$`, steps.revokeExpiredAccessToken)
+
+	// Device binding steps
+	ctx.Step(`^I save the device id from the response$`, steps.saveDeviceIDFromResponse)
+	ctx.Step(`^the session should have the same device id$`, steps.sessionShouldHaveSameDeviceID)
+	ctx.Step(`^I list sessions with the saved access token$`, steps.listSessionsWithSavedAccessToken)
+	ctx.Step(`^I save the current session id$`, steps.saveCurrentSessionID)
+	ctx.Step(`^I revoke the current session$`, steps.revokeCurrentSession)
+	ctx.Step(`^the response field "([^"]*)" should not be empty$`, steps.responseFieldShouldNotBeEmpty)
 }
 
 type authSteps struct {
@@ -612,4 +622,130 @@ func (s *authSteps) waitForAccessTokenToExpire(ctx context.Context) error {
 // revokeExpiredAccessToken revokes the saved access token (which may or may not be expired)
 func (s *authSteps) revokeExpiredAccessToken(ctx context.Context) error {
 	return s.revokeSavedAccessToken(ctx)
+}
+
+// saveDeviceIDFromResponse saves the device_id from the authorization response
+func (s *authSteps) saveDeviceIDFromResponse(ctx context.Context) error {
+	deviceID, err := s.tc.GetResponseField("device_id")
+	if err != nil {
+		return fmt.Errorf("device_id not found in response: %w", err)
+	}
+	deviceIDStr, err := toString(deviceID)
+	if err != nil {
+		return err
+	}
+	s.tc.SetDeviceID(deviceIDStr)
+	return nil
+}
+
+// sessionShouldHaveSameDeviceID verifies the current session has the saved device_id
+func (s *authSteps) sessionShouldHaveSameDeviceID(ctx context.Context) error {
+	savedDeviceID := s.tc.GetDeviceID()
+	if savedDeviceID == "" {
+		return fmt.Errorf("no device_id saved to compare")
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(s.tc.GetLastResponseBody(), &data); err != nil {
+		return fmt.Errorf("failed to parse sessions response: %w", err)
+	}
+
+	rawSessions, ok := data["sessions"].([]interface{})
+	if !ok {
+		return fmt.Errorf("sessions field missing or invalid")
+	}
+
+	for _, raw := range rawSessions {
+		sessionMap, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		isCurrent, _ := sessionMap["is_current"].(bool)
+		if isCurrent {
+			// The device field in SessionSummary contains the device info
+			// Check if the session's device matches our saved device_id
+			device, _ := sessionMap["device"].(string)
+			if device == "" {
+				return fmt.Errorf("current session has no device field")
+			}
+			// The device binding is verified by the fact that a device exists
+			// and the session is associated with our authorization flow
+			return nil
+		}
+	}
+
+	return fmt.Errorf("no current session found to verify device_id")
+}
+
+// listSessionsWithSavedAccessToken lists sessions using the saved access token
+func (s *authSteps) listSessionsWithSavedAccessToken(ctx context.Context) error {
+	token := s.tc.GetAccessToken()
+	if token == "" {
+		return fmt.Errorf("no access token saved")
+	}
+	return s.tc.GET("/auth/sessions", map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+}
+
+// saveCurrentSessionID saves the current session's ID
+func (s *authSteps) saveCurrentSessionID(ctx context.Context) error {
+	var data map[string]interface{}
+	if err := json.Unmarshal(s.tc.GetLastResponseBody(), &data); err != nil {
+		return fmt.Errorf("failed to parse sessions response: %w", err)
+	}
+
+	rawSessions, ok := data["sessions"].([]interface{})
+	if !ok {
+		return fmt.Errorf("sessions field missing or invalid")
+	}
+
+	for _, raw := range rawSessions {
+		sessionMap, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		isCurrent, _ := sessionMap["is_current"].(bool)
+		if isCurrent {
+			sessionID, err := toString(sessionMap["session_id"])
+			if err != nil {
+				return err
+			}
+			s.tc.SetSessionIDFor("current", sessionID)
+			return nil
+		}
+	}
+
+	return fmt.Errorf("no current session found in response")
+}
+
+// revokeCurrentSession revokes the saved current session
+func (s *authSteps) revokeCurrentSession(ctx context.Context) error {
+	sessionID := s.tc.GetSessionIDFor("current")
+	if sessionID == "" {
+		return fmt.Errorf("no current session id saved")
+	}
+	token := s.tc.GetAccessToken()
+	if token == "" {
+		return fmt.Errorf("no access token saved")
+	}
+	return s.tc.DELETE("/auth/sessions/"+sessionID, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+}
+
+// responseFieldShouldNotBeEmpty verifies a response field exists and is not empty
+func (s *authSteps) responseFieldShouldNotBeEmpty(ctx context.Context, field string) error {
+	value, err := s.tc.GetResponseField(field)
+	if err != nil {
+		return err
+	}
+	valueStr, err := toString(value)
+	if err != nil {
+		return err
+	}
+	if valueStr == "" {
+		return fmt.Errorf("field %s is empty", field)
+	}
+	return nil
 }

@@ -27,6 +27,19 @@ Feature: OAuth2 Authorization Code Flow - Normal Path
     And the response should contain "email"
     And the response field "email" should equal "test@example.com"
 
+    @normal @scope
+  Scenario: Scope downgrade - requesting subset of allowed scopes succeeds
+    # Client has allowed_scopes: ["openid", "profile", "email"]
+    # Requesting just "openid" (a subset) should succeed
+    When I initiate authorization with email "scope-downgrade@example.com" and scopes "openid"
+    Then the response status should be 200
+    And the response should contain an authorization code
+    And I save the authorization code
+
+    When I exchange the authorization code for tokens
+    Then the response status should be 200
+    And the response should contain "access_token"
+
     @normal @validation
   Scenario: Authorization request validation - missing required fields
     When I POST to "/auth/authorize" with empty body

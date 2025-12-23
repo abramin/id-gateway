@@ -35,6 +35,7 @@ type TestContext struct {
 	AccessTokens         map[string]string
 	RefreshTokens        map[string]string
 	SessionIDs           map[string]string
+	DeviceID             string
 }
 
 // NewTestContext creates a new test context
@@ -373,6 +374,14 @@ func (tc *TestContext) GetClientSecret() string {
 
 func (tc *TestContext) SetClientSecret(secret string) {
 	tc.ClientSecret = secret
+}
+
+func (tc *TestContext) GetDeviceID() string {
+	return tc.DeviceID
+}
+
+func (tc *TestContext) SetDeviceID(deviceID string) {
+	tc.DeviceID = deviceID
 }
 
 // EnsureTestClient creates a tenant and client via the admin API if not already set up.
