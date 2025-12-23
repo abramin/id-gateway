@@ -14,10 +14,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	adminmw "credo/pkg/platform/middleware/admin"
 	"credo/internal/tenant/service"
 	clientstore "credo/internal/tenant/store/client"
 	tenantstore "credo/internal/tenant/store/tenant"
+	adminmw "credo/pkg/platform/middleware/admin"
 )
 
 const adminToken = "secret-token"

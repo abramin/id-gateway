@@ -23,10 +23,6 @@ import (
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/attrs"
 	"credo/pkg/platform/audit"
-<<<<<<< HEAD
-	"credo/pkg/platform/metrics"
-=======
->>>>>>> 68f9aee (udpate metrics references)
 	request "credo/pkg/platform/middleware/request"
 	"credo/pkg/platform/sentinel"
 )

@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"credo/internal/auth/models"
+	"credo/internal/auth/ports"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/httputil"

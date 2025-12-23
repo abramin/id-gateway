@@ -13,12 +13,8 @@ import (
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/httputil"
-<<<<<<< HEAD
-	"credo/pkg/platform/metrics"
 	auth "credo/pkg/platform/middleware/auth"
 	request "credo/pkg/platform/middleware/request"
-=======
->>>>>>> 68f9aee (udpate metrics references)
 )
 
 // Service defines the interface for consent operations.

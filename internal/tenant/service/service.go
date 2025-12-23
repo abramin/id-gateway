@@ -9,18 +9,14 @@ import (
 
 	"github.com/google/uuid"
 
+	tenantmetrics "credo/internal/tenant/metrics"
 	"credo/internal/tenant/models"
 	"credo/internal/tenant/secrets"
-	tenantmetrics "credo/internal/tenant/metrics"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/attrs"
-<<<<<<< HEAD
 	"credo/pkg/platform/audit"
-	"credo/pkg/platform/metrics"
 	request "credo/pkg/platform/middleware/request"
-=======
->>>>>>> 68f9aee (udpate metrics references)
 	"credo/pkg/platform/sentinel"
 )
 
