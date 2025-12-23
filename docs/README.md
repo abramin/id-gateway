@@ -47,6 +47,7 @@ Quick navigation for all technical documentation.
 | [Consent](openapi/consent.yaml) | Purpose-based consent management |
 | [Registry](openapi/registry.yaml) | Identity verification, sanctions |
 | [Tenant](openapi/tenant.yaml) | Multi-tenant administration |
+| [Rate Limiting](openapi/ratelimit.yaml) | Admin allowlist and rate limit resets |
 
 **[Browse all APIs](openapi/index.html)**
 

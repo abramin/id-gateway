@@ -1,0 +1,362 @@
+openapi: 3.0.3
+info:
+  title: ID Gateway Rate Limiting Admin API
+  version: 0.1.0
+  description: |
+    OpenAPI specification for admin-only rate limiting controls.
+
+    This module exposes endpoints to manage allowlist entries and reset
+    rate limit counters. Rate limiting itself is enforced by middleware
+    on public and authenticated endpoints.
+
+    **Rate Limit Headers:**
+    - `X-RateLimit-Limit`: max requests per window
+    - `X-RateLimit-Remaining`: remaining requests in the window
+    - `X-RateLimit-Reset`: Unix timestamp when the window resets
+    - `Retry-After`: seconds until retry (on 429/503 responses)
+
+    **Rate Limit Errors (non-admin endpoints):**
+    - 429 `rate_limit_exceeded`
+    - 429 `user_rate_limit_exceeded`
+    - 429 `client_rate_limit_exceeded`
+    - 503 `service_unavailable`
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+paths:
+  /admin/rate-limit/allowlist:
+    post:
+      summary: Add an allowlist entry
+      description: |
+        Adds an IP address or user ID to the rate limit allowlist.
+        Allowlisted identifiers bypass rate limiting until expiry.
+      security:
+        - adminToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddAllowlistRequest"
+            examples:
+              ip_allowlist:
+                summary: Allowlist IP address
+                value:
+                  type: ip
+                  identifier: 192.168.1.100
+                  reason: Monitoring service
+                  expires_at: "2025-12-31T00:00:00Z"
+              user_allowlist:
+                summary: Allowlist user
+                value:
+                  type: user_id
+                  identifier: 550e8400-e29b-41d4-a716-446655440000
+                  reason: Executive demo
+      responses:
+        "200":
+          description: Allowlist entry created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllowlistEntryResponse"
+              examples:
+                default:
+                  value:
+                    allowlisted: true
+                    identifier: 192.168.1.100
+                    expires_at: "2025-12-31T00:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      summary: Remove an allowlist entry
+      description: |
+        Removes an IP address or user ID from the allowlist.
+      security:
+        - adminToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RemoveAllowlistRequest"
+            examples:
+              ip_remove:
+                value:
+                  type: ip
+                  identifier: 192.168.1.100
+      responses:
+        "204":
+          description: Allowlist entry removed
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    get:
+      summary: List allowlist entries
+      description: Returns all active allowlist entries (non-expired).
+      security:
+        - adminToken: []
+      responses:
+        "200":
+          description: Allowlist entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AllowlistEntry"
+              examples:
+                default:
+                  value:
+                    - id: alw_123
+                      type: ip
+                      identifier: 192.168.1.100
+                      reason: Monitoring service
+                      expires_at: "2025-12-31T00:00:00Z"
+                      created_at: "2025-01-01T12:00:00Z"
+                      created_by: 550e8400-e29b-41d4-a716-446655440000
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /admin/rate-limit/reset:
+    post:
+      summary: Reset rate limit counters
+      description: |
+        Clears the rate limit counters for a specific identifier.
+        The optional class restricts the reset to a specific endpoint class.
+      security:
+        - adminToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetRateLimitRequest"
+            examples:
+              reset_ip:
+                value:
+                  type: ip
+                  identifier: 192.168.1.100
+                  class: auth
+              reset_user:
+                value:
+                  type: user_id
+                  identifier: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        "204":
+          description: Rate limit counters reset
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+components:
+  securitySchemes:
+    adminToken:
+      type: apiKey
+      in: header
+      name: X-Admin-Token
+      description: Admin API token required for rate limit admin operations
+  schemas:
+    AllowlistEntryType:
+      type: string
+      enum:
+        - ip
+        - user_id
+      description: Identifier type for allowlist entries
+    EndpointClass:
+      type: string
+      enum:
+        - auth
+        - sensitive
+        - read
+        - write
+      description: Endpoint class for rate limiting
+    AddAllowlistRequest:
+      type: object
+      required: [type, identifier, reason]
+      properties:
+        type:
+          $ref: "#/components/schemas/AllowlistEntryType"
+        identifier:
+          type: string
+          description: IP address or user ID
+        reason:
+          type: string
+          description: Reason for allowlisting
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Optional expiry for the allowlist entry
+    RemoveAllowlistRequest:
+      type: object
+      required: [type, identifier]
+      properties:
+        type:
+          $ref: "#/components/schemas/AllowlistEntryType"
+        identifier:
+          type: string
+          description: IP address or user ID
+    ResetRateLimitRequest:
+      type: object
+      required: [type, identifier]
+      properties:
+        type:
+          $ref: "#/components/schemas/AllowlistEntryType"
+        identifier:
+          type: string
+          description: IP address or user ID
+        class:
+          $ref: "#/components/schemas/EndpointClass"
+    AllowlistEntry:
+      type: object
+      required: [id, type, identifier, reason, created_at, created_by]
+      properties:
+        id:
+          type: string
+          description: Allowlist entry identifier
+        type:
+          $ref: "#/components/schemas/AllowlistEntryType"
+        identifier:
+          type: string
+          description: IP address or user ID
+        reason:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+          format: uuid
+    AllowlistEntryResponse:
+      type: object
+      required: [allowlisted, identifier]
+      properties:
+        allowlisted:
+          type: boolean
+        identifier:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+    RateLimitExceededResponse:
+      type: object
+      required: [error, message, retry_after]
+      properties:
+        error:
+          type: string
+          example: rate_limit_exceeded
+        message:
+          type: string
+        retry_after:
+          type: integer
+          description: Seconds until retry
+    UserRateLimitExceededResponse:
+      type: object
+      required: [error, message, quota_limit, quota_remaining, quota_reset]
+      properties:
+        error:
+          type: string
+          example: user_rate_limit_exceeded
+        message:
+          type: string
+        quota_limit:
+          type: integer
+        quota_remaining:
+          type: integer
+        quota_reset:
+          type: string
+          format: date-time
+    ClientRateLimitExceededResponse:
+      type: object
+      required: [error, message, retry_after]
+      properties:
+        error:
+          type: string
+          example: client_rate_limit_exceeded
+        message:
+          type: string
+        retry_after:
+          type: integer
+          description: Seconds until retry
+    ServiceOverloadedResponse:
+      type: object
+      required: [error, message, retry_after]
+      properties:
+        error:
+          type: string
+          example: service_unavailable
+        message:
+          type: string
+        retry_after:
+          type: integer
+          description: Seconds until retry
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Machine readable error code
+          enum:
+            - bad_request
+            - unauthorized
+            - forbidden
+            - not_found
+            - conflict
+            - internal_error
+        error_description:
+          type: string
+          description: Human readable explanation of the error
+  responses:
+    BadRequest:
+      description: Invalid or malformed request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            invalid_body:
+              value:
+                error: bad_request
+                error_description: "Invalid JSON in request body"
+            invalid_identifier:
+              value:
+                error: bad_request
+                error_description: "identifier is required"
+    Unauthorized:
+      description: Missing or invalid admin token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            missing_token:
+              value:
+                error: unauthorized
+                error_description: "admin token required"
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            generic:
+              value:
+                error: internal_error
+                error_description: "An unexpected error occurred"

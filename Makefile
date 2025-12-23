@@ -151,9 +151,11 @@ openapi-build:
 		echo "Building OpenAPI documentation..."; \
 		npx @redocly/cli@1.12.0 build-docs docs/openapi/auth.yaml -o docs/openapi/auth.html; \
 		npx @redocly/cli@1.12.0 build-docs docs/openapi/consent.yaml -o docs/openapi/consent.html; \
+		npx @redocly/cli@1.12.0 build-docs docs/openapi/ratelimit.yaml -o docs/openapi/ratelimit.html; \
 		echo "Documentation built:"; \
 		echo "  - docs/openapi/auth.html"; \
 		echo "  - docs/openapi/consent.html"; \
+		echo "  - docs/openapi/ratelimit.html"; \
 	else \
 		echo "npx not found. Install Node.js to build OpenAPI docs."; \
 		exit 1; \
