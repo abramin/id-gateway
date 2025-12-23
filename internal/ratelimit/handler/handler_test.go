@@ -1,6 +1,6 @@
 package handler
 
-//go:generate mockgen -source=handler.go -destination=mocks/handler_mock.go -package=mocks Service
+//go:generate mockgen -source=handler.go -destination=mocks/handler_mock.go -package=mocks Service,QuotaService
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -15,6 +16,9 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"credo/internal/ratelimit/handler/mocks"
+	"credo/internal/ratelimit/models"
+	id "credo/pkg/domain"
+	dErrors "credo/pkg/domain-errors"
 )
 
 // =============================================================================
@@ -28,16 +32,18 @@ import (
 
 type HandlerSuite struct {
 	suite.Suite
-	router      http.Handler
-	ctrl        *gomock.Controller
-	mockService *mocks.MockService
+	router           http.Handler
+	ctrl             *gomock.Controller
+	mockService      *mocks.MockService
+	mockQuotaService *mocks.MockQuotaService
 }
 
 func (s *HandlerSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
 	s.mockService = mocks.NewMockService(s.ctrl)
+	s.mockQuotaService = mocks.NewMockQuotaService(s.ctrl)
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	h := New(s.mockService, logger)
+	h := New(s.mockService, logger).WithQuotaService(s.mockQuotaService)
 
 	r := chi.NewRouter()
 	h.RegisterAdmin(r)
@@ -91,19 +97,25 @@ func (s *HandlerSuite) TestResetRateLimit_InvalidJSON() {
 // =============================================================================
 // Quota API Endpoint Tests (PRD-017 FR-5)
 // =============================================================================
-// These tests document the expected quota API endpoints per PRD-017 FR-5.
-// NOTE: These tests are expected to FAIL until quota endpoints are wired to HTTP.
-// PRD-017 FR-5: "Partner API Quotas (API Keys)" - service layer complete but not wired.
+// These tests verify the quota API endpoints per PRD-017 FR-5.
 
 func (s *HandlerSuite) TestGetQuotaUsage_ReturnsUsage() {
-	// This test verifies the GET /admin/rate-limit/quota/:api_key endpoint
+	apiKeyID := id.APIKeyID("partner-free-123")
+	mockQuota := &models.APIKeyQuota{
+		APIKeyID:     apiKeyID,
+		Tier:         models.QuotaTierFree,
+		MonthlyLimit: 1000,
+		CurrentUsage: 250,
+		PeriodEnd:    time.Now().AddDate(0, 1, 0),
+	}
+
+	s.mockQuotaService.EXPECT().Check(gomock.Any(), apiKeyID).Return(mockQuota, nil)
+
 	req := httptest.NewRequest(http.MethodGet, "/admin/rate-limit/quota/partner-free-123", nil)
 	rec := httptest.NewRecorder()
 
 	s.router.ServeHTTP(rec, req)
 
-	// PRD-017 FR-5: Should return quota usage for API key
-	// Expected to fail until endpoint is implemented
 	assert.Equal(s.T(), http.StatusOK, rec.Code,
 		"GET /admin/rate-limit/quota/:api_key should return 200")
 	assert.Contains(s.T(), rec.Body.String(), "usage",
@@ -115,18 +127,25 @@ func (s *HandlerSuite) TestGetQuotaUsage_ReturnsUsage() {
 }
 
 func (s *HandlerSuite) TestGetQuotaUsage_NotFound() {
+	apiKeyID := id.APIKeyID("nonexistent-key")
+
+	s.mockQuotaService.EXPECT().Check(gomock.Any(), apiKeyID).Return(nil,
+		dErrors.New(dErrors.CodeNotFound, "quota not found"))
+
 	req := httptest.NewRequest(http.MethodGet, "/admin/rate-limit/quota/nonexistent-key", nil)
 	rec := httptest.NewRecorder()
 
 	s.router.ServeHTTP(rec, req)
 
-	// PRD-017 FR-5: Should return 404 for unknown API key
 	assert.Equal(s.T(), http.StatusNotFound, rec.Code,
 		"GET /admin/rate-limit/quota/:api_key should return 404 for unknown key")
 }
 
 func (s *HandlerSuite) TestResetQuota_Success() {
-	// This test verifies the POST /admin/rate-limit/quota/:api_key/reset endpoint
+	apiKeyID := id.APIKeyID("partner-free-123")
+
+	s.mockQuotaService.EXPECT().Reset(gomock.Any(), apiKeyID).Return(nil)
+
 	req := httptest.NewRequest(http.MethodPost, "/admin/rate-limit/quota/partner-free-123/reset",
 		bytes.NewReader([]byte(`{"reason": "Customer support request"}`)))
 	req.Header.Set("Content-Type", "application/json")
@@ -134,19 +153,35 @@ func (s *HandlerSuite) TestResetQuota_Success() {
 
 	s.router.ServeHTTP(rec, req)
 
-	// PRD-017 FR-5: Admin should be able to reset quota usage
 	assert.Equal(s.T(), http.StatusOK, rec.Code,
 		"POST /admin/rate-limit/quota/:api_key/reset should return 200")
 }
 
 func (s *HandlerSuite) TestListQuotas_ReturnsList() {
-	// This test verifies the GET /admin/rate-limit/quotas endpoint
+	mockQuotas := []*models.APIKeyQuota{
+		{
+			APIKeyID:     id.APIKeyID("key-1"),
+			Tier:         models.QuotaTierFree,
+			MonthlyLimit: 1000,
+			CurrentUsage: 100,
+			PeriodEnd:    time.Now().AddDate(0, 1, 0),
+		},
+		{
+			APIKeyID:     id.APIKeyID("key-2"),
+			Tier:         models.QuotaTierStarter,
+			MonthlyLimit: 10000,
+			CurrentUsage: 5000,
+			PeriodEnd:    time.Now().AddDate(0, 1, 0),
+		},
+	}
+
+	s.mockQuotaService.EXPECT().List(gomock.Any()).Return(mockQuotas, nil)
+
 	req := httptest.NewRequest(http.MethodGet, "/admin/rate-limit/quotas", nil)
 	rec := httptest.NewRecorder()
 
 	s.router.ServeHTTP(rec, req)
 
-	// PRD-017 FR-5: Should return list of all quota records
 	assert.Equal(s.T(), http.StatusOK, rec.Code,
 		"GET /admin/rate-limit/quotas should return 200")
 	assert.Contains(s.T(), rec.Body.String(), "[",
@@ -154,7 +189,10 @@ func (s *HandlerSuite) TestListQuotas_ReturnsList() {
 }
 
 func (s *HandlerSuite) TestUpdateQuotaTier_Success() {
-	// This test verifies updating an API key's quota tier
+	apiKeyID := id.APIKeyID("partner-free-123")
+
+	s.mockQuotaService.EXPECT().UpdateTier(gomock.Any(), apiKeyID, models.QuotaTierStarter).Return(nil)
+
 	req := httptest.NewRequest(http.MethodPut, "/admin/rate-limit/quota/partner-free-123/tier",
 		bytes.NewReader([]byte(`{"tier": "starter"}`)))
 	req.Header.Set("Content-Type", "application/json")
@@ -162,7 +200,6 @@ func (s *HandlerSuite) TestUpdateQuotaTier_Success() {
 
 	s.router.ServeHTTP(rec, req)
 
-	// PRD-017 FR-5: Admin should be able to upgrade/downgrade tier
 	assert.Equal(s.T(), http.StatusOK, rec.Code,
 		"PUT /admin/rate-limit/quota/:api_key/tier should return 200")
 }

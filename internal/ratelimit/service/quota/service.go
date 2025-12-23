@@ -15,6 +15,10 @@ import (
 type Store interface {
 	GetQuota(ctx context.Context, apiKeyID id.APIKeyID) (*models.APIKeyQuota, error)
 	IncrementUsage(ctx context.Context, apiKeyID id.APIKeyID, count int) (*models.APIKeyQuota, error)
+	// PRD-017 FR-5: Partner API Quotas admin operations
+	ResetQuota(ctx context.Context, apiKeyID id.APIKeyID) error
+	ListQuotas(ctx context.Context) ([]*models.APIKeyQuota, error)
+	UpdateTier(ctx context.Context, apiKeyID id.APIKeyID, tier models.QuotaTier) error
 }
 
 type AuditPublisher interface {
@@ -84,6 +88,53 @@ func (s *Service) Increment(ctx context.Context, apiKeyID id.APIKeyID, count int
 	}
 
 	return quota, nil
+}
+
+// Reset resets the quota usage for an API key (PRD-017 FR-5)
+func (s *Service) Reset(ctx context.Context, apiKeyID id.APIKeyID) error {
+	if apiKeyID.IsNil() {
+		return dErrors.New(dErrors.CodeBadRequest, "api_key_id is required")
+	}
+
+	if err := s.store.ResetQuota(ctx, apiKeyID); err != nil {
+		return dErrors.Wrap(err, dErrors.CodeInternal, "failed to reset quota")
+	}
+
+	s.logAudit(ctx, "api_key_quota_reset",
+		"api_key_id", apiKeyID,
+	)
+
+	return nil
+}
+
+// List returns all quota records (PRD-017 FR-5)
+func (s *Service) List(ctx context.Context) ([]*models.APIKeyQuota, error) {
+	quotas, err := s.store.ListQuotas(ctx)
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to list quotas")
+	}
+	return quotas, nil
+}
+
+// UpdateTier changes the tier for an API key (PRD-017 FR-5)
+func (s *Service) UpdateTier(ctx context.Context, apiKeyID id.APIKeyID, tier models.QuotaTier) error {
+	if apiKeyID.IsNil() {
+		return dErrors.New(dErrors.CodeBadRequest, "api_key_id is required")
+	}
+	if !tier.IsValid() {
+		return dErrors.New(dErrors.CodeBadRequest, "invalid tier")
+	}
+
+	if err := s.store.UpdateTier(ctx, apiKeyID, tier); err != nil {
+		return dErrors.Wrap(err, dErrors.CodeInternal, "failed to update tier")
+	}
+
+	s.logAudit(ctx, "api_key_tier_updated",
+		"api_key_id", apiKeyID,
+		"tier", tier,
+	)
+
+	return nil
 }
 
 func (s *Service) logAudit(ctx context.Context, event string, attrs ...any) {

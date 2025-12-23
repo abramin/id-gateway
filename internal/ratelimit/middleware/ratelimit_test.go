@@ -39,16 +39,16 @@ func (s *MiddlewareSecuritySuite) SetupTest() {
 // =============================================================================
 
 type mockRateLimiter struct {
-	checkIPErr          error
-	checkIPResult       *models.RateLimitResult
-	checkUserErr        error
-	checkUserResult     *models.RateLimitResult
-	checkBothErr        error
-	checkBothResult     *models.RateLimitResult
-	checkAuthErr        error
-	checkAuthResult     *models.AuthRateLimitResult
-	checkGlobalErr      error
-	checkGlobalResult   bool
+	checkIPErr        error
+	checkIPResult     *models.RateLimitResult
+	checkUserErr      error
+	checkUserResult   *models.RateLimitResult
+	checkBothErr      error
+	checkBothResult   *models.RateLimitResult
+	checkAuthErr      error
+	checkAuthResult   *models.AuthRateLimitResult
+	checkGlobalErr    error
+	checkGlobalResult bool
 }
 
 func (m *mockRateLimiter) CheckIPRateLimit(_ context.Context, _ string, _ models.EndpointClass) (*models.RateLimitResult, error) {
@@ -253,9 +253,6 @@ func (s *MiddlewareSecuritySuite) TestNormalOperation() {
 // =============================================================================
 // Circuit Breaker Tests (PRD-017 FR-7)
 // =============================================================================
-// These tests document the expected circuit breaker behavior per PRD-017 FR-7.
-// NOTE: These tests are expected to FAIL until circuit breaker is fully implemented.
-
 func (s *MiddlewareSecuritySuite) TestCircuitBreaker() {
 	s.Run("circuit breaker opens after consecutive failures", func() {
 		// Setup: Rate limiter that always fails
