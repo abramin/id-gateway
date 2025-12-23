@@ -17,6 +17,22 @@ const (
 	deviceStateMismatch                           // session and cookie device IDs differ
 )
 
+// String returns a human-readable name for the device state.
+func (s deviceBindingState) String() string {
+	switch s {
+	case deviceStateOK:
+		return "ok"
+	case deviceStateAttached:
+		return "attached"
+	case deviceStateMissing:
+		return "missing"
+	case deviceStateMismatch:
+		return "mismatch"
+	default:
+		return "unknown"
+	}
+}
+
 func (s *Service) applyDeviceBinding(ctx context.Context, session *models.Session) {
 	// Phase 1: soft launch — log signals, do not enforce.
 	if !s.DeviceBindingEnabled {

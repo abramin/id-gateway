@@ -67,3 +67,31 @@ type tokenContext struct {
 	Tenant  *tenant.Tenant
 	User    *models.User
 }
+
+// prepareTokenFlow validates the session context and generates token artifacts.
+// This is shared between authorization code exchange and refresh token flows.
+// It consolidates: resolveTokenContext + client active check + generateTokenArtifacts.
+func (s *Service) prepareTokenFlow(
+	ctx context.Context,
+	session *models.Session,
+	clientID string,
+	sessionIDPtr *string,
+	flow TokenFlow,
+) (*tokenContext, *tokenArtifacts, error) {
+	tc, err := s.resolveTokenContext(ctx, session, clientID)
+	if err != nil {
+		return nil, nil, s.handleTokenError(ctx, err, clientID, sessionIDPtr, flow)
+	}
+
+	if !tc.Client.IsActive() {
+		return nil, nil, dErrors.New(dErrors.CodeForbidden, "client is not active")
+	}
+
+	// Generate tokens BEFORE entering transaction to avoid holding mutex during JWT generation
+	artifacts, err := s.generateTokenArtifacts(ctx, session)
+	if err != nil {
+		return nil, nil, s.handleTokenError(ctx, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate tokens"), clientID, sessionIDPtr, flow)
+	}
+
+	return tc, artifacts, nil
+}

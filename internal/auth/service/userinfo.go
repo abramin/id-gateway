@@ -30,13 +30,13 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 	}
 
 	session, err := s.sessions.FindByID(ctx, id.SessionID(parsedSessionID))
+	if errors.Is(err, sessionStore.ErrNotFound) {
+		s.authFailure(ctx, "session_not_found", false,
+			"session_id", parsedSessionID.String(),
+		)
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "session not found")
+	}
 	if err != nil {
-		if errors.Is(err, sessionStore.ErrNotFound) {
-			s.authFailure(ctx, "session_not_found", false,
-				"session_id", parsedSessionID.String(),
-			)
-			return nil, dErrors.New(dErrors.CodeUnauthorized, "session not found")
-		}
 		s.authFailure(ctx, "session_lookup_failed", true,
 			"session_id", parsedSessionID.String(),
 			"error", err,
@@ -53,14 +53,14 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 	}
 
 	user, err := s.users.FindByID(ctx, session.UserID)
+	if errors.Is(err, userStore.ErrNotFound) {
+		s.authFailure(ctx, "user_not_found", false,
+			"session_id", parsedSessionID.String(),
+			"user_id", session.UserID.String(),
+		)
+		return nil, dErrors.New(dErrors.CodeUnauthorized, "user not found")
+	}
 	if err != nil {
-		if errors.Is(err, userStore.ErrNotFound) {
-			s.authFailure(ctx, "user_not_found", false,
-				"session_id", parsedSessionID.String(),
-				"user_id", session.UserID.String(),
-			)
-			return nil, dErrors.New(dErrors.CodeUnauthorized, "user not found")
-		}
 		s.authFailure(ctx, "user_lookup_failed", true,
 			"session_id", parsedSessionID.String(),
 			"user_id", session.UserID.String(),

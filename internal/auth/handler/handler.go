@@ -69,6 +69,110 @@ func (h *Handler) RegisterAdmin(r chi.Router) {
 	r.Delete("/admin/auth/users/{user_id}", h.HandleAdminDeleteUser)
 }
 
+// requireUserIDFromContext parses user ID from auth context.
+// Returns false if parsing fails (error response already written).
+// Uses 401 Unauthorized since context IDs come from the JWT token.
+func (h *Handler) requireUserIDFromContext(ctx context.Context, w http.ResponseWriter, requestID string) (id.UserID, bool) {
+	userIDStr := auth.GetUserID(ctx)
+	userID, err := id.ParseUserID(userIDStr)
+	if err != nil {
+		h.logger.WarnContext(ctx, "invalid user_id in auth context",
+			"user_id", userIDStr,
+			"request_id", requestID,
+		)
+		httputil.WriteError(w, dErrors.New(dErrors.CodeUnauthorized, "invalid token"))
+		return id.UserID{}, false
+	}
+	return userID, true
+}
+
+// requireSessionIDFromContext parses session ID from auth context.
+// Returns false if parsing fails (error response already written).
+// Uses 401 Unauthorized since context IDs come from the JWT token.
+func (h *Handler) requireSessionIDFromContext(ctx context.Context, w http.ResponseWriter, requestID string) (id.SessionID, bool) {
+	sessionIDStr := auth.GetSessionID(ctx)
+	sessionID, err := id.ParseSessionID(sessionIDStr)
+	if err != nil {
+		h.logger.WarnContext(ctx, "invalid session_id in auth context",
+			"session_id", sessionIDStr,
+			"request_id", requestID,
+		)
+		httputil.WriteError(w, dErrors.New(dErrors.CodeUnauthorized, "invalid token"))
+		return id.SessionID{}, false
+	}
+	return sessionID, true
+}
+
+// requireSessionIDFromPath parses session ID from URL path parameter.
+// Returns false if parsing fails (error response already written).
+func (h *Handler) requireSessionIDFromPath(r *http.Request, w http.ResponseWriter, requestID string) (id.SessionID, bool) {
+	ctx := r.Context()
+	sessionIDStr := chi.URLParam(r, "session_id")
+	sessionID, err := id.ParseSessionID(sessionIDStr)
+	if err != nil {
+		h.logger.WarnContext(ctx, "invalid session_id in path",
+			"session_id", sessionIDStr,
+			"request_id", requestID,
+		)
+		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid session_id"))
+		return id.SessionID{}, false
+	}
+	return sessionID, true
+}
+
+// requireUserIDFromPath parses user ID from URL path parameter.
+// Returns false if parsing fails (error response already written).
+func (h *Handler) requireUserIDFromPath(r *http.Request, w http.ResponseWriter, requestID string) (id.UserID, bool) {
+	ctx := r.Context()
+	userIDStr := chi.URLParam(r, "user_id")
+	userID, err := id.ParseUserID(userIDStr)
+	if err != nil {
+		h.logger.WarnContext(ctx, "invalid user_id in path",
+			"user_id", userIDStr,
+			"request_id", requestID,
+		)
+		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid user_id"))
+		return id.UserID{}, false
+	}
+	return userID, true
+}
+
+// checkRateLimit checks if the request is within rate limits.
+// Returns true if allowed (including fail-open on errors), false if rate limited (response already written).
+func (h *Handler) checkRateLimit(ctx context.Context, w http.ResponseWriter, requestID, key1, key2, endpoint string) bool {
+	if h.ratelimit == nil {
+		return true
+	}
+
+	result, err := h.ratelimit.CheckAuthRateLimit(ctx, key1, key2)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "failed to check rate limit",
+			"error", err,
+			"request_id", requestID,
+			"endpoint", endpoint,
+		)
+		// Fail open - don't block if rate limiter is unavailable
+		return true
+	}
+
+	if !result.Allowed {
+		h.logger.WarnContext(ctx, "rate limit exceeded",
+			"request_id", requestID,
+			"retry_after", result.RetryAfter,
+			"endpoint", endpoint,
+		)
+		w.Header().Set("Retry-After", strconv.Itoa(result.RetryAfter))
+		httputil.WriteJSON(w, http.StatusTooManyRequests, map[string]any{
+			"error":       "rate_limit_exceeded",
+			"message":     "Too many requests. Please try again later.",
+			"retry_after": result.RetryAfter,
+		})
+		return false
+	}
+
+	return true
+}
+
 // HandleAuthorize implements POST /auth/authorize per PRD-001 FR-1.
 // Initiates an authentication session for a user by email.
 // If the user doesn't exist, creates them automatically.
@@ -91,27 +195,8 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check auth rate limit using email + IP composite key (PRD-017 FR-2)
-	if h.ratelimit != nil {
-		result, err := h.ratelimit.CheckAuthRateLimit(ctx, req.Email, clientIP)
-		if err != nil {
-			h.logger.ErrorContext(ctx, "failed to check auth rate limit",
-				"error", err,
-				"request_id", requestID,
-			)
-			// Fail open - don't block auth if rate limiter is unavailable
-		} else if !result.Allowed {
-			h.logger.WarnContext(ctx, "auth rate limit exceeded",
-				"request_id", requestID,
-				"retry_after", result.RetryAfter,
-			)
-			w.Header().Set("Retry-After", strconv.Itoa(result.RetryAfter))
-			httputil.WriteJSON(w, http.StatusTooManyRequests, map[string]any{
-				"error":       "rate_limit_exceeded",
-				"message":     "Too many authentication attempts. Please try again later.",
-				"retry_after": result.RetryAfter,
-			})
-			return
-		}
+	if !h.checkRateLimit(ctx, w, requestID, req.Email, clientIP, "authorize") {
+		return
 	}
 
 	res, err := h.auth.Authorize(ctx, &req)
@@ -163,28 +248,8 @@ func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check token rate limit using client_id + IP composite key
-	if h.ratelimit != nil && req.ClientID != "" {
-		result, err := h.ratelimit.CheckAuthRateLimit(ctx, req.ClientID, clientIP)
-		if err != nil {
-			h.logger.ErrorContext(ctx, "failed to check token rate limit",
-				"error", err,
-				"request_id", requestID,
-			)
-			// Fail open - don't block token exchange if rate limiter is unavailable
-		} else if !result.Allowed {
-			h.logger.WarnContext(ctx, "token rate limit exceeded",
-				"request_id", requestID,
-				"client_id", req.ClientID,
-				"retry_after", result.RetryAfter,
-			)
-			w.Header().Set("Retry-After", strconv.Itoa(result.RetryAfter))
-			httputil.WriteJSON(w, http.StatusTooManyRequests, map[string]any{
-				"error":       "rate_limit_exceeded",
-				"message":     "Too many token requests. Please try again later.",
-				"retry_after": result.RetryAfter,
-			})
-			return
-		}
+	if req.ClientID != "" && !h.checkRateLimit(ctx, w, requestID, req.ClientID, clientIP, "token") {
+		return
 	}
 
 	res, err := h.auth.Token(ctx, &req)
@@ -234,26 +299,14 @@ func (h *Handler) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
-	userIDStr := auth.GetUserID(ctx)
-	sessionIDStr := auth.GetSessionID(ctx)
 
-	userID, err := id.ParseUserID(userIDStr)
-	if err != nil {
-		h.logger.WarnContext(ctx, "invalid user_id in auth context",
-			"user_id", userIDStr,
-			"request_id", requestID,
-		)
-		httputil.WriteError(w, dErrors.New(dErrors.CodeUnauthorized, "invalid token"))
+	userID, ok := h.requireUserIDFromContext(ctx, w, requestID)
+	if !ok {
 		return
 	}
 
-	currentSessionID, err := id.ParseSessionID(sessionIDStr)
-	if err != nil {
-		h.logger.WarnContext(ctx, "invalid session_id in auth context",
-			"session_id", sessionIDStr,
-			"request_id", requestID,
-		)
-		httputil.WriteError(w, dErrors.New(dErrors.CodeUnauthorized, "invalid token"))
+	currentSessionID, ok := h.requireSessionIDFromContext(ctx, w, requestID)
+	if !ok {
 		return
 	}
 
@@ -262,7 +315,7 @@ func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 		h.logger.ErrorContext(ctx, "failed to list sessions",
 			"error", err,
 			"request_id", requestID,
-			"user_id", userIDStr,
+			"user_id", userID.String(),
 		)
 		httputil.WriteError(w, err)
 		return
@@ -274,26 +327,14 @@ func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleRevokeSession(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
-	userIDStr := auth.GetUserID(ctx)
 
-	userID, err := id.ParseUserID(userIDStr)
-	if err != nil {
-		h.logger.WarnContext(ctx, "invalid user id in context",
-			"error", err,
-			"request_id", requestID,
-		)
-		httputil.WriteError(w, dErrors.New(dErrors.CodeUnauthorized, "invalid user"))
+	userID, ok := h.requireUserIDFromContext(ctx, w, requestID)
+	if !ok {
 		return
 	}
 
-	sessionIDStr := chi.URLParam(r, "session_id")
-	sessionID, err := id.ParseSessionID(sessionIDStr)
-	if err != nil {
-		h.logger.WarnContext(ctx, "invalid session id in path",
-			"error", err,
-			"request_id", requestID,
-		)
-		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid session_id"))
+	sessionID, ok := h.requireSessionIDFromPath(r, w, requestID)
+	if !ok {
 		return
 	}
 
@@ -301,7 +342,7 @@ func (h *Handler) HandleRevokeSession(w http.ResponseWriter, r *http.Request) {
 		h.logger.ErrorContext(ctx, "failed to revoke session",
 			"error", err,
 			"request_id", requestID,
-			"session_id", sessionIDStr,
+			"session_id", sessionID.String(),
 		)
 		httputil.WriteError(w, err)
 		return
@@ -309,7 +350,7 @@ func (h *Handler) HandleRevokeSession(w http.ResponseWriter, r *http.Request) {
 
 	httputil.WriteJSON(w, http.StatusOK, &models.SessionRevocationResult{
 		Revoked:   true,
-		SessionID: sessionIDStr,
+		SessionID: sessionID.String(),
 		Message:   "Session revoked successfully",
 	})
 }
@@ -317,14 +358,9 @@ func (h *Handler) HandleRevokeSession(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
-	userIDParam := chi.URLParam(r, "user_id")
-	userID, err := id.ParseUserID(userIDParam)
-	if err != nil {
-		h.logger.WarnContext(ctx, "invalid user_id in delete request",
-			"user_id", userIDParam,
-			"request_id", requestID,
-		)
-		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid user_id"))
+
+	userID, ok := h.requireUserIDFromPath(r, w, requestID)
+	if !ok {
 		return
 	}
 

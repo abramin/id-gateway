@@ -27,19 +27,10 @@ func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.Tok
 	if err != nil {
 		return nil, s.handleTokenError(ctx, err, req.ClientID, &sessionID, TokenFlowCode)
 	}
-	tc, err := s.resolveTokenContext(ctx, session, req.ClientID)
-	if err != nil {
-		return nil, s.handleTokenError(ctx, err, req.ClientID, &sessionID, TokenFlowCode)
-	}
 
-	if !tc.Client.IsActive() {
-		return nil, dErrors.New(dErrors.CodeForbidden, "client is not active")
-	}
-
-	// Generate tokens BEFORE entering transaction to avoid holding mutex during JWT generation
-	artifacts, err := s.generateTokenArtifacts(ctx, session)
+	tc, artifacts, err := s.prepareTokenFlow(ctx, session, req.ClientID, &sessionID, TokenFlowCode)
 	if err != nil {
-		return nil, s.handleTokenError(ctx, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate tokens"), req.ClientID, &sessionID, TokenFlowCode)
+		return nil, err
 	}
 
 	// Add session ID to context for sharded locking
