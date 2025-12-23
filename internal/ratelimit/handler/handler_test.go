@@ -17,6 +17,15 @@ import (
 	"credo/internal/ratelimit/handler/mocks"
 )
 
+// =============================================================================
+// Handler Test Suite
+// =============================================================================
+// Justification: These tests validate request parsing at the HTTP boundary.
+// They ensure malformed JSON is rejected with 400 before reaching service layer.
+// Full request→service→response flows are covered by E2E feature tests in
+// e2e/features/ratelimit.feature (@admin, @allowlist scenarios).
+// These tests may be removed once E2E step definitions are fully implemented.
+
 type HandlerSuite struct {
 	suite.Suite
 	router      http.Handler
