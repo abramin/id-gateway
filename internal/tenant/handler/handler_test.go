@@ -22,7 +22,6 @@ import (
 
 const adminToken = "secret-token"
 
-// HandlerSuite provides shared test setup for tenant handler tests.
 type HandlerSuite struct {
 	suite.Suite
 	router http.Handler
@@ -55,7 +54,6 @@ func (s *HandlerSuite) TestAdminTokenRequired() {
 }
 
 func (s *HandlerSuite) TestCreateTenantAndClientViaHandlers() {
-	// Create tenant
 	tenantPayload := map[string]string{"name": "Acme"}
 	body, _ := json.Marshal(tenantPayload)
 	req := httptest.NewRequest(http.MethodPost, "/admin/tenants", bytes.NewReader(body))
@@ -73,7 +71,6 @@ func (s *HandlerSuite) TestCreateTenantAndClientViaHandlers() {
 	require.NoError(s.T(), err, "failed to decode tenant response")
 	assert.NotEqual(s.T(), uuid.Nil, tenantResp.TenantID, "expected tenant_id in response")
 
-	// Create client
 	clientPayload := map[string]any{
 		"tenant_id":      tenantResp.TenantID,
 		"name":           "Web",
@@ -101,7 +98,6 @@ func (s *HandlerSuite) TestCreateTenantAndClientViaHandlers() {
 	assert.NotEmpty(s.T(), clientResp.ClientSecret, "expected client secret in response")
 	assert.Equal(s.T(), tenantResp.TenantID, clientResp.TenantID, "expected client tenant_id to match created tenant")
 
-	// Get tenant details
 	tenantGetReq := httptest.NewRequest(http.MethodGet, "/admin/tenants/"+tenantResp.TenantID.String(), nil)
 	tenantGetReq.Header.Set("X-Admin-Token", adminToken)
 	tenantGetRec := httptest.NewRecorder()

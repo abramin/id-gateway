@@ -7,11 +7,18 @@ import (
 )
 
 type Config struct {
-	IPLimits    map[models.EndpointClass]Limit
-	UserLimits  map[models.EndpointClass]Limit
-	Global      GlobalLimit
-	AuthLockout AuthLockoutConfig
-	QuotaTiers  map[models.QuotaTier]QuotaLimit
+	IPLimits     map[models.EndpointClass]Limit
+	UserLimits   map[models.EndpointClass]Limit
+	ClientLimits ClientLimitConfig // Per-client rate limits (PRD-017 FR-2c)
+	Global       GlobalLimit
+	AuthLockout  AuthLockoutConfig
+	QuotaTiers   map[models.QuotaTier]QuotaLimit
+}
+
+// ClientLimitConfig defines per-client rate limits based on client type (PRD-017 FR-2c).
+type ClientLimitConfig struct {
+	ConfidentialLimit Limit // Server-side clients with secure secret storage
+	PublicLimit       Limit // SPAs/mobile apps - higher abuse risk
 }
 
 type Limit struct {
@@ -22,6 +29,7 @@ type Limit struct {
 type GlobalLimit struct {
 	PerInstancePerSecond int // 1000 req/sec per instance
 	GlobalPerSecond      int // 10000 req/sec across all instances
+	PerInstancePerHour   int // 100000 req/hour per instance (PRD-017 FR-6)
 }
 
 type AuthLockoutConfig struct {
@@ -31,6 +39,7 @@ type AuthLockoutConfig struct {
 	HardLockDuration       time.Duration // 15 minutes
 	CaptchaAfterLockouts   int           // 3 consecutive lockouts require CAPTCHA
 	ProgressiveBackoffBase time.Duration // 250ms base delay
+	SupportURL             string        // URL for user support (included in lockout response)
 }
 
 type QuotaLimit struct {
@@ -53,9 +62,15 @@ func DefaultConfig() *Config {
 			models.ClassRead:      {RequestsPerWindow: 200, Window: time.Hour}, // Decision evaluations
 			models.ClassWrite:     {RequestsPerWindow: 100, Window: time.Hour}, // Registry lookups
 		},
+		// Per-client rate limits (PRD-017 FR-2c)
+		ClientLimits: ClientLimitConfig{
+			ConfidentialLimit: Limit{RequestsPerWindow: 100, Window: time.Minute}, // Server-side clients
+			PublicLimit:       Limit{RequestsPerWindow: 30, Window: time.Minute},  // SPAs/mobile apps
+		},
 		Global: GlobalLimit{
 			PerInstancePerSecond: 1000,
 			GlobalPerSecond:      10000,
+			PerInstancePerHour:   100000, // PRD-017 FR-6
 		},
 		AuthLockout: AuthLockoutConfig{
 			AttemptsPerWindow:      5,
@@ -64,6 +79,7 @@ func DefaultConfig() *Config {
 			HardLockDuration:       15 * time.Minute,
 			CaptchaAfterLockouts:   3,
 			ProgressiveBackoffBase: 250 * time.Millisecond,
+			SupportURL:             "/support", // Override with actual support URL in production
 		},
 		QuotaTiers: map[models.QuotaTier]QuotaLimit{
 			models.QuotaTierFree:       {MonthlyRequests: 1000, OverageAllowed: false},
@@ -74,18 +90,22 @@ func DefaultConfig() *Config {
 	}
 }
 
-func (c *Config) GetIPLimit(class models.EndpointClass) (requestsPerWindow int, window time.Duration) {
-	if limit, ok := c.IPLimits[class]; ok {
-		return limit.RequestsPerWindow, limit.Window
+// GetIPLimit returns the IP rate limit for the given endpoint class.
+// Returns ok=false if no limit is configured (caller should deny the request per PRD-017 FR-1).
+func (c *Config) GetIPLimit(class models.EndpointClass) (requestsPerWindow int, window time.Duration, ok bool) {
+	if limit, found := c.IPLimits[class]; found {
+		return limit.RequestsPerWindow, limit.Window, true
 	}
-	// Default to read limits if class not found
-	return c.IPLimits[models.ClassRead].RequestsPerWindow, c.IPLimits[models.ClassRead].Window
+	// Default-deny: return false if class not found (PRD-017 FR-1)
+	return 0, 0, false
 }
 
-func (c *Config) GetUserLimit(class models.EndpointClass) (requestsPerWindow int, window time.Duration) {
-	if limit, ok := c.UserLimits[class]; ok {
-		return limit.RequestsPerWindow, limit.Window
+// GetUserLimit returns the user rate limit for the given endpoint class.
+// Returns ok=false if no limit is configured (caller should deny the request per PRD-017 FR-1).
+func (c *Config) GetUserLimit(class models.EndpointClass) (requestsPerWindow int, window time.Duration, ok bool) {
+	if limit, found := c.UserLimits[class]; found {
+		return limit.RequestsPerWindow, limit.Window, true
 	}
-	// Default to read limits if class not found
-	return c.UserLimits[models.ClassRead].RequestsPerWindow, c.UserLimits[models.ClassRead].Window
+	// Default-deny: return false if class not found (PRD-017 FR-1)
+	return 0, 0, false
 }

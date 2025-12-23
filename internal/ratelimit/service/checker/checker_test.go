@@ -154,9 +154,10 @@ func (s *CheckerFacadeSuite) TestDelegation() {
 	})
 
 	s.Run("CheckGlobalThrottle delegates to globalthrottle service", func() {
-		blocked, err := s.service.CheckGlobalThrottle(ctx)
+		// Returns allowed=true when not blocked (semantics changed from blocked to allowed)
+		allowed, err := s.service.CheckGlobalThrottle(ctx)
 		s.NoError(err)
-		s.False(blocked)
+		s.True(allowed)
 	})
 
 	s.Run("GetProgressiveBackoff delegates to authlockout service", func() {

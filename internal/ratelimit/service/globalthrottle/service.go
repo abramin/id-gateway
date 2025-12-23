@@ -65,6 +65,8 @@ func New(store Store, opts ...Option) (*Service, error) {
 	return svc, nil
 }
 
+// Check returns whether the request is allowed (true = allow, false = block).
+// It increments the global counter and checks against the configured limit.
 func (s *Service) Check(ctx context.Context) (bool, error) {
 	count, blocked, err := s.store.IncrementGlobal(ctx)
 	if err != nil {
@@ -78,7 +80,8 @@ func (s *Service) Check(ctx context.Context) (bool, error) {
 		)
 	}
 
-	return blocked, nil
+	// Return allowed semantics: !blocked means allowed
+	return !blocked, nil
 }
 
 func (s *Service) GetCount(ctx context.Context) (int, error) {

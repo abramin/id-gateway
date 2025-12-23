@@ -2,7 +2,6 @@ package models
 
 import "time"
 
-// TenantResponse is the HTTP response DTO for tenant operations.
 type TenantResponse struct {
 	ID        string       `json:"id"`
 	Name      string       `json:"name"`
@@ -10,13 +9,11 @@ type TenantResponse struct {
 	CreatedAt time.Time    `json:"created_at"`
 }
 
-// TenantCreateResponse wraps tenant creation result.
 type TenantCreateResponse struct {
 	TenantID string          `json:"tenant_id"`
 	Tenant   *TenantResponse `json:"tenant"`
 }
 
-// TenantDetailsResponse is the HTTP response for tenant with counts.
 type TenantDetailsResponse struct {
 	ID          string       `json:"id"`
 	Name        string       `json:"name"`
@@ -26,7 +23,6 @@ type TenantDetailsResponse struct {
 	ClientCount int          `json:"client_count"`
 }
 
-// ClientResponse is the HTTP response DTO for client operations.
 type ClientResponse struct {
 	ID            string   `json:"id"`
 	TenantID      string   `json:"tenant_id"`

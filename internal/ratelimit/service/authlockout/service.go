@@ -145,7 +145,6 @@ func (s *Service) Check(ctx context.Context, identifier, ip string) (*models.Aut
 	}, nil
 }
 
-// RecordFailure records a failed authentication attempt.
 func (s *Service) RecordFailure(ctx context.Context, identifier, ip string) (*models.AuthLockout, error) {
 	key := fmt.Sprintf("%s:%s:%s", keyPrefixAuth, identifier, ip)
 	current, err := s.store.RecordFailure(ctx, key)

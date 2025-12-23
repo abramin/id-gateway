@@ -91,9 +91,15 @@ func NewClient(
 	}, nil
 }
 
-// IsActive returns true if the client is active.
 func (c *Client) IsActive() bool {
 	return c.Status == ClientStatusActive
+}
+
+// IsConfidential returns true if the client is a confidential client (has a secret).
+// Confidential clients are server-side apps with secure secret storage.
+// Public clients are SPAs/mobile apps that cannot securely store secrets.
+func (c *Client) IsConfidential() bool {
+	return c.ClientSecretHash != ""
 }
 
 // TenantDetails aggregates tenant metadata with counts for admin dashboards.

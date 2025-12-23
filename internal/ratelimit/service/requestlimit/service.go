@@ -84,12 +84,42 @@ func New(
 }
 
 func (s *Service) CheckIP(ctx context.Context, ip string, class models.EndpointClass) (*models.RateLimitResult, error) {
-	requestsPerWindow, window := s.config.GetIPLimit(class)
+	requestsPerWindow, window, ok := s.config.GetIPLimit(class)
+	if !ok {
+		// Default-deny: no limit configured for this class (PRD-017 FR-1)
+		s.logAudit(ctx, "rate_limit_config_missing",
+			"identifier", privacy.AnonymizeIP(ip),
+			"endpoint_class", class,
+			"limit_type", keyPrefixIP,
+		)
+		return &models.RateLimitResult{
+			Allowed:    false,
+			Limit:      0,
+			Remaining:  0,
+			ResetAt:    time.Now(),
+			RetryAfter: 60, // Retry in 60 seconds
+		}, nil
+	}
 	return s.checkRateLimit(ctx, ip, class, keyPrefixIP, requestsPerWindow, window, privacy.AnonymizeIP(ip))
 }
 
 func (s *Service) CheckUser(ctx context.Context, userID string, class models.EndpointClass) (*models.RateLimitResult, error) {
-	requestsPerWindow, window := s.config.GetUserLimit(class)
+	requestsPerWindow, window, ok := s.config.GetUserLimit(class)
+	if !ok {
+		// Default-deny: no limit configured for this class (PRD-017 FR-1)
+		s.logAudit(ctx, "rate_limit_config_missing",
+			"identifier", userID,
+			"endpoint_class", class,
+			"limit_type", keyPrefixUser,
+		)
+		return &models.RateLimitResult{
+			Allowed:    false,
+			Limit:      0,
+			Remaining:  0,
+			ResetAt:    time.Now(),
+			RetryAfter: 60, // Retry in 60 seconds
+		}, nil
+	}
 	return s.checkRateLimit(ctx, userID, class, keyPrefixUser, requestsPerWindow, window, userID)
 }
 
@@ -135,16 +165,51 @@ func (s *Service) checkRateLimit(
 }
 
 func (s *Service) CheckBoth(ctx context.Context, ip, userID string, class models.EndpointClass) (*models.RateLimitResult, error) {
-	requestsPerWindow, window := s.config.GetIPLimit(class)
-	ipRes, err := s.checkRateLimit(ctx, ip, class, keyPrefixIP, requestsPerWindow, window, privacy.AnonymizeIP(ip))
+	// Check IP limit first
+	ipRequestsPerWindow, ipWindow, ipOk := s.config.GetIPLimit(class)
+	if !ipOk {
+		// Default-deny: no IP limit configured for this class (PRD-017 FR-1)
+		s.logAudit(ctx, "rate_limit_config_missing",
+			"identifier", privacy.AnonymizeIP(ip),
+			"endpoint_class", class,
+			"limit_type", keyPrefixIP,
+		)
+		return &models.RateLimitResult{
+			Allowed:    false,
+			Limit:      0,
+			Remaining:  0,
+			ResetAt:    time.Now(),
+			RetryAfter: 60,
+		}, nil
+	}
+
+	ipRes, err := s.checkRateLimit(ctx, ip, class, keyPrefixIP, ipRequestsPerWindow, ipWindow, privacy.AnonymizeIP(ip))
 	if err != nil {
 		return nil, err
 	}
 	if !ipRes.Allowed {
 		return ipRes, nil
 	}
-	requestsPerWindow, window = s.config.GetUserLimit(class)
-	userRes, err := s.checkRateLimit(ctx, userID, class, keyPrefixUser, requestsPerWindow, window, userID)
+
+	// Check user limit
+	userRequestsPerWindow, userWindow, userOk := s.config.GetUserLimit(class)
+	if !userOk {
+		// Default-deny: no user limit configured for this class (PRD-017 FR-1)
+		s.logAudit(ctx, "rate_limit_config_missing",
+			"identifier", userID,
+			"endpoint_class", class,
+			"limit_type", keyPrefixUser,
+		)
+		return &models.RateLimitResult{
+			Allowed:    false,
+			Limit:      0,
+			Remaining:  0,
+			ResetAt:    time.Now(),
+			RetryAfter: 60,
+		}, nil
+	}
+
+	userRes, err := s.checkRateLimit(ctx, userID, class, keyPrefixUser, userRequestsPerWindow, userWindow, userID)
 	if err != nil {
 		return nil, err
 	}
