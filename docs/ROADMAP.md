@@ -1,55 +1,64 @@
-# V2+ Roadmap: Production & Advanced Features
+# Roadmap: Production & Advanced Features
 
-**Status:** Post-Core Enhancement Plan
-**Target:** Production readiness + distinctive showcase features
-**Timeline:** 3-6 weeks after core PRD-001 through PRD-007 completion
-**Last Updated:** 2025-12-06
+**Status:** Phase-based delivery (source of truth: docs/prd/README.md)
+**Target:** MVP (Phases 0-2) -> Production Baseline (Phase 3) -> Advanced Packs (Phases 4-8)
+**Timeline:** MVP ~9-12 days; Production Baseline ~15-20 days; Full program ~52-69 days
+**Last Updated:** 2025-12-23
 
 ---
 
 ## Philosophy
 
-V2+ transforms Credo from a functional prototype into:
+This roadmap transforms Credo from a functional prototype into:
 
 1. **Production-ready system** with operational maturity
 2. **Distinctive platform** with advanced features that differentiate from "another Auth0 clone"
+
+**Note:** Phase sequencing and acceptance criteria live in `docs/prd/README.md`. This roadmap summarizes delivery tracks and packaging.
 
 ---
 
 ## Prerequisites
 
-Before starting V2+, complete:
+Before starting Phase 3+ work, complete Phase 0-2 PRDs:
 
-- ✅ All core PRDs implemented (PRD-001 through PRD-007)
-- ✅ `make test` passes with >80% coverage
-- ✅ Complete end-to-end flow works
-- ✅ Regulated mode minimizes PII correctly
+- Required: PRD-001, PRD-001B, PRD-016, PRD-026A, PRD-017, PRD-002
+- Required: PRD-003, PRD-004, PRD-005, PRD-006
+- Required: PRD-019, PRD-020, PRD-028 (Performance Optimization), PRD-007
+- Required: `make test` passes (coverage target defined per PRD)
+- Required: Complete end-to-end flow works
+- Required: Regulated mode minimizes PII correctly
 
-**Core System Time:** 48-61 hours (6-8 days)
+**MVP System Time:** ~73-95 hours (9-12 days)
 
 ---
 
 ## Development Tracks
 
-V2+ consists of THREE parallel tracks that can be pursued simultaneously:
+The delivery plan consists of THREE parallel tracks that can be pursued simultaneously:
 
 ### Track A: Production Hardening (MUST DO)
 
 **Priority:** P0 (Critical)
-**Time:** 28-43 hours (3.5-5 days)
-**Goal:** Make system operationally credible
+**Time:** 48-64 hours (6-8 days)
+**PRDs:** PRD-018, PRD-021, PRD-022, PRD-015, PRD-005B, PRD-028 (Security Enhancements)
+**Goal:** Beta-ready system with notifications, recovery, MFA, and policy controls
 
 ### Track B: Operational Excellence (RECOMMENDED)
 
 **Priority:** P1 (High)
-**Time:** 15-25 hours (2-3 days)
-**Goal:** Demonstrate scalability awareness
+**Time:** 19-28 hours (2.5-3.5 days)
+**PRDs:** PRD-019, PRD-020, PRD-028 (Performance Optimization), PRD-007
+**Goal:** Operational baseline with versioning, SRE, performance, and data rights
 
 ### Track C: Advanced/Showcase Features (DIFFERENTIATOR)
 
 **Priority:** P1-P3 (varies by feature)
-**Time:** 40-100 hours (5-12 days, pick 2-3 features)
+**Time:** 46-92+ hours (Phase 4-8, pick packs)
+**PRDs:** Phases 4-8 (Assurance, Decentralized, Integrations, Differentiation, Banking Identity)
 **Goal:** Stand out from "basic auth gateway" projects
+
+**Note:** Detailed sections below predate some PRD expansions. If conflicts exist, PRD specs in `docs/prd/` take precedence.
 
 ---
 
@@ -351,46 +360,43 @@ User → Keycloak (auth) → Gateway (consent+evidence+decision)
 
 # Track B: Operational Excellence (RECOMMENDED)
 
-See `SYSTEM_DESIGN_ROADMAP.md` for full details:
+See `docs/prd/README.md` for Phase 2 scope and acceptance criteria:
 
-## B1. Rate Limiting & DDoS Protection
+## B1. Rate Limiting & Abuse Prevention (PRD-017, Phase 0)
 
-**Time:** 3-5 hours
+**Time:** 8-10 hours
 
-- Token bucket algorithm per IP
-- Global rate limiting
-- Document: "Would add Cloudflare in production"
+- Sliding window limits per IP/user/client_id
+- Global throttling, allowlist, and Retry-After headers
+- Audit events and load-test verification
 
-## B2. Advanced Monitoring
-
-**Time:** 4-6 hours
-
-- Distributed tracing (OpenTelemetry)
-- Error tracking (Sentry)
-- Alerting rules
-
-## B3. Caching Layer
+## B2. API Versioning & Lifecycle (PRD-019)
 
 **Time:** 3-4 hours
 
-- Redis for registry responses
-- Cache invalidation strategy
+- URL-based versioning with deprecation headers
+- Sunset/deprecation policy and documentation
 
-## B4. Health Checks & Readiness
+## B3. Operational Readiness & SRE (PRD-020)
 
-**Time:** 2-3 hours
+**Time:** 8-12 hours
 
-- `/health` endpoint (liveness)
-- `/ready` endpoint (readiness)
-- Database connection check
+- Health checks, backups, DR plan, and runbooks
+- SLOs and operational dashboards
 
-## B5. Configuration Management
+## B4. Performance Optimization (PRD-028)
 
-**Time:** 2-3 hours
+**Time:** 4-6 hours
 
-- Environment-based config
-- Secrets management
-- Config validation
+- Auth/token hot path optimizations
+- Cache and pooling strategy
+
+## B5. User Data Rights (PRD-007)
+
+**Time:** 4-6 hours
+
+- GDPR export and deletion workflows
+- Audit coverage for data rights actions
 
 ---
 
@@ -419,6 +425,7 @@ These features make the project stand out from "basic auth gateways". Pick 2-3 b
 - Clear value proposition
 - Relevant to fintech, healthcare, compliance
 - Clear differentiator
+
 ### Value Highlight
 
 Built cryptographically verifiable audit system using Merkle trees for tamper-proof logging in identity verification gateway.
@@ -512,10 +519,6 @@ compliance_policies:
 - Trendy (AI/ML integration)
 - Moderate complexity
 
-### Resume Impact
-
-"Integrated ML-based fraud detection with adaptive risk scoring (Go microservices + Python ML pipeline) into identity verification system."
-
 ### Tech Stack
 
 - **ML:** XGBoost/LightGBM (Gradient Boosting)
@@ -553,10 +556,6 @@ Top Features:
 - Emerging W3C standard
 - Shows forward thinking
 - Relevant to identity startups (Digidentity)
-
-### Resume Impact
-
-"Built identity verification gateway using W3C Decentralized Identifiers (DIDs) for user-controlled, portable identity."
 
 ### DID Example
 
@@ -600,10 +599,6 @@ DID Document:
 - Requires solid cryptographic foundation
 - Complex implementation
 
-### Resume Impact
-
-"Implemented zero-knowledge proofs (Bulletproofs/Rust) for privacy-preserving age verification in identity gateway."
-
 ### ZK Example
 
 ```
@@ -635,10 +630,6 @@ Proof:
 - VC-JWT format
 - Credential schemas
 
-### Resume Impact
-
-"Implemented W3C Verifiable Credentials with BBS+ signatures for selective disclosure and privacy-preserving credential sharing."
-
 ---
 
 ## C7. Cerbos-Based Authorization
@@ -655,10 +646,6 @@ Proof:
 - RBAC + ABAC support
 - Policy testing framework
 - Audit trail for authorization
-
-### Resume Impact
-
-"Integrated Cerbos authorization engine with attribute-based access control (ABAC) and external policy management."
 
 ---
 
@@ -681,10 +668,6 @@ Proof:
 - No competitor offers consent-as-a-service
 - Positions Credo as a consent hub, not just an identity provider
 - Enterprise value for platforms managing multiple applications
-
-### Resume Impact
-
-"Built consent-as-a-service platform with multi-tenant delegation enabling unified consent management across partner applications."
 
 ---
 
@@ -709,10 +692,6 @@ Proof:
 - Reduces verification costs for low-risk operations
 - No competitor offers ZKP-based portable trust scores
 
-### Resume Impact
-
-"Implemented privacy-preserving trust score system with zero-knowledge proofs enabling cross-service reputation without revealing underlying data."
-
 ---
 
 ## C10. Compliance-as-Code Templates
@@ -735,10 +714,6 @@ Proof:
 - Immediate enterprise value (can start after Phase 2)
 - Reduces compliance setup from weeks to minutes
 - Differentiates from Auth0/Okta which lack compliance templates
-
-### Resume Impact
-
-"Built compliance-as-code template system enabling one-click GDPR/HIPAA/PCI-DSS configuration for identity platform."
 
 ---
 
@@ -763,10 +738,6 @@ Proof:
 - GDPR Article 25 data protection by design
 - No competitor offers privacy-preserving analytics for identity data
 
-### Resume Impact
-
-"Implemented differential privacy analytics engine enabling aggregate user insights while maintaining individual privacy guarantees."
-
 ---
 
 ## C12. Federated Trust Network
@@ -790,52 +761,65 @@ Proof:
 - Solves cold start problem for new users
 - Creates network effects and user stickiness
 
-### Resume Impact
+---
 
-"Built decentralized trust network with zero-knowledge vouching enabling privacy-preserving social identity verification."
+## C13. Assurance Pack (Biometrics, Fraud, Residency, Adaptive Auth)
+
+**PRDs:** PRD-013, PRD-023, PRD-024, PRD-027
+**Priority:** P1 (Regulated Industries)
+**Time Estimate:** 34-50 hours
+**Depends On:** PRD-001, PRD-003, PRD-005, PRD-006
+
+### What It Adds
+
+- Biometric verification and liveness checks
+- Fraud detection and security intelligence signals
+- Data residency controls and cross-border logging
+- Risk-based adaptive authentication
+
+---
+
+## C14. Banking Identity Pack
+
+**PRDs:** PRD-039, PRD-035, PRD-036, PRD-037, PRD-038
+**Priority:** P1 (Fintech/Banking)
+**Time Estimate:** 68-88 hours
+**Depends On:** PRD-001, PRD-021, PRD-018
+
+### What It Adds
+
+- SCA orchestration and step-up flows
+- Identity assurance levels and legal entity modeling
+- Multi-party approvals and delegated authority
 
 ---
 
 # Implementation Timeline
 
-## Minimum Viable V2 (3-4 weeks)
+## Phase 0-2: MVP (9-12 days)
 
-### Week 1: Production Hardening (Track A)
+- Phase 0 (4-5 days): PRD-001, PRD-001B, PRD-016, PRD-026A, PRD-017, PRD-002
+- Phase 1 (3-4 days): PRD-003, PRD-004, PRD-005, PRD-006
+- Phase 2 (2.5-3.5 days): PRD-019, PRD-020, PRD-028 (Performance Optimization), PRD-007
 
-- **Days 1-2:** JWT + JWKS (4-6h) + PostgreSQL (8-12h)
-- **Days 3-4:** Observability (3-5h) + Audit Queue (4-6h)
-- **Day 5:** Token Refresh & Revocation (5-7h)
+**Deliverable:** MVP complete (core identity flow + operational baseline)
 
-**Deliverable:** Production-ready gateway
+## Phase 3: Production Hardening (6-8 days)
 
-### Week 2: First Showcase Feature (Track C)
+- PRD-018, PRD-021, PRD-022, PRD-015, PRD-005B, PRD-028 (Security Enhancements)
+- TR-6 consent projections (defer if needed)
 
-- **Days 1-3:** Cryptographic Audit (PRD-006B) - 8-12 hours
-- **Days 4-5:** Testing, documentation, polish
+**Deliverable:** Production baseline
 
-**Deliverable:** Gateway with Merkle tree audit
+## Phases 4-8: Advanced Packs (29-57 days)
 
-### Week 3: Second Showcase Feature (Track C)
+- Phase 4 (7.5-10.5 days): PRD-013, PRD-023, PRD-006B, PRD-007B, PRD-008, PRD-024, PRD-027
+- Phase 5 (6-7 days): PRD-004B, PRD-009, PRD-010
+- Phase 6 (6-8 days): PRD-011, PRD-012, PRD-014, PRD-025, PRD-026
+- Phase 7 (9-12 days): PRD-029, PRD-030, PRD-031, PRD-032, PRD-033
+- Phase 8 (8.5-11 days): PRD-039, PRD-035, PRD-036, PRD-037, PRD-038
 
-- **Days 1-4:** GDPR Automation (PRD-008) - 12-16 hours
-- **Day 5:** Testing, documentation
-
-**Deliverable:** Gateway with compliance automation
-
-### Week 4: Polish & Documentation
-
-- Integration testing
-- Performance optimization
-- Comprehensive documentation
-- Demo preparation
-
-## Extended V2+ (4-6 weeks)
-
-Add Week 5-6 for:
-
-- **Third showcase feature** (ML Risk Scoring or DIDs)
-- **Operational excellence** (rate limiting, caching, monitoring)
-- **Advanced testing** (load tests, security audit)
+**Deliverable:** Full platform and banking identity packs
 
 ---
 
@@ -893,21 +877,19 @@ Add Week 5-6 for:
 
 ## Production Ready (Track A Complete)
 
-- [ ] JWT tokens signed and verifiable
-- [ ] PostgreSQL persistence working
-- [ ] Structured logging with correlation IDs
-- [ ] Prometheus metrics exposed
-- [ ] Queue-backed audit pipeline
-- [ ] Token refresh and revocation
-- [ ] Documentation for external OIDC
+- [ ] Notifications, MFA, and account recovery flows live (PRD-018/021/022)
+- [ ] Policy engines integrated and audited (PRD-015/005B)
+- [ ] Security enhancements applied (PRD-028 Security Enhancements)
+- [ ] Consent projection/TR-6 implemented or explicitly deferred
+- [ ] Phase 0-2 prerequisites complete
 
 ## Operationally Mature (Track B Complete)
 
-- [ ] Rate limiting implemented
-- [ ] Distributed tracing configured
-- [ ] Redis caching layer
-- [ ] Health checks functional
-- [ ] Config management externalized
+- [ ] API versioning and deprecation headers (PRD-019)
+- [ ] Operational readiness: health checks, backups, DR, runbooks (PRD-020)
+- [ ] Performance optimizations validated (PRD-028 Performance)
+- [ ] GDPR data rights workflows complete (PRD-007)
+- [ ] Rate limiting & abuse prevention verified (PRD-017)
 
 ## Showcase Complete (2-3 Track C Features)
 
@@ -926,10 +908,7 @@ Add Week 5-6 for:
 ❌ Full OIDC certification (use Keycloak instead)
 ❌ Social login integrations (delegate to external provider)
 ❌ Password management UI
-❌ Multi-factor authentication
-❌ Email verification flows
-❌ User account management portal
-❌ Multi-tenancy (can add later if needed)
+❌ Consumer-facing account management portal
 ❌ Mobile SDK (server-side focus)
 
 **Reason:** Focus on distinctive identity verification features, not generic auth features.
@@ -938,7 +917,7 @@ Add Week 5-6 for:
 
 # System Evolution Phases
 
-> *Merged from SYSTEM_DESIGN_ROADMAP.md*
+> _Merged from SYSTEM_DESIGN_ROADMAP.md_
 
 This section describes how Credo will evolve from a secure, correct core into a fully articulated system-design showcase. Each phase highlights specific engineering principles: scalability, resilience, performance, observability, and operational clarity.
 
@@ -1062,7 +1041,7 @@ The project concludes with a formal system design document for architecture revi
 
 # Module Adoption Guide
 
-> *Merged from MODULE_BUNDLES.md*
+> _Merged from MODULE_BUNDLES.md_
 
 This section explains how to consume the platform as composable modules while keeping a cohesive identity/evidence core.
 
@@ -1071,13 +1050,18 @@ This section explains how to consume the platform as composable modules while ke
 **Phase 0-2: Foundation → Operational Baseline**
 
 - PRD-001: Authentication & Session Management
+- PRD-001B: Admin - User Deletion
 - PRD-016: Token Lifecycle & Revocation
+- PRD-026A: Tenant & Client Management (MVP)
 - PRD-017: Rate Limiting & Abuse Prevention
 - PRD-002: Consent Management
 - PRD-003: Registry Integration (evidence orchestrator, provider chains)
-- PRD-004 / 004B: Verifiable Credentials issuance/validation
+- PRD-004: Verifiable Credentials issuance/validation
 - PRD-005: Decision Engine
 - PRD-006: Audit & Compliance Baseline
+- PRD-019: API Versioning & Lifecycle Management
+- PRD-020: Operational Readiness & SRE
+- PRD-028: Performance Optimization
 - PRD-007: User Data Rights (GDPR)
 
 **Use when:** You need the foundational identity workflow end-to-end.
@@ -1086,7 +1070,6 @@ This section explains how to consume the platform as composable modules while ke
 
 **Phase 0-3: Operational readiness and security**
 
-- PRD-017: Rate Limiting & Abuse Prevention
 - PRD-018: Notification Service (Email/SMS/Webhooks)
 - PRD-019: API Versioning & Lifecycle Management
 - PRD-020: Operational Readiness & SRE
@@ -1094,6 +1077,7 @@ This section explains how to consume the platform as composable modules while ke
 - PRD-022: Account Recovery & Credential Management
 - PRD-015: Credo Policy Engine (Internal PDP)
 - PRD-005B: Cerbos Authorization (External PDP)
+- PRD-028: Security Enhancements
 
 **Use when:** Deploying to production, need operational maturity and security hardening.
 
@@ -1107,6 +1091,7 @@ This section explains how to consume the platform as composable modules while ke
 - PRD-007B: ML Risk Scoring
 - PRD-008: GDPR/CCPA Automation
 - PRD-024: Data Residency & Sovereignty
+- PRD-027: Risk Based Adaptive Authentication
 
 **Use when:** You need higher assurance, fraud/risk scoring, and automated compliance.
 
@@ -1145,26 +1130,41 @@ This section explains how to consume the platform as composable modules while ke
 **Use when:** Differentiating from Auth0/Okta/Keycloak with unique capabilities no competitor offers.
 
 **Early Start Options:**
+
 - PRD-029 and PRD-031 can start after Phase 2 (no ZKP dependency)
 - PRD-030, PRD-032, PRD-033 require Phase 5 ZKP foundation
 
+## Banking Identity Pack (Fintech/Banking)
+
+**Phase 8: Banking identity capabilities**
+
+- PRD-039: SCA Orchestration (PSD2)
+- PRD-035: Identity Assurance Levels
+- PRD-036: Legal Entity Identity & Representation
+- PRD-037: Multi-Party Authorization
+- PRD-038: Delegated Authority
+
+**Use when:** Targeting fintech/banking identity gateway requirements.
+
 ## Adoption Timeline
 
-| Milestone | Timeline | PRDs |
-|-----------|----------|------|
-| Minimal Viable Product | 9-12 days | Core Identity Plane |
-| Production Baseline | 15-20 days | + Infrastructure Layer |
-| Full Production | 22-30 days | + Assurance Pack |
-| Advanced Features | 30-46 days | + Decentralized + Integrations |
-| Strategic Differentiation | 43-58 days | + Differentiation Pack |
+| Milestone                 | Timeline   | PRDs                                        |
+| ------------------------- | ---------- | ------------------------------------------- |
+| Minimal Viable Product    | 9-12 days  | Phases 0-2 (Core Identity Plane)            |
+| Production Baseline       | 15-20 days | + Phase 3 (Infrastructure Layer)            |
+| Regulated Ready           | 23-30 days | + Phase 4 (Assurance Pack)                  |
+| Full Platform             | 35-46 days | + Phases 5-6 (Decentralized + Integrations) |
+| Strategic Differentiation | 44-58 days | + Phase 7 (Differentiation Pack)            |
+| Banking Identity          | 52-69 days | + Phase 8 (Banking Identity Pack)           |
 
 ---
 
 # Revision History
 
-| Version | Date       | Author       | Changes                                                               |
-| ------- | ---------- | ------------ | --------------------------------------------------------------------- |
-| 1.0     | 2025-12-03 | Product Team | Initial V2 Roadmap                                                    |
-| 2.0     | 2025-12-06 | Product Team | Reorganized into tracks, added advanced features (DIDs, ZK, ML, GDPR) |
-| 3.0     | 2025-12-17 | Engineering  | Consolidated: merged SYSTEM_DESIGN_ROADMAP.md and MODULE_BUNDLES.md   |
+| Version | Date       | Author       | Changes                                                                                                                                          |
+| ------- | ---------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1.0     | 2025-12-03 | Product Team | Initial V2 Roadmap                                                                                                                               |
+| 2.0     | 2025-12-06 | Product Team | Reorganized into tracks, added advanced features (DIDs, ZK, ML, GDPR)                                                                            |
+| 3.0     | 2025-12-17 | Engineering  | Consolidated: merged SYSTEM_DESIGN_ROADMAP.md and MODULE_BUNDLES.md                                                                              |
 | 3.1     | 2025-12-17 | Engineering  | Added Phase 7 Differentiation Pack (C8-C12): Consent-as-a-Service, Trust Score, Compliance Templates, Privacy Analytics, Federated Trust Network |
+| 3.2     | 2025-12-23 | Engineering  | Aligned roadmap with Phase 0-8 PRDs, added Banking Identity pack, refreshed timelines                                                            |
