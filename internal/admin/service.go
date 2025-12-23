@@ -58,7 +58,12 @@ type UserInfo struct {
 	Verified     bool
 }
 
-// GetStats returns overall system statistics
+// GetStats returns overall system statistics.
+//
+// Error Suppression: Audit store errors are intentionally suppressed.
+// Stats are best-effort aggregations for admin dashboards; partial data
+// (users + sessions without audit counts) is more useful than a complete failure.
+// When audit is unavailable, VC and decision counts return zero.
 func (s *Service) GetStats(ctx context.Context) (*Stats, error) {
 	users, err := s.users.ListAll(ctx)
 	if err != nil {
@@ -79,10 +84,10 @@ func (s *Service) GetStats(ctx context.Context) (*Stats, error) {
 		}
 	}
 
-	// Get audit events for VC and decision counts
+	// Get audit events for VC and decision counts.
+	// Error suppression: see function doc for rationale.
 	events, err := s.audit.ListAll(ctx)
 	if err != nil {
-		// Don't fail if audit is unavailable
 		events = []audit.Event{}
 	}
 
@@ -106,7 +111,12 @@ func (s *Service) GetStats(ctx context.Context) (*Stats, error) {
 	}, nil
 }
 
-// GetAllUsers returns all users with their session information
+// GetAllUsers returns all users with their session information.
+//
+// Error Suppression: Session lookup errors are intentionally suppressed per-user.
+// If sessions cannot be retrieved for a specific user, that user is still included
+// in the response with SessionCount=0 and zero LastActive. This ensures the admin
+// dashboard displays all users even when session data is partially unavailable.
 func (s *Service) GetAllUsers(ctx context.Context) ([]*UserInfo, error) {
 	users, err := s.users.ListAll(ctx)
 	if err != nil {
@@ -115,9 +125,9 @@ func (s *Service) GetAllUsers(ctx context.Context) ([]*UserInfo, error) {
 
 	var userInfos []*UserInfo
 	for _, user := range users {
+		// Error suppression: see function doc for rationale.
 		sessions, err := s.sessions.ListByUser(ctx, user.ID)
 		if err != nil {
-			// If we can't get sessions, continue with 0 count
 			sessions = []*models.Session{}
 		}
 

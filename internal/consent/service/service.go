@@ -415,60 +415,25 @@ func (s *Service) Require(ctx context.Context, userID id.UserID, purpose models.
 	}
 
 	record, err := s.store.FindByUserAndPurpose(ctx, userID, purpose)
-	now := requesttime.Now(ctx)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			// Not found = missing consent
-			s.emitAudit(ctx, audit.Event{
-				UserID:    userID,
-				Purpose:   string(purpose),
-				Action:    models.AuditActionConsentCheckFailed,
-				Decision:  models.AuditDecisionDenied,
-				Reason:    models.AuditReasonUserInitiated,
-				Timestamp: now,
-			})
-			s.logConsentCheck(ctx, slog.LevelWarn, "consent_check_failed", userID, purpose, "missing")
-			s.incrementConsentCheckFailed(purpose)
+			s.recordConsentCheckOutcome(ctx, userID, purpose, outcomeMissing)
 			return pkgerrors.New(pkgerrors.CodeMissingConsent, "consent not granted for required purpose")
 		}
 		return pkgerrors.Wrap(err, pkgerrors.CodeInternal, "failed to read consent")
 	}
+
+	now := requesttime.Now(ctx)
 	if record.RevokedAt != nil {
-		s.emitAudit(ctx, audit.Event{
-			UserID:    userID,
-			Purpose:   string(purpose),
-			Action:    models.AuditActionConsentCheckFailed,
-			Decision:  models.AuditDecisionDenied,
-			Reason:    models.AuditReasonUserInitiated,
-			Timestamp: now,
-		})
-		s.logConsentCheck(ctx, slog.LevelWarn, "consent_check_failed", userID, purpose, "revoked")
-		s.incrementConsentCheckFailed(purpose)
+		s.recordConsentCheckOutcome(ctx, userID, purpose, outcomeRevoked)
 		return pkgerrors.New(pkgerrors.CodeInvalidConsent, "consent revoked")
 	}
 	if record.ExpiresAt != nil && record.ExpiresAt.Before(now) {
-		s.emitAudit(ctx, audit.Event{
-			UserID:    userID,
-			Purpose:   string(purpose),
-			Action:    models.AuditActionConsentCheckFailed,
-			Decision:  models.AuditDecisionDenied,
-			Reason:    models.AuditReasonUserInitiated,
-			Timestamp: now,
-		})
-		s.logConsentCheck(ctx, slog.LevelWarn, "consent_check_failed", userID, purpose, "expired")
-		s.incrementConsentCheckFailed(purpose)
+		s.recordConsentCheckOutcome(ctx, userID, purpose, outcomeExpired)
 		return pkgerrors.New(pkgerrors.CodeInvalidConsent, "consent expired")
 	}
-	s.emitAudit(ctx, audit.Event{
-		UserID:    userID,
-		Purpose:   string(purpose),
-		Action:    models.AuditActionConsentCheckPassed,
-		Decision:  models.AuditDecisionGranted,
-		Reason:    models.AuditReasonUserInitiated,
-		Timestamp: now,
-	})
-	s.logConsentCheck(ctx, slog.LevelInfo, "consent_check_passed", userID, purpose, "active")
-	s.incrementConsentCheckPassed(purpose)
+
+	s.recordConsentCheckOutcome(ctx, userID, purpose, outcomePassed)
 	return nil
 }
 
@@ -539,4 +504,46 @@ func (s *Service) logConsentCheck(ctx context.Context, level slog.Level, msg str
 		"purpose", purpose,
 		"state", state,
 	)
+}
+
+// consentCheckOutcome encapsulates the result of a consent check for unified recording.
+type consentCheckOutcome struct {
+	passed   bool
+	state    string // "missing", "revoked", "expired", "active"
+	decision string // models.AuditDecisionGranted or models.AuditDecisionDenied
+}
+
+var (
+	outcomeMissing = consentCheckOutcome{passed: false, state: "missing", decision: models.AuditDecisionDenied}
+	outcomeRevoked = consentCheckOutcome{passed: false, state: "revoked", decision: models.AuditDecisionDenied}
+	outcomeExpired = consentCheckOutcome{passed: false, state: "expired", decision: models.AuditDecisionDenied}
+	outcomePassed  = consentCheckOutcome{passed: true, state: "active", decision: models.AuditDecisionGranted}
+)
+
+// recordConsentCheckOutcome emits audit event, logs, and updates metrics for a consent check.
+func (s *Service) recordConsentCheckOutcome(ctx context.Context, userID id.UserID, purpose models.Purpose, outcome consentCheckOutcome) {
+	now := requesttime.Now(ctx)
+	action := models.AuditActionConsentCheckPassed
+	logLevel := slog.LevelInfo
+	logMsg := "consent_check_passed"
+	if !outcome.passed {
+		action = models.AuditActionConsentCheckFailed
+		logLevel = slog.LevelWarn
+		logMsg = "consent_check_failed"
+	}
+
+	s.emitAudit(ctx, audit.Event{
+		UserID:    userID,
+		Purpose:   string(purpose),
+		Action:    action,
+		Decision:  outcome.decision,
+		Reason:    models.AuditReasonUserInitiated,
+		Timestamp: now,
+	})
+	s.logConsentCheck(ctx, logLevel, logMsg, userID, purpose, outcome.state)
+	if outcome.passed {
+		s.incrementConsentCheckPassed(purpose)
+	} else {
+		s.incrementConsentCheckFailed(purpose)
+	}
 }
