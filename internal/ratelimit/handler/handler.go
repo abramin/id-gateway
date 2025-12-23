@@ -49,6 +49,9 @@ func (h *Handler) HandleAddAllowlist(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
 
+	// Limit request body size to prevent DoS via large payloads
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024) // 64KB max
+
 	var req models.AddAllowlistRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.logger.WarnContext(ctx, "failed to decode add allowlist request",
@@ -86,6 +89,9 @@ func (h *Handler) HandleAddAllowlist(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleRemoveAllowlist(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
+
+	// Limit request body size to prevent DoS via large payloads
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024) // 64KB max
 
 	var req models.RemoveAllowlistRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -140,6 +146,9 @@ func (h *Handler) HandleListAllowlist(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleResetRateLimit(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
+
+	// Limit request body size to prevent DoS via large payloads
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024) // 64KB max
 
 	var req models.ResetRateLimitRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

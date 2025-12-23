@@ -78,66 +78,67 @@ func (s *Service) Check(ctx context.Context, identifier, ip string) (*models.Aut
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to get auth lockout record")
 	}
 
+	// Use zero-valued record for consistent code path (prevents timing-based enumeration).
+	// All checks execute regardless of record existence to ensure constant-time behavior.
+	record := failureRecord
+	if record == nil {
+		record = &models.AuthLockout{}
+	}
+
+	now := time.Now()
+
 	// Check if currently hard-locked (FR-2b: "hard lock for 15 minutes")
-	if failureRecord != nil && failureRecord.IsLocked() {
-		retryAfter := int(time.Until(*failureRecord.LockedUntil).Seconds())
+	if record.IsLocked() {
+		retryAfter := int(time.Until(*record.LockedUntil).Seconds())
 		s.logAudit(ctx, "auth_lockout_triggered",
 			"identifier", identifier,
 			"ip", ip,
-			"locked_until", failureRecord.LockedUntil,
+			"locked_until", record.LockedUntil,
 		)
 		return &models.AuthRateLimitResult{
 			RateLimitResult: models.RateLimitResult{
 				Allowed:    false,
-				ResetAt:    *failureRecord.LockedUntil,
+				ResetAt:    *record.LockedUntil,
 				RetryAfter: retryAfter,
 			},
-			RequiresCaptcha: failureRecord.RequiresCaptcha,
-			FailureCount:    failureRecord.FailureCount,
+			RequiresCaptcha: record.RequiresCaptcha,
+			FailureCount:    record.FailureCount,
 		}, nil
 	}
 
 	// Check failure count against sliding window (FR-2b: "5 attempts/15 min")
-	if failureRecord != nil && failureRecord.IsAttemptLimitReached(s.config.AttemptsPerWindow) {
+	if record.IsAttemptLimitReached(s.config.AttemptsPerWindow) {
 		// Block - too many attempts in window
-		resetAt := s.config.ResetTime(failureRecord.LastFailureAt)
+		resetAt := s.config.ResetTime(record.LastFailureAt)
 		return &models.AuthRateLimitResult{
 			RateLimitResult: models.RateLimitResult{
 				Allowed:    false,
 				ResetAt:    resetAt,
 				RetryAfter: int(time.Until(resetAt).Seconds()),
 			},
-			RequiresCaptcha: failureRecord.RequiresCaptcha,
-			FailureCount:    failureRecord.FailureCount,
+			RequiresCaptcha: record.RequiresCaptcha,
+			FailureCount:    record.FailureCount,
 		}, nil
 	}
 
 	// Apply progressive backoff (FR-2b: "250ms → 500ms → 1s")
-	if failureRecord != nil && failureRecord.FailureCount > 0 {
-		delay := s.GetProgressiveBackoff(failureRecord.FailureCount)
-		return &models.AuthRateLimitResult{
-			RateLimitResult: models.RateLimitResult{
-				Allowed:    true,
-				Limit:      s.config.AttemptsPerWindow,
-				Remaining:  failureRecord.RemainingAttempts(s.config.AttemptsPerWindow),
-				ResetAt:    time.Now().Add(s.config.WindowDuration),
-				RetryAfter: int(delay.Milliseconds()),
-			},
-			RequiresCaptcha: failureRecord.RequiresCaptcha,
-			FailureCount:    failureRecord.FailureCount,
-		}, nil
+	// Calculate backoff even for zero failures to maintain constant-time behavior
+	delay := s.GetProgressiveBackoff(record.FailureCount)
+	remaining := record.RemainingAttempts(s.config.AttemptsPerWindow)
+	if remaining > s.config.AttemptsPerWindow {
+		remaining = s.config.AttemptsPerWindow
 	}
 
 	return &models.AuthRateLimitResult{
 		RateLimitResult: models.RateLimitResult{
 			Allowed:    true,
 			Limit:      s.config.AttemptsPerWindow,
-			Remaining:  s.config.AttemptsPerWindow,
-			ResetAt:    time.Now().Add(s.config.WindowDuration),
-			RetryAfter: 0,
+			Remaining:  remaining,
+			ResetAt:    now.Add(s.config.WindowDuration),
+			RetryAfter: int(delay.Milliseconds()),
 		},
-		RequiresCaptcha: failureRecord != nil && failureRecord.RequiresCaptcha,
-		FailureCount:    0,
+		RequiresCaptcha: record.RequiresCaptcha,
+		FailureCount:    record.FailureCount,
 	}, nil
 }
 

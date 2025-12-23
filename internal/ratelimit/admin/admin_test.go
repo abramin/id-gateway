@@ -3,6 +3,7 @@ package admin
 //go:generate mockgen -source=admin.go -destination=mocks/mocks.go -package=mocks AllowlistStore,BucketStore,AuditPublisher
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"credo/internal/ratelimit/admin/mocks"
+	"credo/internal/ratelimit/models"
 )
 
 // =============================================================================
@@ -87,5 +89,63 @@ func (s *AdminServiceSuite) TestNew() {
 		s.NoError(err)
 		s.Equal(logger, svc.logger)
 		s.Equal(s.mockAuditPublisher, svc.auditPublisher)
+	})
+}
+
+// =============================================================================
+// ResetRateLimit Normalization Tests (Security)
+// =============================================================================
+// Security test: Verify normalization is applied before validation to handle
+// mixed case/whitespace input consistently.
+
+func (s *AdminServiceSuite) TestResetRateLimitNormalization() {
+	ctx := context.Background()
+
+	s.Run("mixed case type is normalized before validation", func() {
+		// Input with mixed case - should be normalized to lowercase
+		req := &models.ResetRateLimitRequest{
+			Type:       "  IP  ",                // Mixed case with whitespace
+			Identifier: "  192.168.1.100  ",     // Whitespace around
+			Class:      "  AUTH  ",              // Mixed case with whitespace
+		}
+
+		// Mock should receive the sanitized key (after normalization)
+		s.mockBuckets.EXPECT().
+			Reset(ctx, "rl:ip:192.168.1.100").
+			Return(nil)
+		s.mockAuditPublisher.EXPECT().
+			Emit(ctx, gomock.Any()).
+			Return(nil)
+
+		err := s.service.ResetRateLimit(ctx, req)
+		s.NoError(err)
+	})
+
+	s.Run("user_id type with whitespace is normalized", func() {
+		req := &models.ResetRateLimitRequest{
+			Type:       "  USER_ID  ",
+			Identifier: "  user-123  ",
+		}
+
+		s.mockBuckets.EXPECT().
+			Reset(ctx, "rl:user:user-123").
+			Return(nil)
+		s.mockAuditPublisher.EXPECT().
+			Emit(ctx, gomock.Any()).
+			Return(nil)
+
+		err := s.service.ResetRateLimit(ctx, req)
+		s.NoError(err)
+	})
+
+	s.Run("invalid type after normalization returns error", func() {
+		req := &models.ResetRateLimitRequest{
+			Type:       "  INVALID  ",
+			Identifier: "192.168.1.100",
+		}
+
+		err := s.service.ResetRateLimit(ctx, req)
+		s.Error(err)
+		s.Contains(err.Error(), "type must be")
 	})
 }

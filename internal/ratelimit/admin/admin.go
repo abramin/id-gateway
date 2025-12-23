@@ -121,6 +121,7 @@ func (s *Service) ListAllowlist(ctx context.Context) ([]*models.AllowlistEntry, 
 }
 
 func (s *Service) ResetRateLimit(ctx context.Context, req *models.ResetRateLimitRequest) error {
+	req.Normalize()
 	if err := req.Validate(); err != nil {
 		return fmt.Errorf("invalid reset rate limit request: %w", err)
 	}
