@@ -221,6 +221,18 @@ func (s *ServiceSuite) TestResolveClient() {
 	assert.Equal(s.T(), created.ID, client.ID)
 }
 
+func (s *ServiceSuite) TestResolveClientRejectsInactiveTenant() {
+	tenantRecord := s.createTestTenant("Acme")
+	created := s.createTestClient(tenantRecord.ID)
+
+	// Deactivate the tenant
+	tenantRecord.Status = tenant.TenantStatusInactive
+
+	_, _, err := s.service.ResolveClient(context.Background(), created.OAuthClientID)
+	require.Error(s.T(), err)
+	assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeInvalidClient), "expected invalid_client for inactive tenant")
+}
+
 func (s *ServiceSuite) TestCreateClientNormalizesInput() {
 	tenantRecord := s.createTestTenant("Acme")
 

@@ -305,6 +305,9 @@ func (s *Service) ResolveClient(ctx context.Context, clientID string) (*models.C
 	if err != nil {
 		return nil, nil, wrapTenantErr(err, "failed to load tenant for client")
 	}
+	if !tenant.IsActive() {
+		return nil, nil, dErrors.New(dErrors.CodeInvalidClient, "tenant is inactive")
+	}
 	return client, tenant, nil
 }
 

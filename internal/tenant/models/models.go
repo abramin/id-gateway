@@ -15,6 +15,11 @@ type Tenant struct {
 	CreatedAt time.Time    `json:"created_at"`
 }
 
+// IsActive returns true if the tenant is in active status.
+func (t *Tenant) IsActive() bool {
+	return t.Status == TenantStatusActive
+}
+
 // NewTenant creates a Tenant with domain invariant checks.
 func NewTenant(tenantID id.TenantID, name string) (*Tenant, error) {
 	if name == "" {
