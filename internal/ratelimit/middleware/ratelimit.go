@@ -31,12 +31,13 @@ type ClientRateLimiter interface {
 }
 
 type Middleware struct {
-	limiter        RateLimiter
-	logger         *slog.Logger
-	disabled       bool
-	supportURL     string // URL for user support (included in auth lockout response)
-	circuitBreaker *CircuitBreaker
-	fallback       *fallbackLimiter
+	limiter         RateLimiter
+	logger          *slog.Logger
+	disabled        bool
+	supportURL      string // URL for user support (included in auth lockout response)
+	ipBreaker       *CircuitBreaker
+	combinedBreaker *CircuitBreaker
+	fallback        RateLimiter
 }
 
 // Circuit breaker state (PRD-017 FR-7):
@@ -110,11 +111,26 @@ type fallbackLimiter struct {
 	requests *requestlimit.Service
 }
 
-func newFallbackLimiter(logger *slog.Logger) *fallbackLimiter {
+func NewFallbackLimiter(cfg *config.Config, allowlistStore requestlimit.AllowlistStore, logger *slog.Logger) RateLimiter {
+	return newFallbackLimiterWithConfig(cfg, allowlistStore, logger)
+}
+
+func newFallbackLimiter(logger *slog.Logger) RateLimiter {
+	return newFallbackLimiterWithConfig(config.DefaultConfig(), allowlist.New(), logger)
+}
+
+func newFallbackLimiterWithConfig(cfg *config.Config, allowlistStore requestlimit.AllowlistStore, logger *slog.Logger) RateLimiter {
+	if cfg == nil {
+		cfg = config.DefaultConfig()
+	}
+	if allowlistStore == nil {
+		allowlistStore = allowlist.New()
+	}
 	requests, err := requestlimit.New(
 		bucket.New(),
-		allowlist.New(),
+		allowlistStore,
 		requestlimit.WithLogger(logger),
+		requestlimit.WithConfig(cfg),
 	)
 	if err != nil {
 		if logger != nil {
@@ -167,13 +183,22 @@ func WithSupportURL(url string) Option {
 	}
 }
 
+func WithFallbackLimiter(limiter RateLimiter) Option {
+	return func(m *Middleware) {
+		if limiter != nil {
+			m.fallback = limiter
+		}
+	}
+}
+
 func New(limiter RateLimiter, logger *slog.Logger, opts ...Option) *Middleware {
 	fallback := newFallbackLimiter(logger)
 	m := &Middleware{
-		limiter:        limiter,
-		logger:         logger,
-		circuitBreaker: newCircuitBreaker(),
-		fallback:       fallback,
+		limiter:         limiter,
+		logger:          logger,
+		ipBreaker:       newCircuitBreaker(),
+		combinedBreaker: newCircuitBreaker(),
+		fallback:        fallback,
 	}
 	for _, opt := range opts {
 		opt(m)
@@ -281,6 +306,7 @@ func (m *Middleware) GlobalThrottle() func(http.Handler) http.Handler {
 			allowed, err := m.limiter.CheckGlobalThrottle(ctx)
 			if err != nil {
 				// Fail-open: see RateLimit() for design rationale.
+				w.Header().Set("X-RateLimit-Status", "degraded")
 				m.logger.Error("failed to check global throttle", "error", err)
 				next.ServeHTTP(w, r)
 				return
@@ -419,7 +445,7 @@ func (m *ClientMiddleware) RateLimitClient() func(http.Handler) http.Handler {
 func (m *Middleware) checkIPRateLimit(ctx context.Context, ip string, class models.EndpointClass) (*models.RateLimitResult, bool, error) {
 	result, err := m.limiter.CheckIPRateLimit(ctx, ip, class)
 	if err != nil {
-		if m.circuitBreaker.RecordFailure() && m.fallback != nil {
+		if m.ipBreaker.RecordFailure() && m.fallback != nil {
 			fallbackResult, fallbackErr := m.fallback.CheckIPRateLimit(ctx, ip, class)
 			if fallbackErr != nil {
 				if m.logger != nil {
@@ -432,7 +458,7 @@ func (m *Middleware) checkIPRateLimit(ctx context.Context, ip string, class mode
 		return nil, false, err
 	}
 
-	if !m.circuitBreaker.RecordSuccess() && m.fallback != nil {
+	if !m.ipBreaker.RecordSuccess() && m.fallback != nil {
 		fallbackResult, fallbackErr := m.fallback.CheckIPRateLimit(ctx, ip, class)
 		if fallbackErr != nil {
 			if m.logger != nil {
@@ -449,7 +475,7 @@ func (m *Middleware) checkIPRateLimit(ctx context.Context, ip string, class mode
 func (m *Middleware) checkBothLimits(ctx context.Context, ip, userID string, class models.EndpointClass) (*models.RateLimitResult, bool, error) {
 	result, err := m.limiter.CheckBothLimits(ctx, ip, userID, class)
 	if err != nil {
-		if m.circuitBreaker.RecordFailure() && m.fallback != nil {
+		if m.combinedBreaker.RecordFailure() && m.fallback != nil {
 			fallbackResult, fallbackErr := m.fallback.CheckBothLimits(ctx, ip, userID, class)
 			if fallbackErr != nil {
 				if m.logger != nil {
@@ -462,7 +488,7 @@ func (m *Middleware) checkBothLimits(ctx context.Context, ip, userID string, cla
 		return nil, false, err
 	}
 
-	if !m.circuitBreaker.RecordSuccess() && m.fallback != nil {
+	if !m.combinedBreaker.RecordSuccess() && m.fallback != nil {
 		fallbackResult, fallbackErr := m.fallback.CheckBothLimits(ctx, ip, userID, class)
 		if fallbackErr != nil {
 			if m.logger != nil {

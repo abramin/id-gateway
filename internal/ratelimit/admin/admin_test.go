@@ -104,14 +104,14 @@ func (s *AdminServiceSuite) TestResetRateLimitNormalization() {
 	s.Run("mixed case type is normalized before validation", func() {
 		// Input with mixed case - should be normalized to lowercase
 		req := &models.ResetRateLimitRequest{
-			Type:       "  IP  ",                // Mixed case with whitespace
-			Identifier: "  192.168.1.100  ",     // Whitespace around
-			Class:      "  AUTH  ",              // Mixed case with whitespace
+			Type:       "  IP  ",            // Mixed case with whitespace
+			Identifier: "  192.168.1.100  ", // Whitespace around
+			Class:      "  AUTH  ",          // Mixed case with whitespace
 		}
 
 		// Mock should receive the sanitized key (after normalization)
 		s.mockBuckets.EXPECT().
-			Reset(ctx, "rl:ip:192.168.1.100").
+			Reset(ctx, "ip:192.168.1.100:auth").
 			Return(nil)
 		s.mockAuditPublisher.EXPECT().
 			Emit(ctx, gomock.Any()).
@@ -128,7 +128,16 @@ func (s *AdminServiceSuite) TestResetRateLimitNormalization() {
 		}
 
 		s.mockBuckets.EXPECT().
-			Reset(ctx, "rl:user:user-123").
+			Reset(ctx, "user:user-123:auth").
+			Return(nil)
+		s.mockBuckets.EXPECT().
+			Reset(ctx, "user:user-123:sensitive").
+			Return(nil)
+		s.mockBuckets.EXPECT().
+			Reset(ctx, "user:user-123:read").
+			Return(nil)
+		s.mockBuckets.EXPECT().
+			Reset(ctx, "user:user-123:write").
 			Return(nil)
 		s.mockAuditPublisher.EXPECT().
 			Emit(ctx, gomock.Any()).

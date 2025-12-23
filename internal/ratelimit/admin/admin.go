@@ -125,15 +125,29 @@ func (s *Service) ResetRateLimit(ctx context.Context, req *models.ResetRateLimit
 	if err := req.Validate(); err != nil {
 		return fmt.Errorf("invalid reset rate limit request: %w", err)
 	}
-	keys := []string{}
-	sanitizedID := models.SanitizeKeySegment(req.Identifier)
+	classes := []models.EndpointClass{req.Class}
+	if req.Class == "" {
+		classes = []models.EndpointClass{
+			models.ClassAuth,
+			models.ClassSensitive,
+			models.ClassRead,
+			models.ClassWrite,
+		}
+	}
+	keys := make([]string, 0, len(classes))
+	var prefix models.KeyPrefix
 	switch req.Type {
 	case models.AllowlistTypeIP:
-		keys = append(keys, fmt.Sprintf("rl:ip:%s", sanitizedID))
+		prefix = models.KeyPrefixIP
 	case models.AllowlistTypeUserID:
-		keys = append(keys, fmt.Sprintf("rl:user:%s", sanitizedID))
+		prefix = models.KeyPrefixUser
 	default:
 		return fmt.Errorf("unknown identifier type: %s", req.Type)
+	}
+
+	for _, class := range classes {
+		key := models.NewRateLimitKey(prefix, req.Identifier, class).String()
+		keys = append(keys, key)
 	}
 
 	for _, key := range keys {

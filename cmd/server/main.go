@@ -13,8 +13,8 @@ import (
 	authAdapters "credo/internal/auth/adapters"
 	"credo/internal/auth/device"
 	authHandler "credo/internal/auth/handler"
-	authPorts "credo/internal/auth/ports"
 	authmetrics "credo/internal/auth/metrics"
+	authPorts "credo/internal/auth/ports"
 	authService "credo/internal/auth/service"
 	authCodeStore "credo/internal/auth/store/authorization-code"
 	refreshTokenStore "credo/internal/auth/store/refresh-token"
@@ -104,12 +104,18 @@ func main() {
 		panic(err)
 	}
 
-	checkerSvc, allowlistStore, err := buildRateLimitServices(infra.Log)
+	checkerSvc, allowlistStore, rateLimitCfg, err := buildRateLimitServices(infra.Log)
 	if err != nil {
 		infra.Log.Error("failed to initialize rate limit services", "error", err)
 		os.Exit(1)
 	}
-	rateLimitMiddleware := rateLimitMW.New(checkerSvc, infra.Log, rateLimitMW.WithDisabled(infra.Cfg.DemoMode || infra.Cfg.DisableRateLimiting))
+	fallbackLimiter := rateLimitMW.NewFallbackLimiter(rateLimitCfg, allowlistStore, infra.Log)
+	rateLimitMiddleware := rateLimitMW.New(
+		checkerSvc,
+		infra.Log,
+		rateLimitMW.WithDisabled(infra.Cfg.DemoMode || infra.Cfg.DisableRateLimiting),
+		rateLimitMW.WithFallbackLimiter(fallbackLimiter),
+	)
 
 	appCtx, cancelApp := context.WithCancel(context.Background())
 	defer cancelApp()
@@ -144,7 +150,7 @@ func main() {
 	waitForShutdown([]*http.Server{mainSrv, adminSrv}, infra.Log, cancelApp)
 }
 
-func buildRateLimitServices(logger *slog.Logger) (*rateLimitChecker.Service, *rwallowlistStore.InMemoryAllowlistStore, error) {
+func buildRateLimitServices(logger *slog.Logger) (*rateLimitChecker.Service, *rwallowlistStore.InMemoryAllowlistStore, *rateLimitConfig.Config, error) {
 	cfg := rateLimitConfig.DefaultConfig()
 
 	// Create stores
@@ -157,10 +163,11 @@ func buildRateLimitServices(logger *slog.Logger) (*rateLimitChecker.Service, *rw
 	// Create focused services
 	requestSvc, err := requestlimit.New(bucketStore, allowlistStore,
 		requestlimit.WithLogger(logger),
+		requestlimit.WithConfig(cfg),
 	)
 	if err != nil {
 		logger.Error("failed to create request limit service", "error", err)
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	authLockoutSvc, err := authlockout.New(authLockoutSt,
@@ -168,7 +175,7 @@ func buildRateLimitServices(logger *slog.Logger) (*rateLimitChecker.Service, *rw
 	)
 	if err != nil {
 		logger.Error("failed to create auth lockout service", "error", err)
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	quotaSvc, err := quota.New(quotaSt,
@@ -176,7 +183,7 @@ func buildRateLimitServices(logger *slog.Logger) (*rateLimitChecker.Service, *rw
 	)
 	if err != nil {
 		logger.Error("failed to create quota service", "error", err)
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	globalThrottleSvc, err := globalthrottle.New(globalThrottleSt,
@@ -184,7 +191,7 @@ func buildRateLimitServices(logger *slog.Logger) (*rateLimitChecker.Service, *rw
 	)
 	if err != nil {
 		logger.Error("failed to create global throttle service", "error", err)
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// Create facade
@@ -197,13 +204,13 @@ func buildRateLimitServices(logger *slog.Logger) (*rateLimitChecker.Service, *rw
 	)
 	if err != nil {
 		logger.Error("failed to create rate limit checker service", "error", err)
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// Note: Admin service would be created here if needed for rate limit admin handlers
 	// adminSvc, err := rateLimitAdmin.New(allowlistStore, bucketStore, rateLimitAdmin.WithLogger(logger))
 
-	return checkerSvc, allowlistStore, nil
+	return checkerSvc, allowlistStore, cfg, nil
 }
 
 func buildInfra() (*infraBundle, error) {
