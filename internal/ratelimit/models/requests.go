@@ -162,3 +162,38 @@ func (r *ResetRateLimitRequest) Validate() error {
 
 	return nil
 }
+
+// =============================================================================
+// PRD-017 FR-5: Partner API Quota Requests/Responses
+// =============================================================================
+
+// ResetQuotaRequest is the request body for POST /admin/rate-limit/quota/:api_key/reset
+type ResetQuotaRequest struct {
+	Reason string `json:"reason,omitempty"`
+}
+
+// UpdateQuotaTierRequest is the request body for PUT /admin/rate-limit/quota/:api_key/tier
+type UpdateQuotaTierRequest struct {
+	Tier string `json:"tier"`
+}
+
+func (r *UpdateQuotaTierRequest) Validate() error {
+	if r == nil {
+		return dErrors.New(dErrors.CodeBadRequest, "request is required")
+	}
+	tier := QuotaTier(strings.TrimSpace(strings.ToLower(r.Tier)))
+	if !tier.IsValid() {
+		return dErrors.New(dErrors.CodeValidation, "tier must be 'free', 'starter', 'business', or 'enterprise'")
+	}
+	return nil
+}
+
+// QuotaUsageResponse is the response for GET /admin/rate-limit/quota/:api_key
+type QuotaUsageResponse struct {
+	APIKeyID  string    `json:"api_key_id"`
+	Tier      string    `json:"tier"`
+	Usage     int       `json:"usage"`
+	Limit     int       `json:"limit"`
+	Remaining int       `json:"remaining"`
+	ResetAt   time.Time `json:"reset_at"`
+}

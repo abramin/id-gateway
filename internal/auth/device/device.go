@@ -18,12 +18,10 @@ func NewService(enabled bool) *Service {
 	return &Service{enabled: enabled}
 }
 
-// GenerateDeviceID creates a new stable device identifier (cookie value).
 func (s *Service) GenerateDeviceID() string {
 	return uuid.New().String()
 }
 
-// ComputeFingerprint hashes stable User-Agent components.
 // Note: Does NOT include IP address (too volatile; used only for contextual risk scoring).
 func (s *Service) ComputeFingerprint(userAgentString string) string {
 	if !s.enabled || userAgentString == "" {
@@ -61,22 +59,8 @@ func (s *Service) ComputeFingerprint(userAgentString string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-// ValidateDeviceID checks if the device ID matches.
-// When the session has no device ID (legacy), validation passes.
-func (s *Service) ValidateDeviceID(sessionDeviceID, cookieDeviceID string) bool {
-	if !s.enabled {
-		return true
-	}
-	if sessionDeviceID == "" {
-		return true
-	}
-	return sessionDeviceID == cookieDeviceID
-}
-
-// CompareFingerprints checks for fingerprint drift (soft signal).
-// When the session has no fingerprint (legacy), comparison passes.
 func (s *Service) CompareFingerprints(stored, current string) (matched bool, driftDetected bool) {
-	if !s.enabled || stored == "" {
+	if !s.enabled {
 		return true, false
 	}
 	matched = stored == current
@@ -96,7 +80,6 @@ func ParseUserAgent(userAgentString string) string {
 	browser, _ := ua.Browser()
 	os := ua.OS()
 
-	// Handle mobile devices
 	if ua.Mobile() {
 		platform := ua.Platform()
 		if platform != "" {
@@ -104,7 +87,6 @@ func ParseUserAgent(userAgentString string) string {
 		}
 	}
 
-	// Desktop/other
 	if browser == "" {
 		browser = "Unknown Browser"
 	}

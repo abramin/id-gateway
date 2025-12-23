@@ -380,7 +380,7 @@ func setupRouter(infra *infraBundle) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Common middleware for all routes (must be defined before routes)
-	r.Use(metadata.ClientMetadata)
+	r.Use(metadata.NewMiddleware(nil).Handler)
 	r.Use(requesttime.Middleware)
 	r.Use(devicemw.Device(&devicemw.DeviceConfig{
 		CookieName:    infra.Cfg.Auth.DeviceCookieName,

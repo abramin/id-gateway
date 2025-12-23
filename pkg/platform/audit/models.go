@@ -17,6 +17,9 @@ type Event struct {
 	RequestingParty string
 	Decision        string
 	Reason          string
+	// PRD-001B: Enrichment fields for audit trail completeness
+	Email     string // User email when available (e.g., during user deletion)
+	RequestID string // Correlation ID from HTTP request context
 }
 
 type AuditEvent string

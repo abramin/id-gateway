@@ -2,12 +2,12 @@ package adapters
 
 import (
 	"context"
-	"time"
 
 	"credo/internal/consent/models"
 	"credo/internal/consent/service"
 	"credo/internal/registry/ports"
 	id "credo/pkg/domain"
+	"credo/pkg/platform/middleware/requesttime"
 )
 
 // ConsentAdapter is an in-process adapter that implements ports.ConsentPort
@@ -39,7 +39,7 @@ func (a *ConsentAdapter) HasConsent(ctx context.Context, userID string, purpose 
 	}
 
 	// Find consent for this purpose and check if active
-	now := time.Now()
+	now := requesttime.Now(ctx)
 	for _, record := range records {
 		if string(record.Purpose) == purpose && record.IsActive(now) {
 			return true, nil
@@ -55,5 +55,9 @@ func (a *ConsentAdapter) RequireConsent(ctx context.Context, userID string, purp
 	if err != nil {
 		return err
 	}
-	return a.consentService.Require(ctx, parsedUserID, models.Purpose(purpose))
+	parsedPurpose, err := models.ParsePurpose(purpose)
+	if err != nil {
+		return err
+	}
+	return a.consentService.Require(ctx, parsedUserID, parsedPurpose)
 }

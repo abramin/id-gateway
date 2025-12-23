@@ -47,22 +47,18 @@ type Session struct {
 	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
 }
 
-// IsActive returns true if the session is active.
 func (s *Session) IsActive() bool {
 	return s.Status == SessionStatusActive
 }
 
-// IsPendingConsent returns true if the session is pending consent.
 func (s *Session) IsPendingConsent() bool {
 	return s.Status == SessionStatusPendingConsent
 }
 
-// IsRevoked returns true if the session has been revoked.
 func (s *Session) IsRevoked() bool {
 	return s.Status == SessionStatusRevoked
 }
 
-// Activate transitions a pending session to active status.
 func (s *Session) Activate() {
 	if s.IsPendingConsent() {
 		s.Status = SessionStatusActive
@@ -79,7 +75,6 @@ type AuthorizationCodeRecord struct {
 	CreatedAt   time.Time    `json:"created_at"`
 }
 
-// RefreshTokenRecord represents a long-lived token for access token renewal.
 // Lifetime: 30 days (configurable)
 type RefreshTokenRecord struct {
 	ID              uuid.UUID    `json:"id"`         // Unique identifier
@@ -91,12 +86,10 @@ type RefreshTokenRecord struct {
 	CreatedAt       time.Time    `json:"created_at"`
 }
 
-// IsActive returns true if the user is active.
 func (u *User) IsActive() bool {
 	return u.Status == UserStatusActive
 }
 
-// NewUser creates a User with domain invariant checks.
 func NewUser(id id.UserID, tenantID id.TenantID, email, firstName, lastName string, verified bool) (*User, error) {
 	if email == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "user email cannot be empty")
@@ -112,7 +105,6 @@ func NewUser(id id.UserID, tenantID id.TenantID, email, firstName, lastName stri
 	}, nil
 }
 
-// NewSession creates a Session with domain invariant checks.
 func NewSession(id id.SessionID, userID id.UserID, clientID id.ClientID, tenantID id.TenantID, scopes []string, status SessionStatus, createdAt time.Time, expiresAt time.Time, lastSeenAt time.Time) (*Session, error) {
 	if len(scopes) == 0 {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "scopes cannot be empty")
@@ -136,7 +128,6 @@ func NewSession(id id.SessionID, userID id.UserID, clientID id.ClientID, tenantI
 	}, nil
 }
 
-// NewAuthorizationCode creates an AuthorizationCodeRecord with domain invariant checks.
 func NewAuthorizationCode(code string, sessionID id.SessionID, redirectURI string, createdAt time.Time, expiresAt time.Time) (*AuthorizationCodeRecord, error) {
 	if code == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "authorization code cannot be empty")
@@ -161,7 +152,6 @@ func NewAuthorizationCode(code string, sessionID id.SessionID, redirectURI strin
 	}, nil
 }
 
-// NewRefreshToken creates a RefreshTokenRecord with domain invariant checks.
 func NewRefreshToken(token string, sessionID id.SessionID, createdAt time.Time, expiresAt time.Time) (*RefreshTokenRecord, error) {
 	if token == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "refresh token cannot be empty")

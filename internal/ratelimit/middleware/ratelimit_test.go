@@ -39,16 +39,16 @@ func (s *MiddlewareSecuritySuite) SetupTest() {
 // =============================================================================
 
 type mockRateLimiter struct {
-	checkIPErr          error
-	checkIPResult       *models.RateLimitResult
-	checkUserErr        error
-	checkUserResult     *models.RateLimitResult
-	checkBothErr        error
-	checkBothResult     *models.RateLimitResult
-	checkAuthErr        error
-	checkAuthResult     *models.AuthRateLimitResult
-	checkGlobalErr      error
-	checkGlobalResult   bool
+	checkIPErr        error
+	checkIPResult     *models.RateLimitResult
+	checkUserErr      error
+	checkUserResult   *models.RateLimitResult
+	checkBothErr      error
+	checkBothResult   *models.RateLimitResult
+	checkAuthErr      error
+	checkAuthResult   *models.AuthRateLimitResult
+	checkGlobalErr    error
+	checkGlobalResult bool
 }
 
 func (m *mockRateLimiter) CheckIPRateLimit(_ context.Context, _ string, _ models.EndpointClass) (*models.RateLimitResult, error) {
@@ -247,5 +247,157 @@ func (s *MiddlewareSecuritySuite) TestNormalOperation() {
 
 		s.True(nextCalled, "disabled middleware should allow all requests")
 		s.Equal(http.StatusOK, rr.Code)
+	})
+}
+
+// =============================================================================
+// Circuit Breaker Tests (PRD-017 FR-7)
+// =============================================================================
+func (s *MiddlewareSecuritySuite) TestCircuitBreaker() {
+	s.Run("circuit breaker opens after consecutive failures", func() {
+		// Setup: Rate limiter that always fails
+		failCount := 0
+		limiter := &mockRateLimiter{
+			checkIPErr: errors.New("store unavailable"),
+		}
+
+		// Track circuit state - expect circuit breaker to track failures
+		middleware := New(limiter, s.logger)
+
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+
+		// Make 5 consecutive failing requests to trigger circuit breaker
+		for range 5 {
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			ctx := metadata.WithClientMetadata(req.Context(), "192.168.1.1", "test-agent")
+			req = req.WithContext(ctx)
+			rr := httptest.NewRecorder()
+
+			handler := middleware.RateLimit(models.ClassRead)(next)
+			handler.ServeHTTP(rr, req)
+			failCount++
+		}
+
+		// After threshold, circuit should be open
+		// The middleware should indicate degraded mode
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		ctx := metadata.WithClientMetadata(req.Context(), "192.168.1.1", "test-agent")
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		handler := middleware.RateLimit(models.ClassRead)(next)
+		handler.ServeHTTP(rr, req)
+
+		// PRD-017 FR-7: When circuit breaker is open, should indicate degraded status
+		s.Equal("degraded", rr.Header().Get("X-RateLimit-Status"),
+			"circuit breaker should indicate degraded status after threshold failures")
+	})
+
+	s.Run("circuit breaker uses in-memory fallback when open", func() {
+		// Setup: Middleware with circuit breaker that has opened
+		limiter := &mockRateLimiter{
+			checkIPErr: errors.New("store unavailable"),
+		}
+
+		middleware := New(limiter, s.logger)
+
+		// Trigger circuit breaker open state (5 failures)
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+
+		for i := 0; i < 5; i++ {
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			ctx := metadata.WithClientMetadata(req.Context(), "192.168.1.1", "test-agent")
+			req = req.WithContext(ctx)
+			rr := httptest.NewRecorder()
+			handler := middleware.RateLimit(models.ClassRead)(next)
+			handler.ServeHTTP(rr, req)
+		}
+
+		// Now make requests - should use in-memory fallback
+		// Requests should still have rate limit enforcement via fallback
+		for i := 0; i < 15; i++ {
+			req := httptest.NewRequest(http.MethodGet, "/auth/authorize", nil)
+			ctx := metadata.WithClientMetadata(req.Context(), "192.168.1.1", "test-agent")
+			req = req.WithContext(ctx)
+			rr := httptest.NewRecorder()
+			handler := middleware.RateLimit(models.ClassAuth)(next)
+			handler.ServeHTTP(rr, req)
+		}
+
+		// After exceeding in-memory limit (10 for auth), should block
+		req := httptest.NewRequest(http.MethodGet, "/auth/authorize", nil)
+		ctx := metadata.WithClientMetadata(req.Context(), "192.168.1.1", "test-agent")
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+		handler := middleware.RateLimit(models.ClassAuth)(next)
+		handler.ServeHTTP(rr, req)
+
+		// PRD-017 FR-7: In-memory fallback should still enforce rate limits
+		s.Equal(http.StatusTooManyRequests, rr.Code,
+			"in-memory fallback should enforce rate limits when circuit breaker is open")
+	})
+
+	s.Run("circuit breaker closes after successful probes", func() {
+		// This test verifies the half-open state behavior
+		successfulProbes := 0
+		limiter := &mockRateLimiter{}
+
+		// Start with failures to open circuit
+		limiter.checkIPErr = errors.New("store unavailable")
+
+		middleware := New(limiter, s.logger)
+
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+
+		// Open the circuit with 5 failures
+		for i := 0; i < 5; i++ {
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			ctx := metadata.WithClientMetadata(req.Context(), "192.168.1.1", "test-agent")
+			req = req.WithContext(ctx)
+			rr := httptest.NewRecorder()
+			handler := middleware.RateLimit(models.ClassRead)(next)
+			handler.ServeHTTP(rr, req)
+		}
+
+		// Now fix the limiter (simulating Redis recovery)
+		limiter.checkIPErr = nil
+		limiter.checkIPResult = &models.RateLimitResult{
+			Allowed:   true,
+			Limit:     100,
+			Remaining: 99,
+		}
+
+		// Make successful requests - circuit should eventually close
+		for i := 0; i < 3; i++ { // 3 successful probes threshold
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			ctx := metadata.WithClientMetadata(req.Context(), "192.168.1.1", "test-agent")
+			req = req.WithContext(ctx)
+			rr := httptest.NewRecorder()
+			handler := middleware.RateLimit(models.ClassRead)(next)
+			handler.ServeHTTP(rr, req)
+			if rr.Header().Get("X-RateLimit-Status") != "degraded" {
+				successfulProbes++
+			}
+		}
+
+		// After successful probes, circuit should be closed
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		ctx := metadata.WithClientMetadata(req.Context(), "192.168.1.1", "test-agent")
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+		handler := middleware.RateLimit(models.ClassRead)(next)
+		handler.ServeHTTP(rr, req)
+
+		// PRD-017 FR-7: Circuit should close after successful probes
+		s.Empty(rr.Header().Get("X-RateLimit-Status"),
+			"circuit breaker should close after successful probes (no degraded status)")
+		s.Equal("100", rr.Header().Get("X-RateLimit-Limit"),
+			"should use primary store limits when circuit is closed")
 	})
 }

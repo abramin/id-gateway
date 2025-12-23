@@ -288,6 +288,10 @@ At most, it consumes a **read-only counter interface**.
 - **ID/Access Token Claims:** Must include `tenant_id`, `client_id`, `sub`, `scope`, `exp`, `iat`, `iss`, `aud`.
 - **Scope Enforcement:** Requested scopes must be subset of client `allowed_scopes`; reject otherwise.
 
+> **Implementation Note:** Scope enforcement (validating `RequestedScope ⊆ client.AllowedScopes`) is not yet implemented.
+> The `allowed_scopes` field exists on the Client model but is not validated during authorization.
+> This should be implemented as part of Phase 0 completion.
+
 ### FR-8: Security & Isolation Controls
 
 - **Redirect URI Matching:** Exact match against registered URIs (string comparison after normalization).
@@ -527,6 +531,21 @@ These capabilities may be introduced in a future PRD once tenant and client prim
 - Admin handlers MAY continue to operate without implicit tenant scoping, but tenant-scoped service methods MUST exist for tenant-admin and auth flows.
 - Other modules MUST NOT re-implement client → tenant resolution logic.
 - Authentication and token issuance flows will be updated in a follow-up PRD to consume this abstraction.
+
+---
+
+## 12. Features Identified During Implementation
+
+The following features were implemented beyond original PRD scope:
+
+1. **Client Store Secondary Indexes**: `byCode` map for O(1) OAuth client_id lookup (`internal/tenant/store/client/`)
+2. **Intent-revealing Domain Methods**: `IsActive()`, `IsConfidential()` on Client model
+3. **Atomic Find-or-Create**: Mutex-protected tenant-scoped user creation (`FindOrCreateByTenantAndEmail`)
+4. **Scoped Service Methods**: `GetClientForTenant()`, `UpdateClientForTenant()` ready for tenant admin enforcement
+
+## Known Gaps
+
+1. **Scope Enforcement**: No validation that `RequestedScope ⊆ client.AllowedScopes` (see FR-7 implementation note)
 
 ---
 

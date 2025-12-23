@@ -65,6 +65,17 @@ func (c Record) IsActive(now time.Time) bool {
 	return true
 }
 
+// CanRevoke returns true if the consent can be revoked (not already revoked or expired).
+func (c Record) CanRevoke(now time.Time) bool {
+	if c.RevokedAt != nil {
+		return false
+	}
+	if c.ExpiresAt != nil && c.ExpiresAt.Before(now) {
+		return false
+	}
+	return true
+}
+
 // ComputeStatus reports the consent lifecycle state at the provided time.
 func (c Record) ComputeStatus(now time.Time) Status {
 	if c.RevokedAt != nil {

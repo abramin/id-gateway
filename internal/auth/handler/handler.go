@@ -20,7 +20,6 @@ import (
 	request "credo/pkg/platform/middleware/request"
 )
 
-// Service defines the interface for authentication operations.
 type Service interface {
 	Authorize(ctx context.Context, req *models.AuthorizationRequest) (*models.AuthorizationResult, error)
 	Token(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error)
@@ -31,8 +30,6 @@ type Service interface {
 	RevokeToken(ctx context.Context, token string, tokenTypeHint string) error
 }
 
-// Handler handles authentication endpoints including authorize, token, and userinfo.
-// Implements the OIDC-lite flow described in PRD-001.
 type Handler struct {
 	auth             Service
 	ratelimit        ports.RateLimitPort
@@ -41,7 +38,6 @@ type Handler struct {
 	deviceCookieAge  int
 }
 
-// New creates a new auth Handler with the given service and logger.
 func New(auth Service, ratelimit ports.RateLimitPort, logger *slog.Logger, deviceCookieName string, deviceCookieMaxAge int) *Handler {
 	// TODO: Make cookie name and age configurable via env vars.
 	if deviceCookieName == "" {
@@ -60,8 +56,6 @@ func New(auth Service, ratelimit ports.RateLimitPort, logger *slog.Logger, devic
 	}
 }
 
-// Register registers the auth routes with the chi router.
-// Note: Authentication middleware should be applied by the parent router to protected routes.
 func (h *Handler) Register(r chi.Router) {
 	r.Post("/auth/authorize", h.HandleAuthorize)
 	r.Post("/auth/token", h.HandleToken)
@@ -153,12 +147,10 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, res)
 }
 
-// HandleToken exchanges authorization code for tokens
 func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
-
-	// Device ID is now extracted by Device middleware - no manual extraction needed
+	clientIP := metadata.GetClientIP(ctx)
 
 	var req models.TokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -168,6 +160,31 @@ func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 		)
 		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "Invalid JSON in request body"))
 		return
+	}
+
+	// Check token rate limit using client_id + IP composite key
+	if h.ratelimit != nil && req.ClientID != "" {
+		result, err := h.ratelimit.CheckAuthRateLimit(ctx, req.ClientID, clientIP)
+		if err != nil {
+			h.logger.ErrorContext(ctx, "failed to check token rate limit",
+				"error", err,
+				"request_id", requestID,
+			)
+			// Fail open - don't block token exchange if rate limiter is unavailable
+		} else if !result.Allowed {
+			h.logger.WarnContext(ctx, "token rate limit exceeded",
+				"request_id", requestID,
+				"client_id", req.ClientID,
+				"retry_after", result.RetryAfter,
+			)
+			w.Header().Set("Retry-After", strconv.Itoa(result.RetryAfter))
+			httputil.WriteJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error":       "rate_limit_exceeded",
+				"message":     "Too many token requests. Please try again later.",
+				"retry_after": result.RetryAfter,
+			})
+			return
+		}
 	}
 
 	res, err := h.auth.Token(ctx, &req)
@@ -189,7 +206,6 @@ func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, res)
 }
 
-// HandleUserInfo returns authenticated user information
 func (h *Handler) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
@@ -215,7 +231,6 @@ func (h *Handler) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleListSessions implements GET /auth/sessions per PRD-016 FR-4.
-// Lists all active sessions for the authenticated user.
 func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
@@ -256,7 +271,6 @@ func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, res)
 }
 
-// HandleRevokeSession implements DELETE /auth/sessions/{session_id} per PRD-016 FR-5.
 func (h *Handler) HandleRevokeSession(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)

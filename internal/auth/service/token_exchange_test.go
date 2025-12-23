@@ -22,11 +22,6 @@ import (
 // - validation errors: Tests input validation error codes (fast feedback)
 // - infrastructure errors: Tests error mapping from store failures → domain errors
 // - JWT generation errors: Tests error propagation from token generation
-//
-// REMOVED per testing.md (duplicate of e2e/features/auth_normal_flow.feature):
-// - "happy path - successful token exchange" - covered by "Complete OAuth2 authorization code flow"
-// - "session already active - idempotency" - covered by auth flow tests
-//
 // RFC 6749 §5.2 invalid_grant scenarios are covered by e2e feature tests
 // (auth_normal_flow.feature, auth_token_lifecycle.feature).
 func (s *ServiceSuite) TestToken_Exchange() {
@@ -64,12 +59,11 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		TenantID:       tenantID,
 		RequestedScope: []string{"openid", "profile"},
 		DeviceID:       "device-123",
-		Status: models.SessionStatusPendingConsent, // Should be pending_consent before token exchange
+		Status:         models.SessionStatusPendingConsent, // Should be pending_consent before token exchange
 		CreatedAt:      time.Now().Add(-5 * time.Minute),
 		ExpiresAt:      time.Now().Add(24 * time.Hour),
 	}
 
-	// Table test for simple validation errors
 	s.T().Run("validation errors", func(t *testing.T) {
 		tests := []struct {
 			name          string

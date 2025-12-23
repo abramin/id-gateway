@@ -2,16 +2,12 @@ package models
 
 import "time"
 
-// AuthorizationResult represents the response to a successful authorization request,
-// containing the authorization code and redirect URI.
 type AuthorizationResult struct {
 	Code        string `json:"code"`
 	RedirectURI string `json:"redirect_uri"`
 	DeviceID    string `json:"device_id,omitempty"`
 }
 
-// TokenResult represents the response to a successful token exchange,
-// containing access token, ID token, refresh token, and expiration.
 type TokenResult struct {
 	AccessToken  string        `json:"access_token"`
 	IDToken      string        `json:"id_token"`
@@ -20,8 +16,6 @@ type TokenResult struct {
 	TokenType    string        `json:"token_type"`
 }
 
-// UserInfoResult represents the response to a userinfo request,
-// containing standardized OpenID Connect claims about the authenticated user.
 type UserInfoResult struct {
 	Sub           string `json:"sub"`            // Subject - Identifier for the End-User at the Issuer.
 	Email         string `json:"email"`          // End-User's preferred e-mail address.
@@ -51,4 +45,8 @@ type SessionRevocationResult struct {
 	Revoked   bool   `json:"revoked"`
 	SessionID string `json:"session_id"`
 	Message   string `json:"message"`
+}
+
+type LogoutAllResult struct {
+	RevokedCount int `json:"revoked_count"`
 }

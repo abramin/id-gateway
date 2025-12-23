@@ -1,6 +1,6 @@
 # PRD-017: Rate Limiting & Abuse Prevention
 
-**Status:** Not Started
+**Status:** Mostly Complete (In-Memory MVP)
 **Priority:** P0 (Critical)
 **Owner:** Engineering Team
 **Dependencies:** PRD-001 (Authentication), PRD-016 (Token Lifecycle)
@@ -1351,6 +1351,25 @@ and differential retention policies.
 - [IETF Draft: RateLimit Header Fields](https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-ratelimit-headers)
 - [Stripe Rate Limiting](https://stripe.com/docs/rate-limits)
 - [GitHub REST API Rate Limiting](https://docs.github.com/en/rest/overview/resources-in-the-rest-api#rate-limiting)
+
+---
+
+## Features Identified During Implementation
+
+The following features were implemented beyond original PRD scope:
+
+1. **Sharded Bucket Store**: 32 shards with LRU eviction for bounded memory under high load (`internal/ratelimit/store/bucket/`)
+2. **Key Sanitization**: Colon escaping prevents key collision attacks (`internal/ratelimit/models/keys.go`)
+3. **Client ID Anonymization**: 4+***+4 pattern masks client IDs in logs for privacy
+4. **Constant-time Lockout Checks**: Zero-valued records prevent timing attacks
+5. **Auth Adapter Pattern**: Clean integration boundary via `internal/auth/adapters/ratelimit_adapter.go`
+6. **Typed Cleanup Results**: `CleanupResult` struct with duration tracking and standardized logging
+7. **Bypass Tracking Metrics**: `credo_ratelimit_allowlist_bypasses_total` per type
+
+## Known Gaps
+
+1. **Circuit Breaker**: Design present in FR-7 but not fully implemented
+2. **Quota API Endpoints (FR-5)**: Service layer complete but not wired to HTTP handlers
 
 ---
 

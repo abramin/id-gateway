@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
@@ -20,9 +21,6 @@ import (
 // - validation errors: Tests input validation error codes (fast feedback)
 // - session not found: Tests error propagation from store
 // - different user forbidden: Tests multi-user authorization check (unique)
-//
-// REMOVED per testing.md (duplicate of e2e/features/auth_token_lifecycle.feature):
-// - "active session owned by user revoked" - covered by "Revoke session by session_id"
 func (s *ServiceSuite) TestService_RevokeSession() {
 	ctx := context.Background()
 
@@ -62,5 +60,77 @@ func (s *ServiceSuite) TestService_RevokeSession() {
 		err := s.service.RevokeSession(ctx, userID, sessionID)
 		assert.Error(t, err)
 		assert.True(t, dErrors.HasCode(err, dErrors.CodeForbidden))
+	})
+}
+
+func (s *ServiceSuite) TestLogoutAll() {
+	ctx := context.Background()
+	userID := id.UserID(uuid.New())
+	currentSessionID := id.SessionID(uuid.New())
+
+	sessions := []*models.Session{
+		{
+			ID:     currentSessionID,
+			UserID: userID,
+			Status: models.SessionStatusActive,
+		},
+		{
+			ID:     id.SessionID(uuid.New()),
+			UserID: userID,
+			Status: models.SessionStatusActive,
+		},
+		{
+			ID:     id.SessionID(uuid.New()),
+			UserID: userID,
+			Status: models.SessionStatusActive,
+		},
+	}
+
+	s.T().Run("Given user with multiple sessions When logout_all except_current=true Then revoke all except current", func(t *testing.T) {
+		s.mockSessionStore.EXPECT().ListByUser(gomock.Any(), userID).Return(sessions, nil)
+		// Should revoke 2 sessions (not the current one)
+		s.mockSessionStore.EXPECT().RevokeSessionIfActive(gomock.Any(), sessions[1].ID, gomock.Any()).Return(nil)
+		s.mockSessionStore.EXPECT().RevokeSessionIfActive(gomock.Any(), sessions[2].ID, gomock.Any()).Return(nil)
+		s.mockRefreshStore.EXPECT().DeleteBySessionID(gomock.Any(), sessions[1].ID).Return(nil)
+		s.mockRefreshStore.EXPECT().DeleteBySessionID(gomock.Any(), sessions[2].ID).Return(nil)
+		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil).Times(2)
+
+		result, err := s.service.LogoutAll(ctx, userID, currentSessionID, true)
+
+		require.NoError(t, err)
+		assert.Equal(t, 2, result.RevokedCount)
+	})
+
+	s.T().Run("Given user with multiple sessions When logout_all except_current=false Then revoke all including current", func(t *testing.T) {
+		s.mockSessionStore.EXPECT().ListByUser(gomock.Any(), userID).Return(sessions, nil)
+		// Should revoke all 3 sessions
+		s.mockSessionStore.EXPECT().RevokeSessionIfActive(gomock.Any(), sessions[0].ID, gomock.Any()).Return(nil)
+		s.mockSessionStore.EXPECT().RevokeSessionIfActive(gomock.Any(), sessions[1].ID, gomock.Any()).Return(nil)
+		s.mockSessionStore.EXPECT().RevokeSessionIfActive(gomock.Any(), sessions[2].ID, gomock.Any()).Return(nil)
+		s.mockRefreshStore.EXPECT().DeleteBySessionID(gomock.Any(), sessions[0].ID).Return(nil)
+		s.mockRefreshStore.EXPECT().DeleteBySessionID(gomock.Any(), sessions[1].ID).Return(nil)
+		s.mockRefreshStore.EXPECT().DeleteBySessionID(gomock.Any(), sessions[2].ID).Return(nil)
+		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil).Times(3)
+
+		result, err := s.service.LogoutAll(ctx, userID, currentSessionID, false)
+
+		require.NoError(t, err)
+		assert.Equal(t, 3, result.RevokedCount)
+	})
+
+	s.T().Run("Given invalid user ID When logout_all Then unauthorized", func(t *testing.T) {
+		_, err := s.service.LogoutAll(ctx, id.UserID(uuid.Nil), currentSessionID, true)
+
+		require.Error(t, err)
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeUnauthorized))
+	})
+
+	s.T().Run("Given session store error When logout_all Then internal error", func(t *testing.T) {
+		s.mockSessionStore.EXPECT().ListByUser(gomock.Any(), userID).Return(nil, assert.AnError)
+
+		_, err := s.service.LogoutAll(ctx, userID, currentSessionID, true)
+
+		require.Error(t, err)
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeInternal))
 	})
 }

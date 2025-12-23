@@ -8,7 +8,6 @@ import (
 	device "credo/pkg/platform/middleware/device"
 )
 
-// deviceBindingState represents the relationship between session and cookie device IDs.
 type deviceBindingState int
 
 const (
@@ -46,7 +45,6 @@ func (s *Service) applyDeviceID(ctx context.Context, session *models.Session) {
 	}
 }
 
-// applyFingerprint handles fingerprint binding and drift detection.
 func (s *Service) applyFingerprint(ctx context.Context, session *models.Session) {
 	currentFingerprint := device.GetDeviceFingerprint(ctx)
 	if currentFingerprint == "" {
@@ -67,7 +65,6 @@ func (s *Service) applyFingerprint(ctx context.Context, session *models.Session)
 	}
 }
 
-// classifyDeviceState determines the relationship between session and cookie device IDs.
 func classifyDeviceState(sessionDeviceID, cookieDeviceID string) deviceBindingState {
 	switch {
 	case sessionDeviceID == "" && cookieDeviceID != "":
@@ -81,7 +78,6 @@ func classifyDeviceState(sessionDeviceID, cookieDeviceID string) deviceBindingSt
 	}
 }
 
-// logDeviceEvent logs a device binding event with session context.
 func (s *Service) logDeviceEvent(ctx context.Context, level slog.Level, event string, session *models.Session) {
 	if s.logger == nil {
 		return

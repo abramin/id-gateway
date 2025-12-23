@@ -15,7 +15,6 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 
 	req.Normalize()
 	if err := req.Validate(); err != nil {
-		// Validate now returns domain-errors directly
 		return nil, err
 	}
 

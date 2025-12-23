@@ -8,12 +8,10 @@ const (
 	SessionStatusRevoked        SessionStatus = "revoked"
 )
 
-// IsValid checks if the session status is one of the supported enum values.
 func (s SessionStatus) IsValid() bool {
 	return s == SessionStatusPendingConsent || s == SessionStatusActive || s == SessionStatusRevoked
 }
 
-// String returns the string representation of the session status.
 func (s SessionStatus) String() string {
 	return string(s)
 }

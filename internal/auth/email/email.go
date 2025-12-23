@@ -5,7 +5,6 @@ import (
 	"unicode"
 )
 
-// IsValidEmail performs basic email validation.
 func IsValidEmail(email string) bool {
 	if email == "" {
 		return false
@@ -17,7 +16,6 @@ func IsValidEmail(email string) bool {
 	if parts[0] == "" || parts[1] == "" {
 		return false
 	}
-	// Basic domain validation
 	if !strings.Contains(parts[1], ".") {
 		return false
 	}

@@ -86,7 +86,7 @@ func Logger(logger *slog.Logger) func(http.Handler) http.Handler {
 				"status", wrapped.statusCode,
 				"duration_ms", duration.Milliseconds(),
 				"request_id", requestID,
-				"remote_addr_prefix", privacy.AnonymizeIP(metadata.ClientIPFromRequest(r)),
+				"remote_addr_prefix", privacy.AnonymizeIP(metadata.GetClientIP(ctx)),
 			)
 		})
 	}

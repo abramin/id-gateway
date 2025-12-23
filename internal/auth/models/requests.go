@@ -9,7 +9,6 @@ import (
 	dErrors "credo/pkg/domain-errors"
 )
 
-// AuthorizationRequest represents an OAuth authorization request from a client.
 type AuthorizationRequest struct {
 	Email       string   `json:"email"`
 	ClientID    string   `json:"client_id"`
@@ -18,7 +17,6 @@ type AuthorizationRequest struct {
 	State       string   `json:"state"`
 }
 
-// Normalize applies business defaults (e.g., default scope to openid) and sanitizes inputs.
 func (r *AuthorizationRequest) Normalize() {
 	if r == nil {
 		return
@@ -52,10 +50,6 @@ func trimAndDedupScopes(scopes []string) []string {
 }
 
 // Validate validates the authorization request following strict validation order:
-// 1. Size checks (cheapest, fail fast on oversized input)
-// 2. Required fields (presence checks)
-// 3. Syntax validation (format checks)
-// 4. Semantic validation (business rules - done in service layer)
 func (r *AuthorizationRequest) Validate() error {
 	if r == nil {
 		return dErrors.New(dErrors.CodeBadRequest, "request is required")
@@ -107,7 +101,6 @@ func (r *AuthorizationRequest) Validate() error {
 	return nil
 }
 
-// TokenRequest represents a request to exchange authorization code or refresh token for access tokens.
 type TokenRequest struct {
 	GrantType    string `json:"grant_type"`
 	ClientID     string `json:"client_id"`
@@ -128,10 +121,6 @@ func (r *TokenRequest) Normalize() {
 }
 
 // Validate validates the token request following strict validation order:
-// 1. Size checks (implicit - no size limits on token request fields)
-// 2. Required fields (presence checks)
-// 3. Syntax validation (format/enum checks)
-// 4. Semantic validation (grant-type specific requirements)
 func (r *TokenRequest) Validate() error {
 	if r == nil {
 		return dErrors.New(dErrors.CodeBadRequest, "request is required")
@@ -173,9 +162,6 @@ type RevokeTokenRequest struct {
 }
 
 // Validate validates the revoke token request following strict validation order:
-// 1. Size checks (implicit - no size limits)
-// 2. Required fields (presence checks)
-// 3. Syntax validation (enum checks)
 func (r *RevokeTokenRequest) Validate() error {
 	if r == nil {
 		return dErrors.New(dErrors.CodeBadRequest, "request is required")

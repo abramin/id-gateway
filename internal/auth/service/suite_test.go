@@ -77,11 +77,11 @@ func TestServiceSuite(t *testing.T) {
 
 func (s *ServiceSuite) newTestClient(tenantID id.TenantID, clientUUID id.ClientID) (*tenant.Client, *tenant.Tenant) {
 	return &tenant.Client{
-			ID:             clientUUID,
-			TenantID:       tenantID,
-			OAuthClientID:  "client-123",
-			Name:           "Test Client",
-			Status:         "active",
+			ID:            clientUUID,
+			TenantID:      tenantID,
+			OAuthClientID: "client-123",
+			Name:          "Test Client",
+			Status:        "active",
 		}, &tenant.Tenant{
 			ID:   tenantID,
 			Name: "Test Tenant",
@@ -113,8 +113,6 @@ func (s *ServiceSuite) newTestSession(sessionID id.SessionID, userID id.UserID, 
 	}
 }
 
-// expectTokenGeneration sets up JWT mock expectations for token generation.
-// Returns the mock token values that will be returned by the mocks.
 func (s *ServiceSuite) expectTokenGeneration(userID id.UserID, sessionID id.SessionID, clientUUID id.ClientID, tenantID id.TenantID, scopes []string) (accessToken, accessTokenJTI, idToken, refreshToken string) {
 	accessToken = "mock-access-token"
 	accessTokenJTI = "mock-access-token-jti"

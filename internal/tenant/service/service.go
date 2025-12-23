@@ -324,7 +324,14 @@ func (s *Service) logAudit(ctx context.Context, event string, attributes ...any)
 		return
 	}
 	userIDStr := attrs.ExtractString(attributes, "user_id")
-	userID, _ := id.ParseUserID(userIDStr) // Best-effort for audit - ignore parse errors
+	userID, err := id.ParseUserID(userIDStr)
+	if err != nil && userIDStr != "" && s.logger != nil {
+		s.logger.WarnContext(ctx, "failed to parse user_id for audit event",
+			"user_id", userIDStr,
+			"event", event,
+			"error", err,
+		)
+	}
 	_ = s.auditPublisher.Emit(ctx, audit.Event{
 		UserID:  userID,
 		Subject: userIDStr,

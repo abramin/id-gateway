@@ -20,14 +20,11 @@ const (
 	TokenHintAccessToken  = "access_token"
 )
 
-// tokenResolution holds the result of resolving a token to its session.
 type tokenResolution struct {
 	Session *models.Session
 	JTI     string // Only set for access tokens
 }
 
-// RevokeToken revokes an access token or refresh token, effectively logging out the user.
-// Implements FR-3: Token Revocation (Logout) from PRD-016.
 func (s *Service) RevokeToken(ctx context.Context, token string, tokenTypeHint string) error {
 	token = strings.TrimSpace(token)
 	tokenTypeHint = strings.TrimSpace(tokenTypeHint)
@@ -36,19 +33,15 @@ func (s *Service) RevokeToken(ctx context.Context, token string, tokenTypeHint s
 		return err
 	}
 
-	// Resolve token to session
 	resolution, err := s.resolveTokenToSession(ctx, token, tokenTypeHint)
 	if err != nil {
-		// Token not found - idempotent success (RFC 7009 Section 2.2)
 		s.logAudit(ctx, "token_revocation_noop", "reason", "token_not_found")
 		return nil
 	}
 
-	// Revoke and log
 	return s.revokeAndAudit(ctx, resolution)
 }
 
-// validateRevokeInput validates the revoke token request inputs.
 func validateRevokeInput(token, tokenTypeHint string) error {
 	if token == "" {
 		return dErrors.New(dErrors.CodeValidation, "token is required")
@@ -59,8 +52,6 @@ func validateRevokeInput(token, tokenTypeHint string) error {
 	return nil
 }
 
-// resolveTokenToSession attempts to resolve a token (access or refresh) to its session.
-// Returns the session and JTI (for access tokens) or an error if not found.
 func (s *Service) resolveTokenToSession(ctx context.Context, token, tokenTypeHint string) (*tokenResolution, error) {
 	// Try access token first (if hint allows)
 	if tokenTypeHint == TokenHintAccessToken || tokenTypeHint == "" {
@@ -81,7 +72,6 @@ func (s *Service) resolveTokenToSession(ctx context.Context, token, tokenTypeHin
 	return nil, fmt.Errorf("token not found")
 }
 
-// revokeAndAudit revokes the session and logs the appropriate audit event.
 func (s *Service) revokeAndAudit(ctx context.Context, resolution *tokenResolution) error {
 	session := resolution.Session
 
@@ -104,10 +94,7 @@ func (s *Service) revokeAndAudit(ctx context.Context, resolution *tokenResolutio
 	return nil
 }
 
-// extractSessionFromAccessToken parses a JWT access token and returns the JTI and session.
 func (s *Service) extractSessionFromAccessToken(ctx context.Context, token string) (string, *models.Session, error) {
-	// Parse JWT with signature verification, but skip claims validation (e.g., exp)
-	// We need to extract session_id and jti even if the token is expired
 	claims, err := s.jwt.ParseTokenSkipClaimsValidation(token)
 	if err != nil {
 		return "", nil, err
@@ -127,7 +114,6 @@ func (s *Service) extractSessionFromAccessToken(ctx context.Context, token strin
 	return claims.ID, session, nil
 }
 
-// findSessionByRefreshToken finds a session by its refresh token.
 func (s *Service) findSessionByRefreshToken(ctx context.Context, token string) (*models.Session, error) {
 	refreshToken, err := s.refreshTokens.Find(ctx, token)
 	if err != nil {
@@ -149,7 +135,6 @@ const (
 	revokeSessionOutcomeAlreadyRevoked
 )
 
-// revokeSessionInternal marks a session as revoked and adds tokens to the revocation list.
 func (s *Service) revokeSessionInternal(ctx context.Context, session *models.Session, jti string) (revokeSessionOutcome, error) {
 	if err := s.sessions.RevokeSessionIfActive(ctx, session.ID, time.Now()); err != nil {
 		if errors.Is(err, sessionStore.ErrSessionRevoked) {
@@ -159,7 +144,6 @@ func (s *Service) revokeSessionInternal(ctx context.Context, session *models.Ses
 		return revokeSessionOutcomeRevoked, fmt.Errorf("failed to revoke session: %w", err)
 	}
 
-	// Add access token JTI to revocation list if provided
 	jtiToRevoke := jti
 	if jtiToRevoke == "" {
 		jtiToRevoke = session.LastAccessTokenJTI
@@ -171,7 +155,6 @@ func (s *Service) revokeSessionInternal(ctx context.Context, session *models.Ses
 		}
 	}
 
-	// Delete refresh tokens for this session
 	if err := s.refreshTokens.DeleteBySessionID(ctx, session.ID); err != nil {
 		s.logger.Error("failed to delete refresh tokens", "error", err, "session_id", session.ID)
 		// Don't fail - session is already revoked
@@ -179,8 +162,6 @@ func (s *Service) revokeSessionInternal(ctx context.Context, session *models.Ses
 	return revokeSessionOutcomeRevoked, nil
 }
 
-// IsTokenRevoked checks if a token JTI is in the revocation list.
-// Used by middleware to validate tokens on every request.
 func (s *Service) IsTokenRevoked(ctx context.Context, jti string) (bool, error) {
 	return s.trl.IsRevoked(ctx, jti)
 }

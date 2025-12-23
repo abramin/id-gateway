@@ -3,12 +3,16 @@ package service
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"credo/internal/auth/models"
 	userStore "credo/internal/auth/store/user"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
+	"credo/pkg/platform/audit"
+	request "credo/pkg/platform/middleware/request"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -58,5 +62,95 @@ func (s *ServiceSuite) TestDeleteUser() {
 		err := s.service.DeleteUser(ctx, userID)
 		require.Error(t, err)
 		assert.True(t, dErrors.HasCode(err, dErrors.CodeInternal))
+	})
+}
+
+// =============================================================================
+// Audit Event Enrichment Tests (PRD-001B)
+// =============================================================================
+// PRD-001B specifies that audit events should include:
+// - user_id (implemented)
+// - email (when available)
+// - request_id (from context)
+
+// contextWithRequestID creates a context with request_id set via the request middleware.
+// This mimics what happens when an HTTP request passes through the RequestID middleware.
+func contextWithRequestID(requestID string) context.Context {
+	req := httptest.NewRequest(http.MethodDelete, "/admin/auth/users/123", nil)
+	req.Header.Set("X-Request-ID", requestID)
+
+	var ctx context.Context
+	handler := request.RequestID(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx = r.Context()
+	}))
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+	return ctx
+}
+
+func (s *ServiceSuite) TestDeleteUserAuditEnrichment() {
+	userID := id.UserID(uuid.New())
+	existingUser := &models.User{ID: userID, Email: "audit-test@example.com"}
+
+	s.T().Run("sessions_revoked event includes email and request_id", func(t *testing.T) {
+		// Create context with request_id using the middleware
+		ctx := contextWithRequestID("req-12345")
+
+		s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(existingUser, nil)
+		s.mockSessionStore.EXPECT().DeleteSessionsByUser(gomock.Any(), userID).Return(nil)
+
+		// Capture the sessions_revoked event
+		var sessionsRevokedEvent audit.Event
+		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, event audit.Event) error {
+				if event.Action == string(audit.EventSessionsRevoked) {
+					sessionsRevokedEvent = event
+				}
+				return nil
+			},
+		).Times(2) // sessions_revoked and user_deleted
+
+		s.mockUserStore.EXPECT().Delete(gomock.Any(), userID).Return(nil)
+
+		err := s.service.DeleteUser(ctx, userID)
+		require.NoError(t, err)
+
+		// PRD-001B: Audit events should include email when available
+		assert.Equal(t, "audit-test@example.com", sessionsRevokedEvent.Email,
+			"sessions_revoked event should include user email per PRD-001B")
+
+		// PRD-001B: Audit events should include request_id from context
+		assert.Equal(t, "req-12345", sessionsRevokedEvent.RequestID,
+			"sessions_revoked event should include request_id per PRD-001B")
+	})
+
+	s.T().Run("user_deleted event includes email and request_id", func(t *testing.T) {
+		ctx := contextWithRequestID("req-67890")
+
+		s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(existingUser, nil)
+		s.mockSessionStore.EXPECT().DeleteSessionsByUser(gomock.Any(), userID).Return(nil)
+
+		// Capture the user_deleted event
+		var userDeletedEvent audit.Event
+		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, event audit.Event) error {
+				if event.Action == string(audit.EventUserDeleted) {
+					userDeletedEvent = event
+				}
+				return nil
+			},
+		).Times(2)
+
+		s.mockUserStore.EXPECT().Delete(gomock.Any(), userID).Return(nil)
+
+		err := s.service.DeleteUser(ctx, userID)
+		require.NoError(t, err)
+
+		// PRD-001B: Audit events should include email when available
+		assert.Equal(t, "audit-test@example.com", userDeletedEvent.Email,
+			"user_deleted event should include user email per PRD-001B")
+
+		// PRD-001B: Audit events should include request_id from context
+		assert.Equal(t, "req-67890", userDeletedEvent.RequestID,
+			"user_deleted event should include request_id per PRD-001B")
 	})
 }

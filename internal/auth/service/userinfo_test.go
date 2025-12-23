@@ -25,9 +25,6 @@ import (
 // - session not active: Tests edge case (pending_consent status)
 // - store errors: Tests CodeInternal error mapping
 // - validation: Tests input validation error codes
-//
-// REMOVED per testing.md (duplicate of e2e/features/auth_normal_flow.feature):
-// - "happy path - returns user info" - covered by "Access userinfo endpoint"
 func (s *ServiceSuite) TestUserInfo() {
 	existingUser := &models.User{
 		ID:        id.UserID(uuid.New()),

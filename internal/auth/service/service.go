@@ -323,7 +323,8 @@ func New(
 
 func (s *Service) logAudit(ctx context.Context, event string, attributes ...any) {
 	// Add request_id from context if available
-	if requestID := request.GetRequestID(ctx); requestID != "" {
+	requestID := request.GetRequestID(ctx)
+	if requestID != "" {
 		attributes = append(attributes, "request_id", requestID)
 	}
 	args := append(attributes, "event", event, "log_type", "audit")
@@ -335,10 +336,16 @@ func (s *Service) logAudit(ctx context.Context, event string, attributes ...any)
 	}
 	userIDStr := attrs.ExtractString(attributes, "user_id")
 	userID, _ := id.ParseUserID(userIDStr) // Best-effort for audit - ignore parse errors
+
+	// PRD-001B: Extract email for audit enrichment
+	email := attrs.ExtractString(attributes, "email")
+
 	err := s.auditPublisher.Emit(ctx, audit.Event{
-		UserID:  userID,
-		Subject: userIDStr,
-		Action:  event,
+		UserID:    userID,
+		Subject:   userIDStr,
+		Action:    event,
+		Email:     email,
+		RequestID: requestID,
 	})
 	if err != nil {
 		s.logger.ErrorContext(ctx, "failed to emit audit event", "error", err)

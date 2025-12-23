@@ -12,6 +12,10 @@ type Metrics struct {
 	ConsentCheckPassed    *prometheus.CounterVec
 	ConsentCheckFailed    *prometheus.CounterVec
 	ConsentGrantLatency   prometheus.Histogram
+
+	// Performance metrics
+	StoreOperationLatency *prometheus.HistogramVec
+	RecordsPerUser        prometheus.Histogram
 }
 
 func New() *Metrics {
@@ -40,6 +44,18 @@ func New() *Metrics {
 			Name:    "credo_consent_grant_latency_seconds",
 			Help:    "Latency of consent grant operations in seconds",
 			Buckets: prometheus.DefBuckets,
+		}),
+
+		// Performance metrics
+		StoreOperationLatency: promauto.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "credo_consent_store_operation_latency_seconds",
+			Help:    "Latency of consent store operations in seconds",
+			Buckets: []float64{0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1},
+		}, []string{"operation"}),
+		RecordsPerUser: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "credo_consent_records_per_user",
+			Help:    "Distribution of consent record counts per user",
+			Buckets: []float64{1, 5, 10, 25, 50, 100, 250, 500, 1000},
 		}),
 	}
 }
@@ -70,4 +86,14 @@ func (m *Metrics) DecrementActiveConsentsPerUser(count float64) {
 
 func (m *Metrics) ObserveConsentGrantLatency(durationSeconds float64) {
 	m.ConsentGrantLatency.Observe(durationSeconds)
+}
+
+// ObserveStoreOperationLatency records the latency of a store operation.
+func (m *Metrics) ObserveStoreOperationLatency(operation string, durationSeconds float64) {
+	m.StoreOperationLatency.WithLabelValues(operation).Observe(durationSeconds)
+}
+
+// ObserveRecordsPerUser records the number of consent records for a user.
+func (m *Metrics) ObserveRecordsPerUser(count float64) {
+	m.RecordsPerUser.Observe(count)
 }

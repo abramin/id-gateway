@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestHandleTokenError tests the unified error handler for token operations
 func (s *ServiceSuite) TestHandleTokenError() {
 	clientID := "client-123"
 	recordID := "record-456"
@@ -27,7 +26,6 @@ func (s *ServiceSuite) TestHandleTokenError() {
 		auditReason    string
 		expectRecordID bool
 	}{
-		// Auth code errors
 		{
 			name:           "auth code not found",
 			err:            authCodeStore.ErrNotFound,
@@ -164,7 +162,6 @@ func (s *ServiceSuite) TestHandleTokenError() {
 	}
 }
 
-// TestHandleTokenError_AuditAttributes verifies correct audit attribute inclusion
 func (s *ServiceSuite) TestHandleTokenError_AuditAttributes() {
 	s.T().Run("includes record_id when provided", func(t *testing.T) {
 		ctx := context.Background()

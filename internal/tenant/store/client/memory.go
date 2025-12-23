@@ -10,17 +10,14 @@ import (
 	"credo/pkg/platform/sentinel"
 )
 
-// ErrNotFound is returned when a client is not found.
 var ErrNotFound = sentinel.ErrNotFound
 
-// InMemory stores clients in memory for the demo environment.
 type InMemory struct {
 	mu      sync.RWMutex
 	clients map[id.ClientID]*models.Client
-	byCode  map[string]*models.Client // secondary index by OAuth client_id (external identifier)
+	byCode  map[string]*models.Client
 }
 
-// NewInMemory creates an in-memory client store.
 func NewInMemory() *InMemory {
 	return &InMemory{
 		clients: make(map[id.ClientID]*models.Client),
@@ -28,7 +25,6 @@ func NewInMemory() *InMemory {
 	}
 }
 
-// Create stores a new client.
 func (s *InMemory) Create(_ context.Context, c *models.Client) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -37,7 +33,6 @@ func (s *InMemory) Create(_ context.Context, c *models.Client) error {
 	return nil
 }
 
-// Update updates an existing client.
 func (s *InMemory) Update(_ context.Context, c *models.Client) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -46,7 +41,6 @@ func (s *InMemory) Update(_ context.Context, c *models.Client) error {
 	return nil
 }
 
-// FindByID retrieves a client by its UUID.
 func (s *InMemory) FindByID(_ context.Context, clientID id.ClientID) (*models.Client, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -56,7 +50,6 @@ func (s *InMemory) FindByID(_ context.Context, clientID id.ClientID) (*models.Cl
 	return nil, ErrNotFound
 }
 
-// FindByTenantAndID retrieves a client by tenant and ID, enforcing tenant isolation.
 func (s *InMemory) FindByTenantAndID(_ context.Context, tenantID id.TenantID, clientID id.ClientID) (*models.Client, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -68,7 +61,6 @@ func (s *InMemory) FindByTenantAndID(_ context.Context, tenantID id.TenantID, cl
 	return nil, ErrNotFound
 }
 
-// FindByOAuthClientID retrieves a client by its OAuth client_id.
 func (s *InMemory) FindByOAuthClientID(_ context.Context, oauthClientID string) (*models.Client, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -78,7 +70,6 @@ func (s *InMemory) FindByOAuthClientID(_ context.Context, oauthClientID string) 
 	return nil, ErrNotFound
 }
 
-// CountByTenant returns the number of clients belonging to a specific tenant.
 func (s *InMemory) CountByTenant(_ context.Context, tenantID id.TenantID) (int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

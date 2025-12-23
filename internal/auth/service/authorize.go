@@ -20,7 +20,6 @@ import (
 	metadata "credo/pkg/platform/middleware/metadata"
 )
 
-// authorizeParams holds pre-validated inputs for the authorization transaction.
 type authorizeParams struct {
 	Email             string
 	Scopes            []string
@@ -33,7 +32,6 @@ type authorizeParams struct {
 	Tenant            *tenant.Tenant
 }
 
-// authorizeResult holds the outputs from a successful authorization transaction.
 type authorizeResult struct {
 	User           *models.User
 	Session        *models.Session
@@ -87,6 +85,15 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 		Tenant:            tnt,
 	}
 
+	// validate scopes
+	if len(client.AllowedScopes) > 0 {
+		for _, scope := range params.Scopes {
+			if !slices.Contains(client.AllowedScopes, scope) {
+				return nil, dErrors.New(dErrors.CodeBadRequest, fmt.Sprintf("requested scope '%s' not allowed for client", scope))
+			}
+		}
+	}
+
 	// Execute transaction
 	result, err := s.authorizeInTx(ctx, params)
 	if err != nil {
@@ -111,7 +118,6 @@ func (s *Service) resolveDeviceID(ctx context.Context) (string, string) {
 	return newDeviceID, newDeviceID
 }
 
-// authorizeInTx executes the authorization transaction: user lookup/creation, auth code, and session.
 func (s *Service) authorizeInTx(ctx context.Context, params authorizeParams) (*authorizeResult, error) {
 	var result authorizeResult
 
@@ -177,7 +183,6 @@ func (s *Service) authorizeInTx(ctx context.Context, params authorizeParams) (*a
 	return &result, nil
 }
 
-// findOrCreateUser looks up or creates a user by tenant and email.
 func (s *Service) findOrCreateUser(ctx context.Context, users UserStore, tenantID id.TenantID, userEmail string) (*models.User, bool, error) {
 	firstName, lastName := email.DeriveNameFromEmail(userEmail)
 	newUser, err := models.NewUser(id.UserID(uuid.New()), tenantID, userEmail, firstName, lastName, false)
@@ -197,7 +202,6 @@ func (s *Service) findOrCreateUser(ctx context.Context, users UserStore, tenantI
 	return user, wasCreated, nil
 }
 
-// emitAuthorizeAuditEvents logs audit events after successful authorization.
 func (s *Service) emitAuthorizeAuditEvents(ctx context.Context, result *authorizeResult, clientID string) {
 	if result.UserWasCreated {
 		s.logAudit(ctx, string(audit.EventUserCreated),
@@ -215,7 +219,6 @@ func (s *Service) emitAuthorizeAuditEvents(ctx context.Context, result *authoriz
 	s.incrementActiveSession()
 }
 
-// buildAuthorizeResponse constructs the authorization response with redirect URI.
 func (s *Service) buildAuthorizeResponse(parsedURI *url.URL, authCode *models.AuthorizationCodeRecord, state string, deviceIDToSet string) *models.AuthorizationResult {
 	query := parsedURI.Query()
 	query.Set("code", authCode.Code)

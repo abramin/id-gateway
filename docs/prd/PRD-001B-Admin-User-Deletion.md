@@ -54,5 +54,13 @@ GDPR/CCPA erasure requires the auth service to delete a user and all of their ac
 - Should admin tokens rotate automatically? (Out of scope; manual rotation acceptable for now.)
 - Should deletion also purge audit logs in regulated deployments? (Deferred to PRD-006.)
 
+## Features Identified During Implementation
+
+No additional features beyond PRD scope.
+
+## Known Gaps
+
+1. **Audit event enrichment**: Delete audit events should include `email` (when available) and `request_id`. Current implementation only logs `user_id`. Email is not retrieved before deletion.
+
 ## Revision History
 - 1.0 (2025-12-11): Initial draft; carved out delete flows from PRD-001 and defined admin surface.

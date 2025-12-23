@@ -18,13 +18,13 @@ func TestCreate_IndexesByClientID(t *testing.T) {
 	ctx := context.Background()
 
 	client := &models.Client{
-		ID:             id.ClientID(uuid.New()),
-		TenantID:       id.TenantID(uuid.New()),
-		Name:           "Test Client",
-		OAuthClientID:  "test-client-id",
-		Status:         "active",
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+		ID:            id.ClientID(uuid.New()),
+		TenantID:      id.TenantID(uuid.New()),
+		Name:          "Test Client",
+		OAuthClientID: "test-client-id",
+		Status:        "active",
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	require.NoError(t, store.Create(ctx, client))
@@ -43,13 +43,13 @@ func TestFindByTenantAndID_WrongTenant(t *testing.T) {
 	tenantB := id.TenantID(uuid.New())
 
 	client := &models.Client{
-		ID:             id.ClientID(uuid.New()),
-		TenantID:       tenantA,
-		Name:           "Client A",
-		OAuthClientID:  "client-a",
-		Status:         "active",
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+		ID:            id.ClientID(uuid.New()),
+		TenantID:      tenantA,
+		Name:          "Client A",
+		OAuthClientID: "client-a",
+		Status:        "active",
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	require.NoError(t, store.Create(ctx, client))
@@ -90,13 +90,13 @@ func TestCountByTenant_OnlyCountsMatchingTenant(t *testing.T) {
 	// Create 2 clients for tenant A
 	for i := 0; i < 2; i++ {
 		client := &models.Client{
-			ID:             id.ClientID(uuid.New()),
-			TenantID:       tenantA,
-			Name:           "Client A",
-			OAuthClientID:  uuid.NewString(),
-			Status:         "active",
-			CreatedAt:      time.Now(),
-			UpdatedAt:      time.Now(),
+			ID:            id.ClientID(uuid.New()),
+			TenantID:      tenantA,
+			Name:          "Client A",
+			OAuthClientID: uuid.NewString(),
+			Status:        "active",
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
 		}
 		require.NoError(t, store.Create(ctx, client))
 	}
@@ -104,13 +104,13 @@ func TestCountByTenant_OnlyCountsMatchingTenant(t *testing.T) {
 	// Create 3 clients for tenant B
 	for i := 0; i < 3; i++ {
 		client := &models.Client{
-			ID:             id.ClientID(uuid.New()),
-			TenantID:       tenantB,
-			Name:           "Client B",
-			OAuthClientID:  uuid.NewString(),
-			Status:         "active",
-			CreatedAt:      time.Now(),
-			UpdatedAt:      time.Now(),
+			ID:            id.ClientID(uuid.New()),
+			TenantID:      tenantB,
+			Name:          "Client B",
+			OAuthClientID: uuid.NewString(),
+			Status:        "active",
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
 		}
 		require.NoError(t, store.Create(ctx, client))
 	}

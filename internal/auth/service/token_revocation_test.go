@@ -23,13 +23,6 @@ import (
 // - hint inference: Tests internal token type detection without hint
 // - TRL failure: Tests partial failure handling (session revoked despite TRL error)
 // - refresh deletion failure: Tests partial failure handling
-//
-// REMOVED per testing.md (duplicate of e2e/features/auth_token_lifecycle.feature, auth_security.feature):
-// - "revoke access token - happy path" - covered by "Revoke access token"
-// - "revoke refresh token - happy path" - covered by "Revoke refresh token"
-// - "already revoked - idempotent success" - covered by "Revoking already revoked token"
-// - "token not found - idempotent success" - covered by "Revoking unknown token"
-// - "expired access token - can still revoke" - covered by "Revoking expired token"
 func (s *ServiceSuite) TestRevokeToken() {
 	sessionID := id.SessionID(uuid.New())
 	userID := id.UserID(uuid.New())
@@ -40,7 +33,7 @@ func (s *ServiceSuite) TestRevokeToken() {
 		ID:                 sessionID,
 		UserID:             userID,
 		ClientID:           clientUUID,
-		Status: models.SessionStatusActive,
+		Status:             models.SessionStatusActive,
 		LastAccessTokenJTI: jti,
 		CreatedAt:          time.Now().Add(-1 * time.Hour),
 		ExpiresAt:          time.Now().Add(23 * time.Hour),
@@ -143,7 +136,7 @@ func (s *ServiceSuite) TestExtractSessionFromAccessToken() {
 		ID:        sessionID,
 		UserID:    userID,
 		ClientID:  clientUUID,
-		Status: models.SessionStatusActive,
+		Status:    models.SessionStatusActive,
 		CreatedAt: time.Now().Add(-1 * time.Hour),
 		ExpiresAt: time.Now().Add(23 * time.Hour),
 	}

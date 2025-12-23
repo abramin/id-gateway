@@ -6,12 +6,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"credo/pkg/platform/audit"
 	"credo/internal/auth/models"
 	sessionStore "credo/internal/auth/store/session"
 	userStore "credo/internal/auth/store/user"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
+	"credo/pkg/platform/audit"
 )
 
 func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserInfoResult, error) {

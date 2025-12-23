@@ -8,6 +8,7 @@ import (
 	"credo/internal/consent/models"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
+	"credo/pkg/platform/middleware/requesttime"
 )
 
 // ErrNotFound is returned when a requested record is not found in the store.
@@ -49,13 +50,13 @@ func (s *InMemoryStore) FindByUserAndPurpose(_ context.Context, userID id.UserID
 	return nil, ErrNotFound
 }
 
-func (s *InMemoryStore) ListByUser(_ context.Context, userID id.UserID, filter *models.RecordFilter) ([]*models.Record, error) {
+func (s *InMemoryStore) ListByUser(ctx context.Context, userID id.UserID, filter *models.RecordFilter) ([]*models.Record, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	records := s.consents[userID]
 
 	var filtered []*models.Record
-	now := time.Now()
+	now := requesttime.Now(ctx)
 
 	for _, record := range records {
 		// Apply filters if specified
@@ -90,23 +91,21 @@ func (s *InMemoryStore) Update(_ context.Context, consent *models.Record) error 
 			return nil
 		}
 	}
-	return nil
+	return ErrNotFound
 }
 
 func (s *InMemoryStore) RevokeByUserAndPurpose(_ context.Context, userID id.UserID, purpose models.Purpose, revokedAt time.Time) (*models.Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	records := s.consents[userID]
-	result := &models.Record{}
 	for i := range records {
 		if records[i].Purpose == purpose && records[i].RevokedAt == nil {
 			records[i].RevokedAt = &revokedAt
-			result = records[i]
-			break
+			s.consents[userID] = records
+			return records[i], nil
 		}
 	}
-	s.consents[userID] = records
-	return result, nil
+	return nil, ErrNotFound
 }
 
 func (s *InMemoryStore) DeleteByUser(_ context.Context, userID id.UserID) error {

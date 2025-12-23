@@ -104,11 +104,11 @@ func (s *InMemorySessionStore) RevokeSessionIfActive(_ context.Context, sessionI
 	if !ok {
 		return ErrNotFound
 	}
-	if session.Status == "revoked" {
+	if session.Status == models.SessionStatusRevoked {
 		return ErrSessionRevoked
 	}
 
-	session.Status = "revoked"
+	session.Status = models.SessionStatusRevoked
 	if session.RevokedAt == nil || now.After(*session.RevokedAt) {
 		session.RevokedAt = &now
 	}
@@ -156,10 +156,10 @@ func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, sessionID id.S
 	if session.ClientID.String() != clientID {
 		return nil, fmt.Errorf("client_id mismatch: %w", sentinel.ErrInvalidState)
 	}
-	if session.Status == "revoked" {
+	if session.Status == models.SessionStatusRevoked {
 		return nil, ErrSessionRevoked
 	}
-	if session.Status != "pending_consent" && session.Status != "active" {
+	if session.Status != models.SessionStatusPendingConsent && session.Status != models.SessionStatusActive {
 		return nil, fmt.Errorf("session in invalid state: %w", sentinel.ErrInvalidState)
 	}
 	if at.After(session.ExpiresAt) {
@@ -169,8 +169,8 @@ func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, sessionID id.S
 	if at.After(session.LastSeenAt) {
 		session.LastSeenAt = at
 	}
-	if activate && session.Status == "pending_consent" {
-		session.Status = "active"
+	if activate && session.Status == models.SessionStatusPendingConsent {
+		session.Status = models.SessionStatusActive
 	}
 	if accessTokenJTI != "" {
 		session.LastAccessTokenJTI = accessTokenJTI
@@ -197,10 +197,10 @@ func (s *InMemorySessionStore) AdvanceLastRefreshed(_ context.Context, sessionID
 	if session.ClientID.String() != clientID {
 		return nil, fmt.Errorf("client_id mismatch: %w", sentinel.ErrInvalidState)
 	}
-	if session.Status == "revoked" {
+	if session.Status == models.SessionStatusRevoked {
 		return nil, ErrSessionRevoked
 	}
-	if session.Status != "active" {
+	if session.Status != models.SessionStatusActive {
 		return nil, fmt.Errorf("session in invalid state: %w", sentinel.ErrInvalidState)
 	}
 	if at.After(session.ExpiresAt) {

@@ -96,7 +96,7 @@ func SetupSuite(t *testing.T) (
 	)
 
 	router := chi.NewRouter()
-	router.Use(metadata.ClientMetadata)
+	router.Use(metadata.NewMiddleware(nil).Handler)
 	authHandler := auth.New(authService, nil, logger, "__Secure-Device-ID", 31536000)
 
 	// Public endpoints (no auth required) - mirrors production setup

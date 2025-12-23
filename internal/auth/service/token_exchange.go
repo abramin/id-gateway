@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"credo/pkg/platform/audit"
 	"credo/internal/auth/models"
 	authCodeStore "credo/internal/auth/store/authorization-code"
 	dErrors "credo/pkg/domain-errors"
+	"credo/pkg/platform/audit"
 )
 
 func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {

@@ -378,6 +378,10 @@ type Session struct {
 - Password change (security event)
 - User wants to log out everywhere
 
+> **Implementation Note:** FR-6 is tracked as pending in `docs/prd/phase-log.md` (Phase 0 known gaps).
+> This endpoint is also required by PRD-027 (Risk-Based Adaptive Authentication) for the "Revoke All Sessions"
+> step-up trigger. Implementation is deferred until PRD-022 (password support) to enable global revocation on password change.
+
 ---
 
 ## 4. Technical Requirements
@@ -927,7 +931,7 @@ func (s *CleanupService) performCleanup(ctx context.Context) {
 - [x] Revoked tokens fail authentication checks
 - [x] Users can list all active sessions
 - [x] Users can revoke individual sessions
-- [ ] Users can revoke all sessions at once (FR-6: POST /auth/logout-all)
+- [ ] Users can revoke all sessions at once (FR-6: POST /auth/logout-all) — *Tracked in phase-log.md; dependency on PRD-027/PRD-022*
 - [ ] Password change triggers global session revocation (requires PRD-022)
 - [x] Token revocation list uses TTL (no memory leak)
 - [x] All token lifecycle events emit audit events
@@ -1070,6 +1074,20 @@ curl -X POST http://localhost:8080/auth/logout-all?except_current=true \
 - [RFC 6749: OAuth 2.0 Framework](https://datatracker.ietf.org/doc/html/rfc6749)
 - [RFC 7009: Token Revocation](https://datatracker.ietf.org/doc/html/rfc7009)
 - [OWASP: Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
+
+---
+
+## Features Identified During Implementation
+
+The following features were implemented beyond original PRD scope:
+
+1. **LastAccessTokenJTI Tracking**: Sessions store the JTI of the last issued access token for revocation
+2. **Session Status Enum**: Intent-revealing `CanTransitionTo()` method validates state transitions
+3. **Legacy Session Graceful Degradation**: Device binding handles sessions created before device tracking
+
+## Known Gaps
+
+1. **FR-6 POST /auth/logout-all**: Not implemented - required for global logout functionality (tracked in phase-log.md; dependency on PRD-027/PRD-022)
 
 ---
 

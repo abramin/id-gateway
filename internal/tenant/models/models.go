@@ -20,6 +20,16 @@ func (t *Tenant) IsActive() bool {
 	return t.Status == TenantStatusActive
 }
 
+// Deactivate transitions the tenant to inactive status.
+// Returns an error if the tenant is already inactive.
+func (t *Tenant) Deactivate() error {
+	if t.Status == TenantStatusInactive {
+		return dErrors.New(dErrors.CodeInvariantViolation, "tenant is already inactive")
+	}
+	t.Status = TenantStatusInactive
+	return nil
+}
+
 // NewTenant creates a Tenant with domain invariant checks.
 func NewTenant(tenantID id.TenantID, name string) (*Tenant, error) {
 	if name == "" {
@@ -42,7 +52,7 @@ type Client struct {
 	TenantID         id.TenantID  `json:"tenant_id"`
 	Name             string       `json:"name"`
 	OAuthClientID    string       `json:"client_id"`
-	ClientSecretHash string       `json:"client_secret_hash,omitempty"`
+	ClientSecretHash string       `json:"-"` // Never serialize - contains bcrypt hash
 	RedirectURIs     []string     `json:"redirect_uris"`
 	AllowedGrants    []string     `json:"allowed_grants"`
 	AllowedScopes    []string     `json:"allowed_scopes"`
@@ -98,6 +108,16 @@ func NewClient(
 
 func (c *Client) IsActive() bool {
 	return c.Status == ClientStatusActive
+}
+
+// Deactivate transitions the client to inactive status.
+// Returns an error if the client is already inactive.
+func (c *Client) Deactivate() error {
+	if c.Status == ClientStatusInactive {
+		return dErrors.New(dErrors.CodeInvariantViolation, "client is already inactive")
+	}
+	c.Status = ClientStatusInactive
+	return nil
 }
 
 // IsConfidential returns true if the client is a confidential client (has a secret).

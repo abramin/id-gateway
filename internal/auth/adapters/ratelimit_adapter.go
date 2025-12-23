@@ -16,14 +16,12 @@ type RateLimitAdapter struct {
 	checker *checker.Service
 }
 
-// NewRateLimitAdapter creates a new in-process ratelimit adapter.
 func NewRateLimitAdapter(checkerSvc *checker.Service) ports.RateLimitPort {
 	return &RateLimitAdapter{
 		checker: checkerSvc,
 	}
 }
 
-// CheckAuthRateLimit checks if an auth request is allowed.
 func (a *RateLimitAdapter) CheckAuthRateLimit(ctx context.Context, identifier, ip string) (*ports.AuthRateLimitResult, error) {
 	result, err := a.checker.CheckAuthRateLimit(ctx, identifier, ip)
 	if err != nil {
@@ -38,7 +36,6 @@ func (a *RateLimitAdapter) CheckAuthRateLimit(ctx context.Context, identifier, i
 	}, nil
 }
 
-// RecordAuthFailure records a failed authentication attempt.
 func (a *RateLimitAdapter) RecordAuthFailure(ctx context.Context, identifier, ip string) (*ports.AuthLockoutState, error) {
 	lockout, err := a.checker.RecordAuthFailure(ctx, identifier, ip)
 	if err != nil {
@@ -52,7 +49,6 @@ func (a *RateLimitAdapter) RecordAuthFailure(ctx context.Context, identifier, ip
 	}, nil
 }
 
-// ClearAuthFailures clears auth failure state after successful login.
 func (a *RateLimitAdapter) ClearAuthFailures(ctx context.Context, identifier, ip string) error {
 	return a.checker.ClearAuthFailures(ctx, identifier, ip)
 }

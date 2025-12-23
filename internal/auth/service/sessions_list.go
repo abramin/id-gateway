@@ -15,7 +15,6 @@ func (s *Service) ListSessions(ctx context.Context, userID id.UserID, currentSes
 		return nil, dErrors.New(dErrors.CodeUnauthorized, "user ID required")
 	}
 	// Note: currentSessionID can be nil (zero value) if caller doesn't have a current session
-
 	sessions, err := s.sessions.ListByUser(ctx, userID)
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to list sessions")

@@ -90,6 +90,9 @@ func (r *CreateClientRequest) Validate() error {
 	if len(r.AllowedScopes) == 0 {
 		return dErrors.New(dErrors.CodeValidation, "allowed_scopes are required")
 	}
+	if err := validateScopes(r.AllowedScopes); err != nil {
+		return dErrors.Wrap(err, dErrors.CodeValidation, "invalid allowed_scopes")
+	}
 	return nil
 }
 
@@ -116,6 +119,23 @@ func validateGrants(grants []string) error {
 	for _, grant := range grants {
 		if _, ok := allowed[grant]; !ok {
 			return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("unsupported grant: %s", grant))
+		}
+	}
+	return nil
+}
+
+// allowedScopes defines the valid OAuth scopes clients can request.
+var allowedScopes = map[string]struct{}{
+	"openid":  {},
+	"profile": {},
+	"email":   {},
+	"offline": {}, // For refresh tokens
+}
+
+func validateScopes(scopes []string) error {
+	for _, scope := range scopes {
+		if _, ok := allowedScopes[scope]; !ok {
+			return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("unsupported scope: %s", scope))
 		}
 	}
 	return nil
@@ -182,8 +202,13 @@ func (r *UpdateClientRequest) Validate() error {
 			return dErrors.Wrap(err, dErrors.CodeValidation, "invalid allowed_grants")
 		}
 	}
-	if r.AllowedScopes != nil && len(*r.AllowedScopes) == 0 {
-		return dErrors.New(dErrors.CodeValidation, "allowed_scopes cannot be empty")
+	if r.AllowedScopes != nil {
+		if len(*r.AllowedScopes) == 0 {
+			return dErrors.New(dErrors.CodeValidation, "allowed_scopes cannot be empty")
+		}
+		if err := validateScopes(*r.AllowedScopes); err != nil {
+			return dErrors.Wrap(err, dErrors.CodeValidation, "invalid allowed_scopes")
+		}
 	}
 	return nil
 }
