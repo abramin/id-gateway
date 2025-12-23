@@ -268,8 +268,8 @@ func (s *MiddlewareSecuritySuite) TestCircuitBreaker() {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		// Make 5 consecutive failing requests (threshold from FR-7)
-		for i := 0; i < 5; i++ {
+		// Make 5 consecutive failing requests to trigger circuit breaker
+		for range 5 {
 			req := httptest.NewRequest(http.MethodGet, "/test", nil)
 			ctx := metadata.WithClientMetadata(req.Context(), "192.168.1.1", "test-agent")
 			req = req.WithContext(ctx)
