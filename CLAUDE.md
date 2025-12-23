@@ -23,6 +23,10 @@ go test -run "TestName" ./...
 # Run with coverage
 make test-cover
 
+# Find slowest tests
+make test-slow              # Top 10 slowest
+make test-slow n=5          # Top N slowest
+
 # E2E tests (godog/cucumber)
 make e2e                    # All E2E tests
 make e2e-normal             # Normal flow tests only (@normal tag)
@@ -62,6 +66,16 @@ Credo is a **modular monolith** with hexagonal architecture (ports and adapters)
 - **tenant** (`internal/tenant/`): Multi-tenancy and client management
 - **admin** (`internal/admin/`): Administrative operations (user deletion, session management)
 - **platform** (`internal/platform/`): Cross-cutting concerns (config, logger, middleware, metrics)
+
+### Module Structure
+
+Each module under `internal/` follows this layout:
+- `handler/` – HTTP handlers (parse requests, call services, map responses)
+- `service/` – Business logic, depends on ports (interfaces)
+- `store/` – Persistence implementations
+- `models/` – Domain models and entities
+- `ports/` – Interfaces for external dependencies
+- `adapters/` – Implementations of external service ports
 
 ### Key Patterns
 
@@ -107,9 +121,12 @@ These rules are enforced project-wide:
 
 ## Error Handling
 
-- Use domain error codes via `pkg/domain-errors`
-- Map store/infra errors to domain errors at service boundary
-- Never leak internal error details to clients
+Two error packages with clear boundaries:
+
+- **Sentinel errors** (`pkg/platform/sentinel`): Infrastructure facts returned by stores only (`ErrNotFound`, `ErrExpired`, `ErrAlreadyUsed`, `ErrInvalidState`, `ErrUnavailable`)
+- **Domain errors** (`pkg/domain-errors`): Business-meaningful errors for services, models, and handlers
+
+**Boundary rule**: Stores return sentinel errors. Services translate them to domain errors at their boundary. Never leak internal error details to clients.
 
 ## Review Agents (AGENTS.md)
 
