@@ -7,15 +7,13 @@ import (
 	dErrors "credo/pkg/domain-errors"
 )
 
-// AddAllowlistRequest is the API request for adding an allowlist entry.
 type AddAllowlistRequest struct {
-	Type       string     `json:"type"`       // "ip" or "user_id"
+	Type       string     `json:"type"` // "ip" or "user_id"
 	Identifier string     `json:"identifier"`
 	Reason     string     `json:"reason"`
 	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
 }
 
-// Normalize trims and sanitizes input fields.
 func (r *AddAllowlistRequest) Normalize() {
 	if r == nil {
 		return
@@ -25,7 +23,6 @@ func (r *AddAllowlistRequest) Normalize() {
 	r.Reason = strings.TrimSpace(r.Reason)
 }
 
-// Validate validates the AddAllowlistRequest fields.
 // Follows validation order: Size -> Required -> Syntax -> Semantic.
 func (r *AddAllowlistRequest) Validate() error {
 	if r == nil {
@@ -65,13 +62,11 @@ func (r *AddAllowlistRequest) Validate() error {
 	return nil
 }
 
-// RemoveAllowlistRequest is the API request for removing an allowlist entry.
 type RemoveAllowlistRequest struct {
-	Type       string `json:"type"`       // "ip" or "user_id"
+	Type       string `json:"type"` // "ip" or "user_id"
 	Identifier string `json:"identifier"`
 }
 
-// Normalize trims and sanitizes input fields.
 func (r *RemoveAllowlistRequest) Normalize() {
 	if r == nil {
 		return
@@ -80,7 +75,6 @@ func (r *RemoveAllowlistRequest) Normalize() {
 	r.Identifier = strings.TrimSpace(r.Identifier)
 }
 
-// Validate validates the RemoveAllowlistRequest fields.
 func (r *RemoveAllowlistRequest) Validate() error {
 	if r == nil {
 		return dErrors.New(dErrors.CodeBadRequest, "request is required")
@@ -108,15 +102,12 @@ func (r *RemoveAllowlistRequest) Validate() error {
 	return nil
 }
 
-// ResetRateLimitRequest is the API request for resetting a rate limit counter.
-// Admin operation per PRD-017 TR-1.
 type ResetRateLimitRequest struct {
-	Type       string `json:"type"`            // "ip" or "user_id"
+	Type       string `json:"type"` // "ip" or "user_id"
 	Identifier string `json:"identifier"`
 	Class      string `json:"class,omitempty"` // optional: specific endpoint class to reset
 }
 
-// Normalize trims and sanitizes input fields.
 func (r *ResetRateLimitRequest) Normalize() {
 	if r == nil {
 		return
@@ -126,7 +117,6 @@ func (r *ResetRateLimitRequest) Normalize() {
 	r.Class = strings.TrimSpace(strings.ToLower(r.Class))
 }
 
-// Validate validates the ResetRateLimitRequest fields.
 func (r *ResetRateLimitRequest) Validate() error {
 	if r == nil {
 		return dErrors.New(dErrors.CodeBadRequest, "request is required")

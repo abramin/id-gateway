@@ -180,7 +180,6 @@ func (s *Service) RecordFailure(ctx context.Context, identifier, ip string) (*mo
 	return current, nil
 }
 
-// Clear clears auth failure state after successful login.
 func (s *Service) Clear(ctx context.Context, identifier, ip string) error {
 	key := fmt.Sprintf("%s:%s:%s", keyPrefixAuth, identifier, ip)
 	err := s.store.Clear(ctx, key)

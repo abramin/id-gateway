@@ -16,7 +16,6 @@ import (
 
 // NOTE: Basic Add/Remove tests for IP entries are covered by E2E FR-4 scenarios.
 // Only user_id paths and edge cases not covered by E2E are tested here.
-
 func TestInMemoryAllowlistStore_Add(t *testing.T) {
 	store := New()
 	ctx := context.Background()

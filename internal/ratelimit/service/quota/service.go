@@ -57,7 +57,6 @@ func New(store Store, opts ...Option) (*Service, error) {
 	return svc, nil
 }
 
-// Check checks quota for partner API key.
 func (s *Service) Check(ctx context.Context, apiKeyID id.APIKeyID) (*models.APIKeyQuota, error) {
 	quota, err := s.store.GetQuota(ctx, apiKeyID)
 	if err != nil {
@@ -69,7 +68,6 @@ func (s *Service) Check(ctx context.Context, apiKeyID id.APIKeyID) (*models.APIK
 	return quota, nil
 }
 
-// Increment increments usage for an API key.
 func (s *Service) Increment(ctx context.Context, apiKeyID id.APIKeyID, count int) (*models.APIKeyQuota, error) {
 	quota, err := s.store.IncrementUsage(ctx, apiKeyID, count)
 	if err != nil {

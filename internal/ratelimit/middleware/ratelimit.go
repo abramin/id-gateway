@@ -117,31 +117,32 @@ func (m *Middleware) RateLimitAuthenticated(class models.EndpointClass) func(htt
 
 // RateLimitAuth returns middleware for authentication endpoints with lockout.
 //
-// TODO: Implement this middleware
 // This is applied to /auth/authorize, /auth/token, /auth/password-reset, /mfa/*
-// 1. Extract client IP from context
-// 2. Extract identifier (email/username) from request body if applicable
-// 3. Call limiter.CheckAuthRateLimit
-// 4. Apply progressive backoff delay if configured
-// 5. If locked out, return 429 with lockout info
-// 6. Else call next handler
+
 func (m *Middleware) RateLimitAuth() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 			ip := metadata.GetClientIP(ctx)
 
-			// TODO: Implement auth rate limit with lockout
-			// Note: May need to peek at request body to get email/username
-			// result, err := m.limiter.CheckAuthRateLimit(ctx, "", ip)
-			// if err != nil { ... }
-			//
-			// addRateLimitHeaders(w, result)
-			//
-			// if !result.Allowed {
-			//     writeAuthLockout(w, result)
-			//     return
-			// }
+			// 2. Extract identifier (email/username) from request body if applicable
+
+			result, err := m.limiter.CheckAuthRateLimit(ctx, "", ip)
+			if err != nil {
+				m.logger.Error("failed to check auth rate limit", "error", err, "ip_prefix", privacy.AnonymizeIP(ip))
+				// 4. Apply progressive backoff delay if configured
+				// 5. If locked out, return 429 with lockout info
+				// 6. Else call next handler
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			addRateLimitHeaders(w, result)
+
+			if !result.Allowed {
+				writeAuthLockout(w, result)
+				return
+			}
 
 			_ = ip
 

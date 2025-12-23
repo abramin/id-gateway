@@ -17,12 +17,6 @@ import (
 	"credo/internal/ratelimit/handler/mocks"
 )
 
-// HandlerSuite provides shared test setup for rate limit handler tests.
-//
-// Per AGENTS.md + testing.md:
-// - "No behavior should be tested at multiple layers" - feature tests win
-// - Handler tests only for edge cases unreachable via e2e (invalid JSON parsing)
-// - E2E coverage: ratelimit.feature covers all valid request scenarios
 type HandlerSuite struct {
 	suite.Suite
 	router      http.Handler
@@ -48,14 +42,6 @@ func (s *HandlerSuite) TearDownTest() {
 func TestHandlerSuite(t *testing.T) {
 	suite.Run(t, new(HandlerSuite))
 }
-
-// =============================================================================
-// Invalid JSON Tests - Edge cases unreachable via E2E
-//
-// Per AGENTS.md: "Handlers handle HTTP concerns only: parsing, request validation"
-// E2E tests use json.Marshal which always produces valid JSON.
-// These tests verify the HTTP boundary handles malformed input correctly.
-// =============================================================================
 
 func (s *HandlerSuite) TestAddAllowlist_InvalidJSON() {
 	req := httptest.NewRequest(http.MethodPost, "/admin/rate-limit/allowlist",
