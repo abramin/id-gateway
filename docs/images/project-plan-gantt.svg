@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1224" height="520">
+<text x="612.0" y="24" font-size="18" font-weight="600" text-anchor="middle" font-family="Inter, Arial, sans-serif">Credo Project Implementation Gantt Chart</text>
+<line x1="260" y1="30" x2="260" y2="400" stroke="#d9d9d9" stroke-width="1" />
+<text x="260" y="420" font-size="10" font-weight="normal" text-anchor="middle" font-family="Inter, Arial, sans-serif">0</text>
+<line x1="370" y1="30" x2="370" y2="400" stroke="#d9d9d9" stroke-width="1" />
+<text x="370" y="420" font-size="10" font-weight="normal" text-anchor="middle" font-family="Inter, Arial, sans-serif">5</text>
+<line x1="480" y1="30" x2="480" y2="400" stroke="#d9d9d9" stroke-width="1" />
+<text x="480" y="420" font-size="10" font-weight="normal" text-anchor="middle" font-family="Inter, Arial, sans-serif">10</text>
+<line x1="590" y1="30" x2="590" y2="400" stroke="#d9d9d9" stroke-width="1" />
+<text x="590" y="420" font-size="10" font-weight="normal" text-anchor="middle" font-family="Inter, Arial, sans-serif">15</text>
+<line x1="700" y1="30" x2="700" y2="400" stroke="#d9d9d9" stroke-width="1" />
+<text x="700" y="420" font-size="10" font-weight="normal" text-anchor="middle" font-family="Inter, Arial, sans-serif">20</text>
+<line x1="810" y1="30" x2="810" y2="400" stroke="#d9d9d9" stroke-width="1" />
+<text x="810" y="420" font-size="10" font-weight="normal" text-anchor="middle" font-family="Inter, Arial, sans-serif">25</text>
+<line x1="920" y1="30" x2="920" y2="400" stroke="#d9d9d9" stroke-width="1" />
+<text x="920" y="420" font-size="10" font-weight="normal" text-anchor="middle" font-family="Inter, Arial, sans-serif">30</text>
+<line x1="1030" y1="30" x2="1030" y2="400" stroke="#d9d9d9" stroke-width="1" />
+<text x="1030" y="420" font-size="10" font-weight="normal" text-anchor="middle" font-family="Inter, Arial, sans-serif">35</text>
+<line x1="1140" y1="30" x2="1140" y2="400" stroke="#d9d9d9" stroke-width="1" />
+<text x="1140" y="420" font-size="10" font-weight="normal" text-anchor="middle" font-family="Inter, Arial, sans-serif">40</text>
+<text x="10" y="58" font-size="12" font-weight="500" text-anchor="start" font-family="Inter, Arial, sans-serif">Phase 0: Foundation (Done)</text>
+<rect x="260" y="46" width="110" height="18" fill="#2E8B57" stroke="black" stroke-width="1" rx="3" ry="3" />
+<line x1="348" y1="62" x2="414" y2="62" stroke="#6e6e6e" stroke-width="4" />
+<line x1="348" y1="56" x2="348" y2="68" stroke="#6e6e6e" stroke-width="2" />
+<line x1="414" y1="56" x2="414" y2="68" stroke="#6e6e6e" stroke-width="2" />
+<text x="1144" y="63" font-size="11" font-weight="normal" text-anchor="start" font-family="Inter, Arial, sans-serif">4-7 wks</text>
+<text x="10" y="103" font-size="12" font-weight="500" text-anchor="start" font-family="Inter, Arial, sans-serif">Phase 1: Core Identity</text>
+<rect x="370" y="91" width="66" height="18" fill="#3182bd" stroke="black" stroke-width="1" rx="3" ry="3" />
+<line x1="414" y1="107" x2="458" y2="107" stroke="#6e6e6e" stroke-width="4" />
+<line x1="414" y1="101" x2="414" y2="113" stroke="#6e6e6e" stroke-width="2" />
+<line x1="458" y1="101" x2="458" y2="113" stroke="#6e6e6e" stroke-width="2" />
+<text x="1144" y="108" font-size="11" font-weight="normal" text-anchor="start" font-family="Inter, Arial, sans-serif">2-4 wks</text>
+<text x="10" y="148" font-size="12" font-weight="500" text-anchor="start" font-family="Inter, Arial, sans-serif">Phase 2: Operational Baseline</text>
+<rect x="436" y="136" width="88" height="18" fill="#3182bd" stroke="black" stroke-width="1" rx="3" ry="3" />
+<line x1="480" y1="152" x2="546" y2="152" stroke="#6e6e6e" stroke-width="4" />
+<line x1="480" y1="146" x2="480" y2="158" stroke="#6e6e6e" stroke-width="2" />
+<line x1="546" y1="146" x2="546" y2="158" stroke="#6e6e6e" stroke-width="2" />
+<text x="1144" y="153" font-size="11" font-weight="normal" text-anchor="start" font-family="Inter, Arial, sans-serif">2-5 wks</text>
+<text x="10" y="193" font-size="12" font-weight="500" text-anchor="start" font-family="Inter, Arial, sans-serif">Phase 3: Production Hardening</text>
+<rect x="524" y="181" width="110" height="18" fill="#3182bd" stroke="black" stroke-width="1" rx="3" ry="3" />
+<line x1="612" y1="197" x2="700" y2="197" stroke="#6e6e6e" stroke-width="4" />
+<line x1="612" y1="191" x2="612" y2="203" stroke="#6e6e6e" stroke-width="2" />
+<line x1="700" y1="191" x2="700" y2="203" stroke="#6e6e6e" stroke-width="2" />
+<text x="1144" y="198" font-size="11" font-weight="normal" text-anchor="start" font-family="Inter, Arial, sans-serif">4-8 wks</text>
+<text x="10" y="238" font-size="12" font-weight="500" text-anchor="start" font-family="Inter, Arial, sans-serif">Phase 4: Pack</text>
+<rect x="700" y="226" width="154" height="18" fill="#fdae61" stroke="black" stroke-width="1" rx="3" ry="3" />
+<line x1="810" y1="242" x2="920" y2="242" stroke="#6e6e6e" stroke-width="4" />
+<line x1="810" y1="236" x2="810" y2="248" stroke="#6e6e6e" stroke-width="2" />
+<line x1="920" y1="236" x2="920" y2="248" stroke="#6e6e6e" stroke-width="2" />
+<text x="1144" y="243" font-size="11" font-weight="normal" text-anchor="start" font-family="Inter, Arial, sans-serif">5-10 wks</text>
+<text x="10" y="283" font-size="12" font-weight="500" text-anchor="start" font-family="Inter, Arial, sans-serif">Phase 5: Decentralized Pack</text>
+<rect x="733.0" y="271" width="154" height="18" fill="#fdae61" stroke="black" stroke-width="1" rx="3" ry="3" />
+<line x1="865.0" y1="287" x2="931.0" y2="287" stroke="#6e6e6e" stroke-width="4" />
+<line x1="865.0" y1="281" x2="865.0" y2="293" stroke="#6e6e6e" stroke-width="2" />
+<line x1="931.0" y1="281" x2="931.0" y2="293" stroke="#6e6e6e" stroke-width="2" />
+<text x="1144" y="288" font-size="11" font-weight="normal" text-anchor="start" font-family="Inter, Arial, sans-serif">6-9 wks</text>
+<text x="10" y="328" font-size="12" font-weight="500" text-anchor="start" font-family="Inter, Arial, sans-serif">Phase 6: Integrations Pack</text>
+<rect x="766" y="316" width="176" height="18" fill="#fdae61" stroke="black" stroke-width="1" rx="3" ry="3" />
+<line x1="898" y1="332" x2="986" y2="332" stroke="#6e6e6e" stroke-width="4" />
+<line x1="898" y1="326" x2="898" y2="338" stroke="#6e6e6e" stroke-width="2" />
+<line x1="986" y1="326" x2="986" y2="338" stroke="#6e6e6e" stroke-width="2" />
+<text x="1144" y="333" font-size="11" font-weight="normal" text-anchor="start" font-family="Inter, Arial, sans-serif">6-10 wks</text>
+<text x="10" y="373" font-size="12" font-weight="500" text-anchor="start" font-family="Inter, Arial, sans-serif">Phase 7: Differentiation</text>
+<rect x="799.0" y="361" width="176" height="18" fill="#fdae61" stroke="black" stroke-width="1" rx="3" ry="3" />
+<line x1="909.0" y1="377" x2="1041.0" y2="377" stroke="#6e6e6e" stroke-width="4" />
+<line x1="909.0" y1="371" x2="909.0" y2="383" stroke="#6e6e6e" stroke-width="2" />
+<line x1="1041.0" y1="371" x2="1041.0" y2="383" stroke="#6e6e6e" stroke-width="2" />
+<text x="1144" y="378" font-size="11" font-weight="normal" text-anchor="start" font-family="Inter, Arial, sans-serif">5-11 wks</text>
+<line x1="590" y1="20" x2="590" y2="400" stroke="red" stroke-width="2" stroke-dasharray="5,5" />
+<text x="584" y="14" font-size="12" font-weight="600" text-anchor="end" font-family="Inter, Arial, sans-serif">MVP Complete</text>
+<line x1="700" y1="20" x2="700" y2="400" stroke="navy" stroke-width="2" stroke-dasharray="5,5" />
+<text x="706" y="14" font-size="12" font-weight="600" text-anchor="start" font-family="Inter, Arial, sans-serif">Prod Baseline</text>
+<rect x="10" y="418" width="16" height="12" fill="#2E8B57" stroke="black" stroke-width="0" rx="3" ry="3" />
+<text x="34" y="428" font-size="12" font-weight="500" text-anchor="start" font-family="Inter, Arial, sans-serif">Done</text>
+<rect x="10" y="440" width="16" height="12" fill="#3182bd" stroke="black" stroke-width="0" rx="3" ry="3" />
+<text x="34" y="450" font-size="12" font-weight="500" text-anchor="start" font-family="Inter, Arial, sans-serif">Core Critical Path</text>
+<rect x="10" y="462" width="16" height="12" fill="#fdae61" stroke="black" stroke-width="0" rx="3" ry="3" />
+<text x="34" y="472" font-size="12" font-weight="500" text-anchor="start" font-family="Inter, Arial, sans-serif">Expansion Packs (Product Options)</text>
+<rect x="10" y="484" width="16" height="12" fill="#6e6e6e" stroke="black" stroke-width="0" rx="3" ry="3" />
+<text x="34" y="494" font-size="12" font-weight="500" text-anchor="start" font-family="Inter, Arial, sans-serif">Estimation Uncertainty Range</text>
+</svg>

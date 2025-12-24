@@ -31,6 +31,13 @@ Progress: `5/33` complete.
 - ✅ PRD-026A Tenant & Client Management
 - ➡️ Full index: see [PRD index](docs/prd/README.md)
 
+## Project plan
+![Credo project implementation Gantt chart](docs/images/project-plan-gantt.svg)
+
+- Phase 0 (Foundation) is done after a 4–7 week ramp, establishing the base platform pieces.
+- Phases 1–3 (Core Identity, Operational Baseline, Production Hardening) extend the critical path for roughly 8–17 weeks, culminating in the MVP milestone (~week 15) and a production baseline (~week 20).
+- Phases 4–7 layer optional product packs over weeks 20–35: base pack, decentralized identity features, integrations pack, and a differentiation layer, each with their own estimation ranges for sizing uncertainty.
+
 ## Quick start
 ### Docker (backend + demos)
 ```bash
