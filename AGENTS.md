@@ -38,31 +38,25 @@ This repo uses small, focused review agents. Each agent has a narrow scope and a
 - DB access patterns, cache correctness, queue/stream throughput patterns.
 - Will not propose “speed” changes that weaken correctness or security.
 
-### 4) Security Agent
+### 4) Secure-by-Design Agent (Combined Security)
 
-**Scope:** concrete application security controls and misuse cases.
+**Scope:** security through design and concrete controls.
 
-- AuthN/AuthZ checks, secret handling, dependency/config risks, logging safety.
-- Threat-focused review of endpoints, queues, caches, webhooks, uploads.
-- Suggests mitigations that fit the current design constraints.
-
-### 5) Secure-by-Design Review Agent
-
-**Scope:** architectural security via modeling and invariants.
-
-- Trust boundaries and boundary translations.
+- Trust boundaries, boundary translations, and ordered validation.
 - Domain primitives, constructors/factories, immutability, safe failure modeling.
-- Lifecycle safety (identity, tokens/sessions, consents/permissions) in generic terms.
-- Rejects patches that do not change unsafe structure.
+- AuthN/AuthZ checks, secret handling, logging safety.
+- Lifecycle safety (identity, tokens/sessions, consents/permissions).
+- Threat-focused review of endpoints, queues, caches, webhooks, uploads.
+- Rejects patches that do not change unsafe structure; prefers design-level refactors.
 
-### 6) Complexity Review Agent
+### 5) Complexity Review Agent
 
 **Scope:** readability and cognitive complexity.
 
 - Simplify long functions, deep nesting, and unclear naming.
 - Preserve behavior while reducing mental stack.
 
-### 7) SRP Review Agent
+### 6) SRP Review Agent
 
 **Scope:** single responsibility and cohesion.
 
@@ -70,19 +64,13 @@ This repo uses small, focused review agents. Each agent has a narrow scope and a
 - Prefers small, same-package helpers over new layers or interfaces.
 - Keeps validation/auth boundaries explicit.
 
-### 8) Balance Review Agent
+### 7) Balance Review Agent
 
 **Scope:** Go idioms and abstraction/duplication balance.
 
 - Pass A: simplify over-abstraction and non-idiomatic layering.
 - Pass B: reduce harmful repetition with minimal, local helpers.
 - Avoids clever indirection; favors concrete types and clear control flow.
-
-## Overlap boundaries (to prevent conflicts)
-
-- **Security Agent** asks: “What can go wrong and what controls prevent it?”
-- **Secure-by-Design Agent** asks: “Is the design shaped so whole classes of bugs cannot exist?”
-- If both are used, Secure-by-Design sets the design constraints, Security proposes controls that fit them.
 
 ## Conflict resolution rules (tie-breakers)
 
@@ -97,14 +85,13 @@ This repo uses small, focused review agents. Each agent has a narrow scope and a
 
 ## Default review order
 
-1. Secure-by-Design (only if changing boundaries, auth, lifecycles, primitives)
+1. Secure-by-Design (if changing boundaries, auth, lifecycles, primitives, exposed surfaces, config, deps)
 2. DDD (if changing domain logic or service boundaries)
-3. Security (if changing exposed surfaces, auth, config, deps)
-4. Performance (if changing hot paths, concurrency, caching, DB access)
-5. SRP (if responsibility/cohesion is unclear)
-6. Complexity (if readability or cognitive load is high)
-7. Balance (if abstraction/duplication tradeoffs are in play)
-8. Testing (if changing behavior, contracts, or refactoring internals)
+3. Performance (if changing hot paths, concurrency, caching, DB access)
+4. SRP (if responsibility/cohesion is unclear)
+5. Complexity (if readability or cognitive load is high)
+6. Balance (if abstraction/duplication tradeoffs are in play)
+7. Testing (if changing behavior, contracts, or refactoring internals)
 
 ## Output expectations
 
