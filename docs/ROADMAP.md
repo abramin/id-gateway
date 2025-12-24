@@ -2,8 +2,9 @@
 
 **Status:** Phase-based delivery (source of truth: docs/prd/README.md)
 **Target:** MVP (Phases 0-2) -> Production Baseline (Phase 3) -> Advanced Packs (Phases 4-8)
-**Timeline:** MVP ~9-12 days; Production Baseline ~15-20 days; Full program ~52-69 days
-**Last Updated:** 2025-12-23
+**Timeline:** MVP ~45-60 days (110-150h effort); Production Baseline ~75-100 days (180-240h effort); Full program ~260-345 days (part-time)
+**Estimation Model:** Based on Phase 0 actuals: 4-5x calendar multiplier (part-time), 1.5-2x effort multiplier (complexity)
+**Last Updated:** 2025-12-24
 
 ---
 
@@ -29,7 +30,7 @@ Before starting Phase 3+ work, complete Phase 0-2 PRDs:
 - Required: Complete end-to-end flow works
 - Required: Regulated mode minimizes PII correctly
 
-**MVP System Time:** ~73-95 hours (9-12 days)
+**MVP System Time:** ~110-150 hours effort (45-60 days calendar at part-time pace)
 
 ---
 
@@ -40,21 +41,21 @@ The delivery plan consists of THREE parallel tracks that can be pursued simultan
 ### Track A: Production Hardening (MUST DO)
 
 **Priority:** P0 (Critical)
-**Time:** 48-64 hours (6-8 days)
+**Time:** 72-110 hours effort (30-45 days calendar)
 **PRDs:** PRD-018, PRD-021, PRD-022, PRD-015, PRD-005B, PRD-028 (Security Enhancements)
 **Goal:** Beta-ready system with notifications, recovery, MFA, and policy controls
 
 ### Track B: Operational Excellence (RECOMMENDED)
 
 **Priority:** P1 (High)
-**Time:** 19-28 hours (2.5-3.5 days)
+**Time:** 30-45 hours effort (12-18 days calendar)
 **PRDs:** PRD-019, PRD-020, PRD-028 (Performance Optimization), PRD-007
 **Goal:** Operational baseline with versioning, SRE, performance, and data rights
 
 ### Track C: Advanced/Showcase Features (DIFFERENTIATOR)
 
 **Priority:** P1-P3 (varies by feature)
-**Time:** 46-92+ hours (Phase 4-8, pick packs)
+**Time:** 70-140+ hours effort (Phase 4-8, pick packs)
 **PRDs:** Phases 4-8 (Assurance, Decentralized, Integrations, Differentiation, Banking Identity)
 **Goal:** Stand out from "basic auth gateway" projects
 
@@ -67,7 +68,7 @@ The delivery plan consists of THREE parallel tracks that can be pursued simultan
 ## A1. Signed JWT Tokens + JWKS
 
 **Priority:** P0 (Critical)
-**Time Estimate:** 4-6 hours
+**Time Estimate:** 6-9 hours effort (3-4 days calendar)
 **Depends On:** None (foundational)
 
 ### What to Add
@@ -129,7 +130,7 @@ The delivery plan consists of THREE parallel tracks that can be pursued simultan
 ## A2. Real Database (PostgreSQL)
 
 **Priority:** P0 (Critical)
-**Time Estimate:** 8-12 hours
+**Time Estimate:** 12-18 hours effort (5-7 days calendar)
 **Depends On:** None
 
 ### What to Add

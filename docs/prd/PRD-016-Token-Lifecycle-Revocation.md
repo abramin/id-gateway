@@ -932,12 +932,12 @@ func (s *CleanupService) performCleanup(ctx context.Context) {
 - [x] Users can list all active sessions
 - [x] Users can revoke individual sessions
 - [x] Users can revoke all sessions at once (FR-6: POST /auth/logout-all)
-- [ ] Password change triggers global session revocation (requires PRD-022)
+- [ ] Password change triggers global session revocation (requires [PRD-022](./PRD-022-Account-Recovery-Credentials.md))
 - [x] Token revocation list uses TTL (no memory leak)
 - [x] All token lifecycle events emit audit events
-- [ ] Concurrent session limits enforced (optional, future enhancement)
-- [ ] Revocation list supports prefix/radix-tree lookups for JTIs (O(log n)) — future enhancement
-- [ ] Key rotation drills and replay detection under concurrent refresh storms — future enhancement
+- [ ] Concurrent session limits enforced (see [PRD-016B](./PRD-016B-Session-Policy-Enhancements.md))
+- [ ] Revocation list supports prefix/radix-tree lookups for JTIs (O(log n)) — see [PRD-028](./PRD-028-Performance-Optimization.md)
+- [ ] Key rotation drills and replay detection under concurrent refresh storms — see [PRD-028](./PRD-028-Security-Enhancements.md)
 
 **Note:** The "password change triggers global session revocation" criterion requires password support from [PRD-022](./PRD-022-Account-Recovery-Credentials.md). This criterion will be completed alongside PRD-022 implementation in Phase 3.
 
@@ -1060,12 +1060,12 @@ curl -X POST http://localhost:8080/auth/logout-all?except_current=true \
 
 ## 9. Future Enhancements
 
-- Token introspection endpoint (RFC 7662)
-- Sliding session windows (extend on activity)
-- Remember me / persistent sessions
-- Single Sign-On (SSO) across applications
-- Token exchange (RFC 8693) for service-to-service
-- Proof Key for Code Exchange (PKCE) for mobile apps
+- Token introspection endpoint (RFC 7662) — see [PRD-041](./PRD-041-OAuth-Extension-Pack.md)
+- Sliding session windows (extend on activity) — see [PRD-016B](./PRD-016B-Session-Policy-Enhancements.md)
+- Remember me / persistent sessions — see [PRD-016B](./PRD-016B-Session-Policy-Enhancements.md)
+- Single Sign-On (SSO) across applications — see [PRD-042](./PRD-042-Enterprise-SSO-Federation.md)
+- Token exchange (RFC 8693) for service-to-service — see [PRD-041](./PRD-041-OAuth-Extension-Pack.md)
+- Proof Key for Code Exchange (PKCE) for mobile apps — see [PRD-041](./PRD-041-OAuth-Extension-Pack.md)
 
 ---
 
@@ -1088,8 +1088,8 @@ The following features were implemented beyond original PRD scope:
 ## Known Gaps
 
 None - all core requirements implemented. The following items are deferred to future PRDs:
-- Password change triggers global logout (requires PRD-022)
-- Concurrent session limits (optional enhancement)
+- Password change triggers global logout (requires [PRD-022](./PRD-022-Account-Recovery-Credentials.md))
+- Concurrent session limits (see [PRD-016B](./PRD-016B-Session-Policy-Enhancements.md))
 
 ---
 

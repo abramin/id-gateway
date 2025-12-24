@@ -24,10 +24,10 @@ Deactivation is required for:
 
 ## Non-Scope
 
-- Hard deletion of tenants/clients (deferred; use deactivation for now)
+- Hard deletion of tenants/clients (deferred; see [PRD-026C](./PRD-026C-Tenant-Client-Lifecycle-Enhancements.md))
 - Cascading client deactivation when tenant is deactivated (clients remain active but tenant check blocks them)
 - Bulk operations (single entity per call)
-- Scheduled deactivation (no future-dated deactivation)
+- Scheduled deactivation (deferred; see [PRD-026C](./PRD-026C-Tenant-Client-Lifecycle-Enhancements.md))
 
 ---
 
@@ -194,6 +194,7 @@ Service layer should call these methods and map `CodeInvariantViolation` to `409
 When tenant admin auth is implemented (per PRD-026A TODO), deactivate/reactivate should also support tenant-scoped variants:
 - `DeactivateClientForTenant(ctx, tenantID, clientID)`
 - `ReactivateClientForTenant(ctx, tenantID, clientID)`
+  - Tracked in [PRD-026C](./PRD-026C-Tenant-Client-Lifecycle-Enhancements.md)
 
 ---
 
@@ -215,6 +216,7 @@ None - all requirements implemented including audit events, 409 conflict handlin
 ## Risks / Open Questions
 
 1. **Token revocation on deactivation?** Current design leaves existing tokens valid. Should deactivation trigger bulk token revocation? (Deferred: adds complexity, can be added later)
+   - Tracked in [PRD-026C](./PRD-026C-Tenant-Client-Lifecycle-Enhancements.md)
 
 2. **Cascade to clients?** When tenant is deactivated, should all clients auto-deactivate? (No: simpler to rely on tenant status check in `ResolveClient`)
 
@@ -243,6 +245,7 @@ None - all requirements implemented including audit events, 409 conflict handlin
 3. Service retries with exponential backoff (max 3 attempts)
 
 **Scope:** ~100 lines across model, store, and service layers.
+**Tracking:** [PRD-026C](./PRD-026C-Tenant-Client-Lifecycle-Enhancements.md)
 
 ---
 

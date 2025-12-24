@@ -37,7 +37,7 @@ Auth0 and similar providers make tenant + application registration first-class. 
 - Social login
 - Marketplace, billing, or plans
 - Fine-grained RBAC beyond scopes
-- IdP-initiated SSO or cross-tenant federation
+- IdP-initiated SSO or cross-tenant federation (see [PRD-042](./PRD-042-Enterprise-SSO-Federation.md))
 
 ---
 
@@ -323,14 +323,14 @@ Example: `https://auth.credo.io/tenants/550e8400-e29b-41d4-a716-446655440000`
 - Issuer base URL configured via `JWT_ISSUER_BASE_URL` environment variable
 - Default: `http://localhost:8080` for development
 - JWT service dynamically builds issuer using `{base_url}/tenants/{tenant_id}`
-- Global signing key used across all tenants (per-tenant keys are future work)
+- Global signing key used across all tenants (per-tenant keys are future work; see [PRD-040](./PRD-040-OIDC-Metadata-Key-Management.md))
 
 **Future Enhancements (Out of Scope):**
 
-- Per-tenant signing keys for key isolation
-- OIDC Discovery per tenant: `GET /tenants/{tenant_id}/.well-known/openid-configuration`
-- JWKS per tenant: `GET /tenants/{tenant_id}/.well-known/jwks.json`
-- Per-tenant audience values
+- Per-tenant signing keys for key isolation (see [PRD-040](./PRD-040-OIDC-Metadata-Key-Management.md))
+- OIDC discovery per tenant (see [PRD-040](./PRD-040-OIDC-Metadata-Key-Management.md))
+- JWKS per tenant (see [PRD-040](./PRD-040-OIDC-Metadata-Key-Management.md))
+- Per-tenant audience values (see [PRD-040](./PRD-040-OIDC-Metadata-Key-Management.md))
 
 **References:**
 
@@ -515,10 +515,10 @@ These capabilities may be introduced in a future PRD once tenant and client prim
 
 ## 10. Open Questions / Future Extensions
 
-- Should we support **organization/teams** within a tenant in Phase 2? (Out of scope now.)
-- Do we need **client credentials grant** for machine-to-machine apps in MVP? If not, restrict to `authorization_code` and `refresh_token`.
-- How should **tenant-level settings** (password policies, MFA requirement) be configured? Potential follow-up PRD.
-- Should we harden key custody with **per-tenant keys and HSM-backed signing**, including JWKS rotation windows and backward-compatible key rollover?
+- Do we need **client credentials grant** for machine-to-machine apps in MVP? If not, restrict to `authorization_code` and `refresh_token`. (See [PRD-041](./PRD-041-OAuth-Extension-Pack.md))
+- How should **tenant-level settings** (password policies, MFA requirement) be configured? (See [PRD-026](./PRD-026-Admin-Dashboard-Operations-UI.md))
+- Should we support **organization/teams** within a tenant in Phase 2? (See [PRD-026](./PRD-026-Admin-Dashboard-Operations-UI.md))
+- Should we harden key custody with **per-tenant keys and HSM-backed signing**, including JWKS rotation windows and backward-compatible key rollover? (See [PRD-040](./PRD-040-OIDC-Metadata-Key-Management.md))
 
 ---
 

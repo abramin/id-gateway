@@ -58,6 +58,12 @@ Requires SQL access for basic operations - high operational overhead, error-pron
 - Update email templates
 - Configure MFA policies
 
+### FR-5B: Tenant Governance & Settings
+**Features:**
+- Manage tenant-level security policies (password rules, MFA required, session limits)
+- Create/manage tenant teams or org units
+- Assign users to teams and roles (tenant-scoped)
+
 ### FR-6: Security Operations & Fraud Detection Controls
 
 **Dependencies:** PRD-023 (Fraud Detection), PRD-027 (Adaptive Auth)

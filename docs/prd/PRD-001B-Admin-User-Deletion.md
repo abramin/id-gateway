@@ -51,8 +51,8 @@ GDPR/CCPA erasure requires the auth service to delete a user and all of their ac
 - Include `user_id`, `subject`, and contextual fields (e.g., email when known, request_id when present).
 
 ## Risks / Open Questions
-- Should admin tokens rotate automatically? (Out of scope; manual rotation acceptable for now.)
-- Should deletion also purge audit logs in regulated deployments? (Deferred to PRD-006.)
+- Should admin tokens rotate automatically? (Deferred to [PRD-028](./PRD-028-Security-Enhancements.md).)
+- Should deletion also purge audit logs in regulated deployments? (Deferred to [PRD-006](./PRD-006-Audit-Compliance.md).)
 
 ## Features Identified During Implementation
 

@@ -56,6 +56,11 @@ Auth and token flows are functionally complete (PRD-001/016) but lack performanc
 - Emit metrics: per-endpoint latency histograms, cache hit/miss counts, sweeper duration, queue depth, pool saturation.
 - Emit traces around cache miss → store fetch paths; annotate with cache outcome and pool wait time.
 
+### FR-6: Revocation Lookup Optimization
+
+- Replace linear JTI lookups with a prefix/radix tree or equivalent O(log n) index.
+- Validate performance under refresh storms with replay detection metrics.
+
 ---
 
 ## 3. Technical Requirements

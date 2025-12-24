@@ -807,18 +807,18 @@ curl -X POST http://localhost:8080/auth/token \
 
 ## 12. Future Enhancements (Out of Scope)
 
-- Real JWT signing with RS256/ES256
-- Per-tenant signing keys (currently global key used across all tenants)
-- Token refresh flow implementation (see PRD-016)
-- Session revocation endpoint (see PRD-016)
-- Session management endpoints (see PRD-016)
-- Token introspection endpoint
-- Password authentication
-- Multi-factor authentication
-- Rate limiting per user/IP
-- OIDC discovery endpoint per tenant: `GET /tenants/{tenant_id}/.well-known/openid-configuration`
-- JWKS endpoint per tenant: `GET /tenants/{tenant_id}/.well-known/jwks.json`
-- PKCE support for public clients
+- Real JWT signing with RS256/ES256 (see [PRD-040](./PRD-040-OIDC-Metadata-Key-Management.md))
+- Per-tenant signing keys (see [PRD-040](./PRD-040-OIDC-Metadata-Key-Management.md))
+- Token refresh flow implementation (see [PRD-016](./PRD-016-Token-Lifecycle-Revocation.md))
+- Session revocation endpoint (see [PRD-016](./PRD-016-Token-Lifecycle-Revocation.md))
+- Session management endpoints (see [PRD-016](./PRD-016-Token-Lifecycle-Revocation.md))
+- Token introspection endpoint (see [PRD-041](./PRD-041-OAuth-Extension-Pack.md))
+- Password authentication (see [PRD-022](./PRD-022-Account-Recovery-Credentials.md))
+- Multi-factor authentication (see [PRD-021](./PRD-021-Multi-Factor-Authentication.md))
+- Rate limiting per user/IP (see [PRD-017](./PRD-017-Rate-Limiting-Abuse-Prevention.md))
+- OIDC discovery per tenant (see [PRD-040](./PRD-040-OIDC-Metadata-Key-Management.md))
+- JWKS per tenant (see [PRD-040](./PRD-040-OIDC-Metadata-Key-Management.md))
+- PKCE support for public clients (see [PRD-041](./PRD-041-OAuth-Extension-Pack.md))
 
 **Note:** Refresh token issuance is included in this PRD as foundation for PRD-016 (Token Lifecycle & Revocation), which implements the full refresh flow and revocation capabilities.
 
@@ -827,7 +827,7 @@ curl -X POST http://localhost:8080/auth/token \
 ## 13. Deferred Tenant & Client Integration
 
 Authentication flows currently accept and validate client_id directly.
-Tenant resolution via client_id will be delegated to Tenant & Client Management (PRD-026A) once integrated.
+Tenant resolution via client_id will be delegated to Tenant & Client Management ([PRD-026A](./PRD-026A-Tenant-Client-Management.md)) once integrated.
 
 Until then, auth behavior remains unchanged to avoid cross-PRD coupling during MVP implementation.
 

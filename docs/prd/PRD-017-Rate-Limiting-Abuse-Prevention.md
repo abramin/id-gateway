@@ -1300,14 +1300,14 @@ curl -X POST http://localhost:8080/admin/rate-limit/allowlist \
 
 ## 9. Future Enhancements
 
-- Adaptive rate limiting (lower limits during attacks)
-- Per-endpoint custom limits (not just classes)
-- Rate limit analytics dashboard
-- Geolocation-based limits (different limits per region)
-- CAPTCHA challenge on repeated violations
-- Machine learning-based anomaly detection
-- Cost-based rate limiting (expensive ops cost more tokens)
-- **Configurable fail-closed mode**: Add `FailClosed` option for high-security deployments where rate limiting failures should block requests rather than allow them. Current behavior (fail-open) prioritizes availability; fail-closed would prioritize security at the cost of availability during store outages. See middleware documentation for current fail-open rationale.
+- Adaptive rate limiting (lower limits during attacks) — see [PRD-017C](./PRD-017C-Advanced-Rate-Limiting-Abuse.md)
+- Per-endpoint custom limits (not just classes) — see [PRD-017C](./PRD-017C-Advanced-Rate-Limiting-Abuse.md)
+- Rate limit analytics dashboard — see [PRD-017C](./PRD-017C-Advanced-Rate-Limiting-Abuse.md)
+- Geolocation-based limits (different limits per region) — see [PRD-017C](./PRD-017C-Advanced-Rate-Limiting-Abuse.md)
+- CAPTCHA challenge on repeated violations — see [PRD-017C](./PRD-017C-Advanced-Rate-Limiting-Abuse.md)
+- Machine learning-based anomaly detection — see [PRD-017C](./PRD-017C-Advanced-Rate-Limiting-Abuse.md)
+- Cost-based rate limiting (expensive ops cost more tokens) — see [PRD-017C](./PRD-017C-Advanced-Rate-Limiting-Abuse.md)
+- **Configurable fail-closed mode** — see [PRD-017C](./PRD-017C-Advanced-Rate-Limiting-Abuse.md)
 
 ---
 
@@ -1371,12 +1371,12 @@ The following features were implemented beyond original PRD scope:
 
 None for MVP scope. The following items are deferred to **Phase 2 (Operational Baseline)** when Redis/PostgreSQL are introduced for multi-instance deployments:
 
-1. **Quota API HTTP Endpoints (FR-5)**: Service layer complete; HTTP handlers deferred to Phase 2 when partner API billing is needed
-2. **Half-Open Circuit Breaker State**: Current 2-state implementation sufficient for single-instance; 3-state with half-open deferred to Phase 2
-3. **Redis-backed Distributed Rate Limiter**: Lua script designed in TR-2; implementation deferred to Phase 2 (PRD-020)
-4. **Postgres-backed Rate Limiter (TR-6)**: SQL indexing patterns documented; implementation deferred to Phase 2
+1. **Quota API HTTP Endpoints (FR-5)**: Service layer complete; HTTP handlers deferred to [PRD-017B](./PRD-017B-Distributed-Rate-Limiting-Quotas.md)
+2. **Half-Open Circuit Breaker State**: Current 2-state implementation sufficient for single-instance; 3-state with half-open deferred to [PRD-017B](./PRD-017B-Distributed-Rate-Limiting-Quotas.md)
+3. **Redis-backed Distributed Rate Limiter**: Lua script designed in TR-2; implementation deferred to [PRD-017B](./PRD-017B-Distributed-Rate-Limiting-Quotas.md)
+4. **Postgres-backed Rate Limiter (TR-6)**: SQL indexing patterns documented; implementation deferred to [PRD-017B](./PRD-017B-Distributed-Rate-Limiting-Quotas.md)
 
-See [PRD-020: Operational Readiness & SRE](./PRD-020-Operational-Readiness-SRE.md) for Phase 2 storage infrastructure transition.
+See [PRD-017B](./PRD-017B-Distributed-Rate-Limiting-Quotas.md) and [PRD-020](./PRD-020-Operational-Readiness-SRE.md) for Phase 2 storage infrastructure transition.
 
 ---
 

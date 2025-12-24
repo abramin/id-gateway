@@ -1,6 +1,6 @@
 # PRD-002: Consent Management System
 
-**Status:** Implementation Required (TR-6 projections deferred)
+**Status:** Implementation Required (TR-6 projections deferred; see [PRD-002B](./PRD-002B-Consent-Projections-Read-Model.md))
 **Priority:** P0 (Critical)
 **Owner:** Engineering Team
 **Last Updated:** 2025-12-17
@@ -578,9 +578,9 @@ func (h *Handler) handleConsentList(w http.ResponseWriter, r *http.Request)
 - `CodeInvalidConsent` - Consent expired or revoked
 - Both map to HTTP 403 Forbidden
 
-### TR-6: CQRS Read Model & Projection Store
+### TR-6: CQRS Read Model & Projection Store (Deferred)
 
-**Status:** Deferred until after Postgres migration (see docs/prd/README.md Phase 0 defer note). Target to land during performance/hardening work following A2 (Real Database) in the roadmap.
+**Status:** Deferred until after Postgres migration. Tracked in [PRD-002B](./PRD-002B-Consent-Projections-Read-Model.md).
 
 **Status:** Future Enhancement (Post-MVP)
 **Priority:** P2 (Performance Optimization)
