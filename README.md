@@ -28,13 +28,15 @@ _Modular identity and evidence platform covering auth, consent, registry evidenc
 
 ## Status (PRDs)
 
-Progress: `5/33` complete.
+Progress: `7/53` complete (Phase 0 done).
 
 - ✅ PRD-001 Auth & Session Management
 - ✅ PRD-001B Admin User Deletion
 - ✅ PRD-002 Consent Management (TR-6 projections deferred post-Postgres)
 - ✅ PRD-016 Token Lifecycle & Revocation
 - ✅ PRD-026A Tenant & Client Management
+- ✅ PRD-026B Tenant & Client Lifecycle
+- ✅ PRD-017 Rate Limiting & Abuse Prevention (MVP)
 - ➡️ Full index: see [PRD index](docs/prd/README.md)
 
 ## Project plan
