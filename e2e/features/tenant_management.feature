@@ -19,11 +19,11 @@ Feature: Tenant & Client Management Admin API
 
     @admin @tenant @crud
   Scenario: Create tenant with duplicate name fails
-    When I create a tenant with name "Duplicate Tenant Test"
+    When I create a tenant with exact name "Duplicate Tenant Test"
     Then the response status should be 201
     And I save the tenant ID from the response
 
-    When I create a tenant with name "Duplicate Tenant Test"
+    When I create a tenant with exact name "Duplicate Tenant Test"
     Then the response status should be 409
     And the response field "error" should equal "conflict"
 
@@ -35,7 +35,7 @@ Feature: Tenant & Client Management Admin API
 
     When I get the tenant details
     Then the response status should be 200
-    And the response field "name" should equal "Get Tenant Test"
+    And the response field "name" should contain "Get Tenant Test"
 
     @admin @tenant @validation
   Scenario: Create tenant with empty name fails
@@ -79,7 +79,7 @@ Feature: Tenant & Client Management Admin API
     Then the response status should be 200
     And the response field "name" should equal "Get Client App"
     # Secret should NOT be returned on GET
-    And the response field "client_secret" should equal ""
+    And the response should not contain "client_secret"
 
     @admin @client @crud
   Scenario: Update client

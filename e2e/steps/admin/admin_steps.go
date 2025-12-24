@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/cucumber/godog"
 )
@@ -35,10 +36,20 @@ type TestContext interface {
 
 // RegisterSteps registers admin-related step definitions
 func RegisterSteps(ctx *godog.ScenarioContext, tc TestContext) {
-	steps := &adminSteps{tc: tc}
+	steps := &adminSteps{
+		tc:             tc,
+		exactNameCache: make(map[string]string),
+	}
+
+	// Reset cache before each scenario to ensure isolation
+	ctx.Before(func(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
+		steps.exactNameCache = make(map[string]string)
+		return ctx, nil
+	})
 
 	// Tenant steps
 	ctx.Step(`^I create a tenant with name "([^"]*)"$`, steps.createTenant)
+	ctx.Step(`^I create a tenant with exact name "([^"]*)"$`, steps.createTenantWithExactName)
 	ctx.Step(`^I create a tenant with name "([^"]*)" and token "([^"]*)"$`, steps.createTenantWithToken)
 	ctx.Step(`^I save the tenant ID from the response$`, steps.saveTenantIDFromResponse)
 	ctx.Step(`^I get the tenant details$`, steps.getTenantDetails)
@@ -70,12 +81,39 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc TestContext) {
 }
 
 type adminSteps struct {
-	tc TestContext
+	tc              TestContext
+	exactNameCache  map[string]string // Tracks generated names for exact name testing
 }
 
 // Tenant Steps
 
 func (s *adminSteps) createTenant(ctx context.Context, name string) error {
+	// Append unique suffix to avoid conflicts between test runs
+	// Don't add suffix for empty names (validation tests)
+	finalName := name
+	if name != "" {
+		finalName = fmt.Sprintf("%s-%d", name, time.Now().UnixNano())
+	}
+	body := map[string]interface{}{
+		"name": finalName,
+	}
+	return s.tc.POSTWithHeaders("/admin/tenants", body, map[string]string{
+		"X-Admin-Token": s.tc.GetAdminToken(),
+	})
+}
+
+// createTenantWithExactName creates a tenant with a consistent name for duplicate testing.
+// First call with a base name generates a unique name and caches it.
+// Subsequent calls with the same base name reuse the cached name.
+// This ensures test isolation while allowing duplicate name testing.
+func (s *adminSteps) createTenantWithExactName(ctx context.Context, baseName string) error {
+	// Check if we already have a generated name for this base
+	name, exists := s.exactNameCache[baseName]
+	if !exists {
+		// Generate unique name and cache it
+		name = fmt.Sprintf("%s-%d", baseName, time.Now().UnixNano())
+		s.exactNameCache[baseName] = name
+	}
 	body := map[string]interface{}{
 		"name": name,
 	}
@@ -85,8 +123,14 @@ func (s *adminSteps) createTenant(ctx context.Context, name string) error {
 }
 
 func (s *adminSteps) createTenantWithToken(ctx context.Context, name, token string) error {
+	// Append unique suffix to avoid conflicts between test runs
+	// Don't add suffix for empty names (validation tests)
+	finalName := name
+	if name != "" {
+		finalName = fmt.Sprintf("%s-%d", name, time.Now().UnixNano())
+	}
 	body := map[string]interface{}{
-		"name": name,
+		"name": finalName,
 	}
 	return s.tc.POSTWithHeaders("/admin/tenants", body, map[string]string{
 		"X-Admin-Token": token,
