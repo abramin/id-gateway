@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Siren Scramble - Attack Lab</title>
+    <link rel="stylesheet" href="css/shared.css" />
+    <link rel="stylesheet" href="css/siren-scramble.css" />
+
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <script src="js/stores/theme-store.js"></script>
+    <script src="js/utils/formatting.js"></script>
+
+    <script src="js/siren-scramble/alert-catalog.js"></script>
+    <script src="js/siren-scramble/game-engine.js"></script>
+    <script src="js/siren-scramble/components.js"></script>
+    <script src="js/siren-scramble/page.js"></script>
+  </head>
+  <body x-data="sirenScramblePage" :class="{ 'shake': playfulShake }">
+    <nav class="nav">
+      <div class="nav-brand">
+        <a href="index.html" class="btn" title="Back to modules">
+          <span aria-hidden="true">⟵</span> Back
+        </a>
+        <span style="margin-left: 8px; font-weight: 700">Siren Scramble</span>
+      </div>
+      <div class="nav-actions">
+        <button class="btn" @click="toggleMotion()">
+          <span aria-hidden="true">🌊</span>
+          <span x-text="reduceMotion ? 'Reduced motion on' : 'Motion on'">Motion</span>
+        </button>
+        <button class="btn" @click="toggleMute()">
+          <span aria-hidden="true">🔈</span>
+          <span x-text="muted ? 'Muted' : 'Sound on'">Sound</span>
+        </button>
+        <button
+          class="btn"
+          :class="{ active: $store.theme.isLight }"
+          @click="$store.theme.toggle()"
+          title="Toggle theme"
+        >
+          <span aria-hidden="true">🌗</span> Theme
+        </button>
+      </div>
+    </nav>
+
+    <main class="page-grid">
+      <section class="hero-card">
+        <div class="hero-copy">
+          <h1>Stop the pretend hacks!</h1>
+          <p>
+            Short, playful alerts pop up while you guard the token vault. Tap the right defenses in order.
+          </p>
+          <div class="hero-actions">
+            <template x-for="lvl in [1,2,3,4,5]" :key="lvl">
+              <button
+                class="level-pill"
+                :class="{ active: level === lvl }"
+                @click="setLevel(lvl)"
+              >
+                Level <span x-text="lvl"></span>
+              </button>
+            </template>
+            <button class="btn primary" @click="startSession()">Restart session</button>
+          </div>
+        </div>
+        <div class="hero-visual">
+          <div class="hint-banner">
+            <strong>How it works</strong>
+            <ul style="margin: 8px 0 0 18px; color: var(--text-secondary)">
+              <li>Alerts appear every few moments with a gentle siren.</li>
+              <li>Follow the steps: sometimes one, sometimes two.</li>
+              <li>Decoys are funny—no penalties, just hints.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="score-card">
+        <div class="score-row">
+          <span>Level</span>
+          <span class="badge" x-text="engine?.state.level"></span>
+        </div>
+        <div class="score-row">
+          <span>Score</span>
+          <span class="badge" x-text="engine?.state.score"></span>
+        </div>
+        <div class="score-row">
+          <span>Streak</span>
+          <span class="badge" x-text="engine?.state.streak"></span>
+        </div>
+        <div class="score-row">
+          <span>Next alert</span>
+          <span class="timer">~<span x-text="nextIn"></span>s</span>
+        </div>
+      </section>
+
+      <section class="task-card">
+        <div class="task-badge">Idle Mode</div>
+        <h3 class="task-title" x-text="task.title"></h3>
+        <p class="task-detail" x-text="task.detail"></p>
+        <p class="task-detail" style="margin-top: 10px;">Stay ready—alerts can pop any time.</p>
+      </section>
+
+      <section class="builder-card">
+        <h3 style="margin-top: 0;">Session tips</h3>
+        <ul style="color: var(--text-secondary); margin-bottom: 0;">
+          <li>Keyboard friendly: use Tab to focus buttons, Enter/Space to activate.</li>
+          <li>Wrong picks add playful hints and keep you in the game.</li>
+          <li>Reduce Motion keeps shakes minimal.</li>
+        </ul>
+      </section>
+    </main>
+
+    <template x-if="mode === 'alert' && currentAlert">
+      <div class="alert-overlay">
+        <div class="alert-panel" x-data="alertOverlay({ alert: currentAlert, countdown: countdown, reducedMotion: reduceMotion, onAction: handleAction, showHint: hintIntensity() })" x-ref="overlay">
+          <div class="alert-header">
+            <div class="alert-type">
+              <span class="dot"></span>
+              <div>
+                <div x-text="alert.title"></div>
+                <small x-text="'Level ' + alert.difficulty + ' • ' + alert.type"></small>
+              </div>
+            </div>
+            <div class="countdown-pill">⏳ <span x-text="countdown"></span>s</div>
+          </div>
+
+          <div class="alert-body">
+            <template x-if="alert.type === 'phishing'">
+              <div class="alert-card" x-data="phishingCard(alert)">
+                <div class="phish-card">
+                  <div class="phish-meta">
+                    <span x-text="alert.ui.message.sender"></span>
+                    <span x-text="alert.ui.message.subject"></span>
+                  </div>
+                  <div class="phish-body" x-text="alert.ui.message.body"></div>
+                  <button class="btn" @click="revealClue()" x-show="!clueVisible">🔍 Reveal clue</button>
+                  <p class="hint-banner" x-show="clueVisible" x-text="alert.ui.message.clue"></p>
+                </div>
+                <div class="action-grid">
+                  <template x-for="step in alert.steps" :key="step.id">
+                    <button class="action-btn correct" @click="$parent.handle(step.id)">
+                      <span x-text="step.label"></span>
+                      <span x-show="$parent.showHint !== 'low'" style="display: block; color: var(--text-secondary); font-weight: 400;">
+                        Step <span x-text="alert.completedSteps.length + 1"></span>
+                      </span>
+                    </button>
+                  </template>
+                  <template x-for="decoy in alert.decoys" :key="decoy.id">
+                    <button class="action-btn" @click="$parent.react(decoy.reaction); $parent.handle(decoy.id)">
+                      <span x-text="decoy.label"></span>
+                    </button>
+                  </template>
+                </div>
+              </div>
+            </template>
+
+            <template x-if="alert.type === 'password'">
+              <div class="alert-card" x-data="passwordBuilder(alert, { onStrong: () => $parent.handle('build-strong') })">
+                <div class="hint-banner" x-show="$parent.showHint !== 'low'">
+                  Build a strong password: add a number + symbol, avoid obvious words.
+                </div>
+                <p class="task-detail">Drag or tap tiles into the bar.</p>
+                <div class="password-slot">
+                  <template x-for="tile in chosen" :key="tile">
+                    <div class="tile" @click="removeTile(tile)" x-text="tile"></div>
+                  </template>
+                </div>
+                <div class="meter" style="margin: 8px 0;">
+                  <div class="meter-fill" :style="{ width: meter.value + '%' }"></div>
+                </div>
+                <p style="margin: 0 0 8px;" x-text="'Strength: ' + meter.label"></p>
+                <div class="password-tiles">
+                  <template x-for="tile in alert.ui.tiles" :key="tile">
+                    <button class="tile" type="button" @click="drop(tile)" :aria-label="'Add tile ' + tile">
+                      <span x-text="tile"></span>
+                    </button>
+                  </template>
+                </div>
+                <div class="action-grid" style="margin-top: 10px;">
+                  <button class="action-btn correct" @click="submit()">Lock It In</button>
+                  <template x-for="decoy in alert.decoys" :key="decoy.id">
+                    <button class="action-btn" @click="decoy(decoy.reaction); $parent.handle(decoy.id)">
+                      <span x-text="decoy.label"></span>
+                    </button>
+                  </template>
+                  <template x-if="alert.steps.length > 1">
+                    <button class="action-btn correct" @click="$parent.handle('lock-vault')">
+                      🔒 Lock Vault
+                    </button>
+                  </template>
+                </div>
+                <p class="hint-banner" x-show="playful" x-text="playful"></p>
+              </div>
+            </template>
+
+            <template x-if="alert.type === 'login'">
+              <div class="alert-card" x-data="loginCheck(alert, { onAction: (id) => $parent.handle(id) })">
+                <div class="login-card">
+                  <p style="margin: 0 0 8px;" x-text="alert.ui.clue"></p>
+                  <p class="task-detail" x-text="alert.ui.helper"></p>
+                </div>
+                <div class="action-grid">
+                  <button class="action-btn correct" :class="{ pulse: pulse }" @click="choose('block-login')">
+                    Block
+                  </button>
+                  <template x-if="alert.steps.length > 1">
+                    <button class="action-btn correct" @click="choose('reset-password')">Reset Password</button>
+                  </template>
+                  <template x-for="decoy in alert.decoys" :key="decoy.id">
+                    <button class="action-btn" @click="choose(decoy.id)">
+                      <span x-text="decoy.label"></span>
+                    </button>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <div class="hint-banner" style="margin-top: 12px;" x-show="playfulMessage">
+            <strong x-text="playfulMessage"></strong>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <template x-if="mode === 'resolve'">
+      <div class="reaction-toast" role="status" aria-live="polite">
+        <span x-text="reactionMessage"></span>
+      </div>
+    </template>
+  </body>
+</html>
