@@ -5,7 +5,7 @@
 **Owner:** Engineering Team
 **Dependencies:** PRD-001 (Authentication & Session Management), PRD-016 (Token Lifecycle & Revocation)
 **Phase:** 0 → 1 (Foundation to Core Identity Plane)
-**Last Updated:** 2025-12-12
+**Last Updated:** 2025-12-24
 
 ---
 
@@ -288,9 +288,7 @@ At most, it consumes a **read-only counter interface**.
 - **ID/Access Token Claims:** Must include `tenant_id`, `client_id`, `sub`, `scope`, `exp`, `iat`, `iss`, `aud`.
 - **Scope Enforcement:** Requested scopes must be subset of client `allowed_scopes`; reject otherwise.
 
-> **Implementation Note:** Scope enforcement (validating `RequestedScope ⊆ client.AllowedScopes`) is not yet implemented.
-> The `allowed_scopes` field exists on the Client model but is not validated during authorization.
-> This should be implemented as part of Phase 0 completion.
+> **Implementation Note:** Scope enforcement (validating `RequestedScope ⊆ client.AllowedScopes`) is implemented in `internal/auth/service/authorize.go`.
 
 ### FR-8: Security & Isolation Controls
 
@@ -545,7 +543,9 @@ The following features were implemented beyond original PRD scope:
 
 ## Known Gaps
 
-1. **Scope Enforcement**: No validation that `RequestedScope ⊆ client.AllowedScopes` (see FR-7 implementation note)
+None - all MVP requirements implemented. The following is deferred to Phase 6:
+
+1. **Tenant Admin Role-Based Access**: Fine-grained tenant admin authorization deferred to [PRD-026: Admin Dashboard & Operations UI](./PRD-026-Admin-Dashboard-Operations-UI.md)
 
 ---
 
@@ -560,3 +560,6 @@ The following features were implemented beyond original PRD scope:
 |         |            |                  | - Per-tenant issuer format: `{base_url}/tenants/{tenant_id}`           |
 |         |            |                  | - Updated FR-7 Claims & Scopes to include issuer format                |
 |         |            |                  | - Documented future work: OIDC discovery and JWKS per tenant           |
+| 1.4     | 2025-12-24 | Engineering Team | Status verification: scope enforcement confirmed implemented           |
+|         |            |                  | - Updated FR-7 implementation note                                     |
+|         |            |                  | - Cleared Known Gaps (scope enforcement done)                          |

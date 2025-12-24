@@ -1,8 +1,8 @@
 # PRD-001B: Admin-Only User & Session Deletion
 
-**Status:** Complete  
-**Owner:** Engineering  
-**Last Updated:** 2025-12-11
+**Status:** Complete
+**Owner:** Engineering
+**Last Updated:** 2025-12-24
 
 ---
 
@@ -56,11 +56,21 @@ GDPR/CCPA erasure requires the auth service to delete a user and all of their ac
 
 ## Features Identified During Implementation
 
-No additional features beyond PRD scope.
+The following features were implemented beyond original PRD scope:
+
+1. **Dedicated Admin Server on Port 8081**: Optional dedicated admin API server separate from main public API (8080), starting only when `ADMIN_API_TOKEN` is configured
+2. **Admin Stats & Monitoring Endpoints**: `GET /admin/stats`, `GET /admin/users`, `GET /admin/audit/recent` for system observability
+3. **Comprehensive E2E Test Coverage**: Cucumber feature tests covering happy path, error cases, and token validation
 
 ## Known Gaps
 
-1. **Audit event enrichment**: Delete audit events should include `email` (when available) and `request_id`. Current implementation only logs `user_id`. Email is not retrieved before deletion.
+None - all requirements have been implemented including audit event enrichment with email and request_id.
 
 ## Revision History
-- 1.0 (2025-12-11): Initial draft; carved out delete flows from PRD-001 and defined admin surface.
+
+| Version | Date       | Author       | Changes                                                              |
+| ------- | ---------- | ------------ | -------------------------------------------------------------------- |
+| 1.0     | 2025-12-11 | Engineering  | Initial draft; carved out delete flows from PRD-001                  |
+| 1.1     | 2025-12-24 | Engineering  | Status verification: all requirements complete including audit enrichment |
+|         |            |              | - Added Features Identified During Implementation section            |
+|         |            |              | - Cleared Known Gaps (email/request_id enrichment now implemented)   |

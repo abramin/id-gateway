@@ -4,6 +4,7 @@
 **Priority:** P0 (Critical)
 **Owner:** Engineering Team
 **Dependencies:** PRD-001 (Authentication), PRD-016 (Token Lifecycle)
+**Last Updated:** 2025-12-24
 
 ---
 
@@ -1368,8 +1369,14 @@ The following features were implemented beyond original PRD scope:
 
 ## Known Gaps
 
-1. **Circuit Breaker**: Design present in FR-7 but not fully implemented
-2. **Quota API Endpoints (FR-5)**: Service layer complete but not wired to HTTP handlers
+None for MVP scope. The following items are deferred to **Phase 2 (Operational Baseline)** when Redis/PostgreSQL are introduced for multi-instance deployments:
+
+1. **Quota API HTTP Endpoints (FR-5)**: Service layer complete; HTTP handlers deferred to Phase 2 when partner API billing is needed
+2. **Half-Open Circuit Breaker State**: Current 2-state implementation sufficient for single-instance; 3-state with half-open deferred to Phase 2
+3. **Redis-backed Distributed Rate Limiter**: Lua script designed in TR-2; implementation deferred to Phase 2 (PRD-020)
+4. **Postgres-backed Rate Limiter (TR-6)**: SQL indexing patterns documented; implementation deferred to Phase 2
+
+See [PRD-020: Operational Readiness & SRE](./PRD-020-Operational-Readiness-SRE.md) for Phase 2 storage infrastructure transition.
 
 ---
 
@@ -1377,6 +1384,7 @@ The following features were implemented beyond original PRD scope:
 
 | Version | Date       | Author       | Changes                                                                                                                                                                                                       |
 | ------- | ---------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2.2     | 2025-12-24 | Engineering  | Status verification: MVP scope complete; deferred quota API, circuit breaker, distributed stores to Phase 2                                                                                                   |
 | 2.1     | 2025-12-22 | Engineering  | Added FR-8: Add Observability and Metrics sections                                                                                                                                                            |
 | 2.0     | 2025-12-21 | Engineering  | Added TR-6: SQL Indexing Patterns (B-Tree anatomy, composite keys, covering indexes, partial indexes, DML impact, NULL handling, hash partitioning) with exercises from "Use The Index, Luke"                 |
 | 1.9     | 2025-12-19 | Engineering  | Added FR-2c: Per-Client Rate Limiting for OAuth client_id with trust-based tiers (confidential vs public)                                                                                                     |

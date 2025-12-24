@@ -1,8 +1,8 @@
 # PRD-026B: Tenant & Client Lifecycle Management
 
-**Status:** Not Started
+**Status:** Complete
 **Owner:** Engineering
-**Last Updated:** 2025-12-23
+**Last Updated:** 2025-12-24
 
 ---
 
@@ -197,6 +197,21 @@ When tenant admin auth is implemented (per PRD-026A TODO), deactivate/reactivate
 
 ---
 
+## Features Identified During Implementation
+
+The following features were implemented beyond original PRD scope:
+
+1. **Tenant-Scoped Client Operations**: `DeactivateClientForTenant()`, `ReactivateClientForTenant()` ready for tenant admin auth
+2. **Comprehensive E2E Test Coverage**: 12 Gherkin scenarios covering all lifecycle operations including edge cases
+3. **ResolveClient Integration**: Status checks automatically block OAuth flows for inactive tenants/clients
+4. **Metrics Integration**: Duration tracking on `ResolveClient()` for OAuth critical path observability
+
+## Known Gaps
+
+None - all requirements implemented including audit events, 409 conflict handling, and OAuth flow integration.
+
+---
+
 ## Risks / Open Questions
 
 1. **Token revocation on deactivation?** Current design leaves existing tokens valid. Should deactivation trigger bulk token revocation? (Deferred: adds complexity, can be added later)
@@ -233,7 +248,11 @@ When tenant admin auth is implemented (per PRD-026A TODO), deactivate/reactivate
 
 ## Revision History
 
-| Version | Date | Author | Changes |
-|---------|------|--------|---------|
-| 1.0 | 2025-12-23 | Engineering | Initial draft; lifecycle management carved out from PRD-026A |
-| 1.1 | 2025-12-24 | Engineering | Added FI-1: Optimistic locking for concurrent updates |
+| Version | Date       | Author      | Changes                                                                   |
+| ------- | ---------- | ----------- | ------------------------------------------------------------------------- |
+| 1.0     | 2025-12-23 | Engineering | Initial draft; lifecycle management carved out from PRD-026A              |
+| 1.1     | 2025-12-24 | Engineering | Added FI-1: Optimistic locking for concurrent updates                     |
+| 1.2     | 2025-12-24 | Engineering | Status verification: all requirements complete                            |
+|         |            |             | - Updated status to Complete                                              |
+|         |            |             | - Added Features Identified During Implementation section                 |
+|         |            |             | - Confirmed E2E test coverage (12 scenarios)                              |
