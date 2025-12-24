@@ -283,3 +283,76 @@ func (s *ServiceSuite) TestCreateClientNormalizesInput() {
 	assert.Equal(s.T(), "authorization_code", client.AllowedGrants[0], "expected lowercased grants")
 	assert.Len(s.T(), client.AllowedScopes, 1, "expected deduplicated scopes")
 }
+
+// TestUpdateClientRejectsClientCredentialsForPublicClient verifies the security invariant
+// that public clients cannot be updated to use client_credentials grant.
+// This is a separate path from creation and must be validated independently.
+func (s *ServiceSuite) TestUpdateClientRejectsClientCredentialsForPublicClient() {
+	tenantRecord := s.createTestTenant("Acme")
+
+	// Create a public client with authorization_code grant
+	publicClient, _, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
+		TenantID:      tenantRecord.ID.String(),
+		Name:          "Public SPA",
+		RedirectURIs:  []string{"https://app.example.com/callback"},
+		AllowedGrants: []string{"authorization_code"},
+		AllowedScopes: []string{"openid"},
+		Public:        true,
+	})
+	require.NoError(s.T(), err)
+	assert.False(s.T(), publicClient.IsConfidential(), "expected public client")
+
+	// Attempt to update with client_credentials grant - should fail
+	grants := []string{"client_credentials"}
+	_, _, err = s.service.UpdateClient(context.Background(), publicClient.ID, &tenant.UpdateClientRequest{
+		AllowedGrants: &grants,
+	})
+	require.Error(s.T(), err)
+	assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeValidation),
+		"expected validation error when adding client_credentials to public client")
+}
+
+// TestRedirectURIRejectsLocalhostSubdomain verifies that redirect URIs with
+// localhost-like subdomains (e.g., localhost.attacker.com) are rejected.
+// This prevents DNS rebinding attacks.
+func (s *ServiceSuite) TestRedirectURIRejectsLocalhostSubdomain() {
+	tenantRecord := s.createTestTenant("Acme")
+
+	_, _, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
+		TenantID:      tenantRecord.ID.String(),
+		Name:          "Web",
+		RedirectURIs:  []string{"http://localhost.attacker.com/callback"},
+		AllowedGrants: []string{"authorization_code"},
+		AllowedScopes: []string{"openid"},
+	})
+	require.Error(s.T(), err)
+	assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeValidation),
+		"expected validation error for localhost subdomain bypass attempt")
+}
+
+// TestRedirectURIAllowsValidLocalhost verifies legitimate localhost URIs are allowed.
+func (s *ServiceSuite) TestRedirectURIAllowsValidLocalhost() {
+	tenantRecord := s.createTestTenant("Acme")
+
+	s.T().Run("localhost without port", func(t *testing.T) {
+		_, _, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
+			TenantID:      tenantRecord.ID.String(),
+			Name:          "Local Dev",
+			RedirectURIs:  []string{"http://localhost/callback"},
+			AllowedGrants: []string{"authorization_code"},
+			AllowedScopes: []string{"openid"},
+		})
+		require.NoError(s.T(), err)
+	})
+
+	s.T().Run("localhost with port", func(t *testing.T) {
+		_, _, err := s.service.CreateClient(context.Background(), &tenant.CreateClientRequest{
+			TenantID:      tenantRecord.ID.String(),
+			Name:          "Local Dev 2",
+			RedirectURIs:  []string{"http://localhost:3000/callback"},
+			AllowedGrants: []string{"authorization_code"},
+			AllowedScopes: []string{"openid"},
+		})
+		require.NoError(s.T(), err)
+	})
+}

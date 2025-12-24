@@ -98,7 +98,14 @@ func isAllowedScheme(scheme, host string) bool {
 	if scheme == "https" {
 		return true
 	}
-	return scheme == "http" && strings.HasPrefix(host, "localhost")
+	// Only allow exact localhost or localhost:port, not subdomains like localhost.attacker.com
+	return scheme == "http" && isLocalhost(host)
+}
+
+// isLocalhost checks if the host is exactly "localhost" or "localhost:<port>".
+// Prevents subdomain bypass attacks like "localhost.attacker.com".
+func isLocalhost(host string) bool {
+	return host == "localhost" || strings.HasPrefix(host, "localhost:")
 }
 
 // allowedGrants defines the valid OAuth grants clients can use.

@@ -7,7 +7,6 @@ import (
 	dErrors "credo/pkg/domain-errors"
 )
 
-// Tenant represents an isolated identity boundary.
 type Tenant struct {
 	ID        id.TenantID  `json:"id"`
 	Name      string       `json:"name"`
@@ -16,21 +15,15 @@ type Tenant struct {
 	UpdatedAt time.Time    `json:"updated_at"`
 }
 
-// IsActive returns true if the tenant is in active status.
 func (t *Tenant) IsActive() bool {
 	return t.Status == TenantStatusActive
-}
-
-// IsInactive returns true if the tenant is in inactive status.
-func (t *Tenant) IsInactive() bool {
-	return t.Status == TenantStatusInactive
 }
 
 // Deactivate transitions the tenant to inactive status.
 // Updates the timestamp to track when the transition occurred.
 // Returns an error if the tenant is already inactive.
 func (t *Tenant) Deactivate(now time.Time) error {
-	if t.IsInactive() {
+	if !t.IsActive() {
 		return dErrors.New(dErrors.CodeInvariantViolation, "tenant is already inactive")
 	}
 	t.Status = TenantStatusInactive
@@ -50,7 +43,6 @@ func (t *Tenant) Reactivate(now time.Time) error {
 	return nil
 }
 
-// NewTenant creates a Tenant with domain invariant checks.
 func NewTenant(tenantID id.TenantID, name string) (*Tenant, error) {
 	if name == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "tenant name cannot be empty")
@@ -68,7 +60,6 @@ func NewTenant(tenantID id.TenantID, name string) (*Tenant, error) {
 	}, nil
 }
 
-// Client represents an OAuth relying party registered under a tenant.
 type Client struct {
 	ID               id.ClientID  `json:"id"`
 	TenantID         id.TenantID  `json:"tenant_id"`
@@ -83,7 +74,6 @@ type Client struct {
 	UpdatedAt        time.Time    `json:"updated_at"`
 }
 
-// NewClient creates a Client with domain invariant checks.
 func NewClient(
 	clientID id.ClientID,
 	tenantID id.TenantID,
@@ -132,16 +122,11 @@ func (c *Client) IsActive() bool {
 	return c.Status == ClientStatusActive
 }
 
-// IsInactive returns true if the client is in inactive status.
-func (c *Client) IsInactive() bool {
-	return c.Status == ClientStatusInactive
-}
-
 // Deactivate transitions the client to inactive status.
 // Updates the timestamp to track when the transition occurred.
 // Returns an error if the client is already inactive.
 func (c *Client) Deactivate(now time.Time) error {
-	if c.IsInactive() {
+	if !c.IsActive() {
 		return dErrors.New(dErrors.CodeInvariantViolation, "client is already inactive")
 	}
 	c.Status = ClientStatusInactive
@@ -161,7 +146,6 @@ func (c *Client) Reactivate(now time.Time) error {
 	return nil
 }
 
-// IsConfidential returns true if the client is a confidential client (has a secret).
 // Confidential clients are server-side apps with secure secret storage.
 // Public clients are SPAs/mobile apps that cannot securely store secrets.
 func (c *Client) IsConfidential() bool {

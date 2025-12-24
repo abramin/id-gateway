@@ -14,8 +14,6 @@ import (
 
 // TestTenantDeactivate_AlreadyInactive verifies the domain invariant that
 // deactivating an already-inactive tenant returns an error.
-// This is a unit test because the invariant protects against invalid state transitions
-// that may not be reachable via feature tests (no deactivate endpoint exists yet).
 func TestTenantDeactivate_AlreadyInactive(t *testing.T) {
 	tenant := &Tenant{
 		ID:        id.TenantID(uuid.New()),
@@ -24,7 +22,7 @@ func TestTenantDeactivate_AlreadyInactive(t *testing.T) {
 		CreatedAt: time.Now(),
 	}
 
-	err := tenant.Deactivate()
+	err := tenant.Deactivate(time.Now())
 	require.Error(t, err)
 	assert.True(t, dErrors.HasCode(err, dErrors.CodeInvariantViolation),
 		"expected invariant violation for double-deactivation")
@@ -32,6 +30,23 @@ func TestTenantDeactivate_AlreadyInactive(t *testing.T) {
 
 // TestTenantDeactivate_Success verifies that deactivating an active tenant succeeds.
 func TestTenantDeactivate_Success(t *testing.T) {
+	now := time.Now()
+	tenant := &Tenant{
+		ID:        id.TenantID(uuid.New()),
+		Name:      "Test",
+		Status:    TenantStatusActive,
+		CreatedAt: now,
+	}
+
+	err := tenant.Deactivate(now)
+	require.NoError(t, err)
+	assert.Equal(t, TenantStatusInactive, tenant.Status)
+	assert.Equal(t, now, tenant.UpdatedAt)
+}
+
+// TestTenantReactivate_AlreadyActive verifies the domain invariant that
+// reactivating an already-active tenant returns an error.
+func TestTenantReactivate_AlreadyActive(t *testing.T) {
 	tenant := &Tenant{
 		ID:        id.TenantID(uuid.New()),
 		Name:      "Test",
@@ -39,15 +54,30 @@ func TestTenantDeactivate_Success(t *testing.T) {
 		CreatedAt: time.Now(),
 	}
 
-	err := tenant.Deactivate()
+	err := tenant.Reactivate(time.Now())
+	require.Error(t, err)
+	assert.True(t, dErrors.HasCode(err, dErrors.CodeInvariantViolation),
+		"expected invariant violation for double-reactivation")
+}
+
+// TestTenantReactivate_Success verifies that reactivating an inactive tenant succeeds.
+func TestTenantReactivate_Success(t *testing.T) {
+	now := time.Now()
+	tenant := &Tenant{
+		ID:        id.TenantID(uuid.New()),
+		Name:      "Test",
+		Status:    TenantStatusInactive,
+		CreatedAt: now,
+	}
+
+	err := tenant.Reactivate(now)
 	require.NoError(t, err)
-	assert.Equal(t, TenantStatusInactive, tenant.Status)
+	assert.Equal(t, TenantStatusActive, tenant.Status)
+	assert.Equal(t, now, tenant.UpdatedAt)
 }
 
 // TestClientDeactivate_AlreadyInactive verifies the domain invariant that
 // deactivating an already-inactive client returns an error.
-// This is a unit test because the invariant protects against invalid state transitions
-// that may not be reachable via feature tests (no deactivate endpoint exists yet).
 func TestClientDeactivate_AlreadyInactive(t *testing.T) {
 	client := &Client{
 		ID:            id.ClientID(uuid.New()),
@@ -59,7 +89,7 @@ func TestClientDeactivate_AlreadyInactive(t *testing.T) {
 		UpdatedAt:     time.Now(),
 	}
 
-	err := client.Deactivate()
+	err := client.Deactivate(time.Now())
 	require.Error(t, err)
 	assert.True(t, dErrors.HasCode(err, dErrors.CodeInvariantViolation),
 		"expected invariant violation for double-deactivation")
@@ -67,6 +97,26 @@ func TestClientDeactivate_AlreadyInactive(t *testing.T) {
 
 // TestClientDeactivate_Success verifies that deactivating an active client succeeds.
 func TestClientDeactivate_Success(t *testing.T) {
+	now := time.Now()
+	client := &Client{
+		ID:            id.ClientID(uuid.New()),
+		TenantID:      id.TenantID(uuid.New()),
+		Name:          "Test Client",
+		OAuthClientID: "test-client-id",
+		Status:        ClientStatusActive,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+
+	err := client.Deactivate(now)
+	require.NoError(t, err)
+	assert.Equal(t, ClientStatusInactive, client.Status)
+	assert.Equal(t, now, client.UpdatedAt)
+}
+
+// TestClientReactivate_AlreadyActive verifies the domain invariant that
+// reactivating an already-active client returns an error.
+func TestClientReactivate_AlreadyActive(t *testing.T) {
 	client := &Client{
 		ID:            id.ClientID(uuid.New()),
 		TenantID:      id.TenantID(uuid.New()),
@@ -77,9 +127,29 @@ func TestClientDeactivate_Success(t *testing.T) {
 		UpdatedAt:     time.Now(),
 	}
 
-	err := client.Deactivate()
+	err := client.Reactivate(time.Now())
+	require.Error(t, err)
+	assert.True(t, dErrors.HasCode(err, dErrors.CodeInvariantViolation),
+		"expected invariant violation for double-reactivation")
+}
+
+// TestClientReactivate_Success verifies that reactivating an inactive client succeeds.
+func TestClientReactivate_Success(t *testing.T) {
+	now := time.Now()
+	client := &Client{
+		ID:            id.ClientID(uuid.New()),
+		TenantID:      id.TenantID(uuid.New()),
+		Name:          "Test Client",
+		OAuthClientID: "test-client-id",
+		Status:        ClientStatusInactive,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+
+	err := client.Reactivate(now)
 	require.NoError(t, err)
-	assert.Equal(t, ClientStatusInactive, client.Status)
+	assert.Equal(t, ClientStatusActive, client.Status)
+	assert.Equal(t, now, client.UpdatedAt)
 }
 
 // TestTenantIsActive verifies the IsActive helper method.

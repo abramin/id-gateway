@@ -104,7 +104,6 @@ func (s *Service) CreateTenant(ctx context.Context, name string) (*models.Tenant
 	return t, nil
 }
 
-// GetTenant fetches tenant metadata with counts.
 func (s *Service) GetTenant(ctx context.Context, tenantID id.TenantID) (*models.TenantDetails, error) {
 	if tenantID.IsNil() {
 		return nil, dErrors.New(dErrors.CodeBadRequest, "tenant ID required")
@@ -138,7 +137,6 @@ func (s *Service) GetTenant(ctx context.Context, tenantID id.TenantID) (*models.
 	}, nil
 }
 
-// DeactivateTenant transitions a tenant to inactive status.
 // Returns the updated tenant or an error if tenant is not found or already inactive.
 func (s *Service) DeactivateTenant(ctx context.Context, tenantID id.TenantID) (*models.Tenant, error) {
 	if tenantID.IsNil() {
@@ -363,6 +361,16 @@ func (s *Service) applyClientUpdate(ctx context.Context, client *models.Client, 
 	req.Normalize()
 	if err := req.Validate(); err != nil {
 		return nil, "", dErrors.Wrap(err, dErrors.CodeValidation, "invalid update request")
+	}
+
+	// Validate grant changes against client confidentiality.
+	// Public clients cannot use client_credentials grant.
+	if req.AllowedGrants != nil && !client.IsConfidential() {
+		for _, grant := range *req.AllowedGrants {
+			if grant == "client_credentials" {
+				return nil, "", dErrors.New(dErrors.CodeValidation, "client_credentials grant requires a confidential client")
+			}
+		}
 	}
 
 	if req.Name != nil {
