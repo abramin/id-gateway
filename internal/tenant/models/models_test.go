@@ -178,3 +178,19 @@ func TestClientIsConfidential(t *testing.T) {
 	assert.True(t, confidential.IsConfidential())
 	assert.False(t, public.IsConfidential())
 }
+
+// TestClientCanUseGrant verifies the grant restriction for public clients.
+func TestClientCanUseGrant(t *testing.T) {
+	confidential := &Client{ClientSecretHash: "hashed-secret"}
+	public := &Client{ClientSecretHash: ""}
+
+	// Confidential clients can use any grant
+	assert.True(t, confidential.CanUseGrant("authorization_code"))
+	assert.True(t, confidential.CanUseGrant("client_credentials"))
+	assert.True(t, confidential.CanUseGrant("refresh_token"))
+
+	// Public clients cannot use client_credentials
+	assert.True(t, public.CanUseGrant("authorization_code"))
+	assert.False(t, public.CanUseGrant("client_credentials"))
+	assert.True(t, public.CanUseGrant("refresh_token"))
+}

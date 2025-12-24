@@ -34,6 +34,8 @@ type Service interface {
 	UpdateClientForTenant(ctx context.Context, tenantID id.TenantID, id id.ClientID, req *models.UpdateClientRequest) (*models.Client, string, error)
 	DeactivateClient(ctx context.Context, id id.ClientID) (*models.Client, error)
 	ReactivateClient(ctx context.Context, id id.ClientID) (*models.Client, error)
+	RotateClientSecret(ctx context.Context, id id.ClientID) (*models.Client, string, error)
+	RotateClientSecretForTenant(ctx context.Context, tenantID id.TenantID, id id.ClientID) (*models.Client, string, error)
 }
 
 type Handler struct {
@@ -55,6 +57,7 @@ func (h *Handler) Register(r chi.Router) {
 	r.Put("/admin/clients/{id}", h.HandleUpdateClient)
 	r.Post("/admin/clients/{id}/deactivate", h.HandleDeactivateClient)
 	r.Post("/admin/clients/{id}/reactivate", h.HandleReactivateClient)
+	r.Post("/admin/clients/{id}/rotate-secret", h.HandleRotateClientSecret)
 }
 
 // HandleCreateTenant creates a tenant.
@@ -274,6 +277,30 @@ func (h *Handler) HandleReactivateClient(w http.ResponseWriter, r *http.Request)
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, toClientResponse(client, ""))
+}
+
+// HandleRotateClientSecret rotates the client secret for a confidential client.
+// Returns the new secret (only available at rotation time).
+// PRD-026A FR-4: Currently uses platform admin auth (X-Admin-Token).
+func (h *Handler) HandleRotateClientSecret(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	requestID := request.GetRequestID(ctx)
+
+	idStr := chi.URLParam(r, "id")
+	clientID, err := id.ParseClientID(idStr)
+	if err != nil {
+		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid client id"))
+		return
+	}
+
+	client, secret, err := h.service.RotateClientSecret(ctx, clientID)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "rotate client secret failed", "error", err, "request_id", requestID, "client_id", clientID)
+		httputil.WriteError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, toClientResponse(client, secret))
 }
 
 // Response mapping functions - convert domain objects to HTTP DTOs

@@ -360,6 +360,61 @@ func (s *Service) ReactivateClient(ctx context.Context, clientID id.ClientID) (*
 	return client, nil
 }
 
+// RotateClientSecret generates a new secret for a confidential client.
+// Returns the updated client and the new cleartext secret.
+// Returns an error if the client is public (has no secret to rotate).
+func (s *Service) RotateClientSecret(ctx context.Context, clientID id.ClientID) (*models.Client, string, error) {
+	if clientID.IsNil() {
+		return nil, "", dErrors.New(dErrors.CodeBadRequest, "client ID required")
+	}
+	client, err := s.clients.FindByID(ctx, clientID)
+	if err != nil {
+		return nil, "", wrapClientErr(err, "failed to get client")
+	}
+	return s.rotateSecret(ctx, client)
+}
+
+// RotateClientSecretForTenant enforces tenant scoping when rotating a client secret.
+func (s *Service) RotateClientSecretForTenant(ctx context.Context, tenantID id.TenantID, clientID id.ClientID) (*models.Client, string, error) {
+	if tenantID.IsNil() {
+		return nil, "", dErrors.New(dErrors.CodeBadRequest, "tenant ID required")
+	}
+	if clientID.IsNil() {
+		return nil, "", dErrors.New(dErrors.CodeBadRequest, "client ID required")
+	}
+	client, err := s.clients.FindByTenantAndID(ctx, tenantID, clientID)
+	if err != nil {
+		return nil, "", wrapClientErr(err, "failed to get client")
+	}
+	return s.rotateSecret(ctx, client)
+}
+
+// rotateSecret contains the shared secret rotation logic.
+func (s *Service) rotateSecret(ctx context.Context, client *models.Client) (*models.Client, string, error) {
+	if !client.IsConfidential() {
+		return nil, "", dErrors.New(dErrors.CodeValidation, "cannot rotate secret for public client")
+	}
+
+	secret, hash, err := generateSecret(false)
+	if err != nil {
+		return nil, "", err
+	}
+
+	client.ClientSecretHash = hash
+	client.UpdatedAt = time.Now()
+
+	if err := s.clients.Update(ctx, client); err != nil {
+		return nil, "", dErrors.Wrap(err, dErrors.CodeInternal, "failed to update client")
+	}
+
+	s.logAudit(ctx, string(audit.EventSecretRotated),
+		"tenant_id", client.TenantID,
+		"client_id", client.ID,
+	)
+
+	return client, secret, nil
+}
+
 // applyClientUpdate contains the shared update logic for client modifications.
 func (s *Service) applyClientUpdate(ctx context.Context, client *models.Client, req *models.UpdateClientRequest) (*models.Client, string, error) {
 	req.Normalize()
@@ -380,10 +435,9 @@ func (s *Service) applyClientUpdate(ctx context.Context, client *models.Client, 
 	}
 
 	// Validate grant changes against client confidentiality.
-	// Public clients cannot use client_credentials grant.
-	if req.AllowedGrants != nil && !client.IsConfidential() {
+	if req.AllowedGrants != nil {
 		for _, grant := range *req.AllowedGrants {
-			if grant == "client_credentials" {
+			if !client.CanUseGrant(grant) {
 				return nil, "", dErrors.New(dErrors.CodeValidation, "client_credentials grant requires a confidential client")
 			}
 		}

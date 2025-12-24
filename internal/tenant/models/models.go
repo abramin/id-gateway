@@ -152,6 +152,15 @@ func (c *Client) IsConfidential() bool {
 	return c.ClientSecretHash != ""
 }
 
+// CanUseGrant checks if the client is allowed to use the specified grant type.
+// Public clients cannot use client_credentials (requires secure secret storage).
+func (c *Client) CanUseGrant(grant string) bool {
+	if GrantType(grant).RequiresConfidentialClient() && !c.IsConfidential() {
+		return false
+	}
+	return true
+}
+
 // TenantDetails aggregates tenant metadata with counts for admin dashboards.
 // Internal type - converted to TenantDetailsResponse for HTTP serialization.
 type TenantDetails struct {

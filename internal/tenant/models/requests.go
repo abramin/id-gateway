@@ -66,7 +66,7 @@ func (r *CreateClientRequest) Validate() error {
 		return err
 	}
 	if r.Public {
-		if slices.Contains(r.AllowedGrants, "client_credentials") {
+		if slices.Contains(r.AllowedGrants, GrantTypeClientCredentials.String()) {
 			return dErrors.New(dErrors.CodeValidation, "client_credentials grant requires a confidential client")
 		}
 	}
@@ -107,15 +107,8 @@ func isLocalhost(host string) bool {
 	return host == "localhost" || strings.HasPrefix(host, "localhost:")
 }
 
-// allowedGrants defines the valid OAuth grants clients can use.
-var allowedGrants = map[string]struct{}{
-	"authorization_code": {},
-	"refresh_token":      {},
-	"client_credentials": {},
-}
-
 func validateGrant(grant string) error {
-	if _, ok := allowedGrants[grant]; !ok {
+	if !GrantType(grant).IsValid() {
 		return dErrors.New(dErrors.CodeValidation, "unsupported grant type")
 	}
 	return nil
