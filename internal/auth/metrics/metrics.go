@@ -6,10 +6,12 @@ import (
 )
 
 type Metrics struct {
-	UsersCreated   prometheus.Counter
-	ActiveSessions prometheus.Gauge
-	TokenRequests  prometheus.Counter
-	AuthFailures   prometheus.Counter
+	UsersCreated        prometheus.Counter
+	ActiveSessions      prometheus.Gauge
+	TokenRequests       prometheus.Counter
+	AuthFailures        prometheus.Counter
+	LogoutAllSessions   prometheus.Histogram
+	LogoutAllDurationMs prometheus.Histogram
 }
 
 func New() *Metrics {
@@ -29,6 +31,16 @@ func New() *Metrics {
 		AuthFailures: promauto.NewCounter(prometheus.CounterOpts{
 			Name: "credo_auth_failures_total",
 			Help: "Total number of authentication failures",
+		}),
+		LogoutAllSessions: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "credo_logout_all_sessions",
+			Help:    "Number of sessions revoked per logout-all operation",
+			Buckets: []float64{1, 2, 5, 10, 20, 50, 100},
+		}),
+		LogoutAllDurationMs: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "credo_logout_all_duration_ms",
+			Help:    "Duration of logout-all operations in milliseconds",
+			Buckets: []float64{10, 50, 100, 250, 500, 1000, 2500, 5000},
 		}),
 	}
 }
@@ -51,4 +63,9 @@ func (m *Metrics) IncrementTokenRequests() {
 
 func (m *Metrics) IncrementAuthFailures() {
 	m.AuthFailures.Inc()
+}
+
+func (m *Metrics) ObserveLogoutAll(sessionCount int, durationMs float64) {
+	m.LogoutAllSessions.Observe(float64(sessionCount))
+	m.LogoutAllDurationMs.Observe(durationMs)
 }

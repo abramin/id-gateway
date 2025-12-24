@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"credo/internal/auth/models"
 	id "credo/pkg/domain"
@@ -51,6 +52,8 @@ func (s *Service) RevokeSession(ctx context.Context, userID id.UserID, sessionID
 }
 
 func (s *Service) LogoutAll(ctx context.Context, userID id.UserID, currentSessionID id.SessionID, exceptCurrent bool) (*models.LogoutAllResult, error) {
+	start := time.Now()
+
 	if userID.IsNil() {
 		return nil, dErrors.New(dErrors.CodeUnauthorized, "user ID required")
 	}
@@ -77,6 +80,11 @@ func (s *Service) LogoutAll(ctx context.Context, userID id.UserID, currentSessio
 				"client_id", session.ClientID,
 			)
 		}
+	}
+
+	if s.metrics != nil {
+		durationMs := float64(time.Since(start).Milliseconds())
+		s.metrics.ObserveLogoutAll(revokedCount, durationMs)
 	}
 
 	return &models.LogoutAllResult{

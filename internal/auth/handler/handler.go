@@ -367,6 +367,10 @@ func (h *Handler) HandleRevokeSession(w http.ResponseWriter, r *http.Request) {
 //
 // Query params: except_current=true (default) keeps current session active
 // Output: { "revoked_count": 3, "message": "..." }
+//
+// Design note: Partial revocation on error is intentional. If a session fails to revoke,
+// the operation returns an error but already-revoked sessions remain revoked. This is safe
+// because the user can retry, and each revocation is independently idempotent.
 func (h *Handler) HandleLogoutAll(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)

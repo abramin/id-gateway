@@ -21,9 +21,9 @@ import (
 
 	"credo/internal/auth/handler/mocks"
 	"credo/internal/auth/models"
-	authmw "credo/pkg/platform/middleware/auth"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
+	authmw "credo/pkg/platform/middleware/auth"
 )
 
 //go:generate mockgen -source=handler.go -destination=mocks/auth-mocks.go -package=mocks Service
