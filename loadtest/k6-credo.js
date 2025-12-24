@@ -1,19 +1,37 @@
 // k6 Load Test Suite for Credo OAuth Server
 //
 // Usage: k6 run loadtest/k6-credo.js
+//        k6 run loadtest/k6-credo.js -e SCENARIO=resolve_client_burst
+//
+// IMPORTANT: Run the server with rate limiting disabled for load tests:
+//   DISABLE_RATE_LIMITING=true docker compose up
 //
 // The script is self-bootstrapping in local/dev environments - no config needed.
 // It automatically creates a tenant, client, and test users on each run.
 //
 // Environment variables (all optional):
-//   BASE_URL       - Server URL (default: http://localhost:8080)
-//   ADMIN_TOKEN    - Admin API token (default: demo-admin-token)
-//   CLIENT_ID      - Use existing client (skips tenant/client creation)
-//   TENANT_ID      - Use existing tenant for client creation
-//   REDIRECT_URI   - Redirect URI (default: http://localhost:3000/demo/callback.html)
-//   SCOPES         - Comma-separated scopes (default: openid,profile)
-//   USER_COUNT     - Number of test users (default: 100)
-//   SCENARIO       - Which scenario: token_refresh_storm | consent_burst | mixed_load | all
+//   BASE_URL                 - Server URL (default: http://localhost:8080)
+//   ADMIN_TOKEN              - Admin API token (default: demo-admin-token)
+//   CLIENT_ID                - Use existing client (skips tenant/client creation)
+//   TENANT_ID                - Use existing tenant for client creation
+//   REDIRECT_URI             - Redirect URI (default: http://localhost:3000/demo/callback.html)
+//   SCOPES                   - Comma-separated scopes (default: openid,profile)
+//   USER_COUNT               - Number of test users (default: 200)
+//   BURST_CLIENT_COUNT       - Clients for ResolveClient burst (default: 100)
+//   LARGE_TENANT_CLIENT_COUNT - Clients per large tenant (default: 500)
+//   SCENARIO                 - Which scenario to run:
+//
+// Available scenarios:
+//   token_refresh_storm      - Mutex contention under concurrent token refresh
+//   consent_burst            - Consent service throughput with multi-purpose grants
+//   mixed_load               - Read/write contention (sessions + token refresh)
+//   oauth_flow_storm         - Full authorize → token exchange path
+//   resolve_client_burst     - 1000 concurrent ResolveClient calls against 100 clients
+//   client_onboarding_spike  - 50 concurrent CreateClient (bcrypt contention)
+//   tenant_dashboard_load    - 100 concurrent GetTenant (tenants with 500+ clients)
+//   rate_limit_sustained     - Rate limiting under sustained high request rate
+//   rate_limit_cardinality   - Memory behavior under many unique IPs
+//   all                      - Run all scenarios (default)
 
 import http from 'k6/http';
 import { check, sleep, group } from 'k6';
@@ -26,9 +44,17 @@ const sessionListLatency = new Trend('session_list_latency', true);
 const oauthFlowLatency = new Trend('oauth_flow_latency', true);
 const authorizeLatency = new Trend('authorize_latency', true);
 const tokenExchangeLatency = new Trend('token_exchange_latency', true);
+const resolveClientLatency = new Trend('resolve_client_latency', true);
+const createClientLatency = new Trend('create_client_latency', true);
+const getTenantLatency = new Trend('get_tenant_latency', true);
+const rateLimitLatency = new Trend('rate_limit_latency', true);
 const tokenErrors = new Counter('token_errors');
 const consentErrors = new Counter('consent_errors');
 const oauthFlowErrors = new Counter('oauth_flow_errors');
+const resolveClientErrors = new Counter('resolve_client_errors');
+const createClientErrors = new Counter('create_client_errors');
+const getTenantErrors = new Counter('get_tenant_errors');
+const rateLimited = new Counter('rate_limited_count');
 const errorRate = new Rate('error_rate');
 
 // Configuration
@@ -106,6 +132,69 @@ export const options = {
       startTime: '0s',
       tags: { scenario: 'oauth_flow' },
     },
+
+    // Scenario 5: OAuth Burst (ResolveClient)
+    // Tests 1000 concurrent ResolveClient calls against 100 clients.
+    // Measures p95 latency and validates client resolution cache effectiveness.
+    resolve_client_burst: {
+      executor: 'constant-arrival-rate',
+      rate: 200,                    // 200 req/sec targeting 1000 concurrent
+      timeUnit: '1s',
+      duration: '1m',
+      preAllocatedVUs: 100,
+      maxVUs: 1000,
+      exec: 'resolveClientBurstScenario',
+      startTime: '0s',
+      tags: { scenario: 'resolve_client_burst' },
+    },
+
+    // Scenario 6: Client Onboarding Spike
+    // Tests 50 concurrent CreateClient requests to measure bcrypt contention.
+    client_onboarding_spike: {
+      executor: 'constant-vus',
+      vus: 50,
+      duration: '2m',
+      exec: 'clientOnboardingScenario',
+      startTime: '0s',
+      tags: { scenario: 'client_onboarding' },
+    },
+
+    // Scenario 7: Tenant Dashboard Under Load
+    // Tests 100 concurrent GetTenant calls for tenants with 500+ clients.
+    // Measures N+1 query impact on p95 latency.
+    tenant_dashboard_load: {
+      executor: 'constant-vus',
+      vus: 100,
+      duration: '2m',
+      exec: 'tenantDashboardScenario',
+      startTime: '0s',
+      tags: { scenario: 'tenant_dashboard' },
+    },
+
+    // Scenario 8: Rate Limit Sustained
+    // Tests rate limiting behavior under sustained high request rate from single IP.
+    rate_limit_sustained: {
+      executor: 'constant-arrival-rate',
+      rate: 500,                    // 500 req/sec to trigger rate limits
+      timeUnit: '1s',
+      duration: '1m',
+      preAllocatedVUs: 50,
+      maxVUs: 200,
+      exec: 'rateLimitSustainedScenario',
+      startTime: '0s',
+      tags: { scenario: 'rate_limit_sustained' },
+    },
+
+    // Scenario 9: Rate Limit High Cardinality
+    // Tests memory behavior under many unique IPs via X-Forwarded-For.
+    rate_limit_cardinality: {
+      executor: 'per-vu-iterations',
+      vus: 50,
+      iterations: 100,              // Each VU simulates 100 unique IPs
+      exec: 'rateLimitCardinalityScenario',
+      startTime: '0s',
+      tags: { scenario: 'rate_limit_cardinality' },
+    },
   },
 
   thresholds: {
@@ -124,6 +213,17 @@ export const options = {
     'oauth_flow_latency{scenario:oauth_flow}': ['p(95)<500'],
     'authorize_latency{scenario:oauth_flow}': ['p(95)<200'],
     'token_exchange_latency{scenario:oauth_flow}': ['p(95)<300'],
+
+    // ResolveClient burst: p95 < 100ms (cache justification baseline)
+    'resolve_client_latency{scenario:resolve_client_burst}': ['p(95)<100'],
+
+    // Client onboarding: p95 < 500ms (bcrypt ~100ms per hash)
+    'create_client_latency{scenario:client_onboarding}': ['p(95)<500'],
+
+    // Tenant dashboard: p95 < 100ms (COUNT queries should be O(1))
+    'get_tenant_latency{scenario:tenant_dashboard}': ['p(95)<100'],
+
+    // Rate limiting: no latency thresholds (429s are expected behavior)
   },
 };
 
@@ -134,6 +234,10 @@ if (SCENARIO !== 'all') {
     options.scenarios = { [SCENARIO]: selectedScenario };
   }
 }
+
+// Configuration for new scenarios
+const BURST_CLIENT_COUNT = parsePositiveInt(__ENV.BURST_CLIENT_COUNT, 100);
+const LARGE_TENANT_CLIENT_COUNT = parsePositiveInt(__ENV.LARGE_TENANT_CLIENT_COUNT, 500);
 
 // Setup: Create test users and get tokens
 export function setup() {
@@ -155,24 +259,90 @@ export function setup() {
     clientID = createClient(tenantID, clientName, REDIRECT_URI, DEFAULT_SCOPES, ADMIN_TOKEN);
   }
 
+  // Determine which setup data is needed based on scenario
+  const scenariosNeedingTokens = [
+    'all', 'token_refresh_storm', 'consent_burst', 'mixed_load', 'oauth_flow_storm'
+  ];
+  const needsTokens = scenariosNeedingTokens.includes(SCENARIO);
+  const needsBurstClients = SCENARIO === 'all' || SCENARIO === 'resolve_client_burst';
+  const needsOnboardingTenant = SCENARIO === 'all' || SCENARIO === 'client_onboarding_spike';
+  const needsLargeTenants = SCENARIO === 'all' || SCENARIO === 'tenant_dashboard_load';
+
+  // Create users/tokens only if needed (token refresh, consent, mixed load, oauth flow)
   const tokens = [];
   const users = [];
-  for (let i = 0; i < USER_COUNT; i++) {
-    const email = `loadtest+${i}@example.com`;
-    const authCode = authorizeUser(email, clientID, REDIRECT_URI, DEFAULT_SCOPES);
-    const token = exchangeCode(authCode, clientID, REDIRECT_URI);
-    tokens.push({
-      accessToken: token.access_token,
-      refreshToken: token.refresh_token,
-      userEmail: email,
-    });
-    users.push({ email });
+  if (needsTokens) {
+    console.log(`Creating ${USER_COUNT} test users...`);
+    for (let i = 0; i < USER_COUNT; i++) {
+      const email = `loadtest+${i}@example.com`;
+      const authCode = authorizeUser(email, clientID, REDIRECT_URI, DEFAULT_SCOPES);
+      const token = exchangeCode(authCode, clientID, REDIRECT_URI);
+      tokens.push({
+        accessToken: token.access_token,
+        refreshToken: token.refresh_token,
+        userEmail: email,
+      });
+      users.push({ email });
+    }
+    console.log(`Created ${tokens.length} test users`);
+  }
+
+  // Setup for new scenarios
+  let burstClients = [];
+  let onboardingTenantID = '';
+  let largeTenants = [];
+
+  // Create 100 clients for ResolveClient burst scenario
+  if (needsBurstClients) {
+    console.log(`Creating ${BURST_CLIENT_COUNT} clients for ResolveClient burst...`);
+    for (let i = 0; i < BURST_CLIENT_COUNT; i++) {
+      const burstClientID = createClient(
+        tenantID,
+        `burst-client-${i}-${Date.now()}`,
+        REDIRECT_URI,
+        DEFAULT_SCOPES,
+        ADMIN_TOKEN
+      );
+      burstClients.push(burstClientID);
+    }
+    console.log(`Created ${burstClients.length} burst clients`);
+  }
+
+  // Create a dedicated tenant for client onboarding spike
+  if (needsOnboardingTenant) {
+    console.log('Creating tenant for client onboarding spike...');
+    onboardingTenantID = createTenant(`onboarding-tenant-${Date.now()}`, ADMIN_TOKEN);
+    console.log(`Created onboarding tenant: ${onboardingTenantID}`);
+  }
+
+  // Create tenants with 500+ clients for tenant dashboard load
+  if (needsLargeTenants) {
+    console.log(`Creating tenant with ${LARGE_TENANT_CLIENT_COUNT} clients for dashboard load...`);
+    const largeTenantID = createTenant(`large-tenant-${Date.now()}`, ADMIN_TOKEN);
+    for (let i = 0; i < LARGE_TENANT_CLIENT_COUNT; i++) {
+      createClient(
+        largeTenantID,
+        `large-client-${i}`,
+        REDIRECT_URI,
+        DEFAULT_SCOPES,
+        ADMIN_TOKEN
+      );
+      if ((i + 1) % 100 === 0) {
+        console.log(`  Created ${i + 1}/${LARGE_TENANT_CLIENT_COUNT} clients...`);
+      }
+    }
+    largeTenants.push(largeTenantID);
+    console.log(`Created large tenant with ${LARGE_TENANT_CLIENT_COUNT} clients`);
   }
 
   return {
     tokens,
     users,
     clientID,
+    tenantID,
+    burstClients,
+    onboardingTenantID,
+    largeTenants,
   };
 }
 
@@ -553,6 +723,197 @@ export function oauthFlowScenario(data) {
   // Full flow succeeded
   oauthFlowLatency.add(Date.now() - flowStart);
   errorRate.add(0);
+}
+
+// Scenario 5: ResolveClient Burst
+// Purpose: Validate ResolveClient performance under 1000 concurrent calls against 100 clients
+export function resolveClientBurstScenario(data) {
+  // Pick a random client from the burst clients pool
+  const clients = data.burstClients || [data.clientID];
+  const clientID = clients[Math.floor(Math.random() * clients.length)];
+  const uniqueEmail = `loadtest+burst_${__VU}_${__ITER}@example.com`;
+
+  const startTime = Date.now();
+  const res = http.post(
+    `${BASE_URL}/auth/authorize`,
+    JSON.stringify({
+      email: uniqueEmail,
+      client_id: clientID,
+      redirect_uri: REDIRECT_URI,
+      scopes: DEFAULT_SCOPES,
+    }),
+    {
+      headers: { 'Content-Type': 'application/json' },
+      tags: { name: 'resolve_client' },
+    }
+  );
+  const duration = Date.now() - startTime;
+
+  resolveClientLatency.add(duration);
+
+  const success = check(res, {
+    'resolve client status is 200': (r) => r.status === 200,
+    'resolve client has code': (r) => {
+      try {
+        return JSON.parse(r.body).code !== undefined;
+      } catch {
+        return false;
+      }
+    },
+  });
+
+  if (!success) {
+    resolveClientErrors.add(1);
+    errorRate.add(1);
+    if (res.status !== 429) {
+      console.log(`ResolveClient failed: ${res.status} - ${res.body}`);
+    }
+  } else {
+    errorRate.add(0);
+  }
+}
+
+// Scenario 6: Client Onboarding Spike
+// Purpose: Validate bcrypt contention under 50 concurrent CreateClient requests
+export function clientOnboardingScenario(data) {
+  // Use the tenant created for onboarding tests
+  const tenantID = data.onboardingTenantID || data.tenantID;
+  const clientName = `loadtest-client-${__VU}-${__ITER}-${Date.now()}`;
+
+  const startTime = Date.now();
+  const res = http.post(
+    `${BASE_URL}/admin/clients`,
+    JSON.stringify({
+      tenant_id: tenantID,
+      name: clientName,
+      redirect_uris: [REDIRECT_URI],
+      allowed_grants: ['authorization_code', 'refresh_token'],
+      allowed_scopes: DEFAULT_SCOPES,
+      public_client: true,
+    }),
+    {
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Admin-Token': ADMIN_TOKEN,
+      },
+      tags: { name: 'create_client' },
+    }
+  );
+  const duration = Date.now() - startTime;
+
+  createClientLatency.add(duration);
+
+  const success = check(res, {
+    'create client status is 201': (r) => r.status === 201,
+    'create client has client_id': (r) => {
+      try {
+        return JSON.parse(r.body).client_id !== undefined;
+      } catch {
+        return false;
+      }
+    },
+  });
+
+  if (!success) {
+    createClientErrors.add(1);
+    errorRate.add(1);
+    console.log(`CreateClient failed: ${res.status} - ${res.body}`);
+  } else {
+    errorRate.add(0);
+  }
+
+  sleep(0.1); // Small delay to avoid overwhelming the server
+}
+
+// Scenario 7: Tenant Dashboard Under Load
+// Purpose: Validate GetTenant performance for tenants with 500+ clients (N+1 impact)
+export function tenantDashboardScenario(data) {
+  // Use the tenant with many clients
+  const tenants = data.largeTenants || [data.tenantID];
+  const tenantID = tenants[Math.floor(Math.random() * tenants.length)];
+
+  const startTime = Date.now();
+  const res = http.get(
+    `${BASE_URL}/admin/tenants/${tenantID}`,
+    {
+      headers: {
+        'X-Admin-Token': ADMIN_TOKEN,
+      },
+      tags: { name: 'get_tenant' },
+    }
+  );
+  const duration = Date.now() - startTime;
+
+  getTenantLatency.add(duration);
+
+  const success = check(res, {
+    'get tenant status is 200': (r) => r.status === 200,
+    'get tenant has client_count': (r) => {
+      try {
+        return JSON.parse(r.body).client_count !== undefined;
+      } catch {
+        return false;
+      }
+    },
+  });
+
+  if (!success) {
+    getTenantErrors.add(1);
+    errorRate.add(1);
+    console.log(`GetTenant failed: ${res.status} - ${res.body}`);
+  } else {
+    errorRate.add(0);
+  }
+
+  sleep(0.05); // 50ms between operations
+}
+
+// Scenario 8: Rate Limit Sustained
+// Purpose: Validate rate limiting behavior under sustained high request rate from single IP
+export function rateLimitSustainedScenario() {
+  const startTime = Date.now();
+  const res = http.get(`${BASE_URL}/health`, {
+    tags: { name: 'rate_limit_health' },
+  });
+  const duration = Date.now() - startTime;
+
+  rateLimitLatency.add(duration);
+
+  if (res.status === 429) {
+    rateLimited.add(1);
+    // 429 is expected behavior, not an error
+  }
+
+  check(res, {
+    'rate limit response is 200 or 429': (r) => r.status === 200 || r.status === 429,
+  });
+}
+
+// Scenario 9: Rate Limit High Cardinality
+// Purpose: Validate memory behavior under many unique IPs via X-Forwarded-For
+export function rateLimitCardinalityScenario() {
+  // Generate unique IP per VU+iteration
+  const ipCounter = __VU * 10000 + __ITER;
+  const ip = `10.${(ipCounter >> 16) & 255}.${(ipCounter >> 8) & 255}.${ipCounter & 255}`;
+
+  const startTime = Date.now();
+  const res = http.get(`${BASE_URL}/health`, {
+    headers: {
+      'X-Forwarded-For': ip,
+    },
+    tags: { name: 'rate_limit_cardinality' },
+  });
+  const duration = Date.now() - startTime;
+
+  rateLimitLatency.add(duration);
+
+  if (res.status === 429) {
+    rateLimited.add(1);
+  }
+
+  check(res, {
+    'cardinality response is 200 or 429': (r) => r.status === 200 || r.status === 429,
+  });
 }
 
 // Teardown: Cleanup test data

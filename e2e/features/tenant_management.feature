@@ -19,11 +19,11 @@ Feature: Tenant & Client Management Admin API
 
     @admin @tenant @crud
   Scenario: Create tenant with duplicate name fails
-    When I create a tenant with name "Duplicate Tenant Test"
+    When I create a tenant with exact name "Duplicate Tenant Test"
     Then the response status should be 201
     And I save the tenant ID from the response
 
-    When I create a tenant with name "Duplicate Tenant Test"
+    When I create a tenant with exact name "Duplicate Tenant Test"
     Then the response status should be 409
     And the response field "error" should equal "conflict"
 
@@ -35,7 +35,7 @@ Feature: Tenant & Client Management Admin API
 
     When I get the tenant details
     Then the response status should be 200
-    And the response field "name" should equal "Get Tenant Test"
+    And the response field "name" should contain "Get Tenant Test"
 
     @admin @tenant @validation
   Scenario: Create tenant with empty name fails
@@ -79,7 +79,7 @@ Feature: Tenant & Client Management Admin API
     Then the response status should be 200
     And the response field "name" should equal "Get Client App"
     # Secret should NOT be returned on GET
-    And the response field "client_secret" should equal ""
+    And the response should not contain "client_secret"
 
     @admin @client @crud
   Scenario: Update client
@@ -126,3 +126,156 @@ Feature: Tenant & Client Management Admin API
     When I create a client "Unauthorized App" under the tenant without admin token
     Then the response status should be 401
     And the response field "error" should equal "unauthorized"
+
+    # ============================================================
+    # TENANT LIFECYCLE (PRD-026B)
+    # ============================================================
+
+    @admin @tenant @lifecycle
+  Scenario: Deactivate tenant blocks OAuth flows
+    Given I create a tenant with name "Lifecycle Test"
+    And the response status should be 201
+    And I save the tenant ID from the response
+    And I create a client "Test App" under the tenant
+    And the response status should be 201
+    And I save the client ID from the response
+    And I save the OAuth client_id from the response
+    When I deactivate the tenant
+    Then the response status should be 200
+    When I initiate authorization with the client
+    Then the response status should be 400
+    And the response field "error" should equal "invalid_client"
+
+    @admin @tenant @lifecycle
+  Scenario: Deactivate already-inactive tenant returns conflict
+    Given I create a tenant with name "Already Inactive"
+    And the response status should be 201
+    And I save the tenant ID from the response
+    When I deactivate the tenant
+    Then the response status should be 200
+    When I deactivate the tenant
+    Then the response status should be 409
+    And the response field "error" should equal "conflict"
+
+    @admin @tenant @lifecycle
+  Scenario: Reactivate tenant restores OAuth flows
+    Given I create a tenant with name "Reactivate Test"
+    And the response status should be 201
+    And I save the tenant ID from the response
+    And I create a client "Restore App" under the tenant
+    And the response status should be 201
+    And I save the client ID from the response
+    And I save the OAuth client_id from the response
+    And I deactivate the tenant
+    And the response status should be 200
+    When I reactivate the tenant
+    Then the response status should be 200
+    When I initiate authorization with the client
+    Then the response status should be 200
+
+    @admin @tenant @lifecycle
+  Scenario: Reactivate already-active tenant returns conflict
+    Given I create a tenant with name "Already Active"
+    And the response status should be 201
+    And I save the tenant ID from the response
+    When I reactivate the tenant
+    Then the response status should be 409
+    And the response field "error" should equal "conflict"
+
+    # ============================================================
+    # CLIENT LIFECYCLE (PRD-026B)
+    # ============================================================
+
+    @admin @client @lifecycle
+  Scenario: Deactivate client blocks OAuth flows
+    Given I create a tenant with name "Client Lifecycle"
+    And the response status should be 201
+    And I save the tenant ID from the response
+    And I create a client "Deactivate Me" under the tenant
+    And the response status should be 201
+    And I save the client ID from the response
+    And I save the OAuth client_id from the response
+    When I deactivate the client
+    Then the response status should be 200
+    When I initiate authorization with the client
+    Then the response status should be 400
+    And the response field "error" should equal "invalid_client"
+
+    @admin @client @lifecycle
+  Scenario: Deactivate already-inactive client returns conflict
+    Given I create a tenant with name "Client Already Inactive"
+    And the response status should be 201
+    And I save the tenant ID from the response
+    And I create a client "Already Inactive Client" under the tenant
+    And the response status should be 201
+    And I save the client ID from the response
+    When I deactivate the client
+    Then the response status should be 200
+    When I deactivate the client
+    Then the response status should be 409
+    And the response field "error" should equal "conflict"
+
+    @admin @client @lifecycle
+  Scenario: Reactivate client restores OAuth flows
+    Given I create a tenant with name "Restore Test"
+    And the response status should be 201
+    And I save the tenant ID from the response
+    And I create a client "Restore Me" under the tenant
+    And the response status should be 201
+    And I save the client ID from the response
+    And I save the OAuth client_id from the response
+    And I deactivate the client
+    And the response status should be 200
+    When I reactivate the client
+    Then the response status should be 200
+    When I initiate authorization with the client
+    Then the response status should be 200
+
+    @admin @client @lifecycle
+  Scenario: Reactivate already-active client returns conflict
+    Given I create a tenant with name "Client Already Active"
+    And the response status should be 201
+    And I save the tenant ID from the response
+    And I create a client "Already Active Client" under the tenant
+    And the response status should be 201
+    And I save the client ID from the response
+    When I reactivate the client
+    Then the response status should be 409
+    And the response field "error" should equal "conflict"
+
+    # ============================================================
+    # LIFECYCLE SECURITY TESTS (PRD-026B)
+    # ============================================================
+
+    @admin @tenant @lifecycle @security
+  Scenario: Deactivate tenant without admin token fails
+    Given I create a tenant with name "Auth Test Tenant"
+    And the response status should be 201
+    And I save the tenant ID from the response
+    When I deactivate the tenant without admin token
+    Then the response status should be 401
+    And the response field "error" should equal "unauthorized"
+
+    @admin @client @lifecycle @security
+  Scenario: Deactivate client without admin token fails
+    Given I create a tenant with name "Client Auth Test"
+    And the response status should be 201
+    And I save the tenant ID from the response
+    And I create a client "Auth Test Client" under the tenant
+    And the response status should be 201
+    And I save the client ID from the response
+    When I deactivate the client without admin token
+    Then the response status should be 401
+    And the response field "error" should equal "unauthorized"
+
+    @admin @tenant @lifecycle
+  Scenario: Deactivate non-existent tenant returns not found
+    When I deactivate tenant with id "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    Then the response status should be 404
+    And the response field "error" should equal "not_found"
+
+    @admin @client @lifecycle
+  Scenario: Deactivate non-existent client returns not found
+    When I deactivate client with id "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    Then the response status should be 404
+    And the response field "error" should equal "not_found"

@@ -12,7 +12,7 @@ package mocks
 import (
 	context "context"
 	models "credo/internal/auth/models"
-	id "credo/pkg/domain"
+	domain "credo/pkg/domain"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -58,7 +58,7 @@ func (mr *MockServiceMockRecorder) Authorize(ctx, req any) *gomock.Call {
 }
 
 // DeleteUser mocks base method.
-func (m *MockService) DeleteUser(ctx context.Context, userID id.UserID) error {
+func (m *MockService) DeleteUser(ctx context.Context, userID domain.UserID) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteUser", ctx, userID)
 	ret0, _ := ret[0].(error)
@@ -72,7 +72,7 @@ func (mr *MockServiceMockRecorder) DeleteUser(ctx, userID any) *gomock.Call {
 }
 
 // ListSessions mocks base method.
-func (m *MockService) ListSessions(ctx context.Context, userID id.UserID, currentSessionID id.SessionID) (*models.SessionsResult, error) {
+func (m *MockService) ListSessions(ctx context.Context, userID domain.UserID, currentSessionID domain.SessionID) (*models.SessionsResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListSessions", ctx, userID, currentSessionID)
 	ret0, _ := ret[0].(*models.SessionsResult)
@@ -86,8 +86,23 @@ func (mr *MockServiceMockRecorder) ListSessions(ctx, userID, currentSessionID an
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSessions", reflect.TypeOf((*MockService)(nil).ListSessions), ctx, userID, currentSessionID)
 }
 
+// LogoutAll mocks base method.
+func (m *MockService) LogoutAll(ctx context.Context, userID domain.UserID, currentSessionID domain.SessionID, exceptCurrent bool) (*models.LogoutAllResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LogoutAll", ctx, userID, currentSessionID, exceptCurrent)
+	ret0, _ := ret[0].(*models.LogoutAllResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// LogoutAll indicates an expected call of LogoutAll.
+func (mr *MockServiceMockRecorder) LogoutAll(ctx, userID, currentSessionID, exceptCurrent any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogoutAll", reflect.TypeOf((*MockService)(nil).LogoutAll), ctx, userID, currentSessionID, exceptCurrent)
+}
+
 // RevokeSession mocks base method.
-func (m *MockService) RevokeSession(ctx context.Context, userID id.UserID, sessionID id.SessionID) error {
+func (m *MockService) RevokeSession(ctx context.Context, userID domain.UserID, sessionID domain.SessionID) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RevokeSession", ctx, userID, sessionID)
 	ret0, _ := ret[0].(error)

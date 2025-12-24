@@ -6,14 +6,10 @@ import (
 	"strings"
 	"sync"
 
-	id "credo/pkg/domain"
-
 	"credo/internal/tenant/models"
+	id "credo/pkg/domain"
 	"credo/pkg/platform/sentinel"
 )
-
-// ErrNotFound is returned when a tenant is not found.
-var ErrNotFound = sentinel.ErrNotFound
 
 // InMemory stores tenants in memory for the demo environment.
 type InMemory struct {
@@ -50,7 +46,7 @@ func (s *InMemory) FindByID(_ context.Context, tenantID id.TenantID) (*models.Te
 	if t, ok := s.tenants[tenantID]; ok {
 		return t, nil
 	}
-	return nil, ErrNotFound
+	return nil, sentinel.ErrNotFound
 }
 
 // FindByName retrieves a tenant by name (case-insensitive).
@@ -60,7 +56,7 @@ func (s *InMemory) FindByName(_ context.Context, name string) (*models.Tenant, e
 	if tenantID, ok := s.nameIdx[strings.ToLower(name)]; ok {
 		return s.tenants[tenantID], nil
 	}
-	return nil, ErrNotFound
+	return nil, sentinel.ErrNotFound
 }
 
 // Count returns the total number of tenants.
@@ -68,4 +64,15 @@ func (s *InMemory) Count(_ context.Context) (int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.tenants), nil
+}
+
+// Update updates an existing tenant. Returns ErrNotFound if tenant doesn't exist.
+func (s *InMemory) Update(_ context.Context, t *models.Tenant) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.tenants[t.ID]; !exists {
+		return sentinel.ErrNotFound
+	}
+	s.tenants[t.ID] = t
+	return nil
 }

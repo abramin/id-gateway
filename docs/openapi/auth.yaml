@@ -335,6 +335,10 @@ components:
           type: string
           format: uri
           description: Redirect URI to invoke after successful authorization
+        device_id:
+          type: string
+          description: Device identifier for device binding (Phase 1 soft launch)
+          example: dev_abc123xyz
     TokenRequestAuthCode:
       type: object
       required: [grant_type, code, redirect_uri, client_id]

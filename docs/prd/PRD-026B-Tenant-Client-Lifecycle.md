@@ -207,8 +207,33 @@ When tenant admin auth is implemented (per PRD-026A TODO), deactivate/reactivate
 
 ---
 
+## Future Improvements
+
+### FI-1: Optimistic Locking for Concurrent Updates
+
+**Priority:** Medium (required before database backend or multi-instance deployment)
+
+**Problem:** The current read-modify-write pattern in deactivation/reactivation is vulnerable to lost updates when concurrent requests modify the same entity.
+
+**Risks:**
+- Concurrent `UpdateClient` + `Deactivate` can silently lose the deactivation
+- Concurrent `RotateSecret` + `Deactivate` can overwrite the new secret hash
+- TOCTOU: validation occurs against stale in-memory state
+
+**Mitigation (current):** In-memory store mutex provides basic protection within a single process.
+
+**Recommended fix:** Add `Version int64` field to Client and Tenant models with optimistic locking semantics:
+1. Store checks `WHERE version = expected` on update
+2. Returns `ErrConcurrentModification` on mismatch
+3. Service retries with exponential backoff (max 3 attempts)
+
+**Scope:** ~100 lines across model, store, and service layers.
+
+---
+
 ## Revision History
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2025-12-23 | Engineering | Initial draft; lifecycle management carved out from PRD-026A |
+| 1.1 | 2025-12-24 | Engineering | Added FI-1: Optimistic locking for concurrent updates |

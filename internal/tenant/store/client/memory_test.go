@@ -11,6 +11,7 @@ import (
 
 	"credo/internal/tenant/models"
 	id "credo/pkg/domain"
+	"credo/pkg/platform/sentinel"
 )
 
 func TestCreate_IndexesByClientID(t *testing.T) {
@@ -61,7 +62,7 @@ func TestFindByTenantAndID_WrongTenant(t *testing.T) {
 
 	// Should NOT find with wrong tenant
 	_, err = store.FindByTenantAndID(ctx, tenantB, client.ID)
-	require.ErrorIs(t, err, ErrNotFound)
+	require.ErrorIs(t, err, sentinel.ErrNotFound)
 }
 
 func TestFindByID_NotFound(t *testing.T) {
@@ -69,7 +70,7 @@ func TestFindByID_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := store.FindByID(ctx, id.ClientID(uuid.New()))
-	require.ErrorIs(t, err, ErrNotFound)
+	require.ErrorIs(t, err, sentinel.ErrNotFound)
 }
 
 func TestFindByClientID_NotFound(t *testing.T) {
@@ -77,7 +78,7 @@ func TestFindByClientID_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := store.FindByOAuthClientID(ctx, "nonexistent")
-	require.ErrorIs(t, err, ErrNotFound)
+	require.ErrorIs(t, err, sentinel.ErrNotFound)
 }
 
 func TestCountByTenant_OnlyCountsMatchingTenant(t *testing.T) {

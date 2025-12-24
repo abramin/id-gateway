@@ -9,11 +9,12 @@ type AuthorizationResult struct {
 }
 
 type TokenResult struct {
-	AccessToken  string        `json:"access_token"`
-	IDToken      string        `json:"id_token"`
-	RefreshToken string        `json:"refresh_token"`
-	ExpiresIn    time.Duration `json:"expires_in"`
-	TokenType    string        `json:"token_type"`
+	AccessToken  string `json:"access_token"`
+	IDToken      string `json:"id_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int    `json:"expires_in"` // seconds until token expiration
+	TokenType    string `json:"token_type"`
+	Scope        string `json:"scope,omitempty"` // space-delimited scopes granted
 }
 
 type UserInfoResult struct {

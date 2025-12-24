@@ -111,7 +111,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		assert.Equal(s.T(), idToken, result.IDToken)
 		assert.Equal(s.T(), refreshToken, result.RefreshToken)
 		assert.Equal(s.T(), "Bearer", result.TokenType)
-		assert.Equal(s.T(), s.service.TokenTTL, result.ExpiresIn)
+		assert.Equal(s.T(), int(s.service.TokenTTL.Seconds()), result.ExpiresIn)
 	})
 
 	// NOTE: RFC 6749 §5.2 invalid_grant scenarios (token used, not found, expired, session not found, session revoked)

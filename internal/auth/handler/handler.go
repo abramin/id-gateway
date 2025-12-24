@@ -25,6 +25,7 @@ type Service interface {
 	UserInfo(ctx context.Context, sessionID string) (*models.UserInfoResult, error)
 	ListSessions(ctx context.Context, userID id.UserID, currentSessionID id.SessionID) (*models.SessionsResult, error)
 	RevokeSession(ctx context.Context, userID id.UserID, sessionID id.SessionID) error
+	LogoutAll(ctx context.Context, userID id.UserID, currentSessionID id.SessionID, exceptCurrent bool) (*models.LogoutAllResult, error)
 	DeleteUser(ctx context.Context, userID id.UserID) error
 	RevokeToken(ctx context.Context, token string, tokenTypeHint string) error
 }
@@ -61,6 +62,7 @@ func (h *Handler) Register(r chi.Router) {
 	r.Get("/auth/userinfo", h.HandleUserInfo)
 	r.Get("/auth/sessions", h.HandleListSessions)
 	r.Delete("/auth/sessions/{session_id}", h.HandleRevokeSession)
+	r.Post("/auth/logout-all", h.HandleLogoutAll)
 	r.Post("/auth/revoke", h.HandleRevoke)
 }
 
@@ -358,6 +360,62 @@ func (h *Handler) HandleRevokeSession(w http.ResponseWriter, r *http.Request) {
 		SessionID: sessionID.String(),
 		Message:   "Session revoked successfully",
 	})
+}
+
+// HandleLogoutAll implements POST /auth/logout-all per PRD-016 FR-5.
+// Revokes all sessions for the authenticated user, optionally keeping the current session.
+//
+// Query params: except_current=true (default) keeps current session active
+// Output: { "revoked_count": 3, "message": "..." }
+func (h *Handler) HandleLogoutAll(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	requestID := request.GetRequestID(ctx)
+
+	userID, ok := h.requireUserIDFromContext(ctx, w, requestID)
+	if !ok {
+		return
+	}
+
+	currentSessionID, ok := h.requireSessionIDFromContext(ctx, w, requestID)
+	if !ok {
+		return
+	}
+
+	// Parse except_current query param (default: true)
+	exceptCurrent := true
+	if r.URL.Query().Get("except_current") == "false" {
+		exceptCurrent = false
+	}
+
+	res, err := h.auth.LogoutAll(ctx, userID, currentSessionID, exceptCurrent)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "failed to logout all sessions",
+			"error", err,
+			"request_id", requestID,
+			"user_id", userID.String(),
+		)
+		httputil.WriteError(w, err)
+		return
+	}
+
+	h.logger.InfoContext(ctx, "logout all completed",
+		"request_id", requestID,
+		"user_id", userID.String(),
+		"revoked_count", res.RevokedCount,
+		"except_current", exceptCurrent,
+	)
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"revoked_count": res.RevokedCount,
+		"message":       formatLogoutMessage(res.RevokedCount),
+	})
+}
+
+func formatLogoutMessage(count int) string {
+	if count == 1 {
+		return "1 session revoked"
+	}
+	return strconv.Itoa(count) + " sessions revoked"
 }
 
 func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {

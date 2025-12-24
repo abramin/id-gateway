@@ -2,6 +2,84 @@
 
 Implementation of PRD-017: Rate Limiting & Abuse Prevention.
 
+---
+
+## Domain Design
+
+### Bounded Context
+
+**Context:** `internal/ratelimit`
+
+**Purpose:** Rate limiting and abuse prevention for the Credo platform:
+- Per-IP and per-user rate limiting with sliding window algorithm
+- Authentication-specific protections (lockouts, CAPTCHA triggers)
+- Allowlist management for bypassing rate limits
+- Partner API quotas for monthly usage tracking
+- Global throttling for DDoS protection
+
+### Key Domain Models
+
+| Model             | Purpose                                           |
+| ----------------- | ------------------------------------------------- |
+| **AllowlistEntry** | Exempts IPs/users from rate limiting             |
+| **AuthLockout**    | Authentication attempt limits and temporary locks |
+| **APIKeyQuota**    | Monthly quota tracking for partner API keys       |
+| **RateLimitKey**   | Value object for safe bucket key construction     |
+| **RateLimitResult** | DTO encapsulating check outcome (allowed, remaining, reset) |
+
+### Aggregates
+
+**AllowlistEntry Aggregate**
+- Lifecycle: created -> active -> expired
+- One entry per (type, identifier) pair
+- Expiration checked at query time via `IsExpiredAt(now)`
+
+**AuthLockout Aggregate**
+- State machine: unlocked -> soft lock -> hard lock
+- Composite key: (username:IP) prevents cross-IP attacks
+- Intent-revealing methods:
+  - `RecordFailure(now)` - increment counters
+  - `ShouldHardLock(threshold)` - decision point
+  - `ApplyHardLock(duration, now)` - state transition
+  - `IsLockedAt(now)` - current lock status
+  - `RemainingAttempts(limit)` - for client feedback
+
+**APIKeyQuota Aggregate**
+- Monthly periods aligned to calendar month
+- Tiers: free, starter, business, enterprise
+- Overage policy per tier
+
+### Invariants
+
+- Allowlist identifiers must be valid (non-empty, valid IP format)
+- AuthLockout composite key (username:IP) prevents cross-IP attacks
+- Rate limit keys sanitize colons to prevent injection (`user:admin` -> `user_admin`)
+- Confidential state: Secret hashes never exposed in responses
+
+### Ports & Adapters
+
+**Ports (Interfaces):**
+- `AllowlistStore` - Bypass list persistence
+- `BucketStore` - Rate limit counters (sliding window)
+- `AuthLockoutStore` - Auth failure tracking
+- `QuotaStore` - Monthly usage tracking
+
+**Adapters:**
+- In-memory implementations with:
+  - 32 shards for reduced lock contention
+  - LRU eviction (100k max buckets per shard)
+  - Nanosecond precision timestamps
+
+### Key Design Decisions
+
+**Fail-Open Behavior:** When rate limit store is unavailable (e.g., Redis outage), requests proceed. Priority: availability > strict enforcement. Errors logged for monitoring.
+
+**Sliding Window Algorithm:** Fixed-size circular buffer (256 entries) per bucket. O(1) per-operation complexity. Expired timestamps auto-cleaned during check.
+
+**Key Collision Prevention:** `RateLimitKey` value object escapes colons in identifiers, preventing injection attacks.
+
+---
+
 ## Overview
 
 This module provides rate limiting and abuse prevention for the Credo platform:
@@ -24,7 +102,7 @@ internal/ratelimit/
 │   └── allowlist/    # Allowlist entries
 ├── handler/          # HTTP handlers for admin endpoints
 ├── middleware/       # HTTP middleware for rate limiting
-└── README.md        # This file
+└── README.md         # This file
 ```
 
 ## Quick Start

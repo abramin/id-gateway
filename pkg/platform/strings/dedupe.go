@@ -62,3 +62,33 @@ func DedupeAndTrimLower(values []string) []string {
 
 	return result
 }
+
+// TrimSpacePtr trims whitespace from an optional string pointer.
+// Returns nil if input is nil, otherwise returns a pointer to the trimmed string.
+func TrimSpacePtr(s *string) *string {
+	if s == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*s)
+	return &trimmed
+}
+
+// DedupeAndTrimPtr applies DedupeAndTrim to an optional slice pointer.
+// Returns nil if input is nil, otherwise returns a pointer to the deduplicated slice.
+func DedupeAndTrimPtr(values *[]string) *[]string {
+	if values == nil {
+		return nil
+	}
+	result := DedupeAndTrim(*values)
+	return &result
+}
+
+// DedupeAndTrimLowerPtr applies DedupeAndTrimLower to an optional slice pointer.
+// Returns nil if input is nil, otherwise returns a pointer to the deduplicated slice.
+func DedupeAndTrimLowerPtr(values *[]string) *[]string {
+	if values == nil {
+		return nil
+	}
+	result := DedupeAndTrimLower(*values)
+	return &result
+}

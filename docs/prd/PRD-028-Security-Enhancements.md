@@ -50,7 +50,8 @@ Aggregate secure-by-design requirements for already completed PRDs without alter
 
 - Admin authentication uses short-lived, signed admin session tokens with revocation list; static `ADMIN_API_TOKEN` only allowed in demo mode.
 - Token signing/verification keys carry version IDs; rotation cadence and rollback drills are required. Refresh/revoke checks consult centralized revocation lists.
-- Session/consent/allowlist entries require expiry (or explicit “no-expiry” flag) and issuer metadata; constructors reject missing expiry context.
+- Session/consent/allowlist entries require expiry (or explicit "no-expiry" flag) and issuer metadata; constructors reject missing expiry context.
+- **Future:** When static admin token is used, comparison should use `crypto/subtle.ConstantTimeCompare` to prevent timing attacks.
 
 ### SR-6 Auditability
 

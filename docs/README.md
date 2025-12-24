@@ -16,6 +16,7 @@ Quick navigation for all technical documentation.
 | Document | Audience | Description |
 |----------|----------|-------------|
 | [Architecture](architecture.md) | Engineers | System design, data models, flows |
+| [DDD in Credo](ddd.md) | Engineers | DDD overview and module examples |
 | [Hexagonal Migration](GRPC_ARCHITECTURE_MIGRATION.md) | Engineers | Ports/adapters, future gRPC path |
 
 ### Engineering Guidelines

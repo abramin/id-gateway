@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"credo/internal/auth/models"
@@ -92,6 +93,7 @@ func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.Tok
 		IDToken:      artifacts.idToken,
 		RefreshToken: artifacts.refreshToken,
 		TokenType:    "Bearer",
-		ExpiresIn:    s.TokenTTL, // Access token TTL
+		ExpiresIn:    int(s.TokenTTL.Seconds()), // Access token TTL in seconds
+		Scope:        strings.Join(session.RequestedScope, " "),
 	}, nil
 }

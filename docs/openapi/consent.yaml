@@ -322,11 +322,11 @@ components:
             $ref: "#/components/schemas/ConsentPurpose"
     RevokeConsentResponse:
       type: object
-      required: [revoked]
       properties:
         revoked:
           type: array
-          description: List of revoked consents
+          nullable: true
+          description: List of revoked consents (null for revoke-all operations)
           items:
             $ref: "#/components/schemas/RevokedConsent"
         message:
@@ -394,7 +394,10 @@ components:
       properties:
         error:
           type: string
-          description: Machine readable error code
+          description: |
+            Machine readable error code. Note: `invalid_consent` and `missing_consent`
+            are returned by other endpoints (e.g., /vc/issue, /decision/evaluate) when
+            consent verification fails, not by consent endpoints directly.
           enum:
             - bad_request
             - unauthorized

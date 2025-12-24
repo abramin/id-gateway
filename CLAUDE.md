@@ -135,10 +135,8 @@ This repo uses focused review agents for code review. Each has a narrow scope:
 1. **Testing Agent**: Contracts, behavior verification, scenario coverage
 2. **DDD Patterns Agent**: Domain model clarity, aggregates, boundary hygiene
 3. **Performance Agent**: Scalability, measurement-first optimizations
-4. **Security Agent**: AuthN/AuthZ, secret handling, threat-focused review
-5. **Secure-by-Design Agent**: Trust boundaries, domain primitives, lifecycle safety
-6. **Complexity Agent**:
-   Readability and Cognitive Complexity
+4. **Secure-by-Design Agent**: Trust boundaries, domain primitives, lifecycle safety, AuthN/AuthZ, threat-focused review
+5. **Complexity Agent**: Readability and cognitive complexity
 
 **Conflict resolution (tie-breakers)**:
 

@@ -158,6 +158,183 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalError"
+  /admin/rate-limit/quota/{api_key}:
+    get:
+      summary: Get quota usage for an API key
+      description: |
+        Returns the current quota usage for a specific API key (PRD-017 FR-5).
+        Shows usage, limit, remaining requests, and reset time.
+      security:
+        - adminToken: []
+      parameters:
+        - in: path
+          name: api_key
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: API key identifier
+      responses:
+        "200":
+          description: Quota usage retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaUsageResponse"
+              examples:
+                default:
+                  value:
+                    api_key_id: 550e8400-e29b-41d4-a716-446655440000
+                    tier: starter
+                    usage: 450
+                    limit: 1000
+                    remaining: 550
+                    reset_at: "2025-02-01T00:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /admin/rate-limit/quota/{api_key}/reset:
+    post:
+      summary: Reset quota for an API key
+      description: |
+        Resets the quota usage counter for a specific API key to zero (PRD-017 FR-5).
+        Optionally accepts a reason for audit purposes.
+      security:
+        - adminToken: []
+      parameters:
+        - in: path
+          name: api_key
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: API key identifier
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetQuotaRequest"
+            examples:
+              with_reason:
+                value:
+                  reason: Customer support escalation
+      responses:
+        "200":
+          description: Quota reset successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: reset
+              examples:
+                default:
+                  value:
+                    status: reset
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /admin/rate-limit/quotas:
+    get:
+      summary: List all API key quotas
+      description: |
+        Returns quota usage for all registered API keys (PRD-017 FR-5).
+      security:
+        - adminToken: []
+      responses:
+        "200":
+          description: Quota list retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/QuotaUsageResponse"
+              examples:
+                default:
+                  value:
+                    - api_key_id: 550e8400-e29b-41d4-a716-446655440000
+                      tier: starter
+                      usage: 450
+                      limit: 1000
+                      remaining: 550
+                      reset_at: "2025-02-01T00:00:00Z"
+                    - api_key_id: 660e8400-e29b-41d4-a716-446655440001
+                      tier: business
+                      usage: 5000
+                      limit: 10000
+                      remaining: 5000
+                      reset_at: "2025-02-01T00:00:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /admin/rate-limit/quota/{api_key}/tier:
+    put:
+      summary: Update quota tier for an API key
+      description: |
+        Updates the quota tier for a specific API key (PRD-017 FR-5).
+        The new tier's limits take effect immediately.
+      security:
+        - adminToken: []
+      parameters:
+        - in: path
+          name: api_key
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: API key identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateQuotaTierRequest"
+            examples:
+              upgrade:
+                value:
+                  tier: business
+      responses:
+        "200":
+          description: Tier updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: updated
+                  tier:
+                    type: string
+                    example: business
+              examples:
+                default:
+                  value:
+                    status: updated
+                    tier: business
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   securitySchemes:
     adminToken:
@@ -305,6 +482,53 @@ components:
         retry_after:
           type: integer
           description: Seconds until retry
+    QuotaTier:
+      type: string
+      enum:
+        - free
+        - starter
+        - business
+        - enterprise
+      description: API quota tier determining monthly request limits
+    QuotaUsageResponse:
+      type: object
+      required: [api_key_id, tier, usage, limit, remaining, reset_at]
+      properties:
+        api_key_id:
+          type: string
+          format: uuid
+          description: API key identifier
+        tier:
+          $ref: "#/components/schemas/QuotaTier"
+        usage:
+          type: integer
+          minimum: 0
+          description: Current usage count for this billing period
+        limit:
+          type: integer
+          minimum: 0
+          description: Maximum requests allowed per billing period
+        remaining:
+          type: integer
+          minimum: 0
+          description: Remaining requests in current billing period
+        reset_at:
+          type: string
+          format: date-time
+          description: When the quota resets (start of next billing period)
+    ResetQuotaRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          description: Optional reason for resetting the quota (for audit)
+          maxLength: 500
+    UpdateQuotaTierRequest:
+      type: object
+      required: [tier]
+      properties:
+        tier:
+          $ref: "#/components/schemas/QuotaTier"
     ErrorResponse:
       type: object
       required: [error]
@@ -349,6 +573,17 @@ components:
               value:
                 error: unauthorized
                 error_description: "admin token required"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            not_found:
+              value:
+                error: not_found
+                error_description: "API key not found"
     InternalError:
       description: Unexpected server error
       content:

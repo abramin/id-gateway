@@ -36,49 +36,60 @@ k6 run loadtest/k6-quick.js
 
 ### Prerequisites
 
-1. Start the server:
+1. Start the server with rate limiting disabled (required for most load tests):
 
 ```bash
-make run
-# or
-docker compose up
+# Recommended for load testing
+DISABLE_RATE_LIMITING=true docker compose up
+
+# Or with make
+DISABLE_RATE_LIMITING=true make run
 ```
+
+> **Note**: Rate limiting must be disabled for most scenarios. The setup phase creates
+> many resources (tenants, clients, users) which will trigger rate limits otherwise.
+> Only the `rate_limit_*` scenarios should run with rate limiting enabled.
 
 2. The script is self-bootstrapping in local/dev environments:
    - It automatically uses `demo-admin-token` (matching the server's default)
    - It creates a temporary tenant and client on each run
    - No additional configuration needed for local testing
 
-For custom environments, you can override:
-- `ADMIN_TOKEN`: Admin API token (default: `demo-admin-token`)
-- `CLIENT_ID`: Use an existing client instead of creating one
-- `USER_COUNT`: Number of test users to create (default: 100)
-- `SCOPES`: Comma-separated scopes (default: `openid,profile`)
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BASE_URL` | `http://localhost:8080` | Server URL |
+| `ADMIN_TOKEN` | `demo-admin-token` | Admin API token |
+| `CLIENT_ID` | (auto-created) | Use existing client |
+| `USER_COUNT` | `200` | Test users to create |
+| `BURST_CLIENT_COUNT` | `100` | Clients for ResolveClient burst |
+| `LARGE_TENANT_CLIENT_COUNT` | `500` | Clients per large tenant |
+| `SCOPES` | `openid,profile` | OAuth scopes |
+| `SCENARIO` | `all` | Which scenario to run |
 
 ### Run Scenarios
 
 ```bash
-# Run all scenarios (no config needed for local dev)
+# Run all scenarios (requires DISABLE_RATE_LIMITING=true)
 k6 run loadtest/k6-credo.js
 
 # Run specific scenario
-SCENARIO=token_refresh_storm k6 run loadtest/k6-credo.js
-SCENARIO=consent_burst k6 run loadtest/k6-credo.js
-SCENARIO=mixed_load k6 run loadtest/k6-credo.js
+k6 run loadtest/k6-credo.js -e SCENARIO=token_refresh_storm
+k6 run loadtest/k6-credo.js -e SCENARIO=resolve_client_burst
+k6 run loadtest/k6-credo.js -e SCENARIO=client_onboarding_spike
 
 # With fewer users for quick testing
-USER_COUNT=10 k6 run loadtest/k6-credo.js
+k6 run loadtest/k6-credo.js -e USER_COUNT=10
 
-# With custom admin token (for non-local environments)
-ADMIN_TOKEN=your-admin-token k6 run loadtest/k6-credo.js
-
-# With existing client (skip tenant/client creation)
-CLIENT_ID=clt_abc123xyz k6 run loadtest/k6-credo.js
+# Test rate limiting behavior (run WITH rate limiting enabled)
+k6 run loadtest/k6-credo.js -e SCENARIO=rate_limit_sustained
+k6 run loadtest/k6-credo.js -e SCENARIO=rate_limit_cardinality
 ```
 
 ## Scenarios
 
-### 1. Token Refresh Storm
+### 1. Token Refresh Storm (`token_refresh_storm`)
 
 **Purpose**: Validate mutex contention under concurrent token refresh load
 
@@ -86,7 +97,7 @@ CLIENT_ID=clt_abc123xyz k6 run loadtest/k6-credo.js
 - **VUs**: 50-200 virtual users
 - **Target**: p95 latency < 200ms, error rate < 0.1%
 
-### 2. Consent Grant Burst
+### 2. Consent Grant Burst (`consent_burst`)
 
 **Purpose**: Validate consent service throughput with multi-purpose grants
 
@@ -94,7 +105,7 @@ CLIENT_ID=clt_abc123xyz k6 run loadtest/k6-credo.js
 - **VUs**: 20-100 virtual users
 - **Target**: p95 latency < 300ms
 
-### 3. Mixed Load (Read/Write)
+### 3. Mixed Load (`mixed_load`)
 
 **Purpose**: Validate read performance during write contention
 
@@ -102,16 +113,72 @@ CLIENT_ID=clt_abc123xyz k6 run loadtest/k6-credo.js
 - **Duration**: 5 minutes
 - **Target**: List p95 < 100ms, Refresh p95 < 300ms
 
+### 4. OAuth Flow Storm (`oauth_flow_storm`)
+
+**Purpose**: Test full authorize → token exchange path under load
+
+- **Load**: 50 full OAuth flows per second
+- **Duration**: 5 minutes
+- **Target**: p95 < 500ms for full flow
+
+### 5. ResolveClient Burst (`resolve_client_burst`)
+
+**Purpose**: Validate ResolveClient performance with 1000 concurrent calls against 100 clients
+
+- **Load**: 200 req/sec for 1 minute
+- **Setup**: Creates 100 clients
+- **Target**: p95 latency < 100ms (cache justification baseline)
+
+### 6. Client Onboarding Spike (`client_onboarding_spike`)
+
+**Purpose**: Measure bcrypt contention under concurrent CreateClient requests
+
+- **Load**: 50 concurrent VUs for 2 minutes
+- **Endpoint**: `POST /admin/clients`
+- **Target**: p95 latency < 500ms (bcrypt ~100ms per hash)
+
+### 7. Tenant Dashboard Load (`tenant_dashboard_load`)
+
+**Purpose**: Validate GetTenant performance for tenants with 500+ clients
+
+- **Load**: 100 concurrent VUs for 2 minutes
+- **Setup**: Creates tenant with 500 clients
+- **Target**: p95 latency < 100ms (COUNT queries should be O(1))
+
+### 8. Rate Limit Sustained (`rate_limit_sustained`)
+
+**Purpose**: Validate rate limiting under sustained high request rate
+
+- **Load**: 500 req/sec for 1 minute
+- **Expected**: 429 responses after limit is reached
+- **Run with**: Rate limiting ENABLED
+
+### 9. Rate Limit Cardinality (`rate_limit_cardinality`)
+
+**Purpose**: Test memory behavior under many unique IPs
+
+- **Load**: 50 VUs × 100 iterations (5000 unique IPs)
+- **Method**: X-Forwarded-For header spoofing
+- **Run with**: Rate limiting ENABLED
+
 ## Metrics Collected
 
-| Metric                  | Description                     |
-| ----------------------- | ------------------------------- |
-| `token_refresh_latency` | Token refresh endpoint latency  |
-| `consent_grant_latency` | Consent grant endpoint latency  |
-| `session_list_latency`  | Session list endpoint latency   |
-| `token_errors`          | Count of token refresh failures |
-| `consent_errors`        | Count of consent grant failures |
-| `error_rate`            | Overall error rate              |
+| Metric                   | Description                          |
+| ------------------------ | ------------------------------------ |
+| `token_refresh_latency`  | Token refresh endpoint latency       |
+| `consent_grant_latency`  | Consent grant endpoint latency       |
+| `session_list_latency`   | Session list endpoint latency        |
+| `oauth_flow_latency`     | Full OAuth flow latency              |
+| `authorize_latency`      | Authorize endpoint latency           |
+| `token_exchange_latency` | Token exchange latency               |
+| `resolve_client_latency` | ResolveClient call latency           |
+| `create_client_latency`  | CreateClient endpoint latency        |
+| `get_tenant_latency`     | GetTenant endpoint latency           |
+| `rate_limit_latency`     | Health endpoint latency (rate tests) |
+| `rate_limited_count`     | Count of 429 responses               |
+| `token_errors`           | Count of token refresh failures      |
+| `consent_errors`         | Count of consent grant failures      |
+| `error_rate`             | Overall error rate                   |
 
 ## Viewing Results
 

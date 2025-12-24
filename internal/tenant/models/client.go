@@ -7,46 +7,6 @@ import (
 	dErrors "credo/pkg/domain-errors"
 )
 
-// Tenant represents an isolated identity boundary.
-type Tenant struct {
-	ID        id.TenantID  `json:"id"`
-	Name      string       `json:"name"`
-	Status    TenantStatus `json:"status"`
-	CreatedAt time.Time    `json:"created_at"`
-}
-
-// IsActive returns true if the tenant is in active status.
-func (t *Tenant) IsActive() bool {
-	return t.Status == TenantStatusActive
-}
-
-// Deactivate transitions the tenant to inactive status.
-// Returns an error if the tenant is already inactive.
-func (t *Tenant) Deactivate() error {
-	if t.Status == TenantStatusInactive {
-		return dErrors.New(dErrors.CodeInvariantViolation, "tenant is already inactive")
-	}
-	t.Status = TenantStatusInactive
-	return nil
-}
-
-// NewTenant creates a Tenant with domain invariant checks.
-func NewTenant(tenantID id.TenantID, name string) (*Tenant, error) {
-	if name == "" {
-		return nil, dErrors.New(dErrors.CodeInvariantViolation, "tenant name cannot be empty")
-	}
-	if len(name) > 128 {
-		return nil, dErrors.New(dErrors.CodeInvariantViolation, "tenant name must be 128 characters or less")
-	}
-	return &Tenant{
-		ID:        tenantID,
-		Name:      name,
-		Status:    TenantStatusActive,
-		CreatedAt: time.Now(),
-	}, nil
-}
-
-// Client represents an OAuth relying party registered under a tenant.
 type Client struct {
 	ID               id.ClientID  `json:"id"`
 	TenantID         id.TenantID  `json:"tenant_id"`
@@ -61,7 +21,6 @@ type Client struct {
 	UpdatedAt        time.Time    `json:"updated_at"`
 }
 
-// NewClient creates a Client with domain invariant checks.
 func NewClient(
 	clientID id.ClientID,
 	tenantID id.TenantID,
@@ -111,29 +70,40 @@ func (c *Client) IsActive() bool {
 }
 
 // Deactivate transitions the client to inactive status.
+// Updates the timestamp to track when the transition occurred.
 // Returns an error if the client is already inactive.
-func (c *Client) Deactivate() error {
-	if c.Status == ClientStatusInactive {
+func (c *Client) Deactivate(now time.Time) error {
+	if !c.IsActive() {
 		return dErrors.New(dErrors.CodeInvariantViolation, "client is already inactive")
 	}
 	c.Status = ClientStatusInactive
+	c.UpdatedAt = now
 	return nil
 }
 
-// IsConfidential returns true if the client is a confidential client (has a secret).
+// Reactivate transitions the client to active status.
+// Updates the timestamp to track when the transition occurred.
+// Returns an error if the client is already active.
+func (c *Client) Reactivate(now time.Time) error {
+	if c.IsActive() {
+		return dErrors.New(dErrors.CodeInvariantViolation, "client is already active")
+	}
+	c.Status = ClientStatusActive
+	c.UpdatedAt = now
+	return nil
+}
+
 // Confidential clients are server-side apps with secure secret storage.
 // Public clients are SPAs/mobile apps that cannot securely store secrets.
 func (c *Client) IsConfidential() bool {
 	return c.ClientSecretHash != ""
 }
 
-// TenantDetails aggregates tenant metadata with counts for admin dashboards.
-// Internal type - converted to TenantDetailsResponse for HTTP serialization.
-type TenantDetails struct {
-	ID          id.TenantID
-	Name        string
-	Status      TenantStatus
-	CreatedAt   time.Time
-	UserCount   int
-	ClientCount int
+// CanUseGrant checks if the client is allowed to use the specified grant type.
+// Public clients cannot use client_credentials (requires secure secret storage).
+func (c *Client) CanUseGrant(grant string) bool {
+	if GrantType(grant).RequiresConfidentialClient() && !c.IsConfidential() {
+		return false
+	}
+	return true
 }

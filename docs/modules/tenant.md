@@ -58,6 +58,7 @@ The tenant module is the system's "account manager." It creates tenants (custome
 ## Observability
 
 - Metric: `credo_tenants_created_total` for tenant creation volume and onboarding tracking.
+- Metric: `credo_resolve_client_duration_seconds` histogram for OAuth critical path latency (p50/p95/p99 visibility).
 - Audit log events for tenant creation, client creation, and secret rotation; includes `request_id` when available for support tracing.
 
 ## Integration points
@@ -74,3 +75,4 @@ The tenant module is the system's "account manager." It creates tenants (custome
 
 - Tenant-admin auth is not yet wired; handlers currently use platform-admin access paths with TODOs to switch to tenant-scoped methods. This limits self-service in phase 0.
 - Persistence is demo-only; in-memory stores should be replaced with durable storage to support real onboarding and recovery.
+- Consider argon2id for new installations: bcrypt is CPU-bound (~100ms at default cost). argon2id allows memory-hardness tuning for better resistance to GPU attacks. Migration requires bcrypt compatibility for existing hashes; only applicable to greenfield deployments or phased rollout with hash-on-verify upgrade.
