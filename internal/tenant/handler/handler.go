@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"credo/internal/tenant/models"
+	"credo/internal/tenant/service"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/httputil"
@@ -27,11 +28,11 @@ type Service interface {
 	GetTenant(ctx context.Context, id id.TenantID) (*models.TenantDetails, error)
 	DeactivateTenant(ctx context.Context, id id.TenantID) (*models.Tenant, error)
 	ReactivateTenant(ctx context.Context, id id.TenantID) (*models.Tenant, error)
-	CreateClient(ctx context.Context, req *models.CreateClientRequest) (*models.Client, string, error)
+	CreateClient(ctx context.Context, cmd *service.CreateClientCommand) (*models.Client, string, error)
 	GetClient(ctx context.Context, id id.ClientID) (*models.Client, error)
 	GetClientForTenant(ctx context.Context, tenantID id.TenantID, id id.ClientID) (*models.Client, error)
-	UpdateClient(ctx context.Context, id id.ClientID, req *models.UpdateClientRequest) (*models.Client, string, error)
-	UpdateClientForTenant(ctx context.Context, tenantID id.TenantID, id id.ClientID, req *models.UpdateClientRequest) (*models.Client, string, error)
+	UpdateClient(ctx context.Context, id id.ClientID, cmd *service.UpdateClientCommand) (*models.Client, string, error)
+	UpdateClientForTenant(ctx context.Context, tenantID id.TenantID, id id.ClientID, cmd *service.UpdateClientCommand) (*models.Client, string, error)
 	DeactivateClient(ctx context.Context, id id.ClientID) (*models.Client, error)
 	ReactivateClient(ctx context.Context, id id.ClientID) (*models.Client, error)
 	RotateClientSecret(ctx context.Context, id id.ClientID) (*models.Client, string, error)
@@ -65,7 +66,7 @@ func (h *Handler) HandleCreateTenant(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
 
-	req, ok := httputil.DecodeAndPrepare[models.CreateTenantRequest](w, r, h.logger, ctx, requestID)
+	req, ok := httputil.DecodeAndPrepare[CreateTenantRequest](w, r, h.logger, ctx, requestID)
 	if !ok {
 		return
 	}
@@ -155,12 +156,18 @@ func (h *Handler) HandleCreateClient(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
 
-	req, ok := httputil.DecodeAndPrepare[models.CreateClientRequest](w, r, h.logger, ctx, requestID)
+	req, ok := httputil.DecodeAndPrepare[CreateClientRequest](w, r, h.logger, ctx, requestID)
 	if !ok {
 		return
 	}
 
-	client, secret, err := h.service.CreateClient(ctx, req)
+	cmd, err := req.ToCommand()
+	if err != nil {
+		httputil.WriteError(w, err)
+		return
+	}
+
+	client, secret, err := h.service.CreateClient(ctx, cmd)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "create client failed", "error", err, "request_id", requestID)
 		httputil.WriteError(w, err)
@@ -216,14 +223,16 @@ func (h *Handler) HandleUpdateClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req, ok := httputil.DecodeAndPrepare[models.UpdateClientRequest](w, r, h.logger, ctx, requestID)
+	req, ok := httputil.DecodeAndPrepare[UpdateClientRequest](w, r, h.logger, ctx, requestID)
 	if !ok {
 		return
 	}
 
+	cmd := req.ToCommand()
+
 	// Platform admin: can update any client
 	// When tenant admin auth is added, use UpdateClientForTenant instead
-	client, secret, err := h.service.UpdateClient(ctx, clientID, req)
+	client, secret, err := h.service.UpdateClient(ctx, clientID, cmd)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "update client failed", "error", err, "request_id", requestID, "client_id", clientID)
 		httputil.WriteError(w, err)

@@ -37,18 +37,12 @@ func NewClientService(clients ClientStore, tenants TenantStore, opts ...Option) 
 
 // CreateClient registers a client under a tenant.
 // Returns the created client and the cleartext secret (only available at creation time).
-func (s *ClientService) CreateClient(ctx context.Context, req *models.CreateClientRequest) (*models.Client, string, error) {
-	req.Normalize()
-	if err := req.Validate(); err != nil {
+func (s *ClientService) CreateClient(ctx context.Context, cmd *CreateClientCommand) (*models.Client, string, error) {
+	if err := cmd.Validate(); err != nil {
 		return nil, "", dErrors.Wrap(err, dErrors.CodeValidation, "invalid client request")
 	}
 
-	tenantID, err := id.ParseTenantID(req.TenantID)
-	if err != nil {
-		return nil, "", err
-	}
-
-	tenant, err := s.tenants.FindByID(ctx, tenantID)
+	tenant, err := s.tenants.FindByID(ctx, cmd.TenantID)
 	if err != nil {
 		return nil, "", wrapTenantErr(err, "failed to load tenant")
 	}
@@ -56,20 +50,20 @@ func (s *ClientService) CreateClient(ctx context.Context, req *models.CreateClie
 		return nil, "", dErrors.New(dErrors.CodeValidation, "cannot create client under inactive tenant")
 	}
 
-	secret, secretHash, err := generateSecret(req.Public)
+	secret, secretHash, err := generateSecret(cmd.Public)
 	if err != nil {
 		return nil, "", err
 	}
 
 	client, err := models.NewClient(
 		id.ClientID(uuid.New()),
-		tenantID,
-		req.Name,
+		cmd.TenantID,
+		cmd.Name,
 		uuid.NewString(),
 		secretHash,
-		req.RedirectURIs,
-		req.AllowedGrants,
-		req.AllowedScopes,
+		cmd.RedirectURIs,
+		grantTypesToStrings(cmd.AllowedGrants),
+		cmd.AllowedScopes,
 		time.Now(),
 	)
 	if err != nil {
@@ -118,7 +112,7 @@ func (s *ClientService) GetClientForTenant(ctx context.Context, tenantID id.Tena
 
 // UpdateClient updates mutable fields and optionally rotates the secret.
 // Returns the updated client and the rotated secret (empty if not rotated).
-func (s *ClientService) UpdateClient(ctx context.Context, clientID id.ClientID, req *models.UpdateClientRequest) (*models.Client, string, error) {
+func (s *ClientService) UpdateClient(ctx context.Context, clientID id.ClientID, cmd *UpdateClientCommand) (*models.Client, string, error) {
 	if clientID.IsNil() {
 		return nil, "", dErrors.New(dErrors.CodeBadRequest, "client ID required")
 	}
@@ -126,12 +120,12 @@ func (s *ClientService) UpdateClient(ctx context.Context, clientID id.ClientID, 
 	if err != nil {
 		return nil, "", wrapClientErr(err, "failed to get client")
 	}
-	return s.applyClientUpdate(ctx, client, req)
+	return s.applyClientUpdate(ctx, client, cmd)
 }
 
 // UpdateClientForTenant enforces tenant scoping when updating a client.
 // Returns the updated client and the rotated secret (empty if not rotated).
-func (s *ClientService) UpdateClientForTenant(ctx context.Context, tenantID id.TenantID, clientID id.ClientID, req *models.UpdateClientRequest) (*models.Client, string, error) {
+func (s *ClientService) UpdateClientForTenant(ctx context.Context, tenantID id.TenantID, clientID id.ClientID, cmd *UpdateClientCommand) (*models.Client, string, error) {
 	if tenantID.IsNil() {
 		return nil, "", dErrors.New(dErrors.CodeBadRequest, "tenant ID required")
 	}
@@ -142,7 +136,7 @@ func (s *ClientService) UpdateClientForTenant(ctx context.Context, tenantID id.T
 	if err != nil {
 		return nil, "", wrapClientErr(err, "failed to get client")
 	}
-	return s.applyClientUpdate(ctx, client, req)
+	return s.applyClientUpdate(ctx, client, cmd)
 }
 
 // DeactivateClient transitions a client to inactive status.
@@ -287,52 +281,31 @@ func (s *ClientService) rotateSecret(ctx context.Context, client *models.Client)
 }
 
 // applyClientUpdate contains the shared update logic for client modifications.
-func (s *ClientService) applyClientUpdate(ctx context.Context, client *models.Client, req *models.UpdateClientRequest) (*models.Client, string, error) {
-	req.Normalize()
-	if err := req.Validate(); err != nil {
+func (s *ClientService) applyClientUpdate(ctx context.Context, client *models.Client, cmd *UpdateClientCommand) (*models.Client, string, error) {
+	if err := cmd.Validate(); err != nil {
 		return nil, "", dErrors.Wrap(err, dErrors.CodeValidation, "invalid update request")
 	}
 
 	// Apply secret rotation BEFORE grant validation so that confidentiality
 	// checks reflect the post-rotation state. This prevents a public client
 	// from gaining client_credentials by combining RotateSecret with grant update.
-	rotatedSecret := ""
-	if req.RotateSecret {
-		var err error
-		rotatedSecret, client.ClientSecretHash, err = generateSecret(false)
-		if err != nil {
-			return nil, "", err
-		}
+	rotatedSecret, err := s.maybeRotateSecret(client, cmd.RotateSecret)
+	if err != nil {
+		return nil, "", err
 	}
 
-	// Validate grant changes against client confidentiality.
-	if req.AllowedGrants != nil {
-		for _, grant := range *req.AllowedGrants {
-			if !client.CanUseGrant(grant) {
-				return nil, "", dErrors.New(dErrors.CodeValidation, "client_credentials grant requires a confidential client")
-			}
-		}
+	if err := validateGrantChanges(client, cmd); err != nil {
+		return nil, "", err
 	}
 
-	if req.Name != nil {
-		client.Name = strings.TrimSpace(*req.Name)
-	}
-	if req.RedirectURIs != nil {
-		client.RedirectURIs = *req.RedirectURIs
-	}
-	if req.AllowedGrants != nil {
-		client.AllowedGrants = *req.AllowedGrants
-	}
-	if req.AllowedScopes != nil {
-		client.AllowedScopes = *req.AllowedScopes
-	}
+	applyFieldUpdates(client, cmd)
 
 	client.UpdatedAt = time.Now()
 	if err := s.clients.Update(ctx, client); err != nil {
 		return nil, "", dErrors.Wrap(err, dErrors.CodeInternal, "failed to update client")
 	}
 
-	if req.RotateSecret {
+	if cmd.RotateSecret {
 		s.auditEmitter.emit(ctx, "client.secret_rotated",
 			"tenant_id", client.TenantID,
 			"client_id", client.ID,
@@ -340,6 +313,49 @@ func (s *ClientService) applyClientUpdate(ctx context.Context, client *models.Cl
 	}
 
 	return client, rotatedSecret, nil
+}
+
+// maybeRotateSecret generates and applies a new secret if requested.
+// Returns the cleartext secret (empty if not rotated).
+func (s *ClientService) maybeRotateSecret(client *models.Client, rotate bool) (string, error) {
+	if !rotate {
+		return "", nil
+	}
+	secret, hash, err := generateSecret(false)
+	if err != nil {
+		return "", err
+	}
+	client.ClientSecretHash = hash
+	return secret, nil
+}
+
+// validateGrantChanges ensures requested grants are compatible with client confidentiality.
+func validateGrantChanges(client *models.Client, cmd *UpdateClientCommand) error {
+	if !cmd.HasAllowedGrants() {
+		return nil
+	}
+	for _, grant := range cmd.AllowedGrants {
+		if !client.CanUseGrant(grant.String()) {
+			return dErrors.New(dErrors.CodeValidation, "client_credentials grant requires a confidential client")
+		}
+	}
+	return nil
+}
+
+// applyFieldUpdates mutates client fields based on command values.
+func applyFieldUpdates(client *models.Client, cmd *UpdateClientCommand) {
+	if cmd.Name != nil {
+		client.Name = strings.TrimSpace(*cmd.Name)
+	}
+	if cmd.HasRedirectURIs() {
+		client.RedirectURIs = cmd.RedirectURIs
+	}
+	if cmd.HasAllowedGrants() {
+		client.AllowedGrants = grantTypesToStrings(cmd.AllowedGrants)
+	}
+	if cmd.HasAllowedScopes() {
+		client.AllowedScopes = cmd.AllowedScopes
+	}
 }
 
 func (s *ClientService) observeResolveClient(start time.Time) {
@@ -363,4 +379,13 @@ func generateSecret(isPublic bool) (secret, hash string, err error) {
 		return "", "", dErrors.Wrap(err, dErrors.CodeInternal, "failed to hash secret")
 	}
 	return secret, hash, nil
+}
+
+// grantTypesToStrings converts typed grant types to strings for storage.
+func grantTypesToStrings(grants []models.GrantType) []string {
+	result := make([]string, len(grants))
+	for i, g := range grants {
+		result[i] = g.String()
+	}
+	return result
 }
