@@ -110,3 +110,40 @@ func TestFindByName_CaseInsensitive(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, tenant.ID, found.ID)
 }
+
+func TestUpdate_PersistsChanges(t *testing.T) {
+	store := NewInMemory()
+	ctx := context.Background()
+
+	tenant := &models.Tenant{
+		ID:        id.TenantID(uuid.New()),
+		Name:      "Update Test",
+		Status:    models.TenantStatusActive,
+		CreatedAt: time.Now(),
+	}
+	require.NoError(t, store.CreateIfNameAvailable(ctx, tenant))
+
+	// Update status
+	tenant.Status = models.TenantStatusInactive
+	require.NoError(t, store.Update(ctx, tenant))
+
+	// Verify change persisted
+	found, err := store.FindByID(ctx, tenant.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.TenantStatusInactive, found.Status)
+}
+
+func TestUpdate_NotFound(t *testing.T) {
+	store := NewInMemory()
+	ctx := context.Background()
+
+	tenant := &models.Tenant{
+		ID:        id.TenantID(uuid.New()),
+		Name:      "Nonexistent",
+		Status:    models.TenantStatusActive,
+		CreatedAt: time.Now(),
+	}
+
+	err := store.Update(ctx, tenant)
+	require.ErrorIs(t, err, sentinel.ErrNotFound)
+}

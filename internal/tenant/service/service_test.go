@@ -234,38 +234,6 @@ func (s *ServiceSuite) TestResolveClient() {
 	assert.Equal(s.T(), created.ID, client.ID)
 }
 
-// TestResolveClientRejectsInactiveTenant verifies that OAuth flows reject clients
-// when their parent tenant is inactive. This is a service-level test because there
-// is no admin endpoint to deactivate tenants yet. When a deactivate endpoint is added,
-// this behavior should be tested via a feature scenario instead.
-func (s *ServiceSuite) TestResolveClientRejectsInactiveTenant() {
-	tenantRecord := s.createTestTenant("Acme")
-	created := s.createTestClient(tenantRecord.ID)
-
-	// Deactivate the tenant (direct mutation works because in-memory store uses pointers)
-	tenantRecord.Status = tenant.TenantStatusInactive
-
-	_, _, err := s.service.ResolveClient(context.Background(), created.OAuthClientID)
-	require.Error(s.T(), err)
-	assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeInvalidClient), "expected invalid_client for inactive tenant")
-}
-
-// TestResolveClientRejectsInactiveClient verifies that OAuth flows reject clients
-// that have been deactivated. This is a service-level test because there is no admin
-// endpoint to deactivate clients yet. When a deactivate endpoint is added, this
-// behavior should be tested via a feature scenario instead.
-func (s *ServiceSuite) TestResolveClientRejectsInactiveClient() {
-	tenantRecord := s.createTestTenant("Acme")
-	created := s.createTestClient(tenantRecord.ID)
-
-	// Deactivate the client (direct mutation works because in-memory store uses pointers)
-	created.Status = tenant.ClientStatusInactive
-
-	_, _, err := s.service.ResolveClient(context.Background(), created.OAuthClientID)
-	require.Error(s.T(), err)
-	assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeInvalidClient), "expected invalid_client for inactive client")
-}
-
 func (s *ServiceSuite) TestCreateClientWithValidInput() {
 	tenantRecord := s.createTestTenant("Acme")
 
