@@ -845,11 +845,12 @@ Retry-After: 45  (when rate limited)
 
 ### Tenant
 
-**Responsibilities** (PRD-026A)
+**Responsibilities** (PRD-026A, PRD-026B)
 
 - Manage multi-tenant isolation.
 - Handle client registration and API key management.
 - Enforce tenant-scoped access controls.
+- Lifecycle management: deactivate/reactivate tenants and clients.
 
 **Key types**
 
@@ -857,7 +858,7 @@ Retry-After: 45  (when rate limited)
 type Tenant struct {
     ID        string
     Name      string
-    Status    string    // "active", "suspended"
+    Status    string    // "active", "inactive"
     CreatedAt time.Time
 }
 
@@ -866,17 +867,24 @@ type Client struct {
     TenantID  string
     Name      string
     Secret    string    // Hashed client secret
-    Status    string    // "active", "revoked"
+    Status    string    // "active", "inactive"
     CreatedAt time.Time
 }
 ```
 
 **Components**
 
-- `service/` - Tenant and client orchestration
+- `service/` - Tenant and client orchestration, lifecycle management
 - `handler/` - HTTP handlers for admin endpoints
 - `store/` - In-memory tenant/client storage
 - `models/` - Domain models
+
+**Lifecycle Operations** (PRD-026B):
+
+- `DeactivateTenant(ctx, tenantID)` - Blocks all OAuth flows for tenant's clients
+- `ReactivateTenant(ctx, tenantID)` - Restores tenant to active status
+- `DeactivateClient(ctx, clientID)` - Blocks OAuth flows for specific client
+- `ReactivateClient(ctx, clientID)` - Restores client to active status
 
 ---
 
@@ -1238,15 +1246,19 @@ Requires `X-Admin-Token` header for authentication.
 | DELETE | `/admin/rate-limit/allowlist` | Remove from allowlist |
 | POST | `/admin/rate-limit/reset` | Reset rate limit counter |
 
-**Tenant Management (PRD-026A):**
+**Tenant Management (PRD-026A, PRD-026B):**
 
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/admin/tenants` | Create tenant |
 | GET | `/admin/tenants` | List tenants |
 | GET | `/admin/tenants/{tenant_id}` | Get tenant details |
+| POST | `/admin/tenants/{tenant_id}/deactivate` | Deactivate tenant |
+| POST | `/admin/tenants/{tenant_id}/reactivate` | Reactivate tenant |
 | POST | `/admin/tenants/{tenant_id}/clients` | Create client for tenant |
 | GET | `/admin/tenants/{tenant_id}/clients` | List tenant's clients |
+| POST | `/admin/clients/{client_id}/deactivate` | Deactivate client |
+| POST | `/admin/clients/{client_id}/reactivate` | Reactivate client |
 
 ---
 
@@ -1364,11 +1376,12 @@ Having the code structured by services makes these toggles easier to reason abou
 - ✅ Admin user deletion (PRD-001B)
 - ✅ Device binding service for session security (PRD-001)
 - ✅ Tenant and client management (PRD-026A)
-- ✅ Rate limiting module structure (PRD-017)
+- ✅ Tenant and client lifecycle management (PRD-026B)
+- ✅ Rate limiting with in-memory sliding window (PRD-017 MVP)
 
 **What's Partially Implemented:**
 
-- ⚠️ Rate limiting service logic and Redis backend (PRD-017 - structure bootstrapped, needs completion)
+- ⚠️ Rate limiting Redis backend (PRD-017 - in-memory MVP complete, Redis backend deferred to PRD-017B)
 - ⚠️ Evidence and Decision handlers (501 Not Implemented)
 - ⚠️ User Data Rights handlers (501 Not Implemented)
 - ⚠️ Real VC credential ID generation
@@ -1423,8 +1436,8 @@ Key improvements to harden this design:
 
 6. **Security Hardening**
 
-   - ✅ Rate limiting module structure bootstrapped (PRD-017) - needs Redis backend
-   - ⚠️ Complete rate limiting with Redis-backed sliding window
+   - ✅ Rate limiting with in-memory sliding window (PRD-017 MVP complete)
+   - ⚠️ Distributed rate limiting with Redis backend (PRD-017B)
    - ⚠️ Implement circuit breakers for registry calls (hystrix-go or similar)
    - ⚠️ Add request signing/verification for interservice calls
    - ⚠️ Implement API key management for partner integrations
@@ -1504,10 +1517,11 @@ The codebase currently has:
 - ✅ **Testable architecture:** In-memory stores and service layer are fully functional, allowing unit testing without external dependencies.
 - ✅ **Production-ready auth:** OAuth 2.0 Authorization Code Flow fully implemented with comprehensive test coverage.
 - ✅ **Observability stack:** Context-aware structured logging, Prometheus metrics, request ID tracing, and HTTP middleware.
-- ✅ **HTTP middleware:** Recovery, logging, request ID, timeout, content-type validation, and latency tracking.
+- ✅ **HTTP middleware:** Recovery, logging, request ID, timeout, content-type validation, latency tracking, and rate limiting.
 - ✅ **Hexagonal architecture:** Port interfaces and gRPC adapters enable clean service boundaries and microservices migration.
 - ✅ **Provider abstraction:** Universal provider interface with protocol adapters, orchestration layer, error taxonomy, and contract testing framework for registry integrations.
-- ⚠️ **HTTP layer partial:** Auth handlers complete (authorize, token, userinfo). Consent, Evidence, Decision, and User Data Rights handlers return 501 (see PRDs in `docs/prd/`).
+- ✅ **Phase 0 complete:** Auth (PRD-001), Admin (PRD-001B), Consent (PRD-002), Token Lifecycle (PRD-016), Rate Limiting MVP (PRD-017), Tenant Management (PRD-026A, PRD-026B).
+- ⚠️ **HTTP layer partial:** Auth and Consent handlers complete. Evidence, Decision, and User Data Rights handlers return 501 (see PRDs in `docs/prd/`).
 - ⚠️ **Service layer migration:** Registry service needs migration to use orchestrator instead of direct client calls.
 
 ---
@@ -1524,3 +1538,4 @@ The codebase currently has:
 | 2.3     | 2025-12-12 | Engineering Team | Integrate CQRS/event streaming architecture; expand Consent, Decision, and Audit sections with production evolution patterns; add Storage and Caching Architecture section; update production roadmap with event bus, policy engine (PRD-015), and CQRS read models |
 | 2.4     | 2025-12-17 | Engineering Team | Align with implemented PRDs: add Rate Limiting (PRD-017), Tenant Management (PRD-026A), Admin (PRD-001B), Device Binding modules; update package layout; add API Routes section; update middleware and implementation status |
 | 2.5     | 2025-12-17 | Engineering Team | Added Phase 7 Differentiation Pack services and package layout: Trust Score, Compliance Templates, Privacy Analytics, Trust Network, Consent-as-a-Service |
+| 2.6     | 2025-12-24 | Engineering Team | Phase 0 completion update: add PRD-026B tenant/client lifecycle management, update rate limiting to MVP complete status, add lifecycle API routes, update implementation status summary |
