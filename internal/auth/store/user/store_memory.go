@@ -7,6 +7,7 @@ import (
 
 	"credo/internal/auth/models"
 	id "credo/pkg/domain"
+	"credo/pkg/platform/sentinel"
 )
 
 // Error Contract:
@@ -40,7 +41,7 @@ func (s *InMemoryUserStore) FindByID(_ context.Context, userID id.UserID) (*mode
 	if user, ok := s.users[userID]; ok {
 		return user, nil
 	}
-	return nil, fmt.Errorf("user not found: %w", ErrNotFound)
+	return nil, fmt.Errorf("user not found: %w", sentinel.ErrNotFound)
 }
 
 func (s *InMemoryUserStore) FindByEmail(ctx context.Context, email string) (*models.User, error) {
@@ -51,7 +52,7 @@ func (s *InMemoryUserStore) FindByEmail(ctx context.Context, email string) (*mod
 			return user, nil
 		}
 	}
-	return nil, fmt.Errorf("user not found: %w", ErrNotFound)
+	return nil, fmt.Errorf("user not found: %w", sentinel.ErrNotFound)
 }
 
 // FindOrCreateByTenantAndEmail atomically finds a user by tenant and email or creates it if not found.
@@ -79,5 +80,5 @@ func (s *InMemoryUserStore) Delete(_ context.Context, userID id.UserID) error {
 		delete(s.users, userID)
 		return nil
 	}
-	return fmt.Errorf("user not found: %w", ErrNotFound)
+	return fmt.Errorf("user not found: %w", sentinel.ErrNotFound)
 }

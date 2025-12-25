@@ -10,6 +10,7 @@ import (
 	refreshtoken "credo/internal/auth/store/refresh-token"
 	sessionStore "credo/internal/auth/store/session"
 	id "credo/pkg/domain"
+	"credo/pkg/platform/sentinel"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -77,10 +78,10 @@ func TestCleanupService_RunOnce_Integration(t *testing.T) {
 
 	// Verify expired artifacts are actually removed
 	_, err = codes.FindByCode(ctx, expiredCode.Code)
-	require.ErrorIs(t, err, authCodeStore.ErrNotFound)
+	require.ErrorIs(t, err, sentinel.ErrNotFound)
 
 	_, err = refreshTokens.Find(ctx, expiredRefresh.Token)
-	require.ErrorIs(t, err, refreshtoken.ErrNotFound)
+	require.ErrorIs(t, err, sentinel.ErrNotFound)
 
 	allSessions, err := sessions.ListAll(ctx)
 	require.NoError(t, err)

@@ -7,10 +7,10 @@ import (
 	"strings"
 
 	"credo/internal/auth/models"
-	authCodeStore "credo/internal/auth/store/authorization-code"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
 	"credo/pkg/platform/middleware/requesttime"
+	"credo/pkg/platform/sentinel"
 )
 
 // exchangeAuthorizationCode handles the token exchange flow for authorization codes.
@@ -44,7 +44,7 @@ func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.Tok
 		var err error
 		codeRecord, err = stores.Codes.ConsumeAuthCode(ctx, req.Code, req.RedirectURI, now)
 		if err != nil {
-			if errors.Is(err, authCodeStore.ErrAuthCodeUsed) && codeRecord != nil {
+			if errors.Is(err, sentinel.ErrAlreadyUsed) && codeRecord != nil {
 				revokeErr := stores.Sessions.RevokeSessionIfActive(ctx, codeRecord.SessionID, now)
 				if revokeErr != nil {
 					return dErrors.Wrap(revokeErr, dErrors.CodeInternal, "failed to revoke session for used code")

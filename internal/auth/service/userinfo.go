@@ -7,11 +7,10 @@ import (
 	"github.com/google/uuid"
 
 	"credo/internal/auth/models"
-	sessionStore "credo/internal/auth/store/session"
-	userStore "credo/internal/auth/store/user"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
+	"credo/pkg/platform/sentinel"
 )
 
 // UserInfo retrieves user information based on the provided session ID.
@@ -33,7 +32,7 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 	}
 
 	session, err := s.sessions.FindByID(ctx, id.SessionID(parsedSessionID))
-	if errors.Is(err, sessionStore.ErrNotFound) {
+	if errors.Is(err, sentinel.ErrNotFound) {
 		s.authFailure(ctx, "session_not_found", false,
 			"session_id", parsedSessionID.String(),
 		)
@@ -56,7 +55,7 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 	}
 
 	user, err := s.users.FindByID(ctx, session.UserID)
-	if errors.Is(err, userStore.ErrNotFound) {
+	if errors.Is(err, sentinel.ErrNotFound) {
 		s.authFailure(ctx, "user_not_found", false,
 			"session_id", parsedSessionID.String(),
 			"user_id", session.UserID.String(),

@@ -6,6 +6,7 @@ import (
 
 	"credo/internal/auth/models"
 	id "credo/pkg/domain"
+	"credo/pkg/platform/sentinel"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -45,10 +46,10 @@ func (s *InMemoryUserStoreSuite) TestSaveAndFind() {
 
 func (s *InMemoryUserStoreSuite) TestFindNotFound() {
 	_, err := s.store.FindByID(context.Background(), id.UserID(uuid.New()))
-	assert.ErrorIs(s.T(), err, ErrNotFound)
+	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
 
 	_, err = s.store.FindByEmail(context.Background(), "missing@example.com")
-	assert.ErrorIs(s.T(), err, ErrNotFound)
+	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
 }
 
 func (s *InMemoryUserStoreSuite) TestDelete() {
@@ -63,10 +64,10 @@ func (s *InMemoryUserStoreSuite) TestDelete() {
 	require.NoError(s.T(), s.store.Delete(context.Background(), user.ID))
 
 	_, err := s.store.FindByID(context.Background(), user.ID)
-	assert.ErrorIs(s.T(), err, ErrNotFound)
+	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
 
 	err = s.store.Delete(context.Background(), user.ID)
-	assert.ErrorIs(s.T(), err, ErrNotFound)
+	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
 }
 
 func TestInMemoryUserStoreSuite(t *testing.T) {

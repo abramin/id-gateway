@@ -4,11 +4,10 @@ import (
 	"context"
 	"errors"
 
-	sessionStore "credo/internal/auth/store/session"
-	userStore "credo/internal/auth/store/user"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
+	"credo/pkg/platform/sentinel"
 )
 
 func (s *Service) DeleteUser(ctx context.Context, userID id.UserID) error {
@@ -19,14 +18,14 @@ func (s *Service) DeleteUser(ctx context.Context, userID id.UserID) error {
 	// Capture user before deletion to enrich audit events
 	user, err := s.users.FindByID(ctx, userID)
 	if err != nil {
-		if errors.Is(err, userStore.ErrNotFound) {
+		if errors.Is(err, sentinel.ErrNotFound) {
 			return dErrors.New(dErrors.CodeNotFound, "user not found")
 		}
 		return dErrors.Wrap(err, dErrors.CodeInternal, "failed to lookup user")
 	}
 
 	if err := s.sessions.DeleteSessionsByUser(ctx, userID); err != nil {
-		if !errors.Is(err, sessionStore.ErrNotFound) {
+		if !errors.Is(err, sentinel.ErrNotFound) {
 			return dErrors.Wrap(err, dErrors.CodeInternal, "failed to delete user sessions")
 		}
 	}
@@ -39,7 +38,7 @@ func (s *Service) DeleteUser(ctx context.Context, userID id.UserID) error {
 	s.logAudit(ctx, string(audit.EventSessionsRevoked), auditAttrs...)
 
 	if err := s.users.Delete(ctx, userID); err != nil {
-		if errors.Is(err, userStore.ErrNotFound) {
+		if errors.Is(err, sentinel.ErrNotFound) {
 			return dErrors.New(dErrors.CodeNotFound, "user not found")
 		}
 		return dErrors.Wrap(err, dErrors.CodeInternal, "failed to delete user")

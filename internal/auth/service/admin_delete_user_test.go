@@ -8,11 +8,11 @@ import (
 	"testing"
 
 	"credo/internal/auth/models"
-	userStore "credo/internal/auth/store/user"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
 	request "credo/pkg/platform/middleware/request"
+	"credo/pkg/platform/sentinel"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -36,7 +36,7 @@ func (s *ServiceSuite) TestDeleteUser() {
 	})
 
 	s.T().Run("user not found", func(t *testing.T) {
-		s.mockUserStore.EXPECT().FindByID(ctx, userID).Return(nil, userStore.ErrNotFound)
+		s.mockUserStore.EXPECT().FindByID(ctx, userID).Return(nil, sentinel.ErrNotFound)
 
 		err := s.service.DeleteUser(ctx, userID)
 		require.Error(t, err)

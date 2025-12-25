@@ -12,9 +12,6 @@ import (
 	"credo/pkg/platform/sentinel"
 )
 
-// ErrNotFound is returned when a requested record is not found in the store.
-// Services should check for this error using errors.Is(err, store.ErrNotFound).
-var ErrNotFound = sentinel.ErrNotFound
 var ErrSessionRevoked = fmt.Errorf("session has been revoked: %w", sentinel.ErrInvalidState)
 
 // Error Contract:
@@ -44,7 +41,7 @@ func (s *InMemorySessionStore) FindByID(_ context.Context, sessionID id.SessionI
 	if session, ok := s.sessions[sessionID]; ok {
 		return session, nil
 	}
-	return nil, fmt.Errorf("session not found: %w", ErrNotFound)
+	return nil, fmt.Errorf("session not found: %w", sentinel.ErrNotFound)
 }
 
 func (s *InMemorySessionStore) ListByUser(_ context.Context, userID id.UserID) ([]*models.Session, error) {
@@ -65,7 +62,7 @@ func (s *InMemorySessionStore) UpdateSession(_ context.Context, session *models.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.sessions[session.ID]; !ok {
-		return fmt.Errorf("session not found: %w", ErrNotFound)
+		return fmt.Errorf("session not found: %w", sentinel.ErrNotFound)
 	}
 	s.sessions[session.ID] = session
 	return nil
@@ -84,7 +81,7 @@ func (s *InMemorySessionStore) DeleteSessionsByUser(_ context.Context, userID id
 	}
 
 	if !found {
-		return fmt.Errorf("session not found: %w", ErrNotFound)
+		return fmt.Errorf("session not found: %w", sentinel.ErrNotFound)
 	}
 
 	return nil
@@ -100,7 +97,7 @@ func (s *InMemorySessionStore) RevokeSessionIfActive(_ context.Context, sessionI
 
 	session, ok := s.sessions[sessionID]
 	if !ok {
-		return ErrNotFound
+		return sentinel.ErrNotFound
 	}
 	if session.Status == models.SessionStatusRevoked {
 		return ErrSessionRevoked
@@ -149,7 +146,7 @@ func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, sessionID id.S
 
 	session, ok := s.sessions[sessionID]
 	if !ok {
-		return nil, fmt.Errorf("session not found: %w", ErrNotFound)
+		return nil, fmt.Errorf("session not found: %w", sentinel.ErrNotFound)
 	}
 	if session.ClientID.String() != clientID {
 		return nil, fmt.Errorf("client_id mismatch: %w", sentinel.ErrInvalidState)
@@ -190,7 +187,7 @@ func (s *InMemorySessionStore) AdvanceLastRefreshed(_ context.Context, sessionID
 
 	session, ok := s.sessions[sessionID]
 	if !ok {
-		return nil, fmt.Errorf("session not found: %w", ErrNotFound)
+		return nil, fmt.Errorf("session not found: %w", sentinel.ErrNotFound)
 	}
 	if session.ClientID.String() != clientID {
 		return nil, fmt.Errorf("client_id mismatch: %w", sentinel.ErrInvalidState)

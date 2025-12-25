@@ -10,12 +10,6 @@ import (
 	"credo/pkg/platform/sentinel"
 )
 
-// ErrNotFound is returned when a requested record is not found in the store.
-// Services should check for this error using errors.Is(err, store.ErrNotFound).
-var ErrNotFound = sentinel.ErrNotFound
-var ErrAuthCodeUsed = sentinel.ErrAlreadyUsed
-var ErrAuthCodeExpired = sentinel.ErrExpired
-
 // Error Contract:
 // All store methods follow this error pattern:
 // - Return ErrNotFound when the requested entity does not exist
@@ -47,7 +41,7 @@ func (s *InMemoryAuthorizationCodeStore) FindByCode(_ context.Context, code stri
 	if authCode, ok := s.authCodes[code]; ok {
 		return authCode, nil
 	}
-	return nil, fmt.Errorf("authorization code not found: %w", ErrNotFound)
+	return nil, fmt.Errorf("authorization code not found: %w", sentinel.ErrNotFound)
 }
 
 func (s *InMemoryAuthorizationCodeStore) MarkUsed(_ context.Context, code string) error {
@@ -57,7 +51,7 @@ func (s *InMemoryAuthorizationCodeStore) MarkUsed(_ context.Context, code string
 		record.Used = true
 		return nil
 	}
-	return fmt.Errorf("authorization code not found: %w", ErrNotFound)
+	return fmt.Errorf("authorization code not found: %w", sentinel.ErrNotFound)
 }
 
 // ConsumeAuthCode marks the authorization code as used if valid.
@@ -69,16 +63,16 @@ func (s *InMemoryAuthorizationCodeStore) ConsumeAuthCode(_ context.Context, code
 
 	record, ok := s.authCodes[code]
 	if !ok {
-		return nil, fmt.Errorf("authorization code not found: %w", ErrNotFound)
+		return nil, fmt.Errorf("authorization code not found: %w", sentinel.ErrNotFound)
 	}
 	if record.RedirectURI != redirectURI {
 		return record, fmt.Errorf("redirect_uri mismatch: %w", sentinel.ErrInvalidState)
 	}
 	if now.After(record.ExpiresAt) {
-		return record, fmt.Errorf("authorization code expired: %w", ErrAuthCodeExpired)
+		return record, fmt.Errorf("authorization code expired: %w", sentinel.ErrExpired)
 	}
 	if record.Used {
-		return record, fmt.Errorf("authorization code already used: %w", ErrAuthCodeUsed)
+		return record, fmt.Errorf("authorization code already used: %w", sentinel.ErrAlreadyUsed)
 	}
 
 	record.Used = true
