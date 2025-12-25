@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -12,6 +11,7 @@ import (
 	"credo/internal/tenant/models"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
+	"credo/pkg/platform/middleware/requesttime"
 	"credo/pkg/platform/sentinel"
 )
 
@@ -76,7 +76,7 @@ func (s *TenantService) DeactivateTenant(ctx context.Context, tenantID id.Tenant
 		return nil, wrapTenantErr(err, "failed to load tenant")
 	}
 
-	if err := tenant.Deactivate(time.Now()); err != nil {
+	if err := tenant.Deactivate(requesttime.Now(ctx)); err != nil {
 		if dErrors.HasCode(err, dErrors.CodeInvariantViolation) {
 			return nil, dErrors.New(dErrors.CodeConflict, "tenant is already inactive")
 		}
@@ -103,7 +103,7 @@ func (s *TenantService) ReactivateTenant(ctx context.Context, tenantID id.Tenant
 		return nil, wrapTenantErr(err, "failed to load tenant")
 	}
 
-	if err := tenant.Reactivate(time.Now()); err != nil {
+	if err := tenant.Reactivate(requesttime.Now(ctx)); err != nil {
 		if dErrors.HasCode(err, dErrors.CodeInvariantViolation) {
 			return nil, dErrors.New(dErrors.CodeConflict, "tenant is already active")
 		}

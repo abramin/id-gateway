@@ -3,11 +3,11 @@ package service
 import (
 	"context"
 	"sort"
-	"time"
 
 	"credo/internal/auth/models"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
+	"credo/pkg/platform/middleware/requesttime"
 )
 
 func (s *Service) ListSessions(ctx context.Context, userID id.UserID, currentSessionID id.SessionID) (*models.SessionsResult, error) {
@@ -20,7 +20,7 @@ func (s *Service) ListSessions(ctx context.Context, userID id.UserID, currentSes
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to list sessions")
 	}
 
-	now := time.Now()
+	now := requesttime.Now(ctx)
 	active := make([]*models.Session, 0, len(sessions))
 	for _, session := range sessions {
 		if session == nil {

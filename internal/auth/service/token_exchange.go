@@ -5,16 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"credo/internal/auth/models"
 	authCodeStore "credo/internal/auth/store/authorization-code"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
+	"credo/pkg/platform/middleware/requesttime"
 )
 
 func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {
-	now := time.Now()
+	now := requesttime.Now(ctx)
 	var (
 		codeRecord *models.AuthorizationCodeRecord
 		session    *models.Session

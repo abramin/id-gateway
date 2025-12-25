@@ -18,6 +18,7 @@ import (
 	"credo/pkg/platform/audit"
 	devicemw "credo/pkg/platform/middleware/device"
 	metadata "credo/pkg/platform/middleware/metadata"
+	"credo/pkg/platform/middleware/requesttime"
 )
 
 type authorizeParams struct {
@@ -76,7 +77,7 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 		Email:             req.Email,
 		Scopes:            req.Scopes,
 		RedirectURI:       req.RedirectURI,
-		Now:               time.Now(),
+		Now:               requesttime.Now(ctx),
 		DeviceID:          deviceID,
 		DeviceFingerprint: devicemw.GetDeviceFingerprint(ctx),
 		DeviceDisplayName: device.ParseUserAgent(metadata.GetUserAgent(ctx)),

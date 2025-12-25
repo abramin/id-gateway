@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"credo/internal/auth/models"
 	"credo/pkg/platform/audit"
+	"credo/pkg/platform/middleware/requesttime"
 )
 
 func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {
-	now := time.Now()
+	now := requesttime.Now(ctx)
 	var (
 		refreshRecord *models.RefreshTokenRecord
 		session       *models.Session
@@ -91,4 +91,3 @@ func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.Token
 		Scope:        strings.Join(session.RequestedScope, " "),
 	}, nil
 }
-
