@@ -52,7 +52,7 @@ func (s *AuthHandlerSuite) TestHandler_Authorize() {
 	}
 
 	s.T().Run("forwards authorize request to service with default scope when scopes omitted", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
+		mockService, router := s.newHandler(t)
 		requestBody := `{"email":"user@example.com","client_id":"test-client-id","redirect_uri":"https://example.com/redirect"}`
 		// Handler normalizes the request, adding default "openid" scope when omitted
 		expectedReq := &models.AuthorizationRequest{
@@ -76,7 +76,7 @@ func (s *AuthHandlerSuite) TestHandler_Authorize() {
 	})
 
 	s.T().Run("returns 500 when service fails", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
+		mockService, router := s.newHandler(t)
 		mockService.EXPECT().Authorize(gomock.Any(), validRequest).Return(nil, errors.New("boom"))
 
 		status, got, errBody := s.doAuthRequest(t, router, s.mustMarshal(validRequest, t))
@@ -94,7 +94,7 @@ func (s *AuthHandlerSuite) TestHandler_Token() {
 	}
 
 	s.T().Run("token response includes token_type", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
+		mockService, router := s.newHandler(t)
 		expectedResp := &models.TokenResult{
 			AccessToken: "access-token-123",
 			IDToken:     "id-token-123",
@@ -111,7 +111,7 @@ func (s *AuthHandlerSuite) TestHandler_Token() {
 	})
 
 	s.T().Run("internal server failure - 500", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
+		mockService, router := s.newHandler(t)
 		mockService.EXPECT().Token(gomock.Any(), gomock.Any()).Return(nil, errors.New("database error"))
 		status, got, errBody := s.doTokenRequest(t, router, s.mustMarshal(validRequest, t))
 
@@ -123,7 +123,7 @@ func (s *AuthHandlerSuite) TestHandler_UserInfo() {
 	validSessionID := uuid.New()
 
 	s.T().Run("missing or invalid authorization header - 401", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
+		mockService, router := s.newHandler(t)
 		mockService.EXPECT().UserInfo(gomock.Any(), "").Return(nil, dErrors.New(dErrors.CodeUnauthorized, "missing or invalid session"))
 
 		status, got, errBody := s.doUserInfoRequest(t, router, "")
@@ -132,7 +132,7 @@ func (s *AuthHandlerSuite) TestHandler_UserInfo() {
 	})
 
 	s.T().Run("invalid session identifier format - 401", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
+		mockService, router := s.newHandler(t)
 		invalidSession := "not-a-uuid"
 		mockService.EXPECT().UserInfo(gomock.Any(), invalidSession).Return(nil, dErrors.New(dErrors.CodeUnauthorized, "invalid session ID"))
 
@@ -142,7 +142,7 @@ func (s *AuthHandlerSuite) TestHandler_UserInfo() {
 	})
 
 	s.T().Run("internal server failure - 500", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
+		mockService, router := s.newHandler(t)
 		mockService.EXPECT().UserInfo(gomock.Any(), validSessionID.String()).Return(nil, errors.New("database error"))
 
 		status, got, errBody := s.doUserInfoRequest(t, router, validSessionID.String())
@@ -156,7 +156,7 @@ func (s *AuthHandlerSuite) TestHandler_ListSessions() {
 	currentSessionID := id.SessionID(uuid.New())
 
 	s.T().Run("invalid user id in context - 401", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
+		mockService, router := s.newHandler(t)
 		mockService.EXPECT().ListSessions(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 		status, got, errBody := s.doListSessionsRequest(t, router, "not-a-uuid", currentSessionID.String())
@@ -164,7 +164,7 @@ func (s *AuthHandlerSuite) TestHandler_ListSessions() {
 	})
 
 	s.T().Run("invalid session id in context - 401", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
+		mockService, router := s.newHandler(t)
 		mockService.EXPECT().ListSessions(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 		status, got, errBody := s.doListSessionsRequest(t, router, userID.String(), "not-a-uuid")
@@ -172,7 +172,7 @@ func (s *AuthHandlerSuite) TestHandler_ListSessions() {
 	})
 
 	s.T().Run("service error - 500", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
+		mockService, router := s.newHandler(t)
 		mockService.EXPECT().
 			ListSessions(gomock.Any(), userID, currentSessionID).
 			Return(nil, errors.New("boom"))
@@ -188,7 +188,7 @@ func (s *AuthHandlerSuite) TestHandler_RevokeSession() {
 	path := "/auth/sessions/" + sessionID.String()
 
 	s.T().Run("invalid user id in context - 401", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
+		mockService, router := s.newHandler(t)
 		mockService.EXPECT().RevokeSession(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 		status, got, errBody := s.doRevokeSessionRequest(t, router, path, "not-a-uuid")
@@ -196,11 +196,53 @@ func (s *AuthHandlerSuite) TestHandler_RevokeSession() {
 	})
 
 	s.T().Run("invalid session id in path - 400", func(t *testing.T) {
-		mockService, router := s.newHandler(t, nil)
+		mockService, router := s.newHandler(t)
 		mockService.EXPECT().RevokeSession(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 		status, got, errBody := s.doRevokeSessionRequest(t, router, "/auth/sessions/not-a-uuid", userID.String())
 		s.assertErrorResponse(t, status, got, errBody, http.StatusBadRequest, string(dErrors.CodeBadRequest))
+	})
+}
+
+func (s *AuthHandlerSuite) TestHandler_LogoutAll() {
+	userID := id.UserID(uuid.New())
+	currentSessionID := id.SessionID(uuid.New())
+
+	s.T().Run("invalid user id in context - 401", func(t *testing.T) {
+		mockService, router := s.newHandler(t)
+		mockService.EXPECT().LogoutAll(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+		status, _, errBody := s.doLogoutAllRequest(t, router, "not-a-uuid", currentSessionID.String(), "true")
+		s.assertErrorResponse(t, status, nil, errBody, http.StatusUnauthorized, string(dErrors.CodeUnauthorized))
+	})
+
+	s.T().Run("invalid session id in context - 401", func(t *testing.T) {
+		mockService, router := s.newHandler(t)
+		mockService.EXPECT().LogoutAll(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+		status, _, errBody := s.doLogoutAllRequest(t, router, userID.String(), "not-a-uuid", "true")
+		s.assertErrorResponse(t, status, nil, errBody, http.StatusUnauthorized, string(dErrors.CodeUnauthorized))
+	})
+
+	s.T().Run("service error - 500", func(t *testing.T) {
+		mockService, router := s.newHandler(t)
+		mockService.EXPECT().
+			LogoutAll(gomock.Any(), userID, currentSessionID, true).
+			Return(nil, errors.New("boom"))
+
+		status, _, errBody := s.doLogoutAllRequest(t, router, userID.String(), currentSessionID.String(), "true")
+		s.assertErrorResponse(t, status, nil, errBody, http.StatusInternalServerError, string(dErrors.CodeInternal))
+	})
+
+	s.T().Run("except_current=false parsed correctly", func(t *testing.T) {
+		mockService, router := s.newHandler(t)
+		mockService.EXPECT().
+			LogoutAll(gomock.Any(), userID, currentSessionID, false).
+			Return(&models.LogoutAllResult{RevokedCount: 1}, nil)
+
+		status, res, _ := s.doLogoutAllRequest(t, router, userID.String(), currentSessionID.String(), "false")
+		assert.Equal(t, http.StatusOK, status)
+		assert.Equal(t, float64(1), res["revoked_count"])
 	})
 }
 
@@ -249,15 +291,11 @@ func TestAuthHandlerSuite(t *testing.T) {
 	suite.Run(t, new(AuthHandlerSuite))
 }
 
-func (s *AuthHandlerSuite) newHandler(t *testing.T, allowedSchemes *[]string) (*mocks.MockService, *chi.Mux) {
+func (s *AuthHandlerSuite) newHandler(t *testing.T) (*mocks.MockService, *chi.Mux) {
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
 
-	if allowedSchemes == nil {
-		defaultSchemes := []string{"http", "https"}
-		allowedSchemes = &defaultSchemes
-	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	mockService := mocks.NewMockService(ctrl)
 	handler := New(mockService, nil, nil, logger, "__Secure-Device-ID", 31536000)
@@ -344,6 +382,37 @@ func (s *AuthHandlerSuite) doRevokeSessionRequest(t *testing.T, router *chi.Mux,
 		var res models.SessionRevocationResult
 		require.NoError(t, json.Unmarshal(raw, &res))
 		return rr.Code, &res, nil
+	}
+
+	var errBody map[string]string
+	require.NoError(t, json.Unmarshal(raw, &errBody))
+	return rr.Code, nil, errBody
+}
+
+func (s *AuthHandlerSuite) doLogoutAllRequest(t *testing.T, router *chi.Mux, userID string, sessionID string, exceptCurrent string) (int, map[string]any, map[string]string) {
+	t.Helper()
+	path := "/auth/logout-all?except_current=" + exceptCurrent
+	httpReq := httptest.NewRequest(http.MethodPost, path, nil)
+
+	ctx := httpReq.Context()
+	if userID != "" {
+		ctx = context.WithValue(ctx, authmw.ContextKeyUserID, userID)
+	}
+	if sessionID != "" {
+		ctx = context.WithValue(ctx, authmw.ContextKeySessionID, sessionID)
+	}
+	httpReq = httpReq.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, httpReq)
+
+	raw, err := io.ReadAll(rr.Body)
+	require.NoError(t, err)
+
+	if rr.Code == http.StatusOK {
+		var res map[string]any
+		require.NoError(t, json.Unmarshal(raw, &res))
+		return rr.Code, res, nil
 	}
 
 	var errBody map[string]string

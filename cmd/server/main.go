@@ -493,6 +493,7 @@ func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consent
 		r.Use(rateLimitMiddleware.RateLimitAuthenticated(rateLimitModels.ClassSensitive))
 		r.Use(auth.RequireAuth(infra.JWTValidator, authMod.Service, infra.Log))
 		r.Delete("/auth/sessions/{session_id}", authMod.Handler.HandleRevokeSession)
+		r.Post("/auth/logout-all", authMod.Handler.HandleLogoutAll)
 		r.Post("/auth/consent", consentMod.Handler.HandleGrantConsent)
 		r.Post("/auth/consent/revoke", consentMod.Handler.HandleRevokeConsent)
 		r.Post("/auth/consent/revoke-all", consentMod.Handler.HandleRevokeAllConsents)

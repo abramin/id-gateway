@@ -16,6 +16,7 @@ import (
 // TestContext interface defines the methods needed from the main test context
 type TestContext interface {
 	POST(path string, body interface{}) error
+	POSTWithHeaders(path string, body interface{}, headers map[string]string) error
 	GET(path string, headers map[string]string) error
 	DELETE(path string, headers map[string]string) error
 	GetResponseField(field string) (interface{}, error)
@@ -113,6 +114,11 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc TestContext) {
 	ctx.Step(`^I save the current session id$`, steps.saveCurrentSessionID)
 	ctx.Step(`^I revoke the current session$`, steps.revokeCurrentSession)
 	ctx.Step(`^the response field "([^"]*)" should not be empty$`, steps.responseFieldShouldNotBeEmpty)
+
+	// Logout-all steps
+	ctx.Step(`^I call logout-all with access token "([^"]*)" and except_current "([^"]*)"$`, steps.callLogoutAllWithNamedToken)
+	ctx.Step(`^I call logout-all with the saved access token and except_current "([^"]*)"$`, steps.callLogoutAllWithSavedToken)
+	ctx.Step(`^the response field "([^"]*)" should be at least (\d+)$`, steps.responseFieldShouldBeAtLeast)
 }
 
 type authSteps struct {
@@ -746,6 +752,55 @@ func (s *authSteps) responseFieldShouldNotBeEmpty(ctx context.Context, field str
 	}
 	if valueStr == "" {
 		return fmt.Errorf("field %s is empty", field)
+	}
+	return nil
+}
+
+// callLogoutAllWithNamedToken calls POST /auth/logout-all with a named access token
+func (s *authSteps) callLogoutAllWithNamedToken(ctx context.Context, tokenName, exceptCurrent string) error {
+	token := s.tc.GetAccessTokenFor(tokenName)
+	if token == "" {
+		return fmt.Errorf("no access token saved for %s", tokenName)
+	}
+	return s.doLogoutAll(token, exceptCurrent)
+}
+
+// callLogoutAllWithSavedToken calls POST /auth/logout-all with the saved access token
+func (s *authSteps) callLogoutAllWithSavedToken(ctx context.Context, exceptCurrent string) error {
+	token := s.tc.GetAccessToken()
+	if token == "" {
+		return fmt.Errorf("no access token saved")
+	}
+	return s.doLogoutAll(token, exceptCurrent)
+}
+
+// doLogoutAll performs the logout-all API call
+func (s *authSteps) doLogoutAll(token, exceptCurrent string) error {
+	path := "/auth/logout-all?except_current=" + exceptCurrent
+	headers := map[string]string{
+		"Authorization": "Bearer " + token,
+	}
+	// Use empty body - logout-all doesn't require a request body
+	return s.tc.POSTWithHeaders(path, struct{}{}, headers)
+}
+
+// responseFieldShouldBeAtLeast verifies a numeric response field is at least the expected value
+func (s *authSteps) responseFieldShouldBeAtLeast(ctx context.Context, field string, expected int) error {
+	value, err := s.tc.GetResponseField(field)
+	if err != nil {
+		return err
+	}
+	var actual int
+	switch v := value.(type) {
+	case float64:
+		actual = int(v)
+	case int:
+		actual = v
+	default:
+		return fmt.Errorf("field %s is not a number: %T", field, value)
+	}
+	if actual < expected {
+		return fmt.Errorf("expected %s to be at least %d, got %d", field, expected, actual)
 	}
 	return nil
 }

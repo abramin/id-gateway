@@ -1,5 +1,6 @@
 package models
 
+// pending_consent, active, revoked
 type SessionStatus string
 
 const (
@@ -62,6 +63,7 @@ const (
 	TokenTypeRefresh TokenType = "refresh_token"
 )
 
+// "active", "inactive"
 type UserStatus string
 
 const (
