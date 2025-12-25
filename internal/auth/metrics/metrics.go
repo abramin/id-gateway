@@ -6,12 +6,13 @@ import (
 )
 
 type Metrics struct {
-	UsersCreated        prometheus.Counter
-	ActiveSessions      prometheus.Gauge
-	TokenRequests       prometheus.Counter
-	AuthFailures        prometheus.Counter
-	LogoutAllSessions   prometheus.Histogram
-	LogoutAllDurationMs prometheus.Histogram
+	UsersCreated         prometheus.Counter
+	ActiveSessions       prometheus.Gauge
+	TokenRequests        prometheus.Counter
+	AuthFailures         prometheus.Counter
+	LogoutAllSessions    prometheus.Histogram
+	LogoutAllDurationMs  prometheus.Histogram
+	RateLimitCheckErrors *prometheus.CounterVec
 }
 
 func New() *Metrics {
@@ -42,6 +43,10 @@ func New() *Metrics {
 			Help:    "Duration of logout-all operations in milliseconds",
 			Buckets: []float64{10, 50, 100, 250, 500, 1000, 2500, 5000},
 		}),
+		RateLimitCheckErrors: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "credo_ratelimit_check_errors_total",
+			Help: "Total number of rate limit check failures (fail-open events)",
+		}, []string{"endpoint"}),
 	}
 }
 
@@ -68,4 +73,8 @@ func (m *Metrics) IncrementAuthFailures() {
 func (m *Metrics) ObserveLogoutAll(sessionCount int, durationMs float64) {
 	m.LogoutAllSessions.Observe(float64(sessionCount))
 	m.LogoutAllDurationMs.Observe(durationMs)
+}
+
+func (m *Metrics) IncrementRateLimitCheckErrors(endpoint string) {
+	m.RateLimitCheckErrors.WithLabelValues(endpoint).Inc()
 }

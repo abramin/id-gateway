@@ -357,7 +357,7 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 
 	return &authModule{
 		Service:       authSvc,
-		Handler:       authHandler.New(authSvc, rateLimitAdapter, infra.Log, infra.Cfg.Auth.DeviceCookieName, infra.Cfg.Auth.DeviceCookieMaxAge),
+		Handler:       authHandler.New(authSvc, rateLimitAdapter, infra.AuthMetrics, infra.Log, infra.Cfg.Auth.DeviceCookieName, infra.Cfg.Auth.DeviceCookieMaxAge),
 		AdminSvc:      admin.NewService(users, sessions, auditStore),
 		Cleanup:       cleanupSvc,
 		Users:         users,
