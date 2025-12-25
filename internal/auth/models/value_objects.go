@@ -35,6 +35,7 @@ func (s SessionStatus) CanTransitionTo(target SessionStatus) bool {
 	}
 }
 
+// Valid types: authorization_code, refresh_token
 type Grant string
 
 const (
@@ -56,6 +57,7 @@ const (
 	ScopeEmail Scope = "email"
 )
 
+// Valid tokens: access_token, refresh_token
 type TokenType string
 
 const (
@@ -63,7 +65,7 @@ const (
 	TokenTypeRefresh TokenType = "refresh_token"
 )
 
-// "active", "inactive"
+// Valid statuses: "active", "inactive"
 type UserStatus string
 
 const (
@@ -71,6 +73,7 @@ const (
 	UserStatusInactive UserStatus = "inactive"
 )
 
+// Valid statuses: "active", "inactive"
 type ClientStatus string
 
 const (
@@ -78,6 +81,7 @@ const (
 	ClientStatusInactive ClientStatus = "inactive"
 )
 
+// Valid statuses: "active", "inactive"
 type TenantStatus string
 
 const (

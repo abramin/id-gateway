@@ -10,6 +10,9 @@ import (
 	strutil "credo/pkg/platform/strings"
 )
 
+// This file contains transport-layer request models and validation logic.
+// These types may include HTTP/JSON-specific fields or normalization rules.
+
 type AuthorizationRequest struct {
 	Email       string   `json:"email"`
 	ClientID    string   `json:"client_id"`
