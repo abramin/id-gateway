@@ -22,8 +22,6 @@ var ErrAuthCodeExpired = sentinel.ErrExpired
 // - Return nil for successful operations
 // - Return wrapped errors with context for infrastructure failures (future: DB errors, network issues, etc.)
 //
-// In-memory stores keep the initial implementation lightweight and testable.
-// They intentionally favor clarity over performance.
 
 type InMemoryAuthorizationCodeStore struct {
 	mu        sync.RWMutex
@@ -62,6 +60,9 @@ func (s *InMemoryAuthorizationCodeStore) MarkUsed(_ context.Context, code string
 	return fmt.Errorf("authorization code not found: %w", ErrNotFound)
 }
 
+// ConsumeAuthCode marks the authorization code as used if valid.
+// It checks for existence, redirect URI match, expiry, and usage status.
+// Returns the code record and an error if any validation fails.
 func (s *InMemoryAuthorizationCodeStore) ConsumeAuthCode(_ context.Context, code string, redirectURI string, now time.Time) (*models.AuthorizationCodeRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -97,63 +98,3 @@ func (s *InMemoryAuthorizationCodeStore) DeleteExpiredCodes(_ context.Context) (
 	}
 	return deletedCount, nil
 }
-
-// Token Cleanup Strategy
-
-// **1. Cleanup rules for MVP**
-
-// * One goroutine per store.
-// * One `time.Ticker`, coarse interval.
-// * Hold the lock once per sweep.
-// * Delete only on `ExpiresAt.Before(now)`.
-
-// No heap timers, no per-entry goroutines.
-
-// **2. Minimal pattern (in-memory store)**
-
-// High level structure:
-
-// * Store has:
-
-//   * `map[key]value`
-//   * `sync.RWMutex`
-//   * `stop chan struct{}`
-
-// * `StartCleanup()`:
-
-//   * `ticker := time.NewTicker(interval)`
-//   * `go func() { for { select { case <-ticker.C: sweep(); case <-stop: ticker.Stop(); return }}}`
-
-// * `sweep()`:
-
-//   * `now := time.Now()`
-//   * `Lock()`
-//   * `for k, v := range store { if v.ExpiresAt.Before(now) { delete(store, k) }}`
-//   * `Unlock()`
-
-// Call `StartCleanup()` when the app boots.
-// Call `Stop()` on shutdown.
-
-// **3. Interview-ready talking points**
-// If asked “why this design”:
-
-// * Coarse sweeper avoids timer explosion.
-// * Predictable CPU and memory.
-// * Easy to replace with DB TTL or Redis expiry later.
-// * Correct under concurrent access.
-
-// If asked “what about races”:
-
-// * Expiry is rechecked on read.
-// * Worst case: token lives slightly past expiry window.
-
-// **4. Per-store intervals**
-
-// * AuthorizationCodeStore: 30–60 seconds
-// * RefreshTokenStore: 1–5 minutes
-// * SessionStore: optional or longer
-
-// This mirrors real systems.
-
-// Before you implement:
-// Are you planning one shared base store type, or explicitly duplicating this logic per store for clarity in interviews?

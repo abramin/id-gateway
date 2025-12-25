@@ -14,6 +14,9 @@ import (
 	"credo/pkg/platform/audit"
 )
 
+// UserInfo retrieves user information based on the provided session ID.
+// It validates the session, checks its activity status, and fetches the associated user.
+// If successful, it returns a UserInfoResult containing user details.
 func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserInfoResult, error) {
 	if sessionID == "" {
 		s.authFailure(ctx, "missing_session_id", false)

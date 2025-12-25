@@ -25,11 +25,10 @@ func WithCleanupInterval(d time.Duration) InMemoryTRLOption {
 	}
 }
 
-// NewInMemoryTRL creates a new in-memory token revocation list.
 func NewInMemoryTRL(opts ...InMemoryTRLOption) *InMemoryTRL {
 	trl := &InMemoryTRL{
 		revoked:         make(map[string]time.Time),
-		cleanupInterval: 1 * time.Minute, // Reduced from 5min for bounded memory growth
+		cleanupInterval: 1 * time.Minute,
 		stopCh:          make(chan struct{}),
 	}
 	for _, opt := range opts {
@@ -37,12 +36,10 @@ func NewInMemoryTRL(opts ...InMemoryTRLOption) *InMemoryTRL {
 			opt(trl)
 		}
 	}
-	// Start cleanup goroutine to remove expired entries
 	go trl.cleanup()
 	return trl
 }
 
-// Close stops the cleanup goroutine.
 func (t *InMemoryTRL) Close() {
 	close(t.stopCh)
 }

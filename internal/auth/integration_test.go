@@ -12,8 +12,6 @@ import (
 	"testing"
 	"time"
 
-	auditpublisher "credo/pkg/platform/audit/publisher"
-	auditstore "credo/pkg/platform/audit/store/memory"
 	auth "credo/internal/auth/handler"
 	"credo/internal/auth/models"
 	"credo/internal/auth/service"
@@ -22,11 +20,13 @@ import (
 	sessionStore "credo/internal/auth/store/session"
 	userStore "credo/internal/auth/store/user"
 	jwttoken "credo/internal/jwt_token"
+	tenantModels "credo/internal/tenant/models"
+	id "credo/pkg/domain"
+	auditpublisher "credo/pkg/platform/audit/publisher"
+	auditstore "credo/pkg/platform/audit/store/memory"
 	adminmw "credo/pkg/platform/middleware/admin"
 	authmw "credo/pkg/platform/middleware/auth"
 	metadata "credo/pkg/platform/middleware/metadata"
-	tenantModels "credo/internal/tenant/models"
-	id "credo/pkg/domain"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -42,12 +42,12 @@ type stubClientResolver struct {
 
 func (r *stubClientResolver) ResolveClient(ctx context.Context, clientID string) (*tenantModels.Client, *tenantModels.Tenant, error) {
 	return &tenantModels.Client{
-			ID:             r.defaultClientID,
-			TenantID:       r.defaultTenantID,
-			OAuthClientID:  clientID,
-			Name:           "Test Client",
-			Status:         "active",
-			RedirectURIs:   []string{"https://client.app/callback"},
+			ID:            r.defaultClientID,
+			TenantID:      r.defaultTenantID,
+			OAuthClientID: clientID,
+			Name:          "Test Client",
+			Status:        "active",
+			RedirectURIs:  []string{"https://client.app/callback"},
 		}, &tenantModels.Tenant{
 			ID:     r.defaultTenantID,
 			Name:   "Test Tenant",

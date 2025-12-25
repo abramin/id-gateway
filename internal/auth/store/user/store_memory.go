@@ -7,21 +7,13 @@ import (
 
 	"credo/internal/auth/models"
 	id "credo/pkg/domain"
-	"credo/pkg/platform/sentinel"
 )
-
-// ErrNotFound is returned when a requested record is not found in the store.
-// Services should check for this error using errors.Is(err, store.ErrNotFound).
-var ErrNotFound = sentinel.ErrNotFound
 
 // Error Contract:
 // All store methods follow this error pattern:
 // - Return ErrNotFound when the requested entity does not exist
 // - Return nil for successful operations
 // - Return wrapped errors with context for infrastructure failures (future: DB errors, network issues, etc.)
-//
-// In-memory stores keep the initial implementation lightweight and testable.
-// They intentionally favor clarity over performance.
 type InMemoryUserStore struct {
 	mu    sync.RWMutex
 	users map[id.UserID]*models.User

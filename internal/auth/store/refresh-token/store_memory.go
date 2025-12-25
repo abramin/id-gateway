@@ -22,9 +22,6 @@ var ErrRefreshTokenExpired = sentinel.ErrExpired
 // - Return ErrNotFound when the requested entity does not exist
 // - Return nil for successful operations
 // - Return wrapped errors with context for infrastructure failures (future: DB errors, network issues, etc.)
-//
-// In-memory stores keep the initial implementation lightweight and testable.
-// They intentionally favor clarity over performance.
 type InMemoryRefreshTokenStore struct {
 	mu     sync.RWMutex
 	tokens map[string]*models.RefreshTokenRecord

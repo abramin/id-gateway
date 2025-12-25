@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 	"time"
 
@@ -21,9 +22,6 @@ var ErrSessionRevoked = fmt.Errorf("session has been revoked: %w", sentinel.ErrI
 // - Return ErrNotFound when the requested entity does not exist
 // - Return nil for successful operations
 // - Return wrapped errors with context for infrastructure failures (future: DB errors, network issues, etc.)
-//
-// In-memory stores keep the initial implementation lightweight and testable.
-// They intentionally favor clarity over performance.
 type InMemorySessionStore struct {
 	mu       sync.RWMutex
 	sessions map[id.SessionID]*models.Session
@@ -116,7 +114,6 @@ func (s *InMemorySessionStore) RevokeSessionIfActive(_ context.Context, sessionI
 	return nil
 }
 
-// for use in token cleanup strategy
 func (s *InMemorySessionStore) DeleteExpiredSessions(ctx context.Context) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -137,14 +134,15 @@ func (s *InMemorySessionStore) ListAll(_ context.Context) (map[id.SessionID]*mod
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Return a copy to avoid concurrent map iteration/write panics
 	result := make(map[id.SessionID]*models.Session, len(s.sessions))
-	for k, v := range s.sessions {
-		result[k] = v
-	}
+	maps.Copy(result, s.sessions)
 	return result, nil
 }
 
+// AdvanceLastSeen updates the session's last seen time and other optional fields.
+// It validates the session's existence, client ID, status, and expiry before updating.
+// TODO: consider merging with AdvanceLastRefreshed to reduce code duplication.
+// TODO: cosnider reducing parameters by using a struct.
 func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID string, deviceFingerprintHash string) (*models.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

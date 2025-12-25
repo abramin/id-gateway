@@ -8,6 +8,12 @@ import (
 	dErrors "credo/pkg/domain-errors"
 )
 
+// Token handles the OAuth2 token endpoint, supporting multiple grant types.
+// Currently supported grant types are:
+// - authorization_code: exchanges an authorization code for tokens
+// - refresh_token: issues new tokens using a valid refresh token
+// The function validates the request, routes to the appropriate flow handler,
+// and returns the token result or an error.
 func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {
 	if req == nil {
 		return nil, dErrors.New(dErrors.CodeBadRequest, "request is required")
@@ -28,6 +34,10 @@ func (s *Service) Token(ctx context.Context, req *models.TokenRequest) (*models.
 	}
 }
 
+// resolveTokenContext validates that the session, client, tenant, and user are consistent
+// and returns a tokenContext containing the resolved entities.
+// It checks that the session's client and tenant IDs match the provided clientID
+// and that the user is active.
 func (s *Service) resolveTokenContext(
 	ctx context.Context,
 	session *models.Session,

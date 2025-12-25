@@ -13,6 +13,9 @@ import (
 	"credo/pkg/platform/middleware/requesttime"
 )
 
+// exchangeAuthorizationCode handles the token exchange flow for authorization codes.
+// It validates the authorization code, ensures the session and client are consistent,
+// consumes the code to prevent reuse, and issues new tokens.
 func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {
 	now := requesttime.Now(ctx)
 	var (
