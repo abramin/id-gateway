@@ -24,7 +24,7 @@ func TestShardedMutex_DifferentKeysNoContention(t *testing.T) {
 
 	// Different keys can be locked concurrently if they hash to different shards
 	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		wg.Add(1)
 		go func(key string) {
 			defer wg.Done()
@@ -41,14 +41,12 @@ func TestShardedMutex_SameKeySerializes(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Same key should serialize access
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 100 {
+		wg.Go(func() {
 			m.Lock("same-key")
 			defer m.Unlock("same-key")
 			counter++
-		}()
+		})
 	}
 	wg.Wait()
 

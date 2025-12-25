@@ -60,6 +60,9 @@ func (s *Service) ComputeFingerprint(userAgentString string) string {
 	return hex.EncodeToString(hash[:])
 }
 
+// CompareFingerprints compares stored and current device fingerprints.
+// using constant-time comparison to prevent timing attacks.
+// Returns (matched, driftDetected).
 func (s *Service) CompareFingerprints(stored, current string) (matched bool, driftDetected bool) {
 	if !s.enabled {
 		return true, false

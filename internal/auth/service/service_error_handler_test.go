@@ -9,8 +9,6 @@ import (
 	refreshTokenStore "credo/internal/auth/store/refresh-token"
 	sessionStore "credo/internal/auth/store/session"
 	dErrors "credo/pkg/domain-errors"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func (s *ServiceSuite) TestHandleTokenError() {
@@ -155,9 +153,9 @@ func (s *ServiceSuite) TestHandleTokenError() {
 
 			result := s.service.handleTokenError(ctx, tt.err, clientID, &recordID, tt.flow)
 
-			assert.Error(t, result)
-			assert.True(t, dErrors.HasCode(result, tt.expectedCode))
-			assert.Contains(t, result.Error(), tt.expectedMsg)
+			s.Error(result)
+			s.True(dErrors.HasCode(result, tt.expectedCode))
+			s.Contains(result.Error(), tt.expectedMsg)
 		})
 	}
 }
@@ -169,7 +167,7 @@ func (s *ServiceSuite) TestHandleTokenError_AuditAttributes() {
 		recordID := "record-456"
 
 		err := s.service.handleTokenError(ctx, authCodeStore.ErrAuthCodeUsed, clientID, &recordID, TokenFlowCode)
-		assert.Error(t, err)
+		s.Error(err)
 	})
 
 	s.T().Run("excludes record_id when nil", func(t *testing.T) {
@@ -177,6 +175,6 @@ func (s *ServiceSuite) TestHandleTokenError_AuditAttributes() {
 		clientID := "client-123"
 
 		err := s.service.handleTokenError(ctx, authCodeStore.ErrAuthCodeUsed, clientID, nil, TokenFlowCode)
-		assert.Error(t, err)
+		s.Error(err)
 	})
 }

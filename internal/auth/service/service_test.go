@@ -3,7 +3,6 @@ package service
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,9 +22,9 @@ func (s *ServiceSuite) TestNewService_RequiresDepsAndConfig() {
 			WithJWTService(s.mockJWT),
 		)
 		require.NoError(t, err)
-		assert.Equal(t, defaultSessionTTL, svc.SessionTTL)
-		assert.Equal(t, defaultTokenTTL, svc.TokenTTL)
-		assert.Equal(t, []string{"https"}, svc.AllowedRedirectSchemes)
-		assert.Equal(t, s.mockJWT, svc.jwt)
+		s.Equal(defaultSessionTTL, svc.SessionTTL)
+		s.Equal(defaultTokenTTL, svc.TokenTTL)
+		s.Equal([]string{"https"}, svc.AllowedRedirectSchemes)
+		s.Equal(s.mockJWT, svc.jwt)
 	})
 }
