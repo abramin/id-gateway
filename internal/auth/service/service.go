@@ -221,12 +221,6 @@ func WithMetrics(m *metrics.Metrics) Option {
 	}
 }
 
-func WithJWTService(jwtService TokenGenerator) Option {
-	return func(s *Service) {
-		s.jwt = jwtService
-	}
-}
-
 func WithAuthStoreTx(tx *shardedAuthTx) Option {
 	return func(s *Service) {
 		s.tx = tx
@@ -245,22 +239,27 @@ func WithTRL(trl TokenRevocationList) Option {
 	}
 }
 
-func WithClientResolver(resolver ClientResolver) Option {
-	return func(s *Service) {
-		s.clientResolver = resolver
-	}
-}
-
+// New creates an auth service with required dependencies.
+// Required: stores (users, sessions, codes, refreshTokens), jwt generator, and client resolver.
+// Optional: logger, metrics, auditPublisher, TRL (via functional options).
 func New(
 	users UserStore,
 	sessions SessionStore,
 	codes AuthCodeStore,
 	refreshTokens RefreshTokenStore,
+	jwt TokenGenerator,
+	clientResolver ClientResolver,
 	cfg *Config,
 	opts ...Option,
 ) (*Service, error) {
 	if users == nil || sessions == nil || codes == nil || refreshTokens == nil {
 		return nil, fmt.Errorf("users, sessions, codes, and refreshTokens stores are required")
+	}
+	if jwt == nil {
+		return nil, fmt.Errorf("token generator (jwt) is required")
+	}
+	if clientResolver == nil {
+		return nil, fmt.Errorf("client resolver is required")
 	}
 	if cfg == nil {
 		cfg = &Config{}
@@ -280,10 +279,12 @@ func New(
 	}
 
 	svc := &Service{
-		users:         users,
-		sessions:      sessions,
-		codes:         codes,
-		refreshTokens: refreshTokens,
+		users:          users,
+		sessions:       sessions,
+		codes:          codes,
+		refreshTokens:  refreshTokens,
+		jwt:            jwt,
+		clientResolver: clientResolver,
 		tx: &shardedAuthTx{
 			mu: platformsync.NewShardedMutex(),
 			stores: txAuthStores{
@@ -298,10 +299,6 @@ func New(
 
 	for _, opt := range opts {
 		opt(svc)
-	}
-
-	if svc.jwt == nil {
-		return nil, fmt.Errorf("token generator (jwt) is required")
 	}
 
 	if svc.deviceService == nil {
@@ -366,4 +363,16 @@ func (s *Service) generateTokenArtifacts(ctx context.Context, session *models.Se
 		refreshToken:   refreshToken,
 		refreshRecord:  tokenRecord,
 	}, nil
+}
+
+// buildTokenResult constructs the API response from token artifacts and session scope.
+func (s *Service) buildTokenResult(artifacts *tokenArtifacts, scope []string) *models.TokenResult {
+	return &models.TokenResult{
+		AccessToken:  artifacts.accessToken,
+		IDToken:      artifacts.idToken,
+		RefreshToken: artifacts.refreshToken,
+		TokenType:    "Bearer",
+		ExpiresIn:    int(s.TokenTTL.Seconds()),
+		Scope:        strings.Join(scope, " "),
+	}
 }

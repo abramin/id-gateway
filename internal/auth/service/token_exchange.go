@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"credo/internal/auth/models"
@@ -83,14 +82,7 @@ func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.Tok
 	)
 	s.incrementTokenRequests()
 
-	return &models.TokenResult{
-		AccessToken:  artifacts.accessToken,
-		IDToken:      artifacts.idToken,
-		RefreshToken: artifacts.refreshToken,
-		TokenType:    "Bearer",
-		ExpiresIn:    int(s.TokenTTL.Seconds()), // Access token TTL in seconds
-		Scope:        strings.Join(session.RequestedScope, " "),
-	}, nil
+	return s.buildTokenResult(artifacts, session.RequestedScope), nil
 }
 
 // consumeCodeWithReplayProtection consumes an authorization code and handles replay attacks.

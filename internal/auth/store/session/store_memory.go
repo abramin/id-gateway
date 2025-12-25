@@ -136,37 +136,32 @@ func (s *InMemorySessionStore) ListAll(_ context.Context) (map[id.SessionID]*mod
 	return result, nil
 }
 
-// AdvanceLastSeen updates the session's last seen time and other optional fields.
-// It validates the session's existence, client ID, status, and expiry before updating.
-// TODO: consider merging with AdvanceLastRefreshed to reduce code duplication.
-// TODO: cosnider reducing parameters by using a struct.
-func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID string, deviceFingerprintHash string) (*models.Session, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	session, ok := s.sessions[sessionID]
-	if !ok {
-		return nil, fmt.Errorf("session not found: %w", sentinel.ErrNotFound)
-	}
+// validateForAdvance checks session client matches, status is valid, and not expired.
+// allowPending=true permits pending_consent status (for code exchange activation).
+func (s *InMemorySessionStore) validateForAdvance(session *models.Session, clientID string, at time.Time, allowPending bool) error {
 	if session.ClientID.String() != clientID {
-		return nil, fmt.Errorf("client_id mismatch: %w", sentinel.ErrInvalidState)
+		return fmt.Errorf("client_id mismatch: %w", sentinel.ErrInvalidState)
 	}
 	if session.Status == models.SessionStatusRevoked {
-		return nil, ErrSessionRevoked
+		return ErrSessionRevoked
 	}
-	if session.Status != models.SessionStatusPendingConsent && session.Status != models.SessionStatusActive {
-		return nil, fmt.Errorf("session in invalid state: %w", sentinel.ErrInvalidState)
+	if allowPending {
+		if session.Status != models.SessionStatusPendingConsent && session.Status != models.SessionStatusActive {
+			return fmt.Errorf("session in invalid state: %w", sentinel.ErrInvalidState)
+		}
+	} else {
+		if session.Status != models.SessionStatusActive {
+			return fmt.Errorf("session in invalid state: %w", sentinel.ErrInvalidState)
+		}
 	}
 	if at.After(session.ExpiresAt) {
-		return nil, fmt.Errorf("session expired: %w", sentinel.ErrExpired)
+		return fmt.Errorf("session expired: %w", sentinel.ErrExpired)
 	}
+	return nil
+}
 
-	if at.After(session.LastSeenAt) {
-		session.LastSeenAt = at
-	}
-	if activate && session.Status == models.SessionStatusPendingConsent {
-		session.Status = models.SessionStatusActive
-	}
+// applyDeviceFields updates device-related fields if non-empty.
+func applyDeviceFields(session *models.Session, accessTokenJTI, deviceID, deviceFingerprintHash string) {
 	if accessTokenJTI != "" {
 		session.LastAccessTokenJTI = accessTokenJTI
 	}
@@ -176,6 +171,29 @@ func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, sessionID id.S
 	if deviceFingerprintHash != "" {
 		session.DeviceFingerprintHash = deviceFingerprintHash
 	}
+}
+
+// AdvanceLastSeen updates the session's last seen time and other optional fields.
+// It validates the session's existence, client ID, status, and expiry before updating.
+func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID string, deviceFingerprintHash string) (*models.Session, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session, ok := s.sessions[sessionID]
+	if !ok {
+		return nil, fmt.Errorf("session not found: %w", sentinel.ErrNotFound)
+	}
+	if err := s.validateForAdvance(session, clientID, at, true); err != nil {
+		return nil, err
+	}
+
+	if at.After(session.LastSeenAt) {
+		session.LastSeenAt = at
+	}
+	if activate && session.Status == models.SessionStatusPendingConsent {
+		session.Status = models.SessionStatusActive
+	}
+	applyDeviceFields(session, accessTokenJTI, deviceID, deviceFingerprintHash)
 
 	s.sessions[sessionID] = session
 	return session, nil
@@ -189,17 +207,8 @@ func (s *InMemorySessionStore) AdvanceLastRefreshed(_ context.Context, sessionID
 	if !ok {
 		return nil, fmt.Errorf("session not found: %w", sentinel.ErrNotFound)
 	}
-	if session.ClientID.String() != clientID {
-		return nil, fmt.Errorf("client_id mismatch: %w", sentinel.ErrInvalidState)
-	}
-	if session.Status == models.SessionStatusRevoked {
-		return nil, ErrSessionRevoked
-	}
-	if session.Status != models.SessionStatusActive {
-		return nil, fmt.Errorf("session in invalid state: %w", sentinel.ErrInvalidState)
-	}
-	if at.After(session.ExpiresAt) {
-		return nil, fmt.Errorf("session expired: %w", sentinel.ErrExpired)
+	if err := s.validateForAdvance(session, clientID, at, false); err != nil {
+		return nil, err
 	}
 
 	if session.LastRefreshedAt == nil || at.After(*session.LastRefreshedAt) {
@@ -208,15 +217,7 @@ func (s *InMemorySessionStore) AdvanceLastRefreshed(_ context.Context, sessionID
 	if at.After(session.LastSeenAt) {
 		session.LastSeenAt = at
 	}
-	if accessTokenJTI != "" {
-		session.LastAccessTokenJTI = accessTokenJTI
-	}
-	if deviceID != "" {
-		session.DeviceID = deviceID
-	}
-	if deviceFingerprintHash != "" {
-		session.DeviceFingerprintHash = deviceFingerprintHash
-	}
+	applyDeviceFields(session, accessTokenJTI, deviceID, deviceFingerprintHash)
 
 	s.sessions[sessionID] = session
 	return session, nil

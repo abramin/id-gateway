@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"credo/internal/auth/models"
 	"credo/pkg/platform/audit"
@@ -82,12 +81,5 @@ func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.Token
 	)
 	s.incrementTokenRequests()
 
-	return &models.TokenResult{
-		AccessToken:  artifacts.accessToken,
-		IDToken:      artifacts.idToken,
-		RefreshToken: artifacts.refreshToken,
-		TokenType:    "Bearer",
-		ExpiresIn:    int(s.TokenTTL.Seconds()), // Access token TTL in seconds
-		Scope:        strings.Join(session.RequestedScope, " "),
-	}, nil
+	return s.buildTokenResult(artifacts, session.RequestedScope), nil
 }

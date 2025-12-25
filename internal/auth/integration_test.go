@@ -88,11 +88,11 @@ func SetupSuite(t *testing.T) (
 		DeviceBindingEnabled:   true,
 	}
 	authService, _ := service.New(userStore, sessionStore, authCodeStore, refreshTokenStore,
+		jwtService,
+		clientResolver,
 		&cfg,
 		service.WithLogger(logger),
-		service.WithJWTService(jwtService),
 		service.WithAuditPublisher(auditpublisher.NewPublisher(auditStore)),
-		service.WithClientResolver(clientResolver),
 	)
 
 	router := chi.NewRouter()

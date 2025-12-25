@@ -326,13 +326,13 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 		sessions,
 		codes,
 		refreshTokens,
+		infra.JWTService,
+		tenantService,
 		authCfg,
 		authService.WithMetrics(infra.AuthMetrics),
 		authService.WithLogger(infra.Log),
-		authService.WithJWTService(infra.JWTService),
 		authService.WithTRL(trl),
 		authService.WithAuditPublisher(auditpublisher.NewPublisher(auditStore)),
-		authService.WithClientResolver(tenantService),
 	)
 	if err != nil {
 		return nil, err
