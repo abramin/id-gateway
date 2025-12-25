@@ -21,7 +21,7 @@ if [[ "$subject" =~ ^Merge\  ]] || [[ "$subject" =~ ^Revert\  ]]; then
 fi
 
 # Allowed types (extend if you want)
-types_regex='feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|observ'
+types_regex='feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|observ|llm'
 
 # Enforce Conventional Commits header:
 # type(scope optional): space summary
