@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -13,6 +12,7 @@ import (
 	sessionStore "credo/internal/auth/store/session"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
+	"credo/pkg/platform/middleware/requesttime"
 )
 
 const (
@@ -136,7 +136,7 @@ const (
 )
 
 func (s *Service) revokeSessionInternal(ctx context.Context, session *models.Session, jti string) (revokeSessionOutcome, error) {
-	if err := s.sessions.RevokeSessionIfActive(ctx, session.ID, time.Now()); err != nil {
+	if err := s.sessions.RevokeSessionIfActive(ctx, session.ID, requesttime.Now(ctx)); err != nil {
 		if errors.Is(err, sessionStore.ErrSessionRevoked) {
 			return revokeSessionOutcomeAlreadyRevoked, nil
 		}
@@ -151,7 +151,10 @@ func (s *Service) revokeSessionInternal(ctx context.Context, session *models.Ses
 	if jtiToRevoke != "" {
 		if err := s.trl.RevokeToken(ctx, jtiToRevoke, s.TokenTTL); err != nil {
 			s.logger.Error("failed to add token to revocation list", "error", err, "jti", jtiToRevoke)
-			// Don't fail the revocation if TRL update fails - session is already revoked
+			if s.TRLFailureMode == TRLFailureModeFail {
+				return revokeSessionOutcomeRevoked, fmt.Errorf("failed to add token to revocation list: %w", err)
+			}
+			// TRLFailureModeWarn (default): log and continue - session is already revoked
 		}
 	}
 

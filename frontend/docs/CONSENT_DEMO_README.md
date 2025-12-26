@@ -286,7 +286,7 @@ If granted consents don't appear:
 ## Related Documentation
 
 - [PRD-002: Consent Management](../../docs/prd/PRD-002-Consent-Management.md)
-- [Architecture Documentation](../../docs/architecture.md)
+- [Architecture Documentation](../../docs/engineering/architecture.md)
 - [OAuth Demo](./demo.html)
 
 ## License

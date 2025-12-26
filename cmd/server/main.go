@@ -59,6 +59,7 @@ import (
 	metadata "credo/pkg/platform/middleware/metadata"
 	request "credo/pkg/platform/middleware/request"
 	requesttime "credo/pkg/platform/middleware/requesttime"
+	"credo/pkg/platform/validation"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -161,7 +162,7 @@ func main() {
 
 	var adminSrv *http.Server
 	if infra.Cfg.Security.AdminAPIToken != "" {
-		adminRouter := setupAdminRouter(infra.Log, authMod.AdminSvc, tenantMod.Handler, infra.Cfg)
+		adminRouter := setupAdminRouter(infra.Log, authMod.AdminSvc, tenantMod.Handler, infra.Cfg, rateLimitMiddleware)
 		adminSrv = httpserver.New(":8081", adminRouter)
 		startServer(adminSrv, infra.Log, "admin")
 	}
@@ -325,13 +326,13 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 		sessions,
 		codes,
 		refreshTokens,
+		infra.JWTService,
+		tenantService,
 		authCfg,
 		authService.WithMetrics(infra.AuthMetrics),
 		authService.WithLogger(infra.Log),
-		authService.WithJWTService(infra.JWTService),
 		authService.WithTRL(trl),
 		authService.WithAuditPublisher(auditpublisher.NewPublisher(auditStore)),
-		authService.WithClientResolver(tenantService),
 	)
 	if err != nil {
 		return nil, err
@@ -357,7 +358,7 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 
 	return &authModule{
 		Service:       authSvc,
-		Handler:       authHandler.New(authSvc, rateLimitAdapter, infra.Log, infra.Cfg.Auth.DeviceCookieName, infra.Cfg.Auth.DeviceCookieMaxAge),
+		Handler:       authHandler.New(authSvc, rateLimitAdapter, infra.AuthMetrics, infra.Log, infra.Cfg.Auth.DeviceCookieName, infra.Cfg.Auth.DeviceCookieMaxAge),
 		AdminSvc:      admin.NewService(users, sessions, auditStore),
 		Cleanup:       cleanupSvc,
 		Users:         users,
@@ -441,6 +442,7 @@ func setupRouter(infra *infraBundle) *chi.Mux {
 	r.Use(request.Logger(infra.Log))
 	r.Use(request.Timeout(30 * time.Second)) // TODO: make configurable
 	r.Use(request.ContentTypeJSON)
+	r.Use(request.BodyLimit(validation.MaxBodySize))
 	r.Use(request.LatencyMiddleware(infra.RequestMetrics))
 
 	// Add Prometheus metrics endpoint (no auth required)
@@ -493,6 +495,7 @@ func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consent
 		r.Use(rateLimitMiddleware.RateLimitAuthenticated(rateLimitModels.ClassSensitive))
 		r.Use(auth.RequireAuth(infra.JWTValidator, authMod.Service, infra.Log))
 		r.Delete("/auth/sessions/{session_id}", authMod.Handler.HandleRevokeSession)
+		r.Post("/auth/logout-all", authMod.Handler.HandleLogoutAll)
 		r.Post("/auth/consent", consentMod.Handler.HandleGrantConsent)
 		r.Post("/auth/consent/revoke", consentMod.Handler.HandleRevokeConsent)
 		r.Post("/auth/consent/revoke-all", consentMod.Handler.HandleRevokeAllConsents)
@@ -511,7 +514,7 @@ func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consent
 }
 
 // setupAdminRouter creates a router for the admin server
-func setupAdminRouter(log *slog.Logger, adminSvc *admin.Service, tenantHandler *tenantHandler.Handler, cfg *config.Server) *chi.Mux {
+func setupAdminRouter(log *slog.Logger, adminSvc *admin.Service, tenantHandler *tenantHandler.Handler, cfg *config.Server, rateLimitMw *rateLimitMW.Middleware) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Common middleware for all routes
@@ -521,6 +524,7 @@ func setupAdminRouter(log *slog.Logger, adminSvc *admin.Service, tenantHandler *
 	r.Use(request.Logger(log))
 	r.Use(request.Timeout(30 * time.Second))
 	r.Use(request.ContentTypeJSON)
+	r.Use(request.BodyLimit(validation.MaxBodySize))
 
 	// Health check and metrics
 	r.Handle("/metrics", promhttp.Handler())
@@ -539,9 +543,10 @@ func setupAdminRouter(log *slog.Logger, adminSvc *admin.Service, tenantHandler *
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 
-	// All admin routes require authentication
+	// All admin routes require authentication and rate limiting
 	adminHandler := admin.New(adminSvc, log)
 	r.Group(func(r chi.Router) {
+		r.Use(rateLimitMw.RateLimit(rateLimitModels.ClassAdmin)) // Rate limit before auth to prevent brute-force
 		r.Use(adminmw.RequireAdminToken(cfg.Security.AdminAPIToken, log))
 		adminHandler.Register(r)
 		tenantHandler.Register(r)

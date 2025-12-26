@@ -133,10 +133,13 @@ Two error packages with clear boundaries:
 This repo uses focused review agents for code review. Each has a narrow scope:
 
 1. **Testing Agent**: Contracts, behavior verification, scenario coverage
-2. **DDD Patterns Agent**: Domain model clarity, aggregates, boundary hygiene
+2. **DDD Patterns Agent**: Domain model clarity, aggregates, boundary hygiene (model shape)
 3. **Performance Agent**: Scalability, measurement-first optimizations
-4. **Secure-by-Design Agent**: Trust boundaries, domain primitives, lifecycle safety, AuthN/AuthZ, threat-focused review
-5. **Complexity Agent**: Readability and cognitive complexity
+4. **Secure-by-Design Agent**: Trust boundaries, validation ordering, auth decisions, failure modes (threat surface)
+5. **Complexity Agent**: Readability and cognitive load
+6. **Balance Agent**: Abstraction/duplication balance, hop budget, effects visibility, mixed responsibilities
+
+See `AGENTS.md` for the decision tree on when to use which agent, shared non-negotiables, and conflict resolution rules.
 
 **Conflict resolution (tie-breakers)**:
 
@@ -161,6 +164,6 @@ This repo uses focused review agents for code review. Each has a narrow scope:
 ## Key Files
 
 - `AGENTS.md`: Review agent definitions and conflict resolution
-- `docs/architecture.md`: Full architecture documentation
-- `docs/conventions.md`: Engineering conventions
+- `docs/engineering/architecture.md`: Full architecture documentation
+- `docs/engineering/conventions.md`: Engineering conventions
 - `docs/prd/`: Product requirements by feature

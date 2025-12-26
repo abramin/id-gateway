@@ -1,6 +1,6 @@
 # Roadmap: Production & Advanced Features
 
-**Status:** Phase-based delivery (source of truth: docs/prd/README.md)
+**Status:** Phase-based delivery (source of truth: `../prd/README.md`)
 **Target:** MVP (Phases 0-2) -> Production Baseline (Phase 3) -> Advanced Packs (Phases 4-8)
 **Timeline:** MVP ~45-60 days (110-150h effort); Production Baseline ~75-100 days (180-240h effort); Full program ~260-345 days (part-time)
 **Estimation Model:** Based on Phase 0 actuals: 4-5x calendar multiplier (part-time), 1.5-2x effort multiplier (complexity)
@@ -15,7 +15,7 @@ This roadmap transforms Credo from a functional prototype into:
 1. **Production-ready system** with operational maturity
 2. **Distinctive platform** with advanced features that differentiate from "another Auth0 clone"
 
-**Note:** Phase sequencing and acceptance criteria live in `docs/prd/README.md`. This roadmap summarizes delivery tracks and packaging.
+**Note:** Phase sequencing and acceptance criteria live in `../prd/README.md`. This roadmap summarizes delivery tracks and packaging.
 
 ---
 
@@ -59,7 +59,7 @@ The delivery plan consists of THREE parallel tracks that can be pursued simultan
 **PRDs:** Phases 4-8 (Assurance, Decentralized, Integrations, Differentiation, Banking Identity)
 **Goal:** Stand out from "basic auth gateway" projects
 
-**Note:** Detailed sections below predate some PRD expansions. If conflicts exist, PRD specs in `docs/prd/` take precedence.
+**Note:** Detailed sections below predate some PRD expansions. If conflicts exist, PRD specs in `../prd/` take precedence.
 
 ---
 
@@ -73,17 +73,19 @@ The delivery plan consists of THREE parallel tracks that can be pursued simultan
 
 ### What to Add
 
-**Token Signing:**
+**Current state:**
 
-- Replace "todo-access" and "todo-id" tokens with real **signed JWTs**
-- Use `github.com/golang-jwt/jwt/v5` or `github.com/lestrrat-go/jwx/v2`
-- Generate RSA 2048-bit keypair on server startup
-- Sign access tokens with RS256 (or ES256)
-- Include standard claims: `iss`, `sub`, `aud`, `exp`, `iat`, `jti`
+- Access and ID tokens are HS256-signed JWTs via `internal/jwt_token`.
+
+**Upgrade (planned):**
+
+- Migrate to asymmetric signing (RS256/ES256) with key rotation.
+- Generate RSA/ECDSA keypair on server startup (or load from KMS).
+- Keep standard claims: `iss`, `sub`, `aud`, `exp`, `iat`, `jti`.
 
 **JWKS Endpoint:**
 
-- Expose `GET /.well-known/jwks.json` endpoint
+- Expose `GET /.well-known/jwks.json`
 - Return public key in JWK format with `kid`
 - Support key rotation
 
@@ -106,12 +108,12 @@ The delivery plan consists of THREE parallel tracks that can be pursued simultan
 1. **Phase 1: Key Management** (1-2h)
 
    - Add `internal/platform/crypto/keys.go`
-   - Generate RSA keypair on startup
+   - Generate or load keypair on startup
    - Expose public key as JWK
 
 2. **Phase 2: Token Signing** (2-3h)
 
-   - Update `auth/service.go` Token() method
+   - Update token creation to use RS256/ES256
    - Sign tokens with private key
    - Set proper expiry
 
@@ -121,7 +123,7 @@ The delivery plan consists of THREE parallel tracks that can be pursued simultan
 ### Acceptance Criteria
 
 - [ ] Tokens are valid JWT format
-- [ ] Tokens can be decoded at jwt.io
+- [ ] Tokens can be decoded at jwt.io with public key
 - [ ] JWKS endpoint returns valid JWK
 - [ ] Each token has unique `jti`
 
@@ -361,7 +363,7 @@ User → Keycloak (auth) → Gateway (consent+evidence+decision)
 
 # Track B: Operational Excellence (RECOMMENDED)
 
-See `docs/prd/README.md` for Phase 2 scope and acceptance criteria:
+See `../prd/README.md` for Phase 2 scope and acceptance criteria:
 
 ## B1. Rate Limiting & Abuse Prevention (PRD-017, Phase 0)
 
@@ -924,7 +926,7 @@ This section describes how Credo will evolve from a secure, correct core into a 
 
 ## Phase 1: Core Gateway (Security and Correctness)
 
-See main [Architecture document](architecture.md)
+See main [Architecture document](../engineering/architecture.md)
 
 ## Phase 2: Modular Service Boundaries
 

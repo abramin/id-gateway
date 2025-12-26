@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,6 +11,11 @@ import (
 	dErrors "credo/pkg/domain-errors"
 )
 
+// This file contains pure domain models for authentication: entities
+// that should not depend on transport or HTTP-specific concerns.
+
+const authorizationCodePrefix = "authz_"
+
 type User struct {
 	ID        id.UserID   `json:"id"`
 	TenantID  id.TenantID `json:"tenant_id"`
@@ -17,7 +23,7 @@ type User struct {
 	FirstName string      `json:"first_name"`
 	LastName  string      `json:"last_name"`
 	Verified  bool        `json:"verified"`
-	Status    UserStatus  `json:"status"` // "active", "inactive"
+	Status    UserStatus  `json:"status"`
 }
 
 type Session struct {
@@ -26,13 +32,13 @@ type Session struct {
 	ClientID       id.ClientID   `json:"client_id"`
 	TenantID       id.TenantID   `json:"tenant_id"`
 	RequestedScope []string      `json:"requested_scope"`
-	Status         SessionStatus `json:"status"` // typed enum: pending_consent, active, revoked
+	Status         SessionStatus `json:"status"`
 
 	// Refresh lifecycle
 	LastRefreshedAt    *time.Time `json:"last_refreshed_at,omitempty"` // last refresh action timestamp
 	LastAccessTokenJTI string     `json:"-"`                           // latest issued access token JTI for revocation
 
-	// Device binding for security - See DEVICE_BINDING.md for full security model
+	// Device binding for security - See docs/security/DEVICE_BINDING.md for full security model
 	DeviceID              string `json:"device_id,omitempty"`               // Primary: UUID from cookie (hard requirement)
 	DeviceFingerprintHash string `json:"device_fingerprint_hash,omitempty"` // Secondary: SHA-256(browser|os|platform) - no IP
 
@@ -59,10 +65,24 @@ func (s *Session) IsRevoked() bool {
 	return s.Status == SessionStatusRevoked
 }
 
-func (s *Session) Activate() {
+// Activate transitions the session from pending_consent to active.
+// Returns true if the transition occurred, false if the session was already active or revoked.
+func (s *Session) Activate() bool {
 	if s.IsPendingConsent() {
 		s.Status = SessionStatusActive
+		return true
 	}
+	return false
+}
+
+// CanAdvance returns true if the session is in a state that allows token operations.
+// When allowPending is true, both active and pending_consent states are valid
+// (used during code exchange). When false, only active state is valid (used during refresh).
+func (s *Session) CanAdvance(allowPending bool) bool {
+	if s.IsActive() {
+		return true
+	}
+	return allowPending && s.IsPendingConsent()
 }
 
 // GetDeviceBinding returns the device binding information as a value object.
@@ -92,7 +112,7 @@ func (s *Session) SetDeviceBinding(binding DeviceBinding) {
 //   - Parent Session must exist and be in pending_consent state for exchange
 type AuthorizationCodeRecord struct {
 	ID          uuid.UUID    `json:"id"`           // Unique identifier
-	Code        string       `json:"code"`         // Format: "authz_<random>"
+	Code        string       `json:"code"`         // Format: "authz_<random>" (prefix added at creation)
 	SessionID   id.SessionID `json:"session_id"`   // Links to parent Session aggregate
 	RedirectURI string       `json:"redirect_uri"` // Stored for validation at token exchange
 	ExpiresAt   time.Time    `json:"expires_at"`   // 10 minutes from creation
@@ -181,7 +201,11 @@ func NewSession(id id.SessionID, userID id.UserID, clientID id.ClientID, tenantI
 	}, nil
 }
 
-func NewAuthorizationCode(code string, sessionID id.SessionID, redirectURI string, createdAt time.Time, expiresAt time.Time) (*AuthorizationCodeRecord, error) {
+func NewAuthorizationCode(code string, sessionID id.SessionID, redirectURI string, createdAt time.Time, expiresAt time.Time, now time.Time) (*AuthorizationCodeRecord, error) {
+	if code == "" {
+		return nil, dErrors.New(dErrors.CodeInvariantViolation, "authorization code cannot be empty")
+	}
+	code = strings.TrimPrefix(code, authorizationCodePrefix)
 	if code == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "authorization code cannot be empty")
 	}
@@ -191,12 +215,12 @@ func NewAuthorizationCode(code string, sessionID id.SessionID, redirectURI strin
 	if expiresAt.Before(createdAt) {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "authorization code expiry must be after creation")
 	}
-	if expiresAt.Before(time.Now()) {
+	if expiresAt.Before(now) {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, fmt.Sprintf("authorization code already expired at %v", expiresAt))
 	}
 	return &AuthorizationCodeRecord{
 		ID:          uuid.New(),
-		Code:        code,
+		Code:        authorizationCodePrefix + code,
 		SessionID:   sessionID,
 		RedirectURI: redirectURI,
 		ExpiresAt:   expiresAt,
@@ -205,14 +229,14 @@ func NewAuthorizationCode(code string, sessionID id.SessionID, redirectURI strin
 	}, nil
 }
 
-func NewRefreshToken(token string, sessionID id.SessionID, createdAt time.Time, expiresAt time.Time) (*RefreshTokenRecord, error) {
+func NewRefreshToken(token string, sessionID id.SessionID, createdAt time.Time, expiresAt time.Time, now time.Time) (*RefreshTokenRecord, error) {
 	if token == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "refresh token cannot be empty")
 	}
 	if expiresAt.Before(createdAt) {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "refresh token expiry must be after creation")
 	}
-	if expiresAt.Before(time.Now()) {
+	if expiresAt.Before(now) {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, fmt.Sprintf("refresh token already expired at %v", expiresAt))
 	}
 	return &RefreshTokenRecord{

@@ -639,7 +639,7 @@ When ready to split consent service:
 
 ## References
 
-- **Architecture:** [docs/architecture.md](architecture.md)
+- **Architecture:** [docs/engineering/architecture.md](../engineering/architecture.md)
 - **Protobuf Docs:** https://protobuf.dev/
 - **gRPC Go Tutorial:** https://grpc.io/docs/languages/go/
 - **Hexagonal Architecture:** https://alistair.cockburn.us/hexagonal-architecture/

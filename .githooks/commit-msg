@@ -21,7 +21,7 @@ if [[ "$subject" =~ ^Merge\  ]] || [[ "$subject" =~ ^Revert\  ]]; then
 fi
 
 # Allowed types (extend if you want)
-types_regex='feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert'
+types_regex='feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|observ|llm'
 
 # Enforce Conventional Commits header:
 # type(scope optional): space summary
@@ -31,21 +31,25 @@ if ! [[ "$subject" =~ $header_regex ]]; then
   echo "❌ Invalid commit subject."
   echo "Expected: type(scope): summary"
   echo "Examples:"
-  echo "  feat(auth): rotate refresh tokens [PRD-026A]"
+  echo "  feat(auth): rotate refresh tokens (#1)"
   echo "  refactor(pkg/http): simplify middleware chain"
   echo "Allowed types: ${types_regex}"
   exit 1
 fi
 
-# If feat/fix, require PRD tag in subject
-# Accepts: [PRD-26], [PRD-026], [PRD-26A], [PRD-026A], [PRD-1B], etc.
-prd_regex='(\[PRD-[0-9]{1,4}[A-Z]?\])'
+# If feat/fix, require issue reference in commit message
+# Accepts: #1, #123, (#1), Closes #1, Fixes #123, Refs #1, etc.
+commit_content="$(cat "$msg_file")"
+issue_regex='#[0-9]+'
 
-if [[ "$subject" =~ ^(feat|fix) ]] && ! [[ "$subject" =~ $prd_regex ]]; then
-  echo "❌ feat/fix commits must include a PRD tag in the subject."
-  echo "Add one like: [PRD-26], [PRD-026], [PRD-26A], [PRD-026A]"
-  echo "Example:"
-  echo "  feat(auth): add device-bound refresh tokens [PRD-026A]"
+if [[ "$subject" =~ ^(feat|fix) ]] && ! [[ "$commit_content" =~ $issue_regex ]]; then
+  echo "❌ feat/fix commits must reference a GitHub issue."
+  echo "Add an issue reference like: #1, Closes #1, Fixes #123"
+  echo "Examples:"
+  echo "  feat(auth): add device-bound refresh tokens (#1)"
+  echo "  feat(registry): citizen lookup"
+  echo ""
+  echo "  Closes #1"
   exit 1
 fi
 

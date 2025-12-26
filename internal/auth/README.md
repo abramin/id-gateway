@@ -89,6 +89,7 @@ The **Session** is the primary aggregate root, owning:
 
 **Constructor:** `NewAuthorizationCode()` enforces:
 - Code cannot be empty
+- Code is prefixed with `authz_`
 - RedirectURI cannot be empty
 - ExpiresAt must be after CreatedAt and in the future
 
@@ -207,5 +208,5 @@ Services translate these to domain errors at their boundary.
 
 ## References
 
-- Device Binding: See `DEVICE_BINDING.md` for the full security model
-- Architecture: [docs/architecture.md](../../docs/architecture.md)
+- Device Binding: See `../../docs/security/DEVICE_BINDING.md` for the full security model
+- Architecture: [docs/engineering/architecture.md](../../docs/engineering/architecture.md)

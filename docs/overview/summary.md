@@ -1,5 +1,7 @@
 ## Credo Identity Platform: Strategic Briefing
 
+**Status:** Forward-looking summary based on PRDs; not all capabilities are implemented yet.
+
 ### Executive Summary
 - Comprehensive, regulated identity and authorization platform for high-assurance environments (fintech/healthcare/gov).
 - Core mission: manage full identity and access lifecycle with security, compliance, and strong developer experience.
@@ -29,13 +31,13 @@
 - Risk-to-action matrix: allow, log, require MFA, deny, or soft-lock session.
 
 **5) Compliance, Privacy, Data Rights**
-- GDPR rights: `/me/data-export` and `/me` delete with audit-log pseudonymization (PRD-006/007).
-- Automated compliance checks for retention, consent, minimization, and SLA adherence (PRD-008).
-- Data residency with regional routing and logged cross-border consent; purpose-based consent via CQRS read models (PRD-002/024).
+- Planned: `/me/data-export` and `/me` delete with audit-log pseudonymization (PRD-006/007).
+- Planned: Automated compliance checks for retention, consent, minimization, and SLA adherence (PRD-008).
+- Planned: Data residency with regional routing and logged cross-border consent; purpose-based consent via CQRS read models (PRD-002/024).
 
 **6) Audit, Observability, Operations**
-- Baseline audit streaming with append-only semantics; Merkle-tree audit option for tamper evidence (PRD-006/006B).
-- Internal TCP event ingester with backpressure/batching (PRD-011); cloud connectors for SIEM export (PRD-012).
+- Baseline audit streaming with append-only semantics; Merkle-tree audit option for tamper evidence (PRD-006/006B) is planned.
+- Internal TCP event ingester with backpressure/batching (PRD-011) and cloud connectors for SIEM export (PRD-012) are planned.
 - SRE baseline: health probes, DR (RTO 4h/RPO 1h), API versioning, runbooks (PRD-019/020).
 
 **7) Advanced / Decentralized Identity**

@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 	"time"
 
@@ -11,9 +12,6 @@ import (
 	"credo/pkg/platform/sentinel"
 )
 
-// ErrNotFound is returned when a requested record is not found in the store.
-// Services should check for this error using errors.Is(err, store.ErrNotFound).
-var ErrNotFound = sentinel.ErrNotFound
 var ErrSessionRevoked = fmt.Errorf("session has been revoked: %w", sentinel.ErrInvalidState)
 
 // Error Contract:
@@ -21,9 +19,6 @@ var ErrSessionRevoked = fmt.Errorf("session has been revoked: %w", sentinel.ErrI
 // - Return ErrNotFound when the requested entity does not exist
 // - Return nil for successful operations
 // - Return wrapped errors with context for infrastructure failures (future: DB errors, network issues, etc.)
-//
-// In-memory stores keep the initial implementation lightweight and testable.
-// They intentionally favor clarity over performance.
 type InMemorySessionStore struct {
 	mu       sync.RWMutex
 	sessions map[id.SessionID]*models.Session
@@ -46,7 +41,7 @@ func (s *InMemorySessionStore) FindByID(_ context.Context, sessionID id.SessionI
 	if session, ok := s.sessions[sessionID]; ok {
 		return session, nil
 	}
-	return nil, fmt.Errorf("session not found: %w", ErrNotFound)
+	return nil, fmt.Errorf("session not found: %w", sentinel.ErrNotFound)
 }
 
 func (s *InMemorySessionStore) ListByUser(_ context.Context, userID id.UserID) ([]*models.Session, error) {
@@ -67,7 +62,7 @@ func (s *InMemorySessionStore) UpdateSession(_ context.Context, session *models.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.sessions[session.ID]; !ok {
-		return fmt.Errorf("session not found: %w", ErrNotFound)
+		return fmt.Errorf("session not found: %w", sentinel.ErrNotFound)
 	}
 	s.sessions[session.ID] = session
 	return nil
@@ -86,7 +81,7 @@ func (s *InMemorySessionStore) DeleteSessionsByUser(_ context.Context, userID id
 	}
 
 	if !found {
-		return fmt.Errorf("session not found: %w", ErrNotFound)
+		return fmt.Errorf("session not found: %w", sentinel.ErrNotFound)
 	}
 
 	return nil
@@ -102,7 +97,7 @@ func (s *InMemorySessionStore) RevokeSessionIfActive(_ context.Context, sessionI
 
 	session, ok := s.sessions[sessionID]
 	if !ok {
-		return ErrNotFound
+		return sentinel.ErrNotFound
 	}
 	if session.Status == models.SessionStatusRevoked {
 		return ErrSessionRevoked
@@ -116,12 +111,12 @@ func (s *InMemorySessionStore) RevokeSessionIfActive(_ context.Context, sessionI
 	return nil
 }
 
-// for use in token cleanup strategy
-func (s *InMemorySessionStore) DeleteExpiredSessions(ctx context.Context) (int, error) {
+// DeleteExpiredSessions removes all sessions that have expired as of the given time.
+// The time parameter is injected for testability (no hidden time.Now() calls).
+func (s *InMemorySessionStore) DeleteExpiredSessions(_ context.Context, now time.Time) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := time.Now()
 	deletedCount := 0
 	for id, session := range s.sessions {
 		if session.ExpiresAt.Before(now) {
@@ -137,41 +132,31 @@ func (s *InMemorySessionStore) ListAll(_ context.Context) (map[id.SessionID]*mod
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Return a copy to avoid concurrent map iteration/write panics
 	result := make(map[id.SessionID]*models.Session, len(s.sessions))
-	for k, v := range s.sessions {
-		result[k] = v
-	}
+	maps.Copy(result, s.sessions)
 	return result, nil
 }
 
-func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID string, deviceFingerprintHash string) (*models.Session, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	session, ok := s.sessions[sessionID]
-	if !ok {
-		return nil, fmt.Errorf("session not found: %w", ErrNotFound)
-	}
+// validateForAdvance checks session client matches, status is valid, and not expired.
+// allowPending=true permits pending_consent status (for code exchange activation).
+func (s *InMemorySessionStore) validateForAdvance(session *models.Session, clientID string, at time.Time, allowPending bool) error {
 	if session.ClientID.String() != clientID {
-		return nil, fmt.Errorf("client_id mismatch: %w", sentinel.ErrInvalidState)
+		return fmt.Errorf("client_id mismatch: %w", sentinel.ErrInvalidState)
 	}
-	if session.Status == models.SessionStatusRevoked {
-		return nil, ErrSessionRevoked
+	if session.IsRevoked() {
+		return ErrSessionRevoked
 	}
-	if session.Status != models.SessionStatusPendingConsent && session.Status != models.SessionStatusActive {
-		return nil, fmt.Errorf("session in invalid state: %w", sentinel.ErrInvalidState)
+	if !session.CanAdvance(allowPending) {
+		return fmt.Errorf("session in invalid state: %w", sentinel.ErrInvalidState)
 	}
 	if at.After(session.ExpiresAt) {
-		return nil, fmt.Errorf("session expired: %w", sentinel.ErrExpired)
+		return fmt.Errorf("session expired: %w", sentinel.ErrExpired)
 	}
+	return nil
+}
 
-	if at.After(session.LastSeenAt) {
-		session.LastSeenAt = at
-	}
-	if activate && session.Status == models.SessionStatusPendingConsent {
-		session.Status = models.SessionStatusActive
-	}
+// applyDeviceFields updates device-related fields if non-empty.
+func applyDeviceFields(session *models.Session, accessTokenJTI, deviceID, deviceFingerprintHash string) {
 	if accessTokenJTI != "" {
 		session.LastAccessTokenJTI = accessTokenJTI
 	}
@@ -181,6 +166,29 @@ func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, sessionID id.S
 	if deviceFingerprintHash != "" {
 		session.DeviceFingerprintHash = deviceFingerprintHash
 	}
+}
+
+// AdvanceLastSeen updates the session's last seen time and other optional fields.
+// It validates the session's existence, client ID, status, and expiry before updating.
+func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID string, deviceFingerprintHash string) (*models.Session, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session, ok := s.sessions[sessionID]
+	if !ok {
+		return nil, fmt.Errorf("session not found: %w", sentinel.ErrNotFound)
+	}
+	if err := s.validateForAdvance(session, clientID, at, true); err != nil {
+		return nil, err
+	}
+
+	if at.After(session.LastSeenAt) {
+		session.LastSeenAt = at
+	}
+	if activate && session.Status == models.SessionStatusPendingConsent {
+		session.Status = models.SessionStatusActive
+	}
+	applyDeviceFields(session, accessTokenJTI, deviceID, deviceFingerprintHash)
 
 	s.sessions[sessionID] = session
 	return session, nil
@@ -192,19 +200,10 @@ func (s *InMemorySessionStore) AdvanceLastRefreshed(_ context.Context, sessionID
 
 	session, ok := s.sessions[sessionID]
 	if !ok {
-		return nil, fmt.Errorf("session not found: %w", ErrNotFound)
+		return nil, fmt.Errorf("session not found: %w", sentinel.ErrNotFound)
 	}
-	if session.ClientID.String() != clientID {
-		return nil, fmt.Errorf("client_id mismatch: %w", sentinel.ErrInvalidState)
-	}
-	if session.Status == models.SessionStatusRevoked {
-		return nil, ErrSessionRevoked
-	}
-	if session.Status != models.SessionStatusActive {
-		return nil, fmt.Errorf("session in invalid state: %w", sentinel.ErrInvalidState)
-	}
-	if at.After(session.ExpiresAt) {
-		return nil, fmt.Errorf("session expired: %w", sentinel.ErrExpired)
+	if err := s.validateForAdvance(session, clientID, at, false); err != nil {
+		return nil, err
 	}
 
 	if session.LastRefreshedAt == nil || at.After(*session.LastRefreshedAt) {
@@ -213,15 +212,7 @@ func (s *InMemorySessionStore) AdvanceLastRefreshed(_ context.Context, sessionID
 	if at.After(session.LastSeenAt) {
 		session.LastSeenAt = at
 	}
-	if accessTokenJTI != "" {
-		session.LastAccessTokenJTI = accessTokenJTI
-	}
-	if deviceID != "" {
-		session.DeviceID = deviceID
-	}
-	if deviceFingerprintHash != "" {
-		session.DeviceFingerprintHash = deviceFingerprintHash
-	}
+	applyDeviceFields(session, accessTokenJTI, deviceID, deviceFingerprintHash)
 
 	s.sessions[sessionID] = session
 	return session, nil

@@ -363,7 +363,7 @@ Module bundles organize PRDs by deployment scenario:
 - **Differentiation Pack:** Phase 7 (strategic positioning)
 - **Banking Identity Pack:** Phase 8 (fintech/banking)
 
-See [ROADMAP.md](../ROADMAP.md#module-adoption-guide) for detailed bundle compositions.
+See [ROADMAP.md](../overview/ROADMAP.md#module-adoption-guide) for detailed bundle compositions.
 
 ---
 
@@ -505,8 +505,8 @@ Run with: `make test-e2e`
 
 ## Architecture References
 
-- **[architecture.md](../architecture.md):** System design, CQRS patterns, event streaming
-- **[ROADMAP.md](../ROADMAP.md):** Implementation timeline, module bundles, adoption guide
+- **[architecture.md](../engineering/architecture.md):** System design, CQRS patterns, event streaming
+- **[ROADMAP.md](../overview/ROADMAP.md):** Implementation timeline, module bundles, adoption guide
 - **[AGENTS.md](../../AGENTS.md):** Module structure rules, testing conventions, service layer patterns
 
 ---
@@ -544,7 +544,7 @@ Run with: `make test-e2e`
 
 For questions about PRD implementation:
 
-1. Check [architecture.md](../architecture.md) for system design context
+1. Check [architecture.md](../engineering/architecture.md) for system design context
 2. Review [AGENTS.md](../../AGENTS.md) for module structure rules
 3. Consult specific PRD for detailed acceptance criteria
 

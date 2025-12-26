@@ -4,12 +4,13 @@
 
 Make performance predictable: reduce latency, protect availability, and keep costs sane.
 
-## Non-negotiables (inherits from AGENTS.md)
+## Non-negotiables
+
+See AGENTS.md shared non-negotiables, plus these performance-specific rules:
 
 - No globals.
-- Atomic multi-write operations.
-- No leaking internal errors.
 - Prefer design changes over micro-optimizations.
+- Measurement-first: never guess without data.
 
 ## What I do
 

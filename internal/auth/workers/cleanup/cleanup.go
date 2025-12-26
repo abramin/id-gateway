@@ -9,16 +9,16 @@ import (
 )
 
 type AuthorizationCodeStore interface {
-	DeleteExpiredCodes(ctx context.Context) (int, error)
+	DeleteExpiredCodes(ctx context.Context, now time.Time) (int, error)
 }
 
 type RefreshTokenStore interface {
-	DeleteExpiredTokens(ctx context.Context) (int, error)
+	DeleteExpiredTokens(ctx context.Context, now time.Time) (int, error)
 	DeleteUsedTokens(ctx context.Context) (int, error)
 }
 
 type SessionStore interface {
-	DeleteExpiredSessions(ctx context.Context) (int, error)
+	DeleteExpiredSessions(ctx context.Context, now time.Time) (int, error)
 }
 
 type CleanupResult struct {
@@ -95,19 +95,23 @@ func (s *CleanupService) Start(ctx context.Context) error {
 	}
 }
 
-// RunOnce performs one cleanup sweep.
+// RunOnce performs a single cleanup operation.
+// It removes expired authorization codes, expired refresh tokens, used refresh tokens, and expired sessions.
+// It returns a CleanupResult summarizing the deletions performed.
+// If any errors occur during cleanup, they are aggregated and returned.
 func (s *CleanupService) RunOnce(ctx context.Context) (CleanupResult, error) {
+	now := time.Now()
 	var res CleanupResult
 	var errs []error
 
-	deletedCodes, err := s.codeStore.DeleteExpiredCodes(ctx)
+	deletedCodes, err := s.codeStore.DeleteExpiredCodes(ctx, now)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("delete expired authorization codes: %w", err))
 	} else {
 		res.DeletedAuthorizationCodes = deletedCodes
 	}
 
-	deletedExpiredRefresh, err := s.refreshTokenStore.DeleteExpiredTokens(ctx)
+	deletedExpiredRefresh, err := s.refreshTokenStore.DeleteExpiredTokens(ctx, now)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("delete expired refresh tokens: %w", err))
 	} else {
@@ -121,7 +125,7 @@ func (s *CleanupService) RunOnce(ctx context.Context) (CleanupResult, error) {
 		res.DeletedUsedRefreshTokens = deletedUsedRefresh
 	}
 
-	deletedSessions, err := s.sessionStore.DeleteExpiredSessions(ctx)
+	deletedSessions, err := s.sessionStore.DeleteExpiredSessions(ctx, now)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("delete expired sessions: %w", err))
 	} else {

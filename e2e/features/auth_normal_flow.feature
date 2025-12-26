@@ -40,6 +40,17 @@ Feature: OAuth2 Authorization Code Flow - Normal Path
     Then the response status should be 200
     And the response should contain "access_token"
 
+    @normal @scope
+  Scenario: Default scope applied when scopes omitted
+    When I initiate authorization with email "default-scope@example.com" without scopes
+    Then the response status should be 200
+    And the response should contain an authorization code
+    And I save the authorization code
+
+    When I exchange the authorization code for tokens
+    Then the response status should be 200
+    And the response field "scope" should equal "openid"
+
     @normal @validation
   Scenario: Authorization request validation - missing required fields
     When I POST to "/auth/authorize" with empty body

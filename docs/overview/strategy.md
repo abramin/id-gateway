@@ -1,5 +1,7 @@
 ## Strategic Analysis of Compliance and Risk Management Capabilities
 
+**Status:** Forward-looking analysis based on PRDs; features may be planned rather than implemented.
+
 Modern digital identity systems sit at the intersection of evolving threats and strict regulation (GDPR, CCPA). Credo’s approach is an integrated architecture where each control reinforces the others: adaptive access, proactive fraud defenses, privacy-by-design data governance, and verifiable integrity.
 
 ### 1. Foundational Layer: Adaptive Authentication and Access Control

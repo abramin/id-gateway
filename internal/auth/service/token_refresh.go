@@ -2,16 +2,24 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"credo/internal/auth/models"
+	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
+	"credo/pkg/platform/middleware/requesttime"
+	"credo/pkg/platform/sentinel"
 )
 
 func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {
-	now := time.Now()
+	start := time.Now()
+	defer func() {
+		s.observeTokenRefreshDuration(float64(time.Since(start).Milliseconds()))
+	}()
+
+	now := requesttime.Now(ctx)
 	var (
 		refreshRecord *models.RefreshTokenRecord
 		session       *models.Session
@@ -38,11 +46,11 @@ func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.Token
 	// Perform transactional updates with session-based sharding
 	txCtx := context.WithValue(ctx, txSessionKeyCtx, sessionID)
 	txErr := s.tx.RunInTx(txCtx, func(stores txAuthStores) error {
-		// Step 1: Consume refresh token (prevents replay attacks)
+		// Step 1: Consume refresh token with replay protection
 		var err error
-		refreshRecord, err = stores.RefreshTokens.ConsumeRefreshToken(ctx, req.RefreshToken, now)
+		refreshRecord, err = s.consumeRefreshTokenWithReplayProtection(ctx, stores, req.RefreshToken, now)
 		if err != nil {
-			return fmt.Errorf("consume refresh token: %w", err)
+			return err
 		}
 
 		// Step 2: Load session for token generation
@@ -82,13 +90,26 @@ func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.Token
 	)
 	s.incrementTokenRequests()
 
-	return &models.TokenResult{
-		AccessToken:  artifacts.accessToken,
-		IDToken:      artifacts.idToken,
-		RefreshToken: artifacts.refreshToken,
-		TokenType:    "Bearer",
-		ExpiresIn:    int(s.TokenTTL.Seconds()), // Access token TTL in seconds
-		Scope:        strings.Join(session.RequestedScope, " "),
-	}, nil
+	return s.buildTokenResult(artifacts, session.RequestedScope), nil
 }
 
+// consumeRefreshTokenWithReplayProtection consumes a refresh token and handles replay attacks.
+// If the token was already used, it revokes the associated session to mitigate token theft.
+func (s *Service) consumeRefreshTokenWithReplayProtection(
+	ctx context.Context,
+	stores txAuthStores,
+	token string,
+	now time.Time,
+) (*models.RefreshTokenRecord, error) {
+	refreshRecord, err := stores.RefreshTokens.ConsumeRefreshToken(ctx, token, now)
+	if err != nil {
+		if errors.Is(err, sentinel.ErrAlreadyUsed) && refreshRecord != nil {
+			// Replay attack detected: revoke the session associated with this token
+			if revokeErr := stores.Sessions.RevokeSessionIfActive(ctx, refreshRecord.SessionID, now); revokeErr != nil {
+				return nil, dErrors.Wrap(revokeErr, dErrors.CodeInternal, "failed to revoke session for used refresh token")
+			}
+		}
+		return nil, fmt.Errorf("consume refresh token: %w", err)
+	}
+	return refreshRecord, nil
+}

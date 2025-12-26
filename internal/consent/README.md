@@ -284,4 +284,4 @@ Unit tests exist only to:
 
 - PRD: [PRD-002-Consent-Management.md](../../docs/prd/PRD-002-Consent-Management.md)
 - API Contract: [api/proto/consent.proto](../../api/proto/consent.proto)
-- Architecture: [docs/architecture.md](../../docs/architecture.md#consent)
+- Architecture: [docs/engineering/architecture.md](../../docs/engineering/architecture.md#consent)

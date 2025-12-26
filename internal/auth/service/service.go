@@ -2,12 +2,10 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,16 +14,22 @@ import (
 	"credo/internal/auth/metrics"
 	"credo/internal/auth/models"
 	"credo/internal/auth/store/revocation"
-	sessionStore "credo/internal/auth/store/session"
 	jwttoken "credo/internal/jwt_token"
 	tenant "credo/internal/tenant/models"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
-	"credo/pkg/platform/attrs"
 	"credo/pkg/platform/audit"
-	request "credo/pkg/platform/middleware/request"
-	"credo/pkg/platform/sentinel"
+	"credo/pkg/platform/middleware/requesttime"
+	platformsync "credo/pkg/platform/sync"
 )
+
+// TokenRevocationList manages revoked access tokens by JTI.
+// Production systems should use Redis for distributed revocation.
+type TokenRevocationList interface {
+	RevokeToken(ctx context.Context, jti string, ttl time.Duration) error
+	IsRevoked(ctx context.Context, jti string) (bool, error)
+	RevokeSessionTokens(ctx context.Context, sessionID string, jtis []string, ttl time.Duration) error
+}
 
 // UserStore defines the persistence interface for user data.
 // Error Contract: All Find methods return store.ErrNotFound when the entity doesn't exist.
@@ -56,7 +60,7 @@ type AuthCodeStore interface {
 	FindByCode(ctx context.Context, code string) (*models.AuthorizationCodeRecord, error)
 	MarkUsed(ctx context.Context, code string) error
 	ConsumeAuthCode(ctx context.Context, code string, redirectURI string, now time.Time) (*models.AuthorizationCodeRecord, error)
-	DeleteExpiredCodes(ctx context.Context) (int, error)
+	DeleteExpiredCodes(ctx context.Context, now time.Time) (int, error)
 }
 
 type RefreshTokenStore interface {
@@ -82,6 +86,8 @@ type AuditPublisher interface {
 }
 
 type ClientResolver interface {
+	// ResolveClient maps client_id -> client and tenant as a single choke point.
+	// If the client or tenant is inactive, returns an invalid_client error.
 	ResolveClient(ctx context.Context, clientID string) (*tenant.Client, *tenant.Tenant, error)
 }
 
@@ -90,9 +96,9 @@ type Service struct {
 	sessions       SessionStore
 	codes          AuthCodeStore
 	refreshTokens  RefreshTokenStore
-	tx             AuthStoreTx
+	tx             *shardedAuthTx
 	deviceService  *device.Service
-	trl            revocation.TokenRevocationList
+	trl            TokenRevocationList
 	logger         *slog.Logger
 	auditPublisher AuditPublisher
 	jwt            TokenGenerator
@@ -115,12 +121,41 @@ const (
 	TokenFlowRefresh TokenFlow = "refresh"
 )
 
+// TRLFailureModeWarn logs TRL failures but continues (default).
+const TRLFailureModeWarn = "warn"
+
+// TRLFailureModeFail returns an error if TRL write fails.
+const TRLFailureModeFail = "fail"
+
 type Config struct {
 	SessionTTL             time.Duration
 	TokenTTL               time.Duration
 	RefreshTokenTTL        time.Duration
 	AllowedRedirectSchemes []string
 	DeviceBindingEnabled   bool
+	// TRLFailureMode controls behavior when token revocation list write fails.
+	// "warn" (default): log the error and continue
+	// "fail": return an error, failing the operation
+	TRLFailureMode string
+}
+
+// applyDefaults sets default values for any unset config fields.
+func (c *Config) applyDefaults() {
+	if c.SessionTTL <= 0 {
+		c.SessionTTL = defaultSessionTTL
+	}
+	if c.TokenTTL <= 0 {
+		c.TokenTTL = defaultTokenTTL
+	}
+	if c.RefreshTokenTTL <= 0 {
+		c.RefreshTokenTTL = defaultRefreshTokenTTL
+	}
+	if len(c.AllowedRedirectSchemes) == 0 {
+		c.AllowedRedirectSchemes = []string{"https"}
+	}
+	if c.TRLFailureMode == "" {
+		c.TRLFailureMode = TRLFailureModeWarn
+	}
 }
 
 type tokenArtifacts struct {
@@ -134,7 +169,6 @@ type tokenArtifacts struct {
 type Option func(*Service)
 
 // txAuthStores groups the stores used inside a transaction.
-// This is an internal implementation detail of the auth service transaction handling.
 type txAuthStores struct {
 	Users         UserStore
 	Codes         AuthCodeStore
@@ -142,16 +176,13 @@ type txAuthStores struct {
 	RefreshTokens RefreshTokenStore
 }
 
-// shardedAuthTx provides fine-grained locking using sharded mutexes.
-// Instead of a single global lock, operations are distributed across N shards
-// based on a hash of the resource key, reducing contention under concurrent load.
-const numAuthShards = 32
-
 // defaultTxTimeout is the maximum duration for a transaction before it's aborted.
 const defaultTxTimeout = 5 * time.Second
 
+// shardedAuthTx provides fine-grained locking using sharded mutexes.
+// Uses platform ShardedMutex for lock distribution, with auth-specific timeout handling.
 type shardedAuthTx struct {
-	shards  [numAuthShards]sync.Mutex
+	mu      *platformsync.ShardedMutex
 	stores  txAuthStores
 	timeout time.Duration
 }
@@ -176,9 +207,10 @@ func (t *shardedAuthTx) RunInTx(ctx context.Context, fn func(stores txAuthStores
 		defer cancel()
 	}
 
-	shard := t.selectShard(ctx)
-	t.shards[shard].Lock()
-	defer t.shards[shard].Unlock()
+	// Get session key for shard selection
+	key := t.shardKey(ctx)
+	t.mu.Lock(key)
+	defer t.mu.Unlock(key)
 
 	// Check again after acquiring lock
 	if err := ctx.Err(); err != nil {
@@ -188,22 +220,12 @@ func (t *shardedAuthTx) RunInTx(ctx context.Context, fn func(stores txAuthStores
 	return fn(t.stores)
 }
 
-// selectShard picks a shard based on session ID from context, or defaults to shard 0.
-func (t *shardedAuthTx) selectShard(ctx context.Context) int {
-	// Try to get session ID from context for consistent sharding
-	if sessionID, ok := ctx.Value(txSessionKeyCtx).(string); ok && sessionID != "" {
-		return int(hashString(sessionID) % numAuthShards)
+// shardKey extracts the session ID from context for consistent sharding.
+func (t *shardedAuthTx) shardKey(ctx context.Context) string {
+	if sessionID, ok := ctx.Value(txSessionKeyCtx).(string); ok {
+		return sessionID
 	}
-	return 0
-}
-
-// hashString provides a simple hash for shard selection.
-func hashString(s string) uint32 {
-	var h uint32
-	for i := 0; i < len(s); i++ {
-		h = h*31 + uint32(s[i])
-	}
-	return h
+	return ""
 }
 
 // txSessionKey is the context key for session-based sharding.
@@ -229,13 +251,7 @@ func WithMetrics(m *metrics.Metrics) Option {
 	}
 }
 
-func WithJWTService(jwtService TokenGenerator) Option {
-	return func(s *Service) {
-		s.jwt = jwtService
-	}
-}
-
-func WithAuthStoreTx(tx AuthStoreTx) Option {
+func WithAuthStoreTx(tx *shardedAuthTx) Option {
 	return func(s *Service) {
 		s.tx = tx
 	}
@@ -247,52 +263,56 @@ func WithDeviceBindingEnabled(enabled bool) Option {
 	}
 }
 
-func WithTRL(trl revocation.TokenRevocationList) Option {
+func WithTRL(trl TokenRevocationList) Option {
 	return func(s *Service) {
 		s.trl = trl
 	}
 }
 
-func WithClientResolver(resolver ClientResolver) Option {
-	return func(s *Service) {
-		s.clientResolver = resolver
+// validateRequiredDeps checks that all required dependencies are provided.
+func validateRequiredDeps(users UserStore, sessions SessionStore, codes AuthCodeStore, refreshTokens RefreshTokenStore, jwt TokenGenerator, clientResolver ClientResolver) error {
+	if users == nil || sessions == nil || codes == nil || refreshTokens == nil {
+		return fmt.Errorf("users, sessions, codes, and refreshTokens stores are required")
 	}
+	if jwt == nil {
+		return fmt.Errorf("token generator (jwt) is required")
+	}
+	if clientResolver == nil {
+		return fmt.Errorf("client resolver is required")
+	}
+	return nil
 }
 
+// New creates an auth service with required dependencies.
+// Required: stores (users, sessions, codes, refreshTokens), jwt generator, and client resolver.
+// Optional: logger, metrics, auditPublisher, TRL (via functional options).
 func New(
 	users UserStore,
 	sessions SessionStore,
 	codes AuthCodeStore,
 	refreshTokens RefreshTokenStore,
+	jwt TokenGenerator,
+	clientResolver ClientResolver,
 	cfg *Config,
 	opts ...Option,
 ) (*Service, error) {
-	if users == nil || sessions == nil || codes == nil || refreshTokens == nil {
-		return nil, fmt.Errorf("users, sessions, codes, and refreshTokens stores are required")
+	if err := validateRequiredDeps(users, sessions, codes, refreshTokens, jwt, clientResolver); err != nil {
+		return nil, err
 	}
 	if cfg == nil {
 		cfg = &Config{}
 	}
-	// Defaults for required config
-	if cfg.SessionTTL <= 0 {
-		cfg.SessionTTL = defaultSessionTTL
-	}
-	if cfg.TokenTTL <= 0 {
-		cfg.TokenTTL = defaultTokenTTL
-	}
-	if cfg.RefreshTokenTTL <= 0 {
-		cfg.RefreshTokenTTL = defaultRefreshTokenTTL
-	}
-	if len(cfg.AllowedRedirectSchemes) == 0 {
-		cfg.AllowedRedirectSchemes = []string{"https"}
-	}
+	cfg.applyDefaults()
 
 	svc := &Service{
-		users:         users,
-		sessions:      sessions,
-		codes:         codes,
-		refreshTokens: refreshTokens,
+		users:          users,
+		sessions:       sessions,
+		codes:          codes,
+		refreshTokens:  refreshTokens,
+		jwt:            jwt,
+		clientResolver: clientResolver,
 		tx: &shardedAuthTx{
+			mu: platformsync.NewShardedMutex(),
 			stores: txAuthStores{
 				Users:         users,
 				Codes:         codes,
@@ -307,10 +327,6 @@ func New(
 		opt(svc)
 	}
 
-	if svc.jwt == nil {
-		return nil, fmt.Errorf("token generator (jwt) is required")
-	}
-
 	if svc.deviceService == nil {
 		svc.deviceService = device.NewService(svc.DeviceBindingEnabled)
 	}
@@ -322,81 +338,6 @@ func New(
 	return svc, nil
 }
 
-func (s *Service) logAudit(ctx context.Context, event string, attributes ...any) {
-	// Add request_id from context if available
-	requestID := request.GetRequestID(ctx)
-	if requestID != "" {
-		attributes = append(attributes, "request_id", requestID)
-	}
-	args := append(attributes, "event", event, "log_type", "audit")
-	if s.logger != nil {
-		s.logger.InfoContext(ctx, event, args...)
-	}
-	if s.auditPublisher == nil {
-		return
-	}
-	userIDStr := attrs.ExtractString(attributes, "user_id")
-	userID, _ := id.ParseUserID(userIDStr) // Best-effort for audit - ignore parse errors
-
-	// PRD-001B: Extract email for audit enrichment
-	email := attrs.ExtractString(attributes, "email")
-
-	err := s.auditPublisher.Emit(ctx, audit.Event{
-		UserID:    userID,
-		Subject:   userIDStr,
-		Action:    event,
-		Email:     email,
-		RequestID: requestID,
-	})
-	if err != nil {
-		s.logger.ErrorContext(ctx, "failed to emit audit event", "error", err)
-	}
-}
-
-func (s *Service) authFailure(ctx context.Context, reason string, isError bool, attributes ...any) {
-	s.logAuthFailure(ctx, reason, isError, attributes...)
-	if s.metrics != nil {
-		s.metrics.IncrementAuthFailures()
-	}
-}
-
-func (s *Service) logAuthFailure(ctx context.Context, reason string, isError bool, attributes ...any) {
-	// Add request_id from context if available
-	if requestID := request.GetRequestID(ctx); requestID != "" {
-		attributes = append(attributes, "request_id", requestID)
-	}
-	args := append(attributes, "event", audit.EventAuthFailed, "reason", reason, "log_type", "standard")
-	if s.logger == nil {
-		return
-	}
-	if isError {
-		s.logger.ErrorContext(ctx, string(audit.EventAuthFailed), args...)
-		return
-	}
-	s.logger.WarnContext(ctx, string(audit.EventAuthFailed), args...)
-}
-
-// incrementUserCreated increments the users created metric if metrics are enabled
-func (s *Service) incrementUserCreated() {
-	if s.metrics != nil {
-		s.metrics.IncrementUsersCreated()
-	}
-}
-
-// incrementActiveSession increments the active sessions metric if metrics are enabled
-func (s *Service) incrementActiveSession() {
-	if s.metrics != nil {
-		s.metrics.IncrementActiveSessions(1)
-	}
-}
-
-// incrementTokenRequests increments the token requests metric if metrics are enabled
-func (s *Service) incrementTokenRequests() {
-	if s.metrics != nil {
-		s.metrics.IncrementTokenRequests()
-	}
-}
-
 func (s *Service) isRedirectSchemeAllowed(uri *url.URL) bool {
 	for _, scheme := range s.AllowedRedirectSchemes {
 		if strings.EqualFold(uri.Scheme, scheme) {
@@ -404,65 +345,6 @@ func (s *Service) isRedirectSchemeAllowed(uri *url.URL) bool {
 		}
 	}
 	return false
-}
-
-// tokenErrorMapping defines how a sentinel error maps to a domain error.
-type tokenErrorMapping struct {
-	sentinel   error
-	code       dErrors.Code
-	codeMsg    string // message for TokenFlowCode (empty = use err.Error())
-	refreshMsg string // message for TokenFlowRefresh (empty = use err.Error())
-	logReason  string
-}
-
-// tokenErrorMappings defines error translations in priority order.
-// First match wins; more specific errors should come first.
-// Note: Domain-errors from validation are passed through directly (see handleTokenError).
-var tokenErrorMappings = []tokenErrorMapping{
-	{sentinel.ErrNotFound, dErrors.CodeInvalidGrant, "invalid authorization code", "invalid refresh token", "not_found"},
-	{sentinel.ErrExpired, dErrors.CodeInvalidGrant, "authorization code expired", "refresh token expired", "expired"},
-	{sentinel.ErrAlreadyUsed, dErrors.CodeInvalidGrant, "authorization code already used", "invalid refresh token", "already_used"},
-	{sessionStore.ErrSessionRevoked, dErrors.CodeInvalidGrant, "session has been revoked", "session has been revoked", "session_revoked"},
-	{sentinel.ErrInvalidState, dErrors.CodeInvalidGrant, "session not active", "session not active", "invalid_state"},
-}
-
-// handleTokenError translates dependency errors into domain errors.
-// Uses tokenErrorMappings to determine error code and user-facing message based on flow type.
-func (s *Service) handleTokenError(ctx context.Context, err error, clientID string, recordID *string, flow TokenFlow) error {
-	if err == nil {
-		return nil
-	}
-
-	attrs := []any{"client_id", clientID}
-	if recordID != nil {
-		attrs = append(attrs, "record_id", *recordID)
-	}
-
-	// Pass through existing domain errors
-	var de *dErrors.Error
-	if errors.As(err, &de) {
-		s.authFailure(ctx, string(de.Code), false, attrs...)
-		return err
-	}
-
-	// Check mappings in order
-	for _, m := range tokenErrorMappings {
-		if errors.Is(err, m.sentinel) {
-			msg := m.codeMsg
-			if flow == TokenFlowRefresh {
-				msg = m.refreshMsg
-			}
-			if msg == "" {
-				msg = err.Error()
-			}
-			s.authFailure(ctx, m.logReason, false, attrs...)
-			return dErrors.Wrap(err, m.code, msg)
-		}
-	}
-
-	// Default: internal error
-	s.authFailure(ctx, "internal_error", true, attrs...)
-	return dErrors.Wrap(err, dErrors.CodeInternal, "token handling failed")
 }
 
 func (s *Service) generateTokenArtifacts(ctx context.Context, session *models.Session) (*tokenArtifacts, error) {
@@ -489,12 +371,13 @@ func (s *Service) generateTokenArtifacts(ctx context.Context, session *models.Se
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to create refresh token")
 	}
 
-	now := time.Now()
+	now := requesttime.Now(ctx)
 	tokenRecord, err := models.NewRefreshToken(
 		refreshToken,
 		session.ID,
 		now,
 		now.Add(s.RefreshTokenTTL),
+		now,
 	)
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to create refresh token record")
@@ -507,4 +390,16 @@ func (s *Service) generateTokenArtifacts(ctx context.Context, session *models.Se
 		refreshToken:   refreshToken,
 		refreshRecord:  tokenRecord,
 	}, nil
+}
+
+// buildTokenResult constructs the API response from token artifacts and session scope.
+func (s *Service) buildTokenResult(artifacts *tokenArtifacts, scope []string) *models.TokenResult {
+	return &models.TokenResult{
+		AccessToken:  artifacts.accessToken,
+		IDToken:      artifacts.idToken,
+		RefreshToken: artifacts.refreshToken,
+		TokenType:    "Bearer",
+		ExpiresIn:    int(s.TokenTTL.Seconds()),
+		Scope:        strings.Join(scope, " "),
+	}
 }

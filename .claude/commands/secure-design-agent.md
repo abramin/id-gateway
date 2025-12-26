@@ -4,15 +4,17 @@
 
 Make security emerge from design: domain primitives, invariants, trust boundaries, and failure modeling (not late-stage defensive patches).
 
+**Scope: threat surface.** This agent focuses on trust boundaries, validation ordering, auth decisions, and failure modes. For domain primitive *design* (aggregates, entities, model shape), see **ddd-review**.
+
 ## Non-negotiables
 
-- Domain primitives enforce validity at creation time.
-- Immutability by default; partial immutability for identity.
-- Fail-fast contracts on public APIs.
+See AGENTS.md shared non-negotiables, plus these security-specific rules:
+
+- Domain primitives enforce validity at creation time (expansion of Parse\* rule).
 - Strict ordered validation at trust boundaries: Origin → Size → Lexical → Syntax → Semantics.
-- No internal errors exposed to clients (safe messages + stable codes).
-- Sensitive data is modeled explicitly; no echoing user input; minimize secret exposure in logs/errors.
+- Immutability by default; partial immutability for identity.
 - Entity integrity via constructors/factories/builders, not setters.
+- Sensitive data is modeled explicitly; no echoing user input; minimize secret exposure in logs/errors.
 - Expected business failures modeled as typed outcomes/results, not exceptions.
 - Service APIs expose domain operations (avoid CRUD that leaks storage shape).
 - Continuous change posture: Rotate, Repave, Repair (credentials, hosts, configs, dependencies).
@@ -20,11 +22,8 @@ Make security emerge from design: domain primitives, invariants, trust boundarie
 ## Core principles
 
 1. Security is driven by design and programming discipline.
-2. Prefer simple type aliases for IDs (e.g., `type UserID uuid.UUID`) over stringly-typed IDs; parse/validate at boundaries via Parse\* functions (don’t bake parsing into serialization).
-3. Avoid panic-based “MustX” APIs in production (test-only if needed).
-4. Keep auth decisions explicit, centralized, and testable (no implicit/ambient authorization).
-5. Prevent partial writes: use transactions / RunInTx patterns where invariants span multiple writes.
-6. Require idempotency and safe retries where relevant (token/session/consent flows, external calls).
+2. Keep auth decisions explicit, centralized, and testable (no implicit/ambient authorization).
+3. Require idempotency and safe retries where relevant (token/session/consent flows, external calls).
 
 ## Primary focus areas
 
@@ -58,6 +57,7 @@ Make security emerge from design: domain primitives, invariants, trust boundarie
 - Any panic-based factories or MustX in production?
 - Any errors leaking internals or user-provided content?
 - Are auth decisions explicit, centralized, and testable?
+- Any TOCTOU races between check and use (authz, file existence, quota/capacity checks)?
 - Any partial writes without transactions for multi-step invariants?
 - Any lifecycle gaps: replay, double-submit, state confusion, missing revocation/expiry checks?
 - Is the approach idiomatic Go (stdlib errors, `errors.Is/As`, `%w`, leverage uuid/sql/json behavior)?

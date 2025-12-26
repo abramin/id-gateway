@@ -2,6 +2,8 @@
 
 This playbook defines how Credo teams plan, execute, and evidence security assurance across the SDLC. It focuses on pre-production controls with clear scope, owners, and measurable SLAs.
 
+**Status:** Policy/playbook; tooling integration may be partial or planned.
+
 ## Scope and Objectives
 - **Objectives:** Prevent avoidable vulnerabilities before release, detect regressions early, and provide auditable evidence for compliance and customer due diligence.
 - **In scope:** Application/backend services, APIs/handlers, service-layer business logic, infrastructure-as-code, container images, CI/CD pipelines, third-party libraries and containers, API contracts, and feature flag behaviors.

@@ -51,6 +51,10 @@ func (s *Service) RevokeSession(ctx context.Context, userID id.UserID, sessionID
 	return nil
 }
 
+// LogoutAll revokes all sessions for a user, optionally keeping the current session.
+// Design: Continues on individual revocation errors to maximize successful revocations.
+// Returns partial results with FailedCount so the user knows if retries are needed.
+// Only returns an error if ALL revocations fail or listing sessions fails.
 func (s *Service) LogoutAll(ctx context.Context, userID id.UserID, currentSessionID id.SessionID, exceptCurrent bool) (*models.LogoutAllResult, error) {
 	start := time.Now()
 
@@ -64,13 +68,21 @@ func (s *Service) LogoutAll(ctx context.Context, userID id.UserID, currentSessio
 	}
 
 	revokedCount := 0
+	failedCount := 0
 	for _, session := range sessions {
 		if exceptCurrent && session.ID == currentSessionID {
 			continue
 		}
 		outcome, err := s.revokeSessionInternal(ctx, session, "")
 		if err != nil {
-			return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to revoke session")
+			// Continue on error - partial revocation is better than none
+			failedCount++
+			s.logger.ErrorContext(ctx, "failed to revoke session during logout-all",
+				"error", err,
+				"session_id", session.ID.String(),
+				"user_id", userID.String(),
+			)
+			continue
 		}
 		if outcome == revokeSessionOutcomeRevoked {
 			revokedCount++
@@ -89,5 +101,6 @@ func (s *Service) LogoutAll(ctx context.Context, userID id.UserID, currentSessio
 
 	return &models.LogoutAllResult{
 		RevokedCount: revokedCount,
+		FailedCount:  failedCount,
 	}, nil
 }

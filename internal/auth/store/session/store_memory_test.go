@@ -7,6 +7,7 @@ import (
 
 	"credo/internal/auth/models"
 	id "credo/pkg/domain"
+	"credo/pkg/platform/sentinel"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -44,7 +45,7 @@ func (s *InMemorySessionStoreSuite) TestCreateAndFind() {
 
 func (s *InMemorySessionStoreSuite) TestFindNotFound() {
 	_, err := s.store.FindByID(context.Background(), id.SessionID(uuid.New()))
-	assert.ErrorIs(s.T(), err, ErrNotFound)
+	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
 }
 
 func (s *InMemorySessionStoreSuite) TestUpdateSession() {
@@ -83,7 +84,7 @@ func (s *InMemorySessionStoreSuite) TestUpdateSessionNotFound() {
 	}
 
 	err := s.store.UpdateSession(context.Background(), session)
-	assert.ErrorIs(s.T(), err, ErrNotFound)
+	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
 }
 
 func (s *InMemorySessionStoreSuite) TestDeleteSessionsByUser() {
@@ -99,14 +100,14 @@ func (s *InMemorySessionStoreSuite) TestDeleteSessionsByUser() {
 	require.NoError(s.T(), err)
 
 	_, err = s.store.FindByID(context.Background(), matching.ID)
-	assert.ErrorIs(s.T(), err, ErrNotFound)
+	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
 
 	fetchedOther, err := s.store.FindByID(context.Background(), other.ID)
 	require.NoError(s.T(), err)
 	assert.Equal(s.T(), other, fetchedOther)
 
 	err = s.store.DeleteSessionsByUser(context.Background(), userID)
-	assert.ErrorIs(s.T(), err, ErrNotFound)
+	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
 }
 
 func (s *InMemorySessionStoreSuite) TestRevokeSessionMarksRevoked() {
@@ -134,7 +135,7 @@ func (s *InMemorySessionStoreSuite) TestRevokeSessionMarksRevoked() {
 
 func (s *InMemorySessionStoreSuite) TestRevokeSessionNotFound() {
 	err := s.store.RevokeSession(context.Background(), id.SessionID(uuid.New()))
-	assert.ErrorIs(s.T(), err, ErrNotFound)
+	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
 }
 
 func (s *InMemorySessionStoreSuite) TestAdvanceLastSeen() {

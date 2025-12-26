@@ -4,17 +4,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"credo/internal/auth/models"
-	authCodeStore "credo/internal/auth/store/authorization-code"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
+	"credo/pkg/platform/middleware/requesttime"
+	"credo/pkg/platform/sentinel"
 )
 
+// exchangeAuthorizationCode handles the token exchange flow for authorization codes.
+// It validates the authorization code, ensures the session and client are consistent,
+// consumes the code to prevent reuse, and issues new tokens.
 func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {
-	now := time.Now()
+	start := time.Now()
+	defer func() {
+		s.observeTokenExchangeDuration(float64(time.Since(start).Milliseconds()))
+	}()
+
+	now := requesttime.Now(ctx)
 	var (
 		codeRecord *models.AuthorizationCodeRecord
 		session    *models.Session
@@ -37,27 +45,18 @@ func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.Tok
 	// Add session ID to context for sharded locking
 	txCtx := context.WithValue(ctx, txSessionKeyCtx, sessionID)
 	txErr := s.tx.RunInTx(txCtx, func(stores txAuthStores) error {
-		// Step 1: Consume authorization code (with replay attack protection)
 		var err error
-		codeRecord, err = stores.Codes.ConsumeAuthCode(ctx, req.Code, req.RedirectURI, now)
+		codeRecord, err = s.consumeCodeWithReplayProtection(ctx, stores, req.Code, req.RedirectURI, now)
 		if err != nil {
-			if errors.Is(err, authCodeStore.ErrAuthCodeUsed) && codeRecord != nil {
-				revokeErr := stores.Sessions.RevokeSessionIfActive(ctx, codeRecord.SessionID, now)
-				if revokeErr != nil {
-					return dErrors.Wrap(revokeErr, dErrors.CodeInternal, "failed to revoke session for used code")
-				}
-			}
-			return fmt.Errorf("consume authorization code: %w", err)
+			return err
 		}
 
-		// Step 2: Load session for token generation
 		session, err = stores.Sessions.FindByID(ctx, codeRecord.SessionID)
 		if err != nil {
 			return fmt.Errorf("fetch session: %w", err)
 		}
 		session.TenantID = tc.Tenant.ID
 
-		// Step 3: Update session and persist refresh token (artifacts pre-generated)
 		result, err := s.executeTokenFlowTx(ctx, stores, tokenFlowTxParams{
 			Session:            session,
 			TokenContext:       tc,
@@ -88,12 +87,26 @@ func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.Tok
 	)
 	s.incrementTokenRequests()
 
-	return &models.TokenResult{
-		AccessToken:  artifacts.accessToken,
-		IDToken:      artifacts.idToken,
-		RefreshToken: artifacts.refreshToken,
-		TokenType:    "Bearer",
-		ExpiresIn:    int(s.TokenTTL.Seconds()), // Access token TTL in seconds
-		Scope:        strings.Join(session.RequestedScope, " "),
-	}, nil
+	return s.buildTokenResult(artifacts, session.RequestedScope), nil
+}
+
+// consumeCodeWithReplayProtection consumes an authorization code and handles replay attacks.
+// If the code was already used, it revokes the associated session to mitigate token theft.
+func (s *Service) consumeCodeWithReplayProtection(
+	ctx context.Context,
+	stores txAuthStores,
+	code, redirectURI string,
+	now time.Time,
+) (*models.AuthorizationCodeRecord, error) {
+	codeRecord, err := stores.Codes.ConsumeAuthCode(ctx, code, redirectURI, now)
+	if err != nil {
+		if errors.Is(err, sentinel.ErrAlreadyUsed) && codeRecord != nil {
+			// Replay attack detected: revoke the session created with this code
+			if revokeErr := stores.Sessions.RevokeSessionIfActive(ctx, codeRecord.SessionID, now); revokeErr != nil {
+				return nil, dErrors.Wrap(revokeErr, dErrors.CodeInternal, "failed to revoke session for used code")
+			}
+		}
+		return nil, fmt.Errorf("consume authorization code: %w", err)
+	}
+	return codeRecord, nil
 }

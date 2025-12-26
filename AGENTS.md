@@ -8,8 +8,37 @@ This repo uses small, focused review agents. Each agent has a narrow scope and a
 
 - Pick the smallest set of agents for the task.
 - Give each agent the same input (PR link, diff, file paths, or spec excerpt).
-- Ask for a short review using the agent’s output format.
+- Ask for a short review using the agent's output format.
 - If agents disagree, apply the conflict rules below.
+
+## Shared non-negotiables
+
+All review agents inherit these rules. Individual agents should not repeat them; they reference this section.
+
+1. **No business logic in handlers** — handlers parse, call services, map responses.
+2. **Domain state checks as intent-revealing methods** — use `IsPending()`, `CanRotate()`, not `status == X`.
+3. **Validation at trust boundaries via Parse\*/constructors** — strict ordering: Origin → Size → Lexical → Syntax → Semantics.
+4. **No Must\*/panic in production code** — test-only if needed.
+5. **No internal errors exposed to clients** — safe messages + stable codes.
+6. **Atomic multi-write operations** — no partial writes; use transactions/RunInTx.
+7. **Prefer type aliases + Parse\* over struct wrappers for IDs** — e.g., `type UserID uuid.UUID`.
+8. **Interfaces at consumer site** — only when 2+ implementations or a hard boundary exists.
+
+## When to use which agent
+
+Use this decision tree to select the right agent:
+
+| Question | Agent |
+|----------|-------|
+| "Is this too complicated to read?" | **complexity-review** |
+| "Is this doing too many things?" | **balance-review** (PASS A) |
+| "Is the model/aggregate design right?" | **ddd-review** |
+| "Is there a security gap?" | **secure-design-agent** |
+| "Is there unnecessary indirection?" | **balance-review** (PASS C) |
+| "Is there harmful duplication?" | **balance-review** (PASS B) |
+| "Where's the I/O hiding?" | **balance-review** (PASS D) |
+| "Will this scale?" | **performance-review** |
+| "Are the tests right?" | **testing-review** |
 
 ## Agent roster
 
@@ -55,21 +84,16 @@ This repo uses small, focused review agents. Each agent has a narrow scope and a
 
 - Simplify long functions, deep nesting, and unclear naming.
 - Preserve behavior while reducing mental stack.
+- For extraction trade-offs, see balance-review PASS B.
 
-### 6) SRP Review Agent
+### 6) Balance Review Agent
 
-**Scope:** single responsibility and cohesion.
+**Scope:** Go idioms, abstraction/duplication balance, and structural cohesion.
 
-- Flags mixed concerns across packages, types, and functions.
-- Prefers small, same-package helpers over new layers or interfaces.
-- Keeps validation/auth boundaries explicit.
-
-### 7) Balance Review Agent
-
-**Scope:** Go idioms and abstraction/duplication balance.
-
-- Pass A: simplify over-abstraction and non-idiomatic layering.
+- Pass A: simplify over-abstraction, non-idiomatic layering, and mixed responsibilities (incorporates former srp-review).
 - Pass B: reduce harmful repetition with minimal, local helpers.
+- Pass C: enforce hop budget and eliminate boomerang flows.
+- Pass D: verify effects visibility (where's the I/O?).
 - Avoids clever indirection; favors concrete types and clear control flow.
 
 ## Conflict resolution rules (tie-breakers)
@@ -88,10 +112,9 @@ This repo uses small, focused review agents. Each agent has a narrow scope and a
 1. Secure-by-Design (if changing boundaries, auth, lifecycles, primitives, exposed surfaces, config, deps)
 2. DDD (if changing domain logic or service boundaries)
 3. Performance (if changing hot paths, concurrency, caching, DB access)
-4. SRP (if responsibility/cohesion is unclear)
+4. Balance (if abstraction/duplication/cohesion tradeoffs are in play — includes responsibility analysis)
 5. Complexity (if readability or cognitive load is high)
-6. Balance (if abstraction/duplication tradeoffs are in play)
-7. Testing (if changing behavior, contracts, or refactoring internals)
+6. Testing (if changing behavior, contracts, or refactoring internals)
 
 ## Output expectations
 

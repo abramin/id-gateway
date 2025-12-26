@@ -47,9 +47,7 @@ frontend/dist/
 frontend/.cache/
 
 # local docs
-temp_docs/
-docs/guides
-rfcs/
+.gh-scripts
 
 # Build output
 bin/

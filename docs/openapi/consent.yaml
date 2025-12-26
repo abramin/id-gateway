@@ -276,6 +276,7 @@ components:
         purposes:
           type: array
           minItems: 1
+          maxItems: 50
           description: List of purposes to grant consent for
           items:
             $ref: "#/components/schemas/ConsentPurpose"
@@ -317,6 +318,7 @@ components:
         purposes:
           type: array
           minItems: 1
+          maxItems: 50
           description: List of purposes to revoke consent for
           items:
             $ref: "#/components/schemas/ConsentPurpose"

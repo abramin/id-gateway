@@ -6,12 +6,16 @@ import (
 )
 
 type Metrics struct {
-	UsersCreated        prometheus.Counter
-	ActiveSessions      prometheus.Gauge
-	TokenRequests       prometheus.Counter
-	AuthFailures        prometheus.Counter
-	LogoutAllSessions   prometheus.Histogram
-	LogoutAllDurationMs prometheus.Histogram
+	UsersCreated           prometheus.Counter
+	ActiveSessions         prometheus.Gauge
+	TokenRequests          prometheus.Counter
+	AuthFailures           prometheus.Counter
+	LogoutAllSessions      prometheus.Histogram
+	LogoutAllDurationMs    prometheus.Histogram
+	RateLimitCheckErrors   *prometheus.CounterVec
+	AuthorizeDurationMs    prometheus.Histogram
+	TokenExchangeDurationMs prometheus.Histogram
+	TokenRefreshDurationMs  prometheus.Histogram
 }
 
 func New() *Metrics {
@@ -42,6 +46,25 @@ func New() *Metrics {
 			Help:    "Duration of logout-all operations in milliseconds",
 			Buckets: []float64{10, 50, 100, 250, 500, 1000, 2500, 5000},
 		}),
+		RateLimitCheckErrors: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "credo_ratelimit_check_errors_total",
+			Help: "Total number of rate limit check failures (fail-open events)",
+		}, []string{"endpoint"}),
+		AuthorizeDurationMs: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "credo_authorize_duration_ms",
+			Help:    "Duration of authorization requests in milliseconds",
+			Buckets: []float64{5, 10, 25, 50, 100, 250, 500, 1000},
+		}),
+		TokenExchangeDurationMs: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "credo_token_exchange_duration_ms",
+			Help:    "Duration of authorization code exchange in milliseconds",
+			Buckets: []float64{5, 10, 25, 50, 100, 250, 500, 1000},
+		}),
+		TokenRefreshDurationMs: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "credo_token_refresh_duration_ms",
+			Help:    "Duration of token refresh operations in milliseconds",
+			Buckets: []float64{5, 10, 25, 50, 100, 250, 500, 1000},
+		}),
 	}
 }
 
@@ -68,4 +91,20 @@ func (m *Metrics) IncrementAuthFailures() {
 func (m *Metrics) ObserveLogoutAll(sessionCount int, durationMs float64) {
 	m.LogoutAllSessions.Observe(float64(sessionCount))
 	m.LogoutAllDurationMs.Observe(durationMs)
+}
+
+func (m *Metrics) IncrementRateLimitCheckErrors(endpoint string) {
+	m.RateLimitCheckErrors.WithLabelValues(endpoint).Inc()
+}
+
+func (m *Metrics) ObserveAuthorizeDuration(durationMs float64) {
+	m.AuthorizeDurationMs.Observe(durationMs)
+}
+
+func (m *Metrics) ObserveTokenExchangeDuration(durationMs float64) {
+	m.TokenExchangeDurationMs.Observe(durationMs)
+}
+
+func (m *Metrics) ObserveTokenRefreshDuration(durationMs float64) {
+	m.TokenRefreshDurationMs.Observe(durationMs)
 }

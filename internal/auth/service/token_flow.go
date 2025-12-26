@@ -36,26 +36,18 @@ func (s *Service) executeTokenFlowTx(
 	stores txAuthStores,
 	params tokenFlowTxParams,
 ) (*tokenFlowTxResult, error) {
-	mutableSession := *params.Session
-	s.applyDeviceBinding(ctx, &mutableSession)
-	mutableSession.LastSeenAt = params.Now
+	// Build device state from current session + context signals
+	deviceState := *params.Session
+	s.applyDeviceBinding(ctx, &deviceState)
 
-	activate := false
-	if params.ActivateOnFirstUse {
-		// Code exchange: activate session if pending consent
-		if mutableSession.IsPendingConsent() {
-			mutableSession.Activate()
-			activate = true
-		}
-	}
-
-	// Use pre-generated artifacts (generated outside transaction lock)
-	artifacts := params.Artifacts
+	// Determine if session should be activated (code exchange only)
+	activate := params.ActivateOnFirstUse && params.Session.IsPendingConsent()
 
 	// Advance session state based on flow type
 	var session *models.Session
 	var err error
 	clientID := params.TokenContext.Client.ID.String()
+	artifacts := params.Artifacts
 
 	if params.ActivateOnFirstUse {
 		session, err = stores.Sessions.AdvanceLastSeen(
@@ -65,8 +57,8 @@ func (s *Service) executeTokenFlowTx(
 			params.Now,
 			artifacts.accessTokenJTI,
 			activate,
-			mutableSession.DeviceID,
-			mutableSession.DeviceFingerprintHash,
+			deviceState.DeviceID,
+			deviceState.DeviceFingerprintHash,
 		)
 	} else {
 		session, err = stores.Sessions.AdvanceLastRefreshed(
@@ -75,8 +67,8 @@ func (s *Service) executeTokenFlowTx(
 			clientID,
 			params.Now,
 			artifacts.accessTokenJTI,
-			mutableSession.DeviceID,
-			mutableSession.DeviceFingerprintHash,
+			deviceState.DeviceID,
+			deviceState.DeviceFingerprintHash,
 		)
 	}
 	if err != nil {

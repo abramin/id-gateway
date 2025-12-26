@@ -4,12 +4,14 @@
 
 Keep Credo correct via **contract-first, behavior-driven tests**. Feature files define correctness.
 
-## Non-negotiables (inherits from AGENTS.md)
+## Non-negotiables
+
+See AGENTS.md shared non-negotiables, plus these testing-specific rules:
 
 - Feature files are authoritative contracts.
 - Prefer feature-driven integration tests.
-- Avoid mocks by default.
-- Unit tests are exceptional and must justify themselves.
+- Avoid mocks by default; use only to induce failure modes.
+- Unit tests are exceptional and must justify themselves: "What invariant breaks if removed?"
 - Do not duplicate behavior across layers without justification.
 
 ## What I do

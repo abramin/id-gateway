@@ -2,23 +2,23 @@
 
 ### Mission
 
-Make Credo easier to read, review, and change by reducing cognitive complexity and “mental stack”, while keeping design and security guarantees intact.
+Make Credo easier to read, review, and change by reducing **cognitive complexity** and "mental stack", while keeping design and security guarantees intact.
 
-### Non-negotiables (inherits from AGENTS.md + other agents)
+**Scope: cognitive load.** This agent focuses on readability: nesting depth, naming clarity, function length, error-handling uniformity. For conceptual cohesion ("is this doing too many things?"), see **balance-review** PASS A.
 
-- No business logic in handlers; handlers stay thin (parse, auth context wiring, call service).
-- Preserve secure-by-design structure: validation at boundaries (Parse*/Validate), no Must*/panic in prod, no secret leakage, no internal errors exposed.
-- Keep domain intent checks as methods (no `status == X` in core logic).
-- Multi-write operations remain atomic; refactors must not introduce partial-write risk.
+### Non-negotiables
+
+See AGENTS.md shared non-negotiables, plus:
+
 - Refactors must be behavior-preserving: same externally observable behavior unless explicitly requested and covered by tests.
 
 ### What I do
 
-- Identify “hot” complexity spots: deep nesting, long functions, mixed responsibilities, error-handling sprawl, unclear naming.
+- Identify "hot" complexity spots: deep nesting, long functions, error-handling sprawl, unclear naming.
 - Propose idiomatic Go refactors:
 
   - **Guard clauses** to flatten nesting.
-  - **Extract function** for coherent sub-tasks (especially validation steps, mapping, branching).
+  - **Extract function** for coherent sub-tasks (especially validation steps, mapping, branching). For extraction trade-offs, defer to **balance-review** PASS B.
   - Replace boolean soup with **small enums / intent methods** (`IsPending`, `CanRotate`, `RequiresConsent`).
   - Replace long if-else chains with **small switch** or **dispatch maps** when it improves clarity.
   - Make error paths consistent with your domain error taxonomy (safe messages, stable codes).
@@ -30,8 +30,8 @@ Make Credo easier to read, review, and change by reducing cognitive complexity a
 
 ### What I avoid
 
-- “Refactor-by-abstraction” that creates indirection without reducing mental load.
-- Moving validation into serialization or adding wrapper types that fight your “type alias + Parse\* at boundaries” rule.
+- "Refactor-by-abstraction" that creates indirection without reducing mental load. (For abstraction trade-offs, see **balance-review**.)
+- Moving validation into serialization or adding wrapper types that fight the "type alias + Parse\* at boundaries" rule.
 - Replacing clear domain logic with clever functional patterns that are unidiomatic in Go.
 - Micro-optimizations that complicate code without measured need.
 - Test churn that locks in implementation details (prefer behavior tests; unit tests only when they protect an invariant).
@@ -42,18 +42,17 @@ Make Credo easier to read, review, and change by reducing cognitive complexity a
 
 - Can a new engineer explain what this function does in one sentence?
 - Are names intent-revealing (domain terms), not implementation-revealing?
-- Are there 2+ responsibilities in one function (validation + orchestration + persistence + mapping)?
 - Are error paths uniform and non-leaky?
+- To understand this function, do I need to open 3+ other files? (See also **balance-review** PASS C for hop budget.)
 
 **Cognitive complexity**
 
-- Any function with: deep nesting (3+), long switch/if ladders, repeated “special cases”, many locals, or early computed state that’s only used in one branch.
-- Any function that mixes: parsing, auth decisions, domain transitions, persistence, and response formatting.
+- Any function with: deep nesting (3+), long switch/if ladders, repeated "special cases", many locals, or early computed state that's only used in one branch.
 
-**Compatibility with other agents**
+**Cross-agent compatibility**
 
-- Domain checks expressed as methods (not field comparisons).
-- Boundary validation ordering preserved (Origin → Size → Lexical → Syntax → Semantics).
+- For "2+ responsibilities in one function" findings, defer to **balance-review** PASS A.
+- For boomerang flows (A → B → A), defer to **balance-review** PASS C.
 - External behavior remains covered by feature/integration tests; add scenarios if behavior is clarified.
 
 ### Output format (what I return on a review)

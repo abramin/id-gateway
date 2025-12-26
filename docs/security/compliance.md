@@ -3,6 +3,12 @@
 ### 1. Introduction and Purpose
 - Documents Credo controls mapped to GDPR/CCPA obligations using PRD-specified features.
 - Audience: Compliance officers, DPOs, internal auditors; evidence sourced from official PRDs only.
+- **Status:** Target-state mapping. Not all items are implemented in the current codebase.
+
+**Implementation notes (current gaps):**
+- `/me/data-export` and `/me` delete handlers are stubbed.
+- Merkle-tree audit and automated compliance checks are not implemented.
+- Data residency and cross-border routing are not implemented.
 
 ---
 

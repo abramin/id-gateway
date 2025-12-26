@@ -78,12 +78,14 @@ func DefaultConfig() *Config {
 			models.ClassSensitive: {RequestsPerWindow: 30, Window: time.Minute},
 			models.ClassRead:      {RequestsPerWindow: 100, Window: time.Minute},
 			models.ClassWrite:     {RequestsPerWindow: 50, Window: time.Minute},
+			models.ClassAdmin:     {RequestsPerWindow: 10, Window: time.Minute}, // Strict limit for admin server
 		},
 		UserLimits: map[models.EndpointClass]Limit{
 			models.ClassAuth:      {RequestsPerWindow: 50, Window: time.Hour},  // Consent operations
 			models.ClassSensitive: {RequestsPerWindow: 20, Window: time.Hour},  // VC issuance
 			models.ClassRead:      {RequestsPerWindow: 200, Window: time.Hour}, // Decision evaluations
 			models.ClassWrite:     {RequestsPerWindow: 100, Window: time.Hour}, // Registry lookups
+			models.ClassAdmin:     {RequestsPerWindow: 20, Window: time.Hour},  // Admin operations
 		},
 		// Per-client rate limits (PRD-017 FR-2c)
 		ClientLimits: ClientLimitConfig{

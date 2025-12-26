@@ -850,7 +850,7 @@ Until then, auth behavior remains unchanged to avoid cross-PRD coupling during M
 - [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html)
 - [OAuth 2.0 RFC 6749](https://datatracker.ietf.org/doc/html/rfc6749)
 - Tutorial: `docs/TUTORIAL.md` Section 1
-- Architecture: `docs/architecture.md`
+- Architecture: `../engineering/architecture.md`
 - Code Structure: `docs/structure.md`
 
 ---
