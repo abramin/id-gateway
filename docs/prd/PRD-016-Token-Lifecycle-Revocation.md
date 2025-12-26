@@ -29,7 +29,7 @@ This is a **critical blocker** for production deployment.
 - Enable session-level and global logout
 - Support concurrent session limits
 - Invalidate tokens on security events
-- Provide token binding to devices for enhanced security (see [DEVICE_BINDING.md](../DEVICE_BINDING.md))
+- Provide token binding to devices for enhanced security (see [DEVICE_BINDING.md](../security/DEVICE_BINDING.md))
 
 ### Non-Goals
 
@@ -103,7 +103,7 @@ This is a **critical blocker** for production deployment.
    - Format: `"ref_" + uuid.New().String()`
    - Store refresh token in session record
    - Set refresh token expiry: 30 days from issuance
-3. Bind token to device (see [DEVICE_BINDING.md](../DEVICE_BINDING.md) for security model)
+3. Bind token to device (see [DEVICE_BINDING.md](../security/DEVICE_BINDING.md) for security model)
 4. Return refresh token alongside access token
 5. Emit audit event: `refresh_token_issued`
 
@@ -112,7 +112,7 @@ This is a **critical blocker** for production deployment.
 - **Long-lived:** 30 days (configurable)
 - **Single-use:** Consumed on refresh, new refresh token issued (rotation)
 - **Revocable:** Can be explicitly revoked via logout
-- **Device-bound:** (Optional) Bound via device ID cookie + browser fingerprint drift detection (soft) — see `docs/DEVICE_BINDING.md`
+- **Device-bound:** (Optional) Bound via device ID cookie + browser fingerprint drift detection (soft) — see `../security/DEVICE_BINDING.md`
 
 ---
 
@@ -153,7 +153,7 @@ This is a **critical blocker** for production deployment.
 4. If session not found → 401 Invalid refresh token
 5. Validate refresh token has not expired (< 30 days old)
 6. Validate refresh token has not been revoked (session status != "revoked")
-7. Validate device binding (see [DEVICE_BINDING.md](../DEVICE_BINDING.md) for validation logic)
+7. Validate device binding (see [DEVICE_BINDING.md](../security/DEVICE_BINDING.md) for validation logic)
 8. **Refresh Token Rotation:**
    - Revoke old refresh token (mark as used)
    - Generate new refresh token
@@ -444,7 +444,7 @@ type Session struct {
     RequestedScope []string   `json:"requested_scope"`
     Status         string     `json:"status"` // "active", "revoked"
 
-    // Device binding for security - See DEVICE_BINDING.md for full security model
+    // Device binding for security - See docs/security/DEVICE_BINDING.md for full security model
     DeviceID              string `json:"device_id"`                // Primary: UUID from cookie (hard requirement)
     DeviceFingerprintHash string `json:"device_fingerprint_hash"` // Secondary: SHA-256(browser|os|platform) - no IP
     DeviceDisplayName     string `json:"device_display_name,omitempty"` // UI display: "Chrome on macOS"
@@ -461,7 +461,7 @@ type Session struct {
 **Design Notes:**
 
 - No authorization code or refresh token fields (separated below)
-- Device binding uses layered security model (see [DEVICE_BINDING.md](../DEVICE_BINDING.md)):
+- Device binding uses layered security model (see [DEVICE_BINDING.md](../security/DEVICE_BINDING.md)):
   - `DeviceID`: UUID from httpOnly cookie (primary binding)
   - `DeviceFingerprintHash`: SHA-256(browser|os|platform) - **no IP** (soft signal)
   - Display metadata for UI only, no raw PII stored
@@ -528,7 +528,7 @@ type RefreshToken struct {
 
 #### Device Binding
 
-**See [DEVICE_BINDING.md](../DEVICE_BINDING.md) for complete implementation details.**
+**See [DEVICE_BINDING.md](../security/DEVICE_BINDING.md) for complete implementation details.**
 
 The device binding implementation uses a layered security model:
 
@@ -543,7 +543,7 @@ The device binding implementation uses a layered security model:
 - Security-focused: Device ID prevents token theft, fingerprint detects browser updates
 - Graceful degradation: Works with legacy sessions
 
-Refer to [DEVICE_BINDING.md](../DEVICE_BINDING.md) for:
+Refer to [DEVICE_BINDING.md](../security/DEVICE_BINDING.md) for:
 
 - Security rationale (why IP binding fails in production)
 - Complete code implementation
@@ -768,7 +768,7 @@ func (s *CleanupService) performCleanup(ctx context.Context) {
    - `AuthorizationCode` (ephemeral 10-min codes)
    - `RefreshToken` (30-day renewal tokens)
 
-2. **Implement device binding** per [DEVICE_BINDING.md](../DEVICE_BINDING.md):
+2. **Implement device binding** per [DEVICE_BINDING.md](../security/DEVICE_BINDING.md):
 
    - Device service with device ID generation
    - Browser fingerprint computation (UA components, no IP)
@@ -810,13 +810,13 @@ func (s *CleanupService) performCleanup(ctx context.Context) {
 
    - Issue `RefreshToken` alongside access tokens
    - Store refresh token with 30-day expiry
-   - Generate device ID and set cookie (per [DEVICE_BINDING.md](../DEVICE_BINDING.md))
+   - Generate device ID and set cookie (per [DEVICE_BINDING.md](../security/DEVICE_BINDING.md))
    - Compute and store browser fingerprint
 
 2. **Implement refresh grant type** (`grant_type=refresh_token`):
 
    - Validate refresh token from `RefreshTokenStore`
-   - Validate device binding (per [DEVICE_BINDING.md](../DEVICE_BINDING.md))
+   - Validate device binding (per [DEVICE_BINDING.md](../security/DEVICE_BINDING.md))
    - Implement token rotation (mark old token used, create new one)
    - Generate new access token with same session
 
@@ -959,7 +959,7 @@ func (s *CleanupService) performCleanup(ctx context.Context) {
 
 ### Device Binding
 
-See [DEVICE_BINDING.md](../DEVICE_BINDING.md) for complete security model and implementation.
+See [DEVICE_BINDING.md](../security/DEVICE_BINDING.md) for complete security model and implementation.
 
 **Summary:**
 
@@ -973,7 +973,7 @@ See [DEVICE_BINDING.md](../DEVICE_BINDING.md) for complete security model and im
 - Configurable per user or globally
 - Oldest session auto-revoked when limit exceeded
 
-Related Future Requirements: See [docs/requirements-wishlist.md](docs/requirements-wishlist.md) for the evolving specification and policy options (evict-oldest vs deny-new), audit and metrics.
+Related Future Requirements: See [requirements-wishlist.md](../overview/requirements-wishlist.md) for the evolving specification and policy options (evict-oldest vs deny-new), audit and metrics.
 
 ---
 

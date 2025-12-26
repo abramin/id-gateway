@@ -14,88 +14,11 @@ Credo is a modular identity and evidence platform built for:
 - interchangeable infrastructure
 - testability by default
 
----
-
-Yes. The **Testing conventions section needs to be revised** to align with `testing.md` and the updated `AGENTS.md`. Right now it still assumes a classic unit-first posture.
-
-Below is a **surgical rewrite of only the “Testing conventions” section**. Everything else in `conventions.md` can remain unchanged.
-
-I’ll present this as a **drop-in replacement**.
-
----
-
 ## Testing conventions
 
-### Feature-driven integration testing (primary)
-
-* Gherkin feature files define **published behavior and contracts**.
-* Cucumber tests that execute real components are considered **integration tests**.
-* Feature scenarios should map directly to executable tests.
-* Prefer fewer, stable, high-signal scenarios.
-
-Guidelines:
-
-* Assert externally observable behavior only.
-* Do not assert internal state, struct fields, or call ordering.
-* Treat feature tests as the primary source of confidence.
-
----
-
-### Non-Cucumber integration testing (secondary)
-
-Used only when behavior:
-
-* cannot be expressed clearly in Gherkin, or
-* involves concurrency, retries, shutdown, timing, or partial failure.
-
-Guidelines:
-
-* Each test must justify why it is not a feature scenario.
-* Avoid duplicating feature-driven coverage.
-* Focus on system boundaries and orchestration risks.
-
----
-
-### Unit testing (tertiary, exceptional)
-
-Unit tests are **not required for all service logic**.
-
-Allowed use cases:
-
-* Enforcing invariants.
-* Edge cases unreachable via integration tests.
-* Error mapping and propagation across boundaries.
-* Pure functions with meaningful logic.
-
-Guidelines:
-
-* Prefer simple fakes over mocks where possible.
-* Use mocks only to induce failure modes or assert error propagation.
-* Avoid asserting internal state, orchestration, or implementation detail.
-* If a unit test mirrors a feature or integration test, it should be flagged for review.
-
-Every unit test should answer:
-
-> “What invariant or failure mode would escape detection if this test did not exist?”
-
----
-
-### Tooling and style
-
-* Use `testify/assert` and `require`.
-* Prefer Given / When / Then structure for readability.
-* Table tests are appropriate for pure validation logic.
-* Mocks live under `internal/<module>/mocks` when required.
-
----
-
-### Duplication policy
-
-* No behavior should be tested at multiple layers without explicit justification.
-* Feature-driven tests take precedence.
-* Lower-level tests that duplicate feature coverage are candidates for consolidation, not automatic deletion.
-
----
+Testing guidance lives in `docs/engineering/testing.md` and is the source of truth for
+layering, contracts, and duplication policy. This document only notes local conventions
+not covered there.
 
 ## Service construction
 
@@ -219,5 +142,5 @@ if errors.As(err, &de) {
 
 ## References
 
-- `docs/architecture.md`
+- `docs/engineering/architecture.md`
 - `prd/` directory for feature requirements

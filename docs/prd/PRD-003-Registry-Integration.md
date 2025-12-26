@@ -1074,7 +1074,7 @@ curl -X POST http://localhost:8080/registry/citizen \
 
 - [GDPR Article 5: Principles relating to processing](https://gdpr-info.eu/art-5-gdpr/)
 - Tutorial: `docs/TUTORIAL.md` Section 3
-- Architecture: `docs/architecture.md`
+- Architecture: `../engineering/architecture.md`
 - Existing Implementation: `internal/evidence/registry/`
 
 ---

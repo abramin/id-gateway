@@ -22,7 +22,7 @@ _Modular identity and evidence platform covering auth, consent, registry evidenc
 ## Docs
 
 - [Product requirements](docs/prd/README.md)
-- [Architecture](docs/architecture.md)
+- [Architecture](docs/engineering/architecture.md)
 - [OpenAPI](https://abramin.github.io/Credo/openapi)
 - [Frontend demos](frontend/README.md)
 

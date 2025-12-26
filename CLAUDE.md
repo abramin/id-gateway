@@ -164,6 +164,6 @@ See `AGENTS.md` for the decision tree on when to use which agent, shared non-neg
 ## Key Files
 
 - `AGENTS.md`: Review agent definitions and conflict resolution
-- `docs/architecture.md`: Full architecture documentation
-- `docs/conventions.md`: Engineering conventions
+- `docs/engineering/architecture.md`: Full architecture documentation
+- `docs/engineering/conventions.md`: Engineering conventions
 - `docs/prd/`: Product requirements by feature

@@ -226,4 +226,4 @@ go test ./internal/tenant/...
 ## References
 
 - PRD: [PRD-026-Multi-Tenancy.md](../../docs/prd/PRD-026-Multi-Tenancy.md)
-- Architecture: [docs/architecture.md](../../docs/architecture.md)
+- Architecture: [docs/engineering/architecture.md](../../docs/engineering/architecture.md)

@@ -214,4 +214,4 @@ lsof -i :8082
 
 - [PRD-003: Registry Integration](docs/prd/PRD-003-Registry-Integration.md)
 - [Mock Services README](mocks/README.md)
-- [Architecture Documentation](docs/architecture.md)
+- [Architecture Documentation](../docs/engineering/architecture.md)

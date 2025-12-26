@@ -1223,7 +1223,7 @@ curl -X POST http://localhost:8080/registry/citizen \
 - [GDPR Article 7: Conditions for consent](https://gdpr-info.eu/art-7-gdpr/)
 - [GDPR Recital 32: Conditions for consent](https://gdpr-info.eu/recitals/no-32/)
 - Tutorial: `docs/TUTORIAL.md` Section 2
-- Architecture: `docs/architecture.md`
+- Architecture: `../engineering/architecture.md`
 - Implementation: `internal/consent/service/service.go`
 - Models: `internal/consent/models/models.go`
 - Tests: `internal/consent/service/service_test.go`, `internal/consent/integration_test.go`

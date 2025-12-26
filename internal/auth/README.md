@@ -208,5 +208,5 @@ Services translate these to domain errors at their boundary.
 
 ## References
 
-- Device Binding: See `DEVICE_BINDING.md` for the full security model
-- Architecture: [docs/architecture.md](../../docs/architecture.md)
+- Device Binding: See `../../docs/security/DEVICE_BINDING.md` for the full security model
+- Architecture: [docs/engineering/architecture.md](../../docs/engineering/architecture.md)

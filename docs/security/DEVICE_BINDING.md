@@ -2,17 +2,19 @@
 
 ## Overview
 
-Device binding enhances session security by establishing a cryptographic link between sessions and physical devices. This document outlines the **privacy-first, production-ready** implementation used in Credo's authentication system.
+Device binding enhances session security by establishing a durable link between sessions and devices. This document outlines the **privacy-first, phased** implementation used in Credo's authentication system.
+
+**Status:** Current implementation is a soft launch (attach + log). Enforcement and IP/ASN risk scoring are planned but not active.
 
 ## Security Model
 
 Device binding uses **layered security signals** instead of a single brittle identifier:
 
-### 1. Primary Binding: Device ID Cookie (Hard Requirement)
+### 1. Primary Signal: Device ID Cookie (Soft Enforcement Today)
 
 **What:** Server-generated UUID stored in httpOnly cookie
 **Lifetime:** 1 year
-**Purpose:** Stable device identity that survives IP changes, VPN switches, and network roaming
+**Purpose:** Stable device identity that survives IP changes, VPN switches, and network roaming. Enforcement is planned; current code attaches and logs only.
 
 **Why this works:**
 - ✅ **Stable:** Persists across IP changes, VPN switches, mobile roaming, CGNAT
@@ -51,9 +53,9 @@ Path:     /
 - Mismatch → Log warning, update fingerprint, **continue session**
 - Don't deny access - browser/OS updates are normal user behavior
 
-### 3. Tertiary Signal: IP Change Risk Scoring (Contextual Only)
+### 3. Tertiary Signal: IP Change Risk Scoring (Planned)
 
-**What:** IP address and ASN tracked for anomaly detection
+**What:** IP address and ASN tracked for anomaly detection (planned)
 **Purpose:** Contextual risk scoring, **not device identification**
 
 **Risk levels:**
@@ -61,7 +63,7 @@ Path:     /
 - **Medium:** Different ASN, same country/region
 - **High:** Different country (trigger step-up MFA in future)
 
-**Critical:** IP changes are **logged and scored**, never **denied outright**.
+**Critical:** IP changes are intended to be **logged and scored**, never **denied outright**.
 
 ---
 
@@ -159,8 +161,6 @@ Attacker uses same Chrome version from same corporate proxy
 ├─────────────────────────────────────────────────────────────┤
 │ • DeviceID: "abc-123-def-456"                              │
 │ • DeviceFingerprintHash: "sha256(...)"                      │
-│ • LastIP: "203.0.113.45" (not serialized)                  │
-│ • LastASN: "AS15169" (not serialized)                      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -169,10 +169,12 @@ Attacker uses same Chrome version from same corporate proxy
 ```go
 // filepath: internal/auth/models/models.go
 type Session struct {
-    ID     uuid.UUID `json:"id"`
-    UserID uuid.UUID `json:"user_id"`
+    ID       id.SessionID `json:"id"`
+    UserID   id.UserID    `json:"user_id"`
+    ClientID id.ClientID  `json:"client_id"`
+    TenantID id.TenantID  `json:"tenant_id"`
 
-    // Primary device binding (hard requirement)
+    // Primary device binding (soft enforcement today)
     DeviceID string `json:"device_id"` // UUID from cookie
 
     // Secondary fingerprint (soft signal)
@@ -182,10 +184,7 @@ type Session struct {
     DeviceDisplayName   string `json:"device_display_name,omitempty"`  // "Chrome on macOS"
     ApproximateLocation string `json:"approximate_location,omitempty"` // "San Francisco, US"
 
-    // Risk scoring (not serialized to JSON, ephemeral)
-    LastIP       string    `json:"-"` // For IP change detection
-    LastASN      string    `json:"-"` // For ISP change detection
-    LastSeenAt   time.Time `json:"last_seen_at"`
+    LastSeenAt time.Time `json:"last_seen_at"`
 
     // Session lifecycle
     Status    string    `json:"status"`     // "active", "revoked", "pending_consent"
@@ -205,13 +204,11 @@ type Session struct {
 | `DeviceID` | ✅ Database | ✅ JSON | Session binding |
 | `DeviceFingerprintHash` | ✅ Database | ✅ JSON | Browser update detection |
 | `DeviceDisplayName` | ✅ Database | ✅ JSON | UI display only |
-| `LastIP` | ✅ Memory only | ❌ Not serialized | Ephemeral risk scoring |
-| `LastASN` | ✅ Memory only | ❌ Not serialized | Ephemeral risk scoring |
 
-**Why IP is not serialized:**
+**Why IP is not stored yet:**
 - Privacy: IP is PII under GDPR
 - Volatility: Changes too frequently to be useful in storage
-- Purpose: Only needed for real-time risk scoring
+- Purpose: Only needed for real-time risk scoring (planned)
 
 ### Audit Logging
 
@@ -220,7 +217,7 @@ type Session struct {
 - `user_id` (non-PII identifier)
 - `device_id_mismatch` events
 - `fingerprint_drift` events
-- `ip_change_detected` with risk level
+- `ip_change_detected` with risk level (planned)
 
 **DO NOT log:**
 - Raw IP addresses in audit logs (use hashed or redacted)

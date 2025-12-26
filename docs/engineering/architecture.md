@@ -4,6 +4,12 @@ This document describes the architecture of the Identity Verification Gateway: a
 
 The runtime is a single process (modular monolith), but internal packages are structured along clear service boundaries so that it could be split into microservices later.
 
+## Status
+
+This document covers both current architecture and planned migrations. Sections labeled
+"Planned" describe future work (gRPC, microservices, Phase 7 services). Current state
+uses in-process adapters for service-to-service calls and HTTP/JSON for external APIs.
+
 ## Table of Contents
 
 - [High Level Architecture](#high-level-architecture)
@@ -144,14 +150,20 @@ Credo follows **hexagonal architecture** (also known as ports-and-adapters) to k
 - Auth: Bearer tokens (JWT)
 - Location: `internal/transport/http/`
 
-**Internal API (gRPC/Protobuf):**
+**Internal API (Current):**
+
+- Service → Service (within the monolith)
+- Protocol: in-process adapters implementing port interfaces
+- Location: `internal/*/ports/`, `internal/*/adapters/`
+
+**Internal API (Planned gRPC/Protobuf):**
 
 - Service → Service (within monolith)
 - Protocol: gRPC over HTTP/2, Protobuf
 - Auth: Mutual TLS (future), metadata propagation
 - Location: `api/proto/`, `internal/*/adapters/grpc/`
 
-### Why gRPC for Interservice Communication?
+### Why gRPC for Interservice Communication? (Planned)
 
 1. **Type Safety**: Protobuf contracts prevent breaking changes
 2. **Performance**: Binary serialization, HTTP/2 multiplexing
@@ -159,7 +171,7 @@ Credo follows **hexagonal architecture** (also known as ports-and-adapters) to k
 4. **Observability**: Built-in tracing, deadlines, metadata propagation
 5. **Resilience**: Connection pooling, load balancing, circuit breakers
 
-### Interservice Flow Example
+### Interservice Flow Example (Planned gRPC)
 
 **Registry Service calls Consent Service:**
 
@@ -199,6 +211,8 @@ registryService := registry.NewService(
 - Can swap gRPC for HTTP or in-process calls without changing service code
 
 ### Protobuf Contracts
+
+These definitions exist for the planned gRPC migration and are not used at runtime yet.
 
 Protobuf definitions live in `api/proto/`:
 
@@ -283,168 +297,82 @@ The hexagonal architecture enables zero-downtime migration:
 
 ```text
 api/
-  proto/                        # Protobuf API definitions
-    common.proto                # Shared types (RequestMetadata, Error, HealthCheck)
-    consent.proto               # Consent service gRPC API
-    registry.proto              # Registry service gRPC API
-    auth.proto                  # Auth service gRPC API
-    common/commonpb/            # Generated Go code
-    consent/consentpb/          # Generated Go code
-    registry/registrypb/        # Generated Go code
-    auth/authpb/                # Generated Go code
+  proto/                        # Protobuf definitions (planned gRPC)
+
+cmd/
+  server/                       # Main application entrypoint
 
 contracts/
   registry/                     # PII-light DTO contracts, versioned separately
 
 internal/
   platform/
-    config/                     # configuration loading
-    logger/                     # structured logging with slog
-    httpserver/                 # shared HTTP server setup
+    config/                     # Configuration loading
+    logger/                     # Structured logging with slog
+    httpserver/                 # Shared HTTP server setup
     middleware/                 # HTTP middleware (recovery, logging, request ID, latency, JWT auth, device, admin)
     metrics/                    # Prometheus metrics collection
   jwt_token/
     jwt.go                      # JWT generation and validation with HS256
     jwt_adapter.go              # Adapter for middleware interface
   auth/
+    adapters/                   # In-process adapters
+    device/                     # Device binding helpers
+    email/                      # Email helpers
     handler/                    # HTTP handlers for auth endpoints
-    service/
-      service.go                # Users, sessions, tokens (domain logic)
-      authorize.go              # Authorization code flow
-      token.go                  # Token issuance and refresh
-      revocation.go             # Token revocation
-    device/                     # Device binding service (PRD-001)
-      service.go                # Device fingerprint verification
-    workers/
-      cleanup/                  # Background cleanup workers
-    store/
-      authorization-code/       # Authorization code store
-      refresh-token/            # Refresh token store
-      session/                  # Session storage
-      user/                     # User storage
-      revocation/               # Token revocation list (TRL)
-    models/
-      models.go                 # Domain models
+    ports/                      # Port interfaces
+    service/                    # Domain logic
+    store/                      # Persistence layer
+    models/                     # Domain models
+    workers/                    # Background cleanup workers
   consent/
     handler/                    # HTTP handlers for consent endpoints
-    service/
-      service.go                # Grant, revoke, RequireConsent (domain logic)
-    adapters/
-      grpc/                     # gRPC server adapter
-    store/
-      store.go                  # ConsentStore (port)
-    models/
-      models.go                 # Domain models
-  ratelimit/                    # Rate limiting module (PRD-017)
-    handler/                    # Admin endpoints for allowlist/reset
-    middleware/                 # HTTP middleware for rate limit enforcement
-    service/                    # Business logic and orchestration
-    models/                     # Rate limit models and responses
-    store/
-      bucket/                   # Rate limit counters (sliding window)
-      allowlist/                # IP/User allowlist entries
-  tenant/                       # Multi-tenancy module (PRD-026A)
-    handler/                    # HTTP handlers for tenant management
-    service/                    # Tenant and client orchestration
-    models/                     # Tenant/Client domain models
-    store/                      # In-memory tenant storage
-  admin/                        # Administrative operations (PRD-001B)
-    handler.go                  # HTTP handlers for admin endpoints
-    service.go                  # Admin business logic (user deletion, session management)
+    service/                    # Consent domain logic
+    store/                      # Consent store (port + impl)
+    models/                     # Domain models
   registry/
-    ports/
-      consent.go                # ConsentPort interface (dependency on consent)
-    adapters/
-      consent_adapter.go        # In-process adapter implementing ConsentPort
-    service/
-      service.go                # Registry orchestration, caching, minimisation
-    clients/
-      citizen/citizen.go        # citizen registry mock
-      sanctions/sanctions.go    # sanctions registry mock
-    handler/handler.go          # optional HTTP adapter (demo)
-    models/models.go            # internal registry models
-    store/store_memory.go       # in-memory cache store (TTL via config)
+    ports/                      # Consent port
+    adapters/                   # In-process adapters
+    service/                    # Registry orchestration, caching, minimization
+    clients/                    # Registry mocks/providers
+    handler/                    # Optional HTTP adapter (demo)
+    models/                     # Registry models
+    store/                      # Registry cache store
   decision/
-    ports/
-      registry.go               # RegistryPort interface (dependency on registry)
-      consent.go                # ConsentPort interface (dependency on consent)
-    adapters/
-      registry_adapter.go       # In-process adapter implementing RegistryPort
-    service/
-      service.go                # Decision engine logic
-    integration_test.go
+    ports/                      # Registry/consent ports
+    adapters/                   # In-process adapters
+    service/                    # Decision engine
   evidence/
     registry/                   # Registry evidence subsystem
-      handler/                  # HTTP handlers
-      service/                  # Orchestration and business logic
-      providers/                # Data source integrations
-        citizen/                # Citizen registry provider
-        sanctions/              # Sanctions registry provider
-        adapters/               # HTTP adapters for external APIs
-      orchestrator/             # Evidence correlation and rule engine
-      cache/                    # Evidence caching layer
-      models/                   # Domain models
-      store/                    # In-memory evidence storage
-    vc/
-      service.go                # VCService
-      store.go                  # VCStore
-      store_memory.go
-      models.go
-  audit/
-    publisher.go                # queue or channel publisher
-    worker.go                   # background consumer
-    store.go                    # AuditStore
-    models.go
-  seeder/                       # Demo data population
-    seeder.go                   # Seeds users, sessions, tokens in demo mode
+    vc/                         # Verifiable credentials subsystem
+  ratelimit/                    # Rate limiting module
+    admin/                      # Admin operations
+    handler/                    # HTTP handlers
+    middleware/                 # Enforcement middleware
+    service/                    # Orchestration and policy
+    store/                      # Persistence
+  tenant/                       # Multi-tenancy module
+    handler/                    # HTTP handlers
+    service/                    # Tenant/client orchestration
+    models/                     # Domain models
+    store/                      # In-memory tenant storage
+  admin/                        # Administrative operations
   transport/
-    http/
-      router.go
-      handlers_auth.go          # Auth endpoint handlers
-      handlers_consent.go       # Consent endpoint handlers
-      handlers_evidence.go
-      handlers_decision.go
-      handlers_me.go
-      shared/                   # shared HTTP helpers
+    http/                       # HTTP routing and handlers
+  seeder/                       # Demo data population
 
-  # Phase 7: Differentiation Pack (Planned)
-  trust-score/                  # PRD-030: Portable Trust Score
-    handler/                    # HTTP handlers for trust score endpoints
-    service/                    # Score calculation, ZKP proofs, decay
-    models/                     # Trust score domain models
-    store/                      # Score storage and caching
-  compliance/                   # PRD-031: Compliance Templates
-    templates/                  # YAML template definitions (GDPR, CCPA, HIPAA, PCI-DSS, SOC2)
-    handler/                    # Admin endpoints for template management
-    service/                    # Template loader, merger, validator
-    models/                     # Compliance configuration models
-    store/                      # Tenant compliance state
-  analytics/                    # PRD-032: Privacy Analytics
-    handler/                    # Query endpoints with differential privacy
-    service/                    # Query execution, noise injection, budget tracking
-    models/                     # Query DSL, privacy budget models
-    store/                      # Query audit, touchpoint tracking
-  trust-network/                # PRD-033: Federated Trust Network
-    handler/                    # Vouch, proof, verification endpoints
-    service/                    # Vouch management, weight calculation, fraud detection
-    models/                     # Vouch, trust score, proof models
-    store/                      # Vouch storage, graph queries
-  consent-delegation/           # PRD-029: Consent-as-a-Service (extends consent/)
-    handler/                    # Delegation API endpoints
-    service/                    # Multi-tenant delegation, cross-service revocation
-    models/                     # Delegation, connected app models
-    store/                      # Delegation state
-
-cmd/
-  server/
-    main.go                     # wires everything together (DI container)
+pkg/
+  domain/                       # Typed IDs and domain primitives
+  domain-errors/                # Domain error codes
+  platform/
+    audit/                      # Audit publisher/store
 ```
 
 Rules of thumb:
 
 - `transport/http` depends on services only, not on storage details.
 - Services depend on their own stores and on other services through interfaces, not on handlers.
-- `audit` is a shared dependency all services can call to emit events.
+- `pkg/platform/audit` is a shared dependency all services can call to emit events.
 - `platform` provides cross cutting concerns: config, logging, middleware, metrics, and HTTP server setup.
 
 ---
@@ -469,6 +397,8 @@ Rules of thumb:
 
 ### Scenario 3 - Data export and deletion for user rights
 
+- Status: Planned. `/me/data-export` and `/me` handlers are stubbed in current code.
+
 - Auth service identifies user.
 - Consent, evidence, decision, and audit services expose read methods via their stores to gather all data for the user.
 - Transport layer exposes `/me/data-export` and `/me` on top of these services.
@@ -490,25 +420,28 @@ Rules of thumb:
 
 ```go
 type User struct {
-    ID        uuid.UUID
+    ID        id.UserID
+    TenantID  id.TenantID
     Email     string
     FirstName string
     LastName  string
     Verified  bool
+    Status    UserStatus
 }
 
 type Session struct {
-    ID             uuid.UUID
-    UserID         uuid.UUID
-    Code           string    // OAuth 2.0 authorization code
-    CodeExpiresAt  time.Time // Authorization code expiry (10 minutes)
-    CodeUsed       bool      // Prevent authorization code replay attacks
-    ClientID       string    // OAuth client identifier
-    RedirectURI    string    // Stored for validation during token exchange
+    ID             id.SessionID
+    UserID         id.UserID
+    ClientID       id.ClientID
+    TenantID       id.TenantID
     RequestedScope []string
-    Status         string    // "pending_consent", "active", "expired"
+    Status         SessionStatus // "pending_consent", "active", "revoked"
+    DeviceID       string        // Cookie-bound device ID
+    DeviceFingerprintHash string // Secondary signal (hash)
     CreatedAt      time.Time
     ExpiresAt      time.Time
+    LastSeenAt     time.Time
+    RevokedAt      *time.Time
 }
 ```
 
@@ -636,9 +569,9 @@ This service uses the orchestrator to coordinate lookups across multiple provide
 
 The registry module implements a comprehensive provider abstraction layer:
 
-- **Provider Interface**: Universal contract enabling pluggable integration with any registry source (HTTP, SOAP, gRPC) without modifying service layer code
+- **Provider Interface**: Universal contract enabling pluggable integration with any registry source (HTTP today; SOAP/gRPC planned) without modifying service layer code
 
-- **Protocol Adapters**: Separate protocol concerns from business logic. HTTP adapter handles REST APIs, with SOAP and gRPC adapters available for different provider types
+- **Protocol Adapters**: Separate protocol concerns from business logic. HTTP adapter handles REST APIs; SOAP and gRPC adapters are planned for future providers
 
 - **Error Taxonomy**: Eight normalized error categories (timeout, bad_data, authentication, provider_outage, contract_mismatch, not_found, rate_limited, internal) with automatic retry semantics based on error type
 
@@ -660,7 +593,7 @@ This architecture enables:
 - Adding new registry providers without changing callers
 - Automatic failover to backup providers
 - Correlation of conflicting data from multiple sources
-- Protocol-agnostic integration (HTTP/SOAP/gRPC)
+- Protocol-agnostic integration (HTTP today; SOAP/gRPC planned)
 - Consistent error handling and retry policies
 - Provider health monitoring and circuit breaking
 
@@ -1167,6 +1100,8 @@ sequenceDiagram
 
 ### Data Export and Deletion
 
+Status: Planned. `/me/data-export` and `/me` are stubbed in current code.
+
 ```mermaid
 sequenceDiagram
     participant App as Client App
@@ -1518,10 +1453,10 @@ The codebase currently has:
 - ✅ **Production-ready auth:** OAuth 2.0 Authorization Code Flow fully implemented with comprehensive test coverage.
 - ✅ **Observability stack:** Context-aware structured logging, Prometheus metrics, request ID tracing, and HTTP middleware.
 - ✅ **HTTP middleware:** Recovery, logging, request ID, timeout, content-type validation, latency tracking, and rate limiting.
-- ✅ **Hexagonal architecture:** Port interfaces and gRPC adapters enable clean service boundaries and microservices migration.
+- ✅ **Hexagonal architecture:** Port interfaces and planned gRPC adapters enable clean service boundaries and microservices migration.
 - ✅ **Provider abstraction:** Universal provider interface with protocol adapters, orchestration layer, error taxonomy, and contract testing framework for registry integrations.
 - ✅ **Phase 0 complete:** Auth (PRD-001), Admin (PRD-001B), Consent (PRD-002), Token Lifecycle (PRD-016), Rate Limiting MVP (PRD-017), Tenant Management (PRD-026A, PRD-026B).
-- ⚠️ **HTTP layer partial:** Auth and Consent handlers complete. Evidence, Decision, and User Data Rights handlers return 501 (see PRDs in `docs/prd/`).
+- ⚠️ **HTTP layer partial:** Auth and Consent handlers complete. Evidence, Decision, and User Data Rights handlers return 501 (see PRDs in `../prd/`).
 - ⚠️ **Service layer migration:** Registry service needs migration to use orchestrator instead of direct client calls.
 
 ---

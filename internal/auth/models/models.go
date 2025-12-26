@@ -38,7 +38,7 @@ type Session struct {
 	LastRefreshedAt    *time.Time `json:"last_refreshed_at,omitempty"` // last refresh action timestamp
 	LastAccessTokenJTI string     `json:"-"`                           // latest issued access token JTI for revocation
 
-	// Device binding for security - See DEVICE_BINDING.md for full security model
+	// Device binding for security - See docs/security/DEVICE_BINDING.md for full security model
 	DeviceID              string `json:"device_id,omitempty"`               // Primary: UUID from cookie (hard requirement)
 	DeviceFingerprintHash string `json:"device_fingerprint_hash,omitempty"` // Secondary: SHA-256(browser|os|platform) - no IP
 
@@ -65,10 +65,14 @@ func (s *Session) IsRevoked() bool {
 	return s.Status == SessionStatusRevoked
 }
 
-func (s *Session) Activate() {
+// Activate transitions the session from pending_consent to active.
+// Returns true if the transition occurred, false if the session was already active or revoked.
+func (s *Session) Activate() bool {
 	if s.IsPendingConsent() {
 		s.Status = SessionStatusActive
+		return true
 	}
+	return false
 }
 
 // CanAdvance returns true if the session is in a state that allows token operations.

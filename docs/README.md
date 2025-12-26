@@ -1,44 +1,48 @@
 # Credo Documentation
 
-Quick navigation for all technical documentation.
+Quick navigation for core docs in this repo.
 
 ## Quick Links
 
-- **[Architecture](architecture.md)** - System design and service boundaries
+- **[Architecture](engineering/architecture.md)** - System design and service boundaries
 - **[API Reference](openapi/index.html)** - Interactive OpenAPI browser
+- **[Product Summary](overview/summary.md)** - High-level platform briefing
 
 ---
 
 ## Documentation Index
 
-### Core Design
+### Overview (Project & Product)
 
 | Document | Audience | Description |
 |----------|----------|-------------|
-| [Architecture](architecture.md) | Engineers | System design, data models, flows |
-| [DDD in Credo](ddd.md) | Engineers | DDD overview and module examples |
-| [Hexagonal Migration](GRPC_ARCHITECTURE_MIGRATION.md) | Engineers | Ports/adapters, future gRPC path |
+| [Summary](overview/summary.md) | All | High-level platform briefing |
+| [Strategy](overview/strategy.md) | Product | Strategic positioning and differentiation |
+| [Roadmap](overview/ROADMAP.md) | All | Delivery tracks and planned phases |
+| [Wishlist](overview/requirements-wishlist.md) | Product | Future backlog items |
 
-### Engineering Guidelines
+### Engineering
 
 | Document | Audience | Description |
 |----------|----------|-------------|
-| [Conventions](conventions.md) | Engineers | Code style, patterns, best practices |
-| [Testing](testing.md) | Engineers | Testing doctrine, layer definitions |
+| [Architecture](engineering/architecture.md) | Engineers | System design, data models, flows |
+| [DDD in Credo](engineering/ddd.md) | Engineers | DDD overview and module examples |
+| [Conventions](engineering/conventions.md) | Engineers | Code style, patterns, best practices |
+| [Testing](engineering/testing.md) | Engineers | Testing doctrine, layer definitions |
 
 ### Security
 
 | Document | Audience | Description |
 |----------|----------|-------------|
-| [Device Binding](DEVICE_BINDING.md) | Engineers | Device ID, fingerprinting, risk scoring |
-| [Security Playbook](SECURITY_ASSURANCE_PLAYBOOK.md) | Security | Threat modeling, compliance |
+| [Device Binding](security/DEVICE_BINDING.md) | Engineers | Device ID, fingerprinting, rollout |
+| [Security Playbook](security/SECURITY_ASSURANCE_PLAYBOOK.md) | Security | Threat modeling, assurance workflow |
+| [Compliance Mapping](security/compliance.md) | Compliance | GDPR/CCPA target-state mapping |
 
-### Roadmap & Planning
+### Migrations (One-Time Guides)
 
 | Document | Audience | Description |
 |----------|----------|-------------|
-| [Roadmap](ROADMAP.md) | All | Production features, tracks, module bundles |
-| [Wishlist](requirements-wishlist.md) | Product | Future backlog items |
+| [Hexagonal Migration](migrations/GRPC_ARCHITECTURE_MIGRATION.md) | Engineers | Ports/adapters, future gRPC path |
 
 ### API Specifications
 
