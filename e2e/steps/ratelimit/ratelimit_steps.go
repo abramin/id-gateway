@@ -105,6 +105,10 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc TestContext) {
 	ctx.Step(`^I make (\d+) requests at second (\d+) of minute (\d+)$`, steps.makeNRequestsAtSecondOfMinute)
 	ctx.Step(`^only (\d+) of the second batch should succeed$`, steps.onlyNOfSecondBatchShouldSucceed)
 
+	// FR-1: Admin/Write endpoints rate limiting
+	ctx.Step(`^I make (\d+) admin requests to "([^"]*)" within (\d+) minute$`, steps.makeNAdminRequestsWithinMinute)
+	ctx.Step(`^I make the (\d+)(?:st|nd|rd|th) admin request to "([^"]*)"$`, steps.makeNthAdminRequest)
+
 	// FR-4: Allowlist
 	ctx.Step(`^I am authenticated as admin$`, steps.authenticatedAsAdmin)
 	ctx.Step(`^I add IP "([^"]*)" to the rate limit allowlist with reason "([^"]*)"$`, steps.addIPToAllowlistWithReason)
@@ -807,6 +811,27 @@ func (s *ratelimitSteps) onlyNOfSecondBatchShouldSucceed(ctx context.Context, n 
 }
 
 // =============================================================================
+// FR-1: Admin/Write Endpoints Rate Limiting (50 req/min)
+// =============================================================================
+
+func (s *ratelimitSteps) makeNAdminRequestsWithinMinute(ctx context.Context, count int, path string, minutes int) error {
+	s.requestResults = make([]int, 0, count)
+	for i := 0; i < count; i++ {
+		status, err := s.adminGET(path)
+		if err != nil {
+			return err
+		}
+		s.requestResults = append(s.requestResults, status)
+	}
+	return nil
+}
+
+func (s *ratelimitSteps) makeNthAdminRequest(ctx context.Context, n int, path string) error {
+	_, err := s.adminGET(path)
+	return err
+}
+
+// =============================================================================
 // FR-4: Allowlist
 // =============================================================================
 
@@ -1201,4 +1226,32 @@ func (s *ratelimitSteps) adminDELETE(path string, body interface{}) error {
 	defer resp.Body.Close()
 
 	return nil
+}
+
+func (s *ratelimitSteps) adminGET(path string) (int, error) {
+	baseURL := s.tc.GetBaseURL()
+	// Admin API is on port 8081
+	adminURL := baseURL[:len(baseURL)-4] + "8081"
+
+	req, err := http.NewRequestWithContext(context.Background(), "GET", adminURL+path, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("X-Admin-Token", s.tc.GetAdminToken())
+
+	// Add IP simulation if set
+	if s.currentIP != "" {
+		req.Header.Set("X-Forwarded-For", s.currentIP)
+	}
+
+	resp, err := s.tc.GetHTTPClient().Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	// Read body to ensure connection is properly closed
+	_, _ = io.ReadAll(resp.Body)
+
+	return resp.StatusCode, nil
 }

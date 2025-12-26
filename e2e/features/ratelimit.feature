@@ -44,6 +44,15 @@ Feature: Rate Limiting & Abuse Prevention
     When I make the 101st request to "/auth/userinfo"
     Then the response status should be 429
 
+  @ratelimit @ip @admin @simulation
+  Scenario: IP rate limit enforced on write endpoints (50 req/min)
+    Given I am authenticated as admin
+    And I am making requests from IP "192.168.1.54"
+    When I make 50 admin requests to "/admin/users" within 1 minute
+    Then all 50 requests should succeed
+    When I make the 51st admin request to "/admin/users"
+    Then the response status should be 429
+
   @ratelimit @ip @simulation
   Scenario: Rate limit resets after window expires
     Given I am making requests from IP "192.168.1.53"
