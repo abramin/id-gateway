@@ -44,6 +44,8 @@ Make Credo easier to read, review, and change by reducing cognitive complexity a
 - Are names intent-revealing (domain terms), not implementation-revealing?
 - Are there 2+ responsibilities in one function (validation + orchestration + persistence + mapping)?
 - Are error paths uniform and non-leaky?
+- To understand this function, do I need to open 3+ other files?
+- Does this function call out to another package and then re-enter this package in the same flow? If yes, it’s a hotspot even if cyclo is low.
 
 **Cognitive complexity**
 

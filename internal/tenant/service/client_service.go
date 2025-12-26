@@ -12,6 +12,7 @@ import (
 	"credo/internal/tenant/secrets"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
+	"credo/pkg/platform/middleware/requesttime"
 )
 
 // ClientService orchestrates client registration and lifecycle management.
@@ -64,7 +65,7 @@ func (s *ClientService) CreateClient(ctx context.Context, cmd *CreateClientComma
 		cmd.RedirectURIs,
 		grantTypesToStrings(cmd.AllowedGrants),
 		cmd.AllowedScopes,
-		time.Now(),
+		requesttime.Now(ctx),
 	)
 	if err != nil {
 		return nil, "", err
@@ -150,7 +151,7 @@ func (s *ClientService) DeactivateClient(ctx context.Context, clientID id.Client
 		return nil, wrapClientErr(err, "failed to get client")
 	}
 
-	if err := client.Deactivate(time.Now()); err != nil {
+	if err := client.Deactivate(requesttime.Now(ctx)); err != nil {
 		if dErrors.HasCode(err, dErrors.CodeInvariantViolation) {
 			return nil, dErrors.New(dErrors.CodeConflict, "client is already inactive")
 		}
@@ -179,7 +180,7 @@ func (s *ClientService) ReactivateClient(ctx context.Context, clientID id.Client
 		return nil, wrapClientErr(err, "failed to get client")
 	}
 
-	if err := client.Reactivate(time.Now()); err != nil {
+	if err := client.Reactivate(requesttime.Now(ctx)); err != nil {
 		if dErrors.HasCode(err, dErrors.CodeInvariantViolation) {
 			return nil, dErrors.New(dErrors.CodeConflict, "client is already active")
 		}
@@ -227,6 +228,7 @@ func (s *ClientService) RotateClientSecretForTenant(ctx context.Context, tenantI
 }
 
 // ResolveClient maps client_id -> client and tenant as a single choke point.
+// If the client or tenant is inactive, returns an invalid_client error.
 func (s *ClientService) ResolveClient(ctx context.Context, clientID string) (*models.Client, *models.Tenant, error) {
 	start := time.Now()
 	defer s.observeResolveClient(start)
@@ -266,7 +268,7 @@ func (s *ClientService) rotateSecret(ctx context.Context, client *models.Client)
 	}
 
 	client.ClientSecretHash = hash
-	client.UpdatedAt = time.Now()
+	client.UpdatedAt = requesttime.Now(ctx)
 
 	if err := s.clients.Update(ctx, client); err != nil {
 		return nil, "", dErrors.Wrap(err, dErrors.CodeInternal, "failed to update client")
@@ -300,7 +302,7 @@ func (s *ClientService) applyClientUpdate(ctx context.Context, client *models.Cl
 
 	applyFieldUpdates(client, cmd)
 
-	client.UpdatedAt = time.Now()
+	client.UpdatedAt = requesttime.Now(ctx)
 	if err := s.clients.Update(ctx, client); err != nil {
 		return nil, "", dErrors.Wrap(err, dErrors.CodeInternal, "failed to update client")
 	}

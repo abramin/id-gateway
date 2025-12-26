@@ -29,12 +29,11 @@ Feature: OAuth2 Security - Client and Tenant Validation
     And log "MITIGATION: Implement PKCE (code_challenge/code_verifier)"
     And log "STATUS: Not yet implemented"
 
-    @security @simulation
-  Scenario: Redirect URI validation not enforced
-    Given redirect URI validation prevents token theft
-    Then log "SIMULATION: Redirect URI manipulation vulnerability"
-    And log "MITIGATION: Implement strict redirect_uri allowlist per client"
-    And log "STATUS: Not yet implemented"
+    @security @client-validation
+  Scenario: Redirect URI not in allowlist rejected
+    When I initiate authorization with email "redirect-uri-invalid@example.com" and scopes "openid" and redirect uri "http://evil.example.com/callback"
+    Then the response status should be 400
+    And the response field "error" should equal "bad_request"
 
     @security @simulation
   Scenario: State parameter is optional
@@ -66,15 +65,14 @@ Feature: OAuth2 Security - Client and Tenant Validation
     And log "TODO: Enforce PKCE when implemented"
 
     # ============================================================
-    # Tenant/Client Validation (E2E blocked on admin APIs)
+    # Tenant/Client Validation (some blocked on admin APIs)
     # ============================================================
 
-    @security @simulation
-  Scenario: Scope validation enforcement
-    Given scope enforcement is enabled
-    Then log "PRD-026A FR-7: Requested scopes must be subset of client.AllowedScopes"
-    And log "BEHAVIOR: Requests with disallowed scopes return bad_request"
-    And log "E2E: Requires admin API to configure client AllowedScopes"
+    @security @client-validation
+  Scenario: Requested scopes outside client allowlist rejected
+    When I initiate authorization with email "scope-invalid@example.com" and scopes "openid,admin"
+    Then the response status should be 400
+    And the response field "error" should equal "bad_request"
 
     @security @simulation
   Scenario: Tenant status validation

@@ -92,7 +92,8 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 
 	// Check auth rate limit using email + IP composite key
 	// Rate limit before validation to count all attempts
-	if !h.checkRateLimit(ctx, w, requestID, req.Email, clientIP, "authorize") {
+	if rl := h.checkRateLimit(ctx, requestID, req.Email, clientIP, "authorize"); !rl.Allowed {
+		h.writeRateLimitError(w, rl.RetryAfter)
 		return
 	}
 
@@ -148,8 +149,11 @@ func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 
 	// Check token rate limit using client_id + IP composite key
 	// Rate limit before validation to count all attempts
-	if req.ClientID != "" && !h.checkRateLimit(ctx, w, requestID, req.ClientID, clientIP, "token") {
-		return
+	if req.ClientID != "" {
+		if rl := h.checkRateLimit(ctx, requestID, req.ClientID, clientIP, "token"); !rl.Allowed {
+			h.writeRateLimitError(w, rl.RetryAfter)
+			return
+		}
 	}
 
 	// Normalize and validate after rate limit check
@@ -267,8 +271,8 @@ func (h *Handler) HandleRevokeSession(w http.ResponseWriter, r *http.Request) {
 // Query params: except_current=true (default) keeps current session active
 // Output: { "revoked_count": 3, "message": "..." }
 //
-// Design note: Partial revocation on error is intentional. If a session fails to revoke,
-// thebecause the user can retry, and each revocation is independently idempotent.
+// Design note: Partial revocation on error is intentional. The user can retry,
+// and each revocation is independently idempotent.
 func (h *Handler) HandleLogoutAll(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
@@ -315,10 +319,17 @@ func (h *Handler) HandleLogoutAll(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Returns true if allowed (including fail-open on errors), false if rate limited (response already written).
-func (h *Handler) checkRateLimit(ctx context.Context, w http.ResponseWriter, requestID string, key1 string, key2 string, endpoint string) bool {
+// rateLimitResult holds the outcome of a rate limit check.
+type rateLimitResult struct {
+	Allowed    bool
+	RetryAfter int
+}
+
+// checkRateLimit checks if a request is within rate limits.
+// Returns allowed=true on success or if rate limiter is unavailable (fail-open).
+func (h *Handler) checkRateLimit(ctx context.Context, requestID, key1, key2, endpoint string) rateLimitResult {
 	if h.ratelimit == nil {
-		return true
+		return rateLimitResult{Allowed: true}
 	}
 
 	result, err := h.ratelimit.CheckAuthRateLimit(ctx, key1, key2)
@@ -333,7 +344,7 @@ func (h *Handler) checkRateLimit(ctx context.Context, w http.ResponseWriter, req
 		}
 		// TODO: this will change when fail closed is implemented
 		// Fail open - don't block if rate limiter is unavailable
-		return true
+		return rateLimitResult{Allowed: true}
 	}
 
 	if !result.Allowed {
@@ -342,16 +353,19 @@ func (h *Handler) checkRateLimit(ctx context.Context, w http.ResponseWriter, req
 			"retry_after", result.RetryAfter,
 			"endpoint", endpoint,
 		)
-		w.Header().Set("Retry-After", strconv.Itoa(result.RetryAfter))
-		httputil.WriteJSON(w, http.StatusTooManyRequests, map[string]any{
-			"error":       "rate_limit_exceeded",
-			"message":     "Too many requests. Please try again later.",
-			"retry_after": result.RetryAfter,
-		})
-		return false
 	}
 
-	return true
+	return rateLimitResult{Allowed: result.Allowed, RetryAfter: result.RetryAfter}
+}
+
+// writeRateLimitError writes a 429 Too Many Requests response.
+func (h *Handler) writeRateLimitError(w http.ResponseWriter, retryAfter int) {
+	w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+	httputil.WriteJSON(w, http.StatusTooManyRequests, map[string]any{
+		"error":       "rate_limit_exceeded",
+		"message":     "Too many requests. Please try again later.",
+		"retry_after": retryAfter,
+	})
 }
 
 func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {

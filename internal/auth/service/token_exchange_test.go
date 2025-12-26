@@ -11,7 +11,6 @@ import (
 	dErrors "credo/pkg/domain-errors"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )
 
@@ -119,11 +118,11 @@ func (s *ServiceSuite) TestToken_Exchange() {
 				tt.modifyReq(&req)
 
 				result, err := s.service.Token(context.Background(), &req)
-				assert.Error(s.T(), err)
-				assert.Nil(s.T(), result)
-				assert.True(s.T(), dErrors.HasCode(err, tt.expectedCode))
+				s.Error(err)
+				s.Nil(result)
+				s.True(dErrors.HasCode(err, tt.expectedCode))
 				if tt.expectedMsg != "" {
-					assert.Contains(s.T(), err.Error(), tt.expectedMsg)
+					s.Contains(err.Error(), tt.expectedMsg)
 				}
 			})
 		}
@@ -137,9 +136,9 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(nil, errors.New("db error"))
 
 		result, err := s.service.Token(context.Background(), &req)
-		assert.Error(s.T(), err)
-		assert.Nil(s.T(), result)
-		assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeInternal))
+		s.Error(err)
+		s.Nil(result)
+		s.True(dErrors.HasCode(err, dErrors.CodeInternal))
 	})
 
 	s.T().Run("JWT generation errors", func(t *testing.T) {
@@ -196,10 +195,10 @@ func (s *ServiceSuite) TestToken_Exchange() {
 				tt.setupMocks(s.T())
 
 				result, err := s.service.Token(context.Background(), &req)
-				assert.Error(s.T(), err)
-				assert.Nil(s.T(), result)
-				assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeInternal))
-				assert.Contains(s.T(), err.Error(), tt.expectedErr)
+				s.Error(err)
+				s.Nil(result)
+				s.True(dErrors.HasCode(err, dErrors.CodeInternal))
+				s.Contains(err.Error(), tt.expectedErr)
 			})
 		}
 	})

@@ -7,13 +7,15 @@ import (
 	"github.com/google/uuid"
 
 	"credo/internal/auth/models"
-	sessionStore "credo/internal/auth/store/session"
-	userStore "credo/internal/auth/store/user"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
+	"credo/pkg/platform/sentinel"
 )
 
+// UserInfo retrieves user information based on the provided session ID.
+// It validates the session, checks its activity status, and fetches the associated user.
+// If successful, it returns a UserInfoResult containing user details.
 func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserInfoResult, error) {
 	if sessionID == "" {
 		s.authFailure(ctx, "missing_session_id", false)
@@ -30,18 +32,8 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 	}
 
 	session, err := s.sessions.FindByID(ctx, id.SessionID(parsedSessionID))
-	if errors.Is(err, sessionStore.ErrNotFound) {
-		s.authFailure(ctx, "session_not_found", false,
-			"session_id", parsedSessionID.String(),
-		)
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "session not found")
-	}
 	if err != nil {
-		s.authFailure(ctx, "session_lookup_failed", true,
-			"session_id", parsedSessionID.String(),
-			"error", err,
-		)
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to find session")
+		return nil, s.handleLookupError(ctx, err, "session", "session_id", parsedSessionID.String())
 	}
 
 	if !session.IsActive() {
@@ -53,20 +45,11 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 	}
 
 	user, err := s.users.FindByID(ctx, session.UserID)
-	if errors.Is(err, userStore.ErrNotFound) {
-		s.authFailure(ctx, "user_not_found", false,
-			"session_id", parsedSessionID.String(),
-			"user_id", session.UserID.String(),
-		)
-		return nil, dErrors.New(dErrors.CodeUnauthorized, "user not found")
-	}
 	if err != nil {
-		s.authFailure(ctx, "user_lookup_failed", true,
+		return nil, s.handleLookupError(ctx, err, "user",
 			"session_id", parsedSessionID.String(),
 			"user_id", session.UserID.String(),
-			"error", err,
 		)
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to find user")
 	}
 
 	userInfo := &models.UserInfoResult{
@@ -83,4 +66,13 @@ func (s *Service) UserInfo(ctx context.Context, sessionID string) (*models.UserI
 	)
 
 	return userInfo, nil
+}
+
+func (s *Service) handleLookupError(ctx context.Context, err error, entity string, attrs ...any) error {
+	if errors.Is(err, sentinel.ErrNotFound) {
+		s.authFailure(ctx, entity+"_not_found", false, attrs...)
+		return dErrors.New(dErrors.CodeUnauthorized, entity+" not found")
+	}
+	s.authFailure(ctx, entity+"_lookup_failed", true, append(attrs, "error", err)...)
+	return dErrors.Wrap(err, dErrors.CodeInternal, "failed to find "+entity)
 }

@@ -7,6 +7,7 @@ import (
 
 	"credo/internal/auth/models"
 	id "credo/pkg/domain"
+	"credo/pkg/platform/sentinel"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -42,7 +43,7 @@ func (s *InMemoryAuthorizationCodeStoreSuite) TestSave() {
 
 func (s *InMemoryAuthorizationCodeStoreSuite) TestFindNotFound() {
 	_, err := s.store.FindByCode(context.Background(), "non_existent_code")
-	assert.ErrorIs(s.T(), err, ErrNotFound)
+	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
 }
 
 func TestInMemoryAuthorizationCodeStoreSuite(t *testing.T) {
@@ -67,10 +68,10 @@ func (s *InMemoryAuthorizationCodeStoreSuite) TestConsumeAuthCode() {
 	assert.True(s.T(), consumed.Used)
 
 	_, err = s.store.ConsumeAuthCode(ctx, record.Code, record.RedirectURI, now)
-	assert.ErrorIs(s.T(), err, ErrAuthCodeUsed)
+	assert.ErrorIs(s.T(), err, sentinel.ErrAlreadyUsed)
 
 	_, err = s.store.ConsumeAuthCode(ctx, "missing", record.RedirectURI, now)
-	assert.ErrorIs(s.T(), err, ErrNotFound)
+	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
 }
 
 func (s *InMemoryAuthorizationCodeStoreSuite) TestConsumeAuthCodeRejectsInvalid() {
@@ -87,7 +88,7 @@ func (s *InMemoryAuthorizationCodeStoreSuite) TestConsumeAuthCodeRejectsInvalid(
 	require.NoError(s.T(), s.store.Create(ctx, record))
 
 	_, err := s.store.ConsumeAuthCode(ctx, record.Code, record.RedirectURI, now)
-	assert.ErrorIs(s.T(), err, ErrAuthCodeExpired)
+	assert.ErrorIs(s.T(), err, sentinel.ErrExpired)
 
 	record2 := *record
 	record2.Code = "authz_redirect"

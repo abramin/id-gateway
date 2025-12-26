@@ -12,6 +12,7 @@ import (
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
 	request "credo/pkg/platform/middleware/request"
+	"credo/pkg/platform/middleware/requesttime"
 )
 
 type BucketStore interface {
@@ -82,7 +83,7 @@ func (s *Service) Check(ctx context.Context, clientID, endpoint string) (*models
 			Allowed:   true,
 			Limit:     0,
 			Remaining: 0,
-			ResetAt:   time.Now(),
+			ResetAt:   requesttime.Now(ctx),
 		}, nil
 	}
 

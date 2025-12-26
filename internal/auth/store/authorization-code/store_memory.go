@@ -10,20 +10,12 @@ import (
 	"credo/pkg/platform/sentinel"
 )
 
-// ErrNotFound is returned when a requested record is not found in the store.
-// Services should check for this error using errors.Is(err, store.ErrNotFound).
-var ErrNotFound = sentinel.ErrNotFound
-var ErrAuthCodeUsed = sentinel.ErrAlreadyUsed
-var ErrAuthCodeExpired = sentinel.ErrExpired
-
 // Error Contract:
 // All store methods follow this error pattern:
 // - Return ErrNotFound when the requested entity does not exist
 // - Return nil for successful operations
 // - Return wrapped errors with context for infrastructure failures (future: DB errors, network issues, etc.)
 //
-// In-memory stores keep the initial implementation lightweight and testable.
-// They intentionally favor clarity over performance.
 
 type InMemoryAuthorizationCodeStore struct {
 	mu        sync.RWMutex
@@ -49,7 +41,7 @@ func (s *InMemoryAuthorizationCodeStore) FindByCode(_ context.Context, code stri
 	if authCode, ok := s.authCodes[code]; ok {
 		return authCode, nil
 	}
-	return nil, fmt.Errorf("authorization code not found: %w", ErrNotFound)
+	return nil, fmt.Errorf("authorization code not found: %w", sentinel.ErrNotFound)
 }
 
 func (s *InMemoryAuthorizationCodeStore) MarkUsed(_ context.Context, code string) error {
@@ -59,25 +51,28 @@ func (s *InMemoryAuthorizationCodeStore) MarkUsed(_ context.Context, code string
 		record.Used = true
 		return nil
 	}
-	return fmt.Errorf("authorization code not found: %w", ErrNotFound)
+	return fmt.Errorf("authorization code not found: %w", sentinel.ErrNotFound)
 }
 
+// ConsumeAuthCode marks the authorization code as used if valid.
+// It checks for existence, redirect URI match, expiry, and usage status.
+// Returns the code record and an error if any validation fails.
 func (s *InMemoryAuthorizationCodeStore) ConsumeAuthCode(_ context.Context, code string, redirectURI string, now time.Time) (*models.AuthorizationCodeRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	record, ok := s.authCodes[code]
 	if !ok {
-		return nil, fmt.Errorf("authorization code not found: %w", ErrNotFound)
+		return nil, fmt.Errorf("authorization code not found: %w", sentinel.ErrNotFound)
 	}
 	if record.RedirectURI != redirectURI {
 		return record, fmt.Errorf("redirect_uri mismatch: %w", sentinel.ErrInvalidState)
 	}
 	if now.After(record.ExpiresAt) {
-		return record, fmt.Errorf("authorization code expired: %w", ErrAuthCodeExpired)
+		return record, fmt.Errorf("authorization code expired: %w", sentinel.ErrExpired)
 	}
 	if record.Used {
-		return record, fmt.Errorf("authorization code already used: %w", ErrAuthCodeUsed)
+		return record, fmt.Errorf("authorization code already used: %w", sentinel.ErrAlreadyUsed)
 	}
 
 	record.Used = true
@@ -97,63 +92,3 @@ func (s *InMemoryAuthorizationCodeStore) DeleteExpiredCodes(_ context.Context) (
 	}
 	return deletedCount, nil
 }
-
-// Token Cleanup Strategy
-
-// **1. Cleanup rules for MVP**
-
-// * One goroutine per store.
-// * One `time.Ticker`, coarse interval.
-// * Hold the lock once per sweep.
-// * Delete only on `ExpiresAt.Before(now)`.
-
-// No heap timers, no per-entry goroutines.
-
-// **2. Minimal pattern (in-memory store)**
-
-// High level structure:
-
-// * Store has:
-
-//   * `map[key]value`
-//   * `sync.RWMutex`
-//   * `stop chan struct{}`
-
-// * `StartCleanup()`:
-
-//   * `ticker := time.NewTicker(interval)`
-//   * `go func() { for { select { case <-ticker.C: sweep(); case <-stop: ticker.Stop(); return }}}`
-
-// * `sweep()`:
-
-//   * `now := time.Now()`
-//   * `Lock()`
-//   * `for k, v := range store { if v.ExpiresAt.Before(now) { delete(store, k) }}`
-//   * `Unlock()`
-
-// Call `StartCleanup()` when the app boots.
-// Call `Stop()` on shutdown.
-
-// **3. Interview-ready talking points**
-// If asked “why this design”:
-
-// * Coarse sweeper avoids timer explosion.
-// * Predictable CPU and memory.
-// * Easy to replace with DB TTL or Redis expiry later.
-// * Correct under concurrent access.
-
-// If asked “what about races”:
-
-// * Expiry is rechecked on read.
-// * Worst case: token lives slightly past expiry window.
-
-// **4. Per-store intervals**
-
-// * AuthorizationCodeStore: 30–60 seconds
-// * RefreshTokenStore: 1–5 minutes
-// * SessionStore: optional or longer
-
-// This mirrors real systems.
-
-// Before you implement:
-// Are you planning one shared base store type, or explicitly duplicating this logic per store for clarity in interviews?

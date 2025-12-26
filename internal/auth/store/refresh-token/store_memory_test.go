@@ -7,6 +7,7 @@ import (
 
 	"credo/internal/auth/models"
 	id "credo/pkg/domain"
+	"credo/pkg/platform/sentinel"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -43,7 +44,7 @@ func (s *InMemoryRefreshTokenStoreSuite) TestCreateAndFind() {
 
 func (s *InMemoryRefreshTokenStoreSuite) TestFindNotFound() {
 	_, err := s.store.FindBySessionID(context.Background(), id.SessionID(uuid.New()))
-	assert.ErrorIs(s.T(), err, ErrNotFound)
+	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
 }
 
 func (s *InMemoryRefreshTokenStoreSuite) TestDeleteSessionsByUser() {
@@ -59,14 +60,14 @@ func (s *InMemoryRefreshTokenStoreSuite) TestDeleteSessionsByUser() {
 	require.NoError(s.T(), err)
 
 	_, err = s.store.FindBySessionID(context.Background(), matching.SessionID)
-	assert.ErrorIs(s.T(), err, ErrNotFound)
+	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
 
 	fetchedOther, err := s.store.FindBySessionID(context.Background(), other.SessionID)
 	require.NoError(s.T(), err)
 	assert.Equal(s.T(), other, fetchedOther)
 
 	err = s.store.DeleteBySessionID(context.Background(), sessionID)
-	assert.ErrorIs(s.T(), err, ErrNotFound)
+	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
 }
 
 func (s *InMemoryRefreshTokenStoreSuite) TestConsumeMarksUsedAndTouches() {
@@ -92,7 +93,7 @@ func (s *InMemoryRefreshTokenStoreSuite) TestConsumeMarksUsedAndTouches() {
 	assert.Equal(s.T(), consumeAt, *consumed.LastRefreshedAt)
 
 	_, err = s.store.ConsumeRefreshToken(context.Background(), record.Token, consumeAt)
-	assert.ErrorIs(s.T(), err, ErrRefreshTokenUsed)
+	assert.ErrorIs(s.T(), err, sentinel.ErrAlreadyUsed)
 }
 
 func (s *InMemoryRefreshTokenStoreSuite) TestFindBySessionIDReturnsNewestActive() {
@@ -144,7 +145,7 @@ func (s *InMemoryRefreshTokenStoreSuite) TestConsumeRefreshTokenRejectsExpired()
 	require.NoError(s.T(), s.store.Create(context.Background(), record))
 
 	_, err := s.store.ConsumeRefreshToken(context.Background(), record.Token, now)
-	assert.ErrorIs(s.T(), err, ErrRefreshTokenExpired)
+	assert.ErrorIs(s.T(), err, sentinel.ErrExpired)
 }
 
 func TestInMemoryRefreshTokenStoreSuite(t *testing.T) {

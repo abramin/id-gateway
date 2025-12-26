@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"credo/internal/ratelimit/models"
 	id "credo/pkg/domain"
 	"credo/pkg/platform/audit"
 	request "credo/pkg/platform/middleware/request"
+	"credo/pkg/platform/middleware/requesttime"
 )
 
 type AllowlistStore interface {
@@ -78,7 +78,7 @@ func (s *Service) AddToAllowlist(ctx context.Context, req *models.AddAllowlistRe
 		return nil, fmt.Errorf("invalid add allowlist request: %w", err)
 	}
 
-	entry, err := models.NewAllowlistEntry(req.Type, req.Identifier, req.Reason, adminUserID, req.ExpiresAt, time.Now())
+	entry, err := models.NewAllowlistEntry(req.Type, req.Identifier, req.Reason, adminUserID, req.ExpiresAt, requesttime.Now(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create allowlist entry: %w", err)
 	}

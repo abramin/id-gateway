@@ -56,12 +56,12 @@ func (s *ServiceSuite) SetupTest() {
 		s.mockSessionStore,
 		s.mockCodeStore,
 		s.mockRefreshStore,
+		s.mockJWT,
+		s.mockClientResolver,
 		cfg,
 		WithLogger(logger),
-		WithJWTService(s.mockJWT),
 		WithAuditPublisher(s.mockAuditPublisher),
 		WithTRL(s.mockTRL),
-		WithClientResolver(s.mockClientResolver),
 	)
 }
 
