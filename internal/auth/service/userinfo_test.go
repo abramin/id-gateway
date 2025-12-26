@@ -6,10 +6,9 @@ import (
 	"testing"
 
 	"credo/internal/auth/models"
-	sessionStore "credo/internal/auth/store/session"
-	userStore "credo/internal/auth/store/user"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
+	"credo/pkg/platform/sentinel"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -35,7 +34,7 @@ func (s *ServiceSuite) TestUserInfo() {
 	}
 
 	s.T().Run("session lookup returns not found error", func(t *testing.T) {
-		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(nil, sessionStore.ErrNotFound)
+		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(nil, sentinel.ErrNotFound)
 
 		result, err := s.service.UserInfo(context.Background(), uuid.New().String())
 		assert.ErrorIs(s.T(), err, dErrors.New(dErrors.CodeUnauthorized, "session not found"))
@@ -47,7 +46,7 @@ func (s *ServiceSuite) TestUserInfo() {
 			UserID: existingUser.ID,
 			Status: models.SessionStatusActive,
 		}, nil)
-		s.mockUserStore.EXPECT().FindByID(gomock.Any(), existingUser.ID).Return(nil, userStore.ErrNotFound)
+		s.mockUserStore.EXPECT().FindByID(gomock.Any(), existingUser.ID).Return(nil, sentinel.ErrNotFound)
 
 		result, err := s.service.UserInfo(context.Background(), uuid.New().String())
 		assert.ErrorIs(s.T(), err, dErrors.New(dErrors.CodeUnauthorized, "user not found"))

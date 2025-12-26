@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"net/url"
 	"slices"
 	"strings"
@@ -8,7 +9,11 @@ import (
 	"credo/internal/auth/email"
 	dErrors "credo/pkg/domain-errors"
 	strutil "credo/pkg/platform/strings"
+	"credo/pkg/platform/validation"
 )
+
+// This file contains transport-layer request models and validation logic.
+// These types may include HTTP/JSON-specific fields or normalization rules.
 
 type AuthorizationRequest struct {
 	Email       string   `json:"email"`
@@ -18,6 +23,8 @@ type AuthorizationRequest struct {
 	State       string   `json:"state"`
 }
 
+// Trims and deduplicates fields in the authorization request.
+// Sets default scope if none provided.
 func (r *AuthorizationRequest) Normalize() {
 	if r == nil {
 		return
@@ -35,23 +42,32 @@ func (r *AuthorizationRequest) Normalize() {
 }
 
 // Validate validates the authorization request following strict validation order:
+// size -> required fields -> syntax -> semantics
 func (r *AuthorizationRequest) Validate() error {
 	if r == nil {
 		return dErrors.New(dErrors.CodeBadRequest, "request is required")
 	}
 
 	// Phase 1: Size validation (fail fast on oversized input)
-	if len(r.Email) > 255 {
-		return dErrors.New(dErrors.CodeValidation, "email must be 255 characters or less")
+	if len(r.Email) > validation.MaxEmailLength {
+		return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("email must be %d characters or less", validation.MaxEmailLength))
 	}
-	if len(r.ClientID) > 100 {
-		return dErrors.New(dErrors.CodeValidation, "client_id must be 100 characters or less")
+	if len(r.ClientID) > validation.MaxClientIDLength {
+		return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("client_id must be %d characters or less", validation.MaxClientIDLength))
 	}
-	if len(r.RedirectURI) > 2048 {
-		return dErrors.New(dErrors.CodeValidation, "redirect_uri must be 2048 characters or less")
+	if len(r.RedirectURI) > validation.MaxRedirectURILength {
+		return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("redirect_uri must be %d characters or less", validation.MaxRedirectURILength))
 	}
-	if len(r.State) > 500 {
-		return dErrors.New(dErrors.CodeValidation, "state must be 500 characters or less")
+	if len(r.State) > validation.MaxStateLength {
+		return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("state must be %d characters or less", validation.MaxStateLength))
+	}
+	if len(r.Scopes) > validation.MaxScopes {
+		return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("too many scopes: max %d allowed", validation.MaxScopes))
+	}
+	for _, scope := range r.Scopes {
+		if len(scope) > validation.MaxScopeLength {
+			return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("scope exceeds max length of %d", validation.MaxScopeLength))
+		}
 	}
 
 	// Phase 2: Required fields (presence checks)

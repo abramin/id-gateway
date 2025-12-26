@@ -10,18 +10,11 @@ import (
 	"credo/pkg/platform/sentinel"
 )
 
-// ErrNotFound is returned when a requested record is not found in the store.
-// Services should check for this error using errors.Is(err, store.ErrNotFound).
-var ErrNotFound = sentinel.ErrNotFound
-
 // Error Contract:
 // All store methods follow this error pattern:
 // - Return ErrNotFound when the requested entity does not exist
 // - Return nil for successful operations
 // - Return wrapped errors with context for infrastructure failures (future: DB errors, network issues, etc.)
-//
-// In-memory stores keep the initial implementation lightweight and testable.
-// They intentionally favor clarity over performance.
 type InMemoryUserStore struct {
 	mu    sync.RWMutex
 	users map[id.UserID]*models.User
@@ -48,7 +41,7 @@ func (s *InMemoryUserStore) FindByID(_ context.Context, userID id.UserID) (*mode
 	if user, ok := s.users[userID]; ok {
 		return user, nil
 	}
-	return nil, fmt.Errorf("user not found: %w", ErrNotFound)
+	return nil, fmt.Errorf("user not found: %w", sentinel.ErrNotFound)
 }
 
 func (s *InMemoryUserStore) FindByEmail(ctx context.Context, email string) (*models.User, error) {
@@ -59,7 +52,7 @@ func (s *InMemoryUserStore) FindByEmail(ctx context.Context, email string) (*mod
 			return user, nil
 		}
 	}
-	return nil, fmt.Errorf("user not found: %w", ErrNotFound)
+	return nil, fmt.Errorf("user not found: %w", sentinel.ErrNotFound)
 }
 
 // FindOrCreateByTenantAndEmail atomically finds a user by tenant and email or creates it if not found.
@@ -87,5 +80,5 @@ func (s *InMemoryUserStore) Delete(_ context.Context, userID id.UserID) error {
 		delete(s.users, userID)
 		return nil
 	}
-	return fmt.Errorf("user not found: %w", ErrNotFound)
+	return fmt.Errorf("user not found: %w", sentinel.ErrNotFound)
 }

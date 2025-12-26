@@ -89,6 +89,7 @@ The **Session** is the primary aggregate root, owning:
 
 **Constructor:** `NewAuthorizationCode()` enforces:
 - Code cannot be empty
+- Code is prefixed with `authz_`
 - RedirectURI cannot be empty
 - ExpiresAt must be after CreatedAt and in the future
 

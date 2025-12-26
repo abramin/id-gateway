@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"strings"
 
 	"credo/internal/tenant/models"
@@ -8,6 +9,7 @@ import (
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	strutil "credo/pkg/platform/strings"
+	"credo/pkg/platform/validation"
 )
 
 // HTTP Request DTOs - contain JSON tags for API serialization.
@@ -54,6 +56,44 @@ func (r *CreateClientRequest) Normalize() {
 	r.AllowedScopes = strutil.DedupeAndTrim(r.AllowedScopes)
 }
 
+// Validate validates the create client request following strict validation order.
+func (r *CreateClientRequest) Validate() error {
+	if r == nil {
+		return dErrors.New(dErrors.CodeBadRequest, "request is required")
+	}
+
+	// Phase 1: Size validation (fail fast on oversized input)
+	if len(r.RedirectURIs) > validation.MaxRedirectURIs {
+		return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("too many redirect URIs: max %d allowed", validation.MaxRedirectURIs))
+	}
+	if len(r.AllowedGrants) > validation.MaxGrants {
+		return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("too many grant types: max %d allowed", validation.MaxGrants))
+	}
+	if len(r.AllowedScopes) > validation.MaxScopes {
+		return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("too many scopes: max %d allowed", validation.MaxScopes))
+	}
+	for _, uri := range r.RedirectURIs {
+		if len(uri) > validation.MaxRedirectURILength {
+			return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("redirect URI exceeds max length of %d", validation.MaxRedirectURILength))
+		}
+	}
+	for _, scope := range r.AllowedScopes {
+		if len(scope) > validation.MaxScopeLength {
+			return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("scope exceeds max length of %d", validation.MaxScopeLength))
+		}
+	}
+
+	// Phase 2: Required fields
+	if r.Name == "" {
+		return dErrors.New(dErrors.CodeValidation, "name is required")
+	}
+	if len(r.RedirectURIs) == 0 {
+		return dErrors.New(dErrors.CodeValidation, "at least one redirect_uri is required")
+	}
+
+	return nil
+}
+
 // ToCommand converts the HTTP request to a service command.
 // Returns an error if the tenant ID is invalid.
 func (r *CreateClientRequest) ToCommand() (*service.CreateClientCommand, error) {
@@ -93,6 +133,40 @@ func (r *UpdateClientRequest) Normalize() {
 	r.RedirectURIs = strutil.DedupeAndTrimPtr(r.RedirectURIs)
 	r.AllowedGrants = strutil.DedupeAndTrimLowerPtr(r.AllowedGrants)
 	r.AllowedScopes = strutil.DedupeAndTrimPtr(r.AllowedScopes)
+}
+
+// Validate validates the update client request following strict validation order.
+func (r *UpdateClientRequest) Validate() error {
+	if r == nil {
+		return dErrors.New(dErrors.CodeBadRequest, "request is required")
+	}
+
+	// Phase 1: Size validation (fail fast on oversized input)
+	if r.RedirectURIs != nil && len(*r.RedirectURIs) > validation.MaxRedirectURIs {
+		return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("too many redirect URIs: max %d allowed", validation.MaxRedirectURIs))
+	}
+	if r.AllowedGrants != nil && len(*r.AllowedGrants) > validation.MaxGrants {
+		return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("too many grant types: max %d allowed", validation.MaxGrants))
+	}
+	if r.AllowedScopes != nil && len(*r.AllowedScopes) > validation.MaxScopes {
+		return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("too many scopes: max %d allowed", validation.MaxScopes))
+	}
+	if r.RedirectURIs != nil {
+		for _, uri := range *r.RedirectURIs {
+			if len(uri) > validation.MaxRedirectURILength {
+				return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("redirect URI exceeds max length of %d", validation.MaxRedirectURILength))
+			}
+		}
+	}
+	if r.AllowedScopes != nil {
+		for _, scope := range *r.AllowedScopes {
+			if len(scope) > validation.MaxScopeLength {
+				return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("scope exceeds max length of %d", validation.MaxScopeLength))
+			}
+		}
+	}
+
+	return nil
 }
 
 // ToCommand converts the HTTP request to a service command.

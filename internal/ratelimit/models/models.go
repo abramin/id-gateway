@@ -20,11 +20,13 @@ const (
 	ClassRead EndpointClass = "read"
 	// ClassWrite: Write operations (50 req/min) - general mutations
 	ClassWrite EndpointClass = "write"
+	// ClassAdmin: Admin server endpoints (10 req/min) - strict limit to prevent brute-force
+	ClassAdmin EndpointClass = "admin"
 )
 
 func (c EndpointClass) IsValid() bool {
 	switch c {
-	case ClassAuth, ClassSensitive, ClassRead, ClassWrite:
+	case ClassAuth, ClassSensitive, ClassRead, ClassWrite, ClassAdmin:
 		return true
 	}
 	return false

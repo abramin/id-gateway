@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -13,6 +12,7 @@ import (
 	sessionStore "credo/internal/auth/store/session"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
+	"credo/pkg/platform/middleware/requesttime"
 )
 
 const (
@@ -136,7 +136,7 @@ const (
 )
 
 func (s *Service) revokeSessionInternal(ctx context.Context, session *models.Session, jti string) (revokeSessionOutcome, error) {
-	if err := s.sessions.RevokeSessionIfActive(ctx, session.ID, time.Now()); err != nil {
+	if err := s.sessions.RevokeSessionIfActive(ctx, session.ID, requesttime.Now(ctx)); err != nil {
 		if errors.Is(err, sessionStore.ErrSessionRevoked) {
 			return revokeSessionOutcomeAlreadyRevoked, nil
 		}

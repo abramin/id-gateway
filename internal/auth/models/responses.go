@@ -2,6 +2,9 @@ package models
 
 import "time"
 
+// This file contains transport-layer response models for JSON output.
+// These are shaped for API responses and should avoid domain behavior.
+
 type AuthorizationResult struct {
 	Code        string `json:"code"`
 	RedirectURI string `json:"redirect_uri"`

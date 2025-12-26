@@ -6,19 +6,6 @@ import (
 	"time"
 )
 
-// TokenRevocationList manages revoked access tokens by JTI.
-// Production systems should use Redis for distributed revocation.
-type TokenRevocationList interface {
-	// RevokeToken adds a token JTI to the revocation list with TTL
-	RevokeToken(ctx context.Context, jti string, ttl time.Duration) error
-
-	// IsRevoked checks if a token JTI is in the revocation list
-	IsRevoked(ctx context.Context, jti string) (bool, error)
-
-	// RevokeSessionTokens revokes multiple tokens for a session
-	RevokeSessionTokens(ctx context.Context, sessionID string, jtis []string, ttl time.Duration) error
-}
-
 // InMemoryTRL is an in-memory implementation of TokenRevocationList for MVP/testing.
 // For production, use RedisTRL for distributed token revocation.
 type InMemoryTRL struct {
@@ -38,11 +25,10 @@ func WithCleanupInterval(d time.Duration) InMemoryTRLOption {
 	}
 }
 
-// NewInMemoryTRL creates a new in-memory token revocation list.
 func NewInMemoryTRL(opts ...InMemoryTRLOption) *InMemoryTRL {
 	trl := &InMemoryTRL{
 		revoked:         make(map[string]time.Time),
-		cleanupInterval: 1 * time.Minute, // Reduced from 5min for bounded memory growth
+		cleanupInterval: 1 * time.Minute,
 		stopCh:          make(chan struct{}),
 	}
 	for _, opt := range opts {
@@ -50,12 +36,10 @@ func NewInMemoryTRL(opts ...InMemoryTRLOption) *InMemoryTRL {
 			opt(trl)
 		}
 	}
-	// Start cleanup goroutine to remove expired entries
 	go trl.cleanup()
 	return trl
 }
 
-// Close stops the cleanup goroutine.
 func (t *InMemoryTRL) Close() {
 	close(t.stopCh)
 }

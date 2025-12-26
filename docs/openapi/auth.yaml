@@ -311,9 +311,11 @@ components:
         scopes:
           type: array
           minItems: 1
+          maxItems: 20
           description: Scopes requested for the session
           items:
             type: string
+            maxLength: 100
             description: Requested scope value
         redirect_uri:
           type: string

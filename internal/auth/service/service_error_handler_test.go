@@ -5,12 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	authCodeStore "credo/internal/auth/store/authorization-code"
-	refreshTokenStore "credo/internal/auth/store/refresh-token"
 	sessionStore "credo/internal/auth/store/session"
 	dErrors "credo/pkg/domain-errors"
-
-	"github.com/stretchr/testify/assert"
+	"credo/pkg/platform/sentinel"
 )
 
 func (s *ServiceSuite) TestHandleTokenError() {
@@ -28,7 +25,7 @@ func (s *ServiceSuite) TestHandleTokenError() {
 	}{
 		{
 			name:           "auth code not found",
-			err:            authCodeStore.ErrNotFound,
+			err:            sentinel.ErrNotFound,
 			flow:           TokenFlowCode,
 			expectedCode:   dErrors.CodeInvalidGrant,
 			expectedMsg:    "invalid authorization code",
@@ -37,7 +34,7 @@ func (s *ServiceSuite) TestHandleTokenError() {
 		},
 		{
 			name:           "auth code expired",
-			err:            authCodeStore.ErrAuthCodeExpired,
+			err:            sentinel.ErrExpired,
 			flow:           TokenFlowCode,
 			expectedCode:   dErrors.CodeInvalidGrant,
 			expectedMsg:    "authorization code expired",
@@ -46,7 +43,7 @@ func (s *ServiceSuite) TestHandleTokenError() {
 		},
 		{
 			name:           "auth code already used",
-			err:            authCodeStore.ErrAuthCodeUsed,
+			err:            sentinel.ErrAlreadyUsed,
 			flow:           TokenFlowCode,
 			expectedCode:   dErrors.CodeInvalidGrant,
 			expectedMsg:    "authorization code already used",
@@ -56,7 +53,7 @@ func (s *ServiceSuite) TestHandleTokenError() {
 		// Refresh token errors
 		{
 			name:           "refresh token not found",
-			err:            refreshTokenStore.ErrNotFound,
+			err:            sentinel.ErrNotFound,
 			flow:           TokenFlowRefresh,
 			expectedCode:   dErrors.CodeInvalidGrant,
 			expectedMsg:    "invalid refresh token",
@@ -65,7 +62,7 @@ func (s *ServiceSuite) TestHandleTokenError() {
 		},
 		{
 			name:           "refresh token expired",
-			err:            refreshTokenStore.ErrRefreshTokenExpired,
+			err:            sentinel.ErrExpired,
 			flow:           TokenFlowRefresh,
 			expectedCode:   dErrors.CodeInvalidGrant,
 			expectedMsg:    "refresh token expired",
@@ -74,7 +71,7 @@ func (s *ServiceSuite) TestHandleTokenError() {
 		},
 		{
 			name:           "refresh token already used",
-			err:            refreshTokenStore.ErrRefreshTokenUsed,
+			err:            sentinel.ErrAlreadyUsed,
 			flow:           TokenFlowRefresh,
 			expectedCode:   dErrors.CodeInvalidGrant,
 			expectedMsg:    "invalid refresh token",
@@ -84,7 +81,7 @@ func (s *ServiceSuite) TestHandleTokenError() {
 		// Session errors - context-aware (code flow)
 		{
 			name:           "session not found - code flow",
-			err:            sessionStore.ErrNotFound,
+			err:            sentinel.ErrNotFound,
 			flow:           TokenFlowCode,
 			expectedCode:   dErrors.CodeInvalidGrant,
 			expectedMsg:    "invalid authorization code",
@@ -93,7 +90,7 @@ func (s *ServiceSuite) TestHandleTokenError() {
 		},
 		{
 			name:           "session not found - refresh flow",
-			err:            sessionStore.ErrNotFound,
+			err:            sentinel.ErrNotFound,
 			flow:           TokenFlowRefresh,
 			expectedCode:   dErrors.CodeInvalidGrant,
 			expectedMsg:    "invalid refresh token",
@@ -155,9 +152,9 @@ func (s *ServiceSuite) TestHandleTokenError() {
 
 			result := s.service.handleTokenError(ctx, tt.err, clientID, &recordID, tt.flow)
 
-			assert.Error(t, result)
-			assert.True(t, dErrors.HasCode(result, tt.expectedCode))
-			assert.Contains(t, result.Error(), tt.expectedMsg)
+			s.Error(result)
+			s.True(dErrors.HasCode(result, tt.expectedCode))
+			s.Contains(result.Error(), tt.expectedMsg)
 		})
 	}
 }
@@ -168,15 +165,15 @@ func (s *ServiceSuite) TestHandleTokenError_AuditAttributes() {
 		clientID := "client-123"
 		recordID := "record-456"
 
-		err := s.service.handleTokenError(ctx, authCodeStore.ErrAuthCodeUsed, clientID, &recordID, TokenFlowCode)
-		assert.Error(t, err)
+		err := s.service.handleTokenError(ctx, sentinel.ErrAlreadyUsed, clientID, &recordID, TokenFlowCode)
+		s.Error(err)
 	})
 
 	s.T().Run("excludes record_id when nil", func(t *testing.T) {
 		ctx := context.Background()
 		clientID := "client-123"
 
-		err := s.service.handleTokenError(ctx, authCodeStore.ErrAuthCodeUsed, clientID, nil, TokenFlowCode)
-		assert.Error(t, err)
+		err := s.service.handleTokenError(ctx, sentinel.ErrAlreadyUsed, clientID, nil, TokenFlowCode)
+		s.Error(err)
 	})
 }

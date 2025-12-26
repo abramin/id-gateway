@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,6 +11,11 @@ import (
 	dErrors "credo/pkg/domain-errors"
 )
 
+// This file contains pure domain models for authentication: entities
+// that should not depend on transport or HTTP-specific concerns.
+
+const authorizationCodePrefix = "authz_"
+
 type User struct {
 	ID        id.UserID   `json:"id"`
 	TenantID  id.TenantID `json:"tenant_id"`
@@ -17,7 +23,7 @@ type User struct {
 	FirstName string      `json:"first_name"`
 	LastName  string      `json:"last_name"`
 	Verified  bool        `json:"verified"`
-	Status    UserStatus  `json:"status"` // "active", "inactive"
+	Status    UserStatus  `json:"status"`
 }
 
 type Session struct {
@@ -26,7 +32,7 @@ type Session struct {
 	ClientID       id.ClientID   `json:"client_id"`
 	TenantID       id.TenantID   `json:"tenant_id"`
 	RequestedScope []string      `json:"requested_scope"`
-	Status         SessionStatus `json:"status"` // typed enum: pending_consent, active, revoked
+	Status         SessionStatus `json:"status"`
 
 	// Refresh lifecycle
 	LastRefreshedAt    *time.Time `json:"last_refreshed_at,omitempty"` // last refresh action timestamp
@@ -65,6 +71,16 @@ func (s *Session) Activate() {
 	}
 }
 
+// CanAdvance returns true if the session is in a state that allows token operations.
+// When allowPending is true, both active and pending_consent states are valid
+// (used during code exchange). When false, only active state is valid (used during refresh).
+func (s *Session) CanAdvance(allowPending bool) bool {
+	if s.IsActive() {
+		return true
+	}
+	return allowPending && s.IsPendingConsent()
+}
+
 // GetDeviceBinding returns the device binding information as a value object.
 func (s *Session) GetDeviceBinding() DeviceBinding {
 	return DeviceBinding{
@@ -92,7 +108,7 @@ func (s *Session) SetDeviceBinding(binding DeviceBinding) {
 //   - Parent Session must exist and be in pending_consent state for exchange
 type AuthorizationCodeRecord struct {
 	ID          uuid.UUID    `json:"id"`           // Unique identifier
-	Code        string       `json:"code"`         // Format: "authz_<random>"
+	Code        string       `json:"code"`         // Format: "authz_<random>" (prefix added at creation)
 	SessionID   id.SessionID `json:"session_id"`   // Links to parent Session aggregate
 	RedirectURI string       `json:"redirect_uri"` // Stored for validation at token exchange
 	ExpiresAt   time.Time    `json:"expires_at"`   // 10 minutes from creation
@@ -185,6 +201,10 @@ func NewAuthorizationCode(code string, sessionID id.SessionID, redirectURI strin
 	if code == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "authorization code cannot be empty")
 	}
+	code = strings.TrimPrefix(code, authorizationCodePrefix)
+	if code == "" {
+		return nil, dErrors.New(dErrors.CodeInvariantViolation, "authorization code cannot be empty")
+	}
 	if redirectURI == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "redirect URI cannot be empty")
 	}
@@ -196,7 +216,7 @@ func NewAuthorizationCode(code string, sessionID id.SessionID, redirectURI strin
 	}
 	return &AuthorizationCodeRecord{
 		ID:          uuid.New(),
-		Code:        code,
+		Code:        authorizationCodePrefix + code,
 		SessionID:   sessionID,
 		RedirectURI: redirectURI,
 		ExpiresAt:   expiresAt,

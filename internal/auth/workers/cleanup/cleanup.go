@@ -95,7 +95,10 @@ func (s *CleanupService) Start(ctx context.Context) error {
 	}
 }
 
-// RunOnce performs one cleanup sweep.
+// RunOnce performs a single cleanup operation.
+// It removes expired authorization codes, expired refresh tokens, used refresh tokens, and expired sessions.
+// It returns a CleanupResult summarizing the deletions performed.
+// If any errors occur during cleanup, they are aggregated and returned.
 func (s *CleanupService) RunOnce(ctx context.Context) (CleanupResult, error) {
 	var res CleanupResult
 	var errs []error
