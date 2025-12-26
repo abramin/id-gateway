@@ -55,13 +55,13 @@ Feature: OAuth2 Authorization Code Flow - Normal Path
   Scenario: Authorization request validation - missing required fields
     When I POST to "/auth/authorize" with empty body
     Then the response status should be 400
-    And the response field "error" should equal "bad_request"
+    And the response field "error" should equal "validation_error"
 
     @normal @validation
   Scenario: Authorization request validation - invalid email
     When I POST to "/auth/authorize" with invalid email "not-an-email"
     Then the response status should be 400
-    And the response field "error" should equal "bad_request"
+    And the response field "error" should equal "validation_error"
 
     @normal @validation
   Scenario: Token exchange validation - invalid authorization code (RFC 6749 §5.2)

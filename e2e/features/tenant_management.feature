@@ -41,7 +41,7 @@ Feature: Tenant & Client Management Admin API
   Scenario: Create tenant with empty name fails
     When I create a tenant with name ""
     Then the response status should be 400
-    And the response field "error" should equal "bad_request"
+    And the response field "error" should equal "validation_error"
 
     @admin @tenant @security
   Scenario: Create tenant without admin token fails
@@ -325,7 +325,7 @@ Feature: Tenant & Client Management Admin API
     And I save the client ID from the response
     When I rotate the client secret
     Then the response status should be 400
-    And the response field "error" should equal "bad_request"
+    And the response field "error" should equal "validation_error"
 
     @admin @client @security
   Scenario: Old secret is invalidated after rotation

@@ -16,7 +16,7 @@ Feature: OAuth2 Security - Client and Tenant Validation
   Scenario: Empty client_id rejected
     When I request authorization with empty client_id
     Then the response status should be 400
-    And the response field "error" should equal "bad_request"
+    And the response field "error" should equal "validation_error"
 
     # ============================================================
     # SECURITY SIMULATIONS (Documentation of known attack vectors)
