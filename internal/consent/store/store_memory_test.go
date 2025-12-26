@@ -11,6 +11,7 @@ import (
 
 	"credo/internal/consent/models"
 	id "credo/pkg/domain"
+	"credo/pkg/platform/sentinel"
 )
 
 func TestInMemoryStoreOperations(t *testing.T) {
@@ -55,12 +56,12 @@ func TestInMemoryStoreOperations(t *testing.T) {
 
 	// Find non-existing
 	noRecord, err := store.FindByUserAndPurpose(ctx, id.UserID(uuid.New()), models.PurposeLogin)
-	require.ErrorIs(t, err, ErrNotFound)
+	require.ErrorIs(t, err, sentinel.ErrNotFound)
 	assert.Nil(t, noRecord)
 
 	// Delete
 	require.NoError(t, store.DeleteByUser(ctx, record.UserID))
 	fetched, err = store.FindByUserAndPurpose(ctx, record.UserID, models.PurposeLogin)
-	require.ErrorIs(t, err, ErrNotFound)
+	require.ErrorIs(t, err, sentinel.ErrNotFound)
 	assert.Nil(t, fetched)
 }

@@ -27,13 +27,13 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
-	auditpublisher "credo/pkg/platform/audit/publisher"
-	auditstore "credo/pkg/platform/audit/store/memory"
 	"credo/internal/consent/models"
 	"credo/internal/consent/service/mocks"
-	"credo/internal/consent/store"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
+	auditpublisher "credo/pkg/platform/audit/publisher"
+	auditstore "credo/pkg/platform/audit/store/memory"
+	"credo/pkg/platform/sentinel"
 )
 
 type ServiceSuite struct {
@@ -106,7 +106,7 @@ func (s *ServiceSuite) TestGrant_StoreErrorPropagation() {
 		userID := id.UserID(uuid.New())
 		s.mockStore.EXPECT().
 			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeLogin).
-			Return(nil, store.ErrNotFound)
+			Return(nil, sentinel.ErrNotFound)
 
 		s.mockStore.EXPECT().
 			Save(gomock.Any(), gomock.Any()).
@@ -199,7 +199,7 @@ func (s *ServiceSuite) TestRequire_ConsentStates() {
 		userID := id.UserID(uuid.New())
 		s.mockStore.EXPECT().
 			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeVCIssuance).
-			Return(nil, store.ErrNotFound)
+			Return(nil, sentinel.ErrNotFound)
 
 		err := s.service.Require(context.Background(), userID, models.PurposeVCIssuance)
 		require.Error(t, err)

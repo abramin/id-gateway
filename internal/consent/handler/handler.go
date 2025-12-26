@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	consentmetrics "credo/internal/consent/metrics"
 	"credo/internal/consent/models"
 	id "credo/pkg/domain"
@@ -27,14 +29,12 @@ type Service interface {
 	List(ctx context.Context, userID id.UserID, filter *models.RecordFilter) ([]*models.Record, error)
 }
 
-// Handler handles consent-related endpoints.
 type Handler struct {
 	logger  *slog.Logger
 	consent Service
 	metrics *consentmetrics.Metrics
 }
 
-// New creates a new consent Handler.
 func New(consent Service, logger *slog.Logger, metrics *consentmetrics.Metrics) *Handler {
 	return &Handler{
 		logger:  logger,
@@ -43,25 +43,7 @@ func New(consent Service, logger *slog.Logger, metrics *consentmetrics.Metrics) 
 	}
 }
 
-// requireUserID extracts and validates the authenticated user ID from context.
-// Returns a domain error suitable for HTTP response on failure.
-func (h *Handler) requireUserID(ctx context.Context, requestID string) (id.UserID, error) {
-	userIDStr := auth.GetUserID(ctx)
-	if userIDStr == "" {
-		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
-			"request_id", requestID)
-		return id.UserID{}, dErrors.New(dErrors.CodeInternal, "authentication context error")
-	}
-	userID, err := id.ParseUserID(userIDStr)
-	if err != nil {
-		h.logger.ErrorContext(ctx, "invalid userID in context",
-			"request_id", requestID, "error", err)
-		return id.UserID{}, dErrors.New(dErrors.CodeInternal, "authentication context error")
-	}
-	return userID, nil
-}
-
-// HandleGrantConsent grants consent for the authenticated user per PRD-002 FR-1.
+// HandleGrantConsent grants consent for the authenticated user
 func (h *Handler) HandleGrantConsent(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	start := time.Now()
@@ -123,19 +105,21 @@ func (h *Handler) HandleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, toRevokeResponse(records, requesttime.Now(ctx)))
 }
 
-func (h *Handler) HandleRevokeAllConsents(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleAdminRevokeAllConsents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
-	userID, err := h.requireUserID(ctx, requestID)
+	userIDStr := chi.URLParam(r, "user_id")
+	userID, err := id.ParseUserID(userIDStr)
 	if err != nil {
-		httputil.WriteError(w, err)
+		httputil.WriteError(w, dErrors.New(dErrors.CodeBadRequest, "invalid user id"))
 		return
 	}
 
 	count, err := h.consent.RevokeAll(ctx, userID)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "failed to revoke all consents",
+		h.logger.ErrorContext(ctx, "failed to revoke all consents (admin)",
 			"request_id", requestID,
+			"user_id", userID,
 			"error", err,
 		)
 		httputil.WriteError(w, err)
@@ -180,23 +164,16 @@ func (h *Handler) HandleGetConsents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse and validate query parameters
-	status := r.URL.Query().Get("status")
-	purpose := r.URL.Query().Get("purpose")
-
-	if status != "" && !isValidStatus(status) {
-		httputil.WriteError(w, dErrors.New(dErrors.CodeValidation, "invalid status filter"))
-		return
-	}
-	if purpose != "" && !models.Purpose(purpose).IsValid() {
-		httputil.WriteError(w, dErrors.New(dErrors.CodeValidation, "invalid purpose filter"))
+	filter, err := models.ParseRecordFilter(
+		r.URL.Query().Get("status"),
+		r.URL.Query().Get("purpose"),
+	)
+	if err != nil {
+		httputil.WriteError(w, err)
 		return
 	}
 
-	records, err := h.consent.List(ctx, userID, &models.RecordFilter{
-		Purpose: purpose,
-		Status:  status,
-	})
+	records, err := h.consent.List(ctx, userID, filter)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to list consent",
 			"request_id", requestID,
@@ -263,12 +240,6 @@ func toListResponse(records []*models.Record, now time.Time) *models.ListRespons
 
 // Helper functions
 
-func isValidStatus(status string) bool {
-	return status == string(models.StatusActive) ||
-		status == string(models.StatusExpired) ||
-		status == string(models.StatusRevoked)
-}
-
 func formatActionMessage(template string, count int) string {
 	suffix := "s"
 	if count == 1 {
@@ -277,3 +248,20 @@ func formatActionMessage(template string, count int) string {
 	return fmt.Sprintf(template+"%s", count, suffix)
 }
 
+// requireUserID extracts and validates the authenticated user ID from context.
+// Returns a domain error suitable for HTTP response on failure.
+func (h *Handler) requireUserID(ctx context.Context, requestID string) (id.UserID, error) {
+	userIDStr := auth.GetUserID(ctx)
+	if userIDStr == "" {
+		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
+			"request_id", requestID)
+		return id.UserID{}, dErrors.New(dErrors.CodeInternal, "authentication context error")
+	}
+	userID, err := id.ParseUserID(userIDStr)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "invalid userID in context",
+			"request_id", requestID, "error", err)
+		return id.UserID{}, dErrors.New(dErrors.CodeInternal, "authentication context error")
+	}
+	return userID, nil
+}

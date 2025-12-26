@@ -280,6 +280,46 @@ Unit tests exist only to:
 
 ---
 
+## Database Migration Strategy
+
+When migrating from in-memory store to PostgreSQL, apply these index strategies:
+
+### Required Indexes
+
+```sql
+-- Primary lookup pattern: Require()/FindByUserAndPurpose
+CREATE UNIQUE INDEX idx_consents_user_purpose
+    ON consents (user_id, purpose)
+    WHERE revoked_at IS NULL;
+
+-- List consents for a user (with optional status filter)
+CREATE INDEX idx_consents_user_id ON consents (user_id);
+
+-- Admin: find all consents by purpose (analytics, bulk operations)
+CREATE INDEX idx_consents_purpose ON consents (purpose);
+```
+
+### Query Patterns
+
+| Operation | Query Pattern | Index Used |
+|-----------|---------------|------------|
+| `Require()` | `WHERE user_id = $1 AND purpose = $2` | `idx_consents_user_purpose` |
+| `FindByUserAndPurpose()` | `WHERE user_id = $1 AND purpose = $2` | `idx_consents_user_purpose` |
+| `ListByUser()` | `WHERE user_id = $1` | `idx_consents_user_id` |
+| `RevokeAllByUser()` | `WHERE user_id = $1 AND revoked_at IS NULL` | `idx_consents_user_purpose` |
+
+### Performance Considerations
+
+1. **Partial Index**: The unique index on `(user_id, purpose)` with `WHERE revoked_at IS NULL` ensures only one active consent per user+purpose while allowing historical revoked records.
+
+2. **Cardinality**: With 4 purposes and N users, expect ~4N records max. Most queries filter by user_id first.
+
+3. **Hot Path**: `Require()` is the hot path (called by registry/decision services). The unique index ensures O(1) lookup.
+
+4. **Expiry Checks**: `expires_at` comparisons happen in application code after fetch. No index needed on `expires_at` for current access patterns.
+
+---
+
 ## References
 
 - PRD: [PRD-002-Consent-Management.md](../../docs/prd/PRD-002-Consent-Management.md)

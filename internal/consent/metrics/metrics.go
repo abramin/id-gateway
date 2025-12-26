@@ -8,7 +8,7 @@ import (
 type Metrics struct {
 	ConsentsGranted       *prometheus.CounterVec
 	ConsentsRevoked       *prometheus.CounterVec
-	ActiveConsentsPerUser prometheus.Gauge
+	ActiveConsentsTotal prometheus.Gauge
 	ConsentCheckPassed    *prometheus.CounterVec
 	ConsentCheckFailed    *prometheus.CounterVec
 	ConsentGrantLatency   prometheus.Histogram
@@ -28,9 +28,9 @@ func New() *Metrics {
 			Name: "credo_consents_revoked_total",
 			Help: "Total number of consents revoked, labeled by purpose",
 		}, []string{"purpose"}),
-		ActiveConsentsPerUser: promauto.NewGauge(prometheus.GaugeOpts{
-			Name: "credo_active_consents_per_user",
-			Help: "Current number of active consents per user",
+		ActiveConsentsTotal: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "credo_active_consents_total",
+			Help: "Current number of active consents system-wide",
 		}),
 		ConsentCheckPassed: promauto.NewCounterVec(prometheus.CounterOpts{
 			Name: "credo_consent_checks_passed_total",
@@ -76,12 +76,12 @@ func (m *Metrics) IncrementConsentCheckFailed(purpose string) {
 	m.ConsentCheckFailed.WithLabelValues(purpose).Inc()
 }
 
-func (m *Metrics) IncrementActiveConsentsPerUser(count float64) {
-	m.ActiveConsentsPerUser.Add(count)
+func (m *Metrics) IncrementActiveConsents(count float64) {
+	m.ActiveConsentsTotal.Add(count)
 }
 
-func (m *Metrics) DecrementActiveConsentsPerUser(count float64) {
-	m.ActiveConsentsPerUser.Sub(count)
+func (m *Metrics) DecrementActiveConsents(count float64) {
+	m.ActiveConsentsTotal.Sub(count)
 }
 
 func (m *Metrics) ObserveConsentGrantLatency(durationSeconds float64) {

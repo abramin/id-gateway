@@ -9,7 +9,6 @@ import (
 
 // ConsentRequest is the interface for consent request types that can be prepared for processing.
 type ConsentRequest interface {
-	Sanitize()
 	Normalize()
 	Validate() error
 }
@@ -17,11 +16,6 @@ type ConsentRequest interface {
 // GrantRequest specifies which purposes to grant consent for.
 type GrantRequest struct {
 	Purposes []Purpose `json:"purposes"`
-}
-
-// Sanitize is a no-op for GrantRequest since Purpose is an enum that shouldn't be modified.
-func (r *GrantRequest) Sanitize() {
-	// Purpose values are domain primitives (enums) - do not trim/modify
 }
 
 // Normalize applies business defaults and sanitizes inputs.
@@ -58,11 +52,6 @@ func (r *GrantRequest) Validate() error {
 // RevokeRequest specifies which purposes to revoke consent for.
 type RevokeRequest struct {
 	Purposes []Purpose `json:"purposes"`
-}
-
-// Sanitize is a no-op for RevokeRequest since Purpose is an enum that shouldn't be modified.
-func (r *RevokeRequest) Sanitize() {
-	// Purpose values are domain primitives (enums) - do not trim/modify
 }
 
 // Normalize applies business defaults and sanitizes inputs.
@@ -107,4 +96,19 @@ func dedupePurposes(purposes []Purpose) []Purpose {
 		}
 	}
 	return result
+}
+
+// ParseRecordFilter parses and validates query parameters for consent listing.
+// Returns a validated filter or a domain error if validation fails.
+func ParseRecordFilter(status, purpose string) (*RecordFilter, error) {
+	if status != "" && !Status(status).IsValid() {
+		return nil, dErrors.New(dErrors.CodeValidation, "invalid status filter")
+	}
+	if purpose != "" && !Purpose(purpose).IsValid() {
+		return nil, dErrors.New(dErrors.CodeValidation, "invalid purpose filter")
+	}
+	return &RecordFilter{
+		Status:  status,
+		Purpose: purpose,
+	}, nil
 }

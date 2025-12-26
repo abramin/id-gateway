@@ -1,11 +1,13 @@
 package testutil
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 
 	authmodels "credo/internal/auth/models"
+	consentmodels "credo/internal/consent/models"
 	tenantmodels "credo/internal/tenant/models"
 	id "credo/pkg/domain"
 )
@@ -304,4 +306,13 @@ func NewTestClient(clientID id.ClientID, tenantID id.TenantID) *tenantmodels.Cli
 		WithID(clientID).
 		WithTenantID(tenantID).
 		Build()
+}
+
+// MustParsePurpose creates a consent Purpose or panics. For tests only.
+func MustParsePurpose(s string) consentmodels.Purpose {
+	p, err := consentmodels.ParsePurpose(s)
+	if err != nil {
+		panic(fmt.Sprintf("MustParsePurpose: %v", err))
+	}
+	return p
 }

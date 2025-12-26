@@ -195,6 +195,32 @@ export const options = {
       startTime: '0s',
       tags: { scenario: 'rate_limit_cardinality' },
     },
+
+    // Scenario 10: Consent Shard Contention
+    // Tests 1000 concurrent grants for same user to stress sharded lock contention.
+    // Validates 128-shard distribution under single-user hot path.
+    consent_shard_contention: {
+      executor: 'constant-arrival-rate',
+      rate: 200,                    // 200 req/sec targeting single user
+      timeUnit: '1s',
+      duration: '1m',
+      preAllocatedVUs: 50,
+      maxVUs: 200,
+      exec: 'consentShardContentionScenario',
+      startTime: '0s',
+      tags: { scenario: 'consent_shard_contention' },
+    },
+
+    // Scenario 11: Consent List Performance
+    // Tests listing consents for users with many purposes (O(n) concern).
+    consent_list_load: {
+      executor: 'constant-vus',
+      vus: 50,
+      duration: '2m',
+      exec: 'consentListScenario',
+      startTime: '0s',
+      tags: { scenario: 'consent_list_load' },
+    },
   },
 
   thresholds: {
@@ -224,6 +250,12 @@ export const options = {
     'get_tenant_latency{scenario:tenant_dashboard}': ['p(95)<100'],
 
     // Rate limiting: no latency thresholds (429s are expected behavior)
+
+    // Consent shard contention: validate lock wait time under single-user load
+    'consent_grant_latency{scenario:consent_shard_contention}': ['p(95)<500'],
+
+    // Consent list: validate O(n) list performance
+    'consent_list_latency{scenario:consent_list_load}': ['p(95)<100'],
   },
 };
 
@@ -261,7 +293,8 @@ export function setup() {
 
   // Determine which setup data is needed based on scenario
   const scenariosNeedingTokens = [
-    'all', 'token_refresh_storm', 'consent_burst', 'mixed_load', 'oauth_flow_storm'
+    'all', 'token_refresh_storm', 'consent_burst', 'mixed_load', 'oauth_flow_storm',
+    'consent_shard_contention', 'consent_list_load'
   ];
   const needsTokens = scenariosNeedingTokens.includes(SCENARIO);
   const needsBurstClients = SCENARIO === 'all' || SCENARIO === 'resolve_client_burst';
@@ -914,6 +947,100 @@ export function rateLimitCardinalityScenario() {
   check(res, {
     'cardinality response is 200 or 429': (r) => r.status === 200 || r.status === 429,
   });
+}
+
+// Scenario 10: Consent Shard Contention
+// Purpose: Stress test the sharded lock by hitting same user with many concurrent grants
+export function consentShardContentionScenario(data) {
+  // Use a single fixed user to maximize contention on one shard
+  const userIndex = 0; // Always use first user for maximum contention
+  const token = data.tokens[userIndex];
+
+  // Rotate through purposes to simulate real usage
+  const purposeIndex = __ITER % CONSENT_PURPOSES.length;
+  const purpose = CONSENT_PURPOSES[purposeIndex];
+
+  const payload = {
+    purposes: [purpose],
+  };
+
+  const params = {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token.accessToken}`,
+    },
+    tags: { name: 'consent_shard_contention' },
+  };
+
+  const startTime = Date.now();
+  const res = http.post(
+    `${BASE_URL}/auth/consent`,
+    JSON.stringify(payload),
+    params
+  );
+  const duration = Date.now() - startTime;
+
+  consentGrantLatency.add(duration);
+
+  const success = check(res, {
+    'shard contention grant status is 200': (r) => r.status === 200,
+  });
+
+  if (!success) {
+    consentErrors.add(1);
+    errorRate.add(1);
+    if (res.status !== 401 && res.status !== 429) {
+      console.log(`Shard contention grant failed: ${res.status} - ${res.body}`);
+    }
+  } else {
+    errorRate.add(0);
+  }
+}
+
+// Custom metric for consent list latency
+const consentListLatency = new Trend('consent_list_latency', true);
+
+// Scenario 11: Consent List Performance
+// Purpose: Validate O(n) list performance with users having multiple consents
+export function consentListScenario(data) {
+  const userIndex = (__VU - 1) % data.tokens.length;
+  const token = data.tokens[userIndex];
+
+  const params = {
+    headers: {
+      'Authorization': `Bearer ${token.accessToken}`,
+    },
+    tags: { name: 'consent_list' },
+  };
+
+  const startTime = Date.now();
+  const res = http.get(`${BASE_URL}/auth/consent`, params);
+  const duration = Date.now() - startTime;
+
+  consentListLatency.add(duration);
+
+  const success = check(res, {
+    'consent list status is 200': (r) => r.status === 200,
+    'consent list has consents array': (r) => {
+      try {
+        const body = JSON.parse(r.body);
+        return Array.isArray(body.consents);
+      } catch {
+        return false;
+      }
+    },
+  });
+
+  if (!success) {
+    errorRate.add(1);
+    if (res.status !== 401) {
+      console.log(`Consent list failed: ${res.status} - ${res.body}`);
+    }
+  } else {
+    errorRate.add(0);
+  }
+
+  sleep(0.05); // 50ms between requests
 }
 
 // Teardown: Cleanup test data

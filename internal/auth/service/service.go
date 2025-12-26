@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"credo/internal/auth/device"
 	"credo/internal/auth/metrics"
@@ -21,6 +23,19 @@ import (
 	"credo/pkg/platform/audit"
 	"credo/pkg/platform/middleware/requesttime"
 	platformsync "credo/pkg/platform/sync"
+)
+
+// Shard contention metrics for monitoring lock behavior
+var (
+	authShardLockWaitDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "credo_auth_shard_lock_wait_seconds",
+		Help:    "Time spent waiting to acquire auth shard lock",
+		Buckets: []float64{0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1},
+	})
+	authShardLockAcquisitions = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "credo_auth_shard_lock_acquisitions_total",
+		Help: "Total number of auth shard lock acquisitions",
+	})
 )
 
 // TokenRevocationList manages revoked access tokens by JTI.
@@ -209,7 +224,12 @@ func (t *shardedAuthTx) RunInTx(ctx context.Context, fn func(stores txAuthStores
 
 	// Get session key for shard selection
 	key := t.shardKey(ctx)
+
+	// Record lock acquisition timing for contention monitoring
+	lockStart := time.Now()
 	t.mu.Lock(key)
+	authShardLockWaitDuration.Observe(time.Since(lockStart).Seconds())
+	authShardLockAcquisitions.Inc()
 	defer t.mu.Unlock(key)
 
 	// Check again after acquiring lock

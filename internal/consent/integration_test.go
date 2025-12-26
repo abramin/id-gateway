@@ -88,6 +88,7 @@ func newConsentTestHarness(userIDStr string) *consentTestHarness {
 	router.Post("/auth/consent/revoke", h.HandleRevokeConsent)
 	router.Get("/auth/consent", h.HandleGetConsents)
 	router.Delete("/auth/consent", h.HandleDeleteAllConsents)
+	router.Post("/admin/consent/users/{user_id}/revoke-all", h.HandleAdminRevokeAllConsents)
 
 	userID, _ := id.ParseUserID(userIDStr)
 	return &consentTestHarness{
@@ -130,6 +131,18 @@ func (h *consentTestHarness) listConsents(t *testing.T) *consentModel.ListRespon
 func (h *consentTestHarness) revokeConsent(t *testing.T, purposes []string) *consentModel.RevokeResponse {
 	body, _ := json.Marshal(map[string]any{"purposes": purposes})
 	resp, err := http.Post(h.server.URL+"/auth/consent/revoke", "application/json", bytes.NewReader(body))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	respBody, _ := io.ReadAll(resp.Body)
+	var data consentModel.RevokeResponse
+	require.NoError(t, json.Unmarshal(respBody, &data))
+	return &data
+}
+
+func (h *consentTestHarness) adminRevokeAllConsents(t *testing.T, userID id.UserID) *consentModel.RevokeResponse {
+	resp, err := http.Post(h.server.URL+"/admin/consent/users/"+userID.String()+"/revoke-all", "application/json", nil)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -209,7 +222,7 @@ func TestConsentExpiryAndIDReuse(t *testing.T) {
 	assert.Equal(t, 2, finalStatusCounts[string(consentModel.StatusActive)], "should have 2 active (login + vc_issuance)")
 	assert.Equal(t, 1, finalStatusCounts[string(consentModel.StatusRevoked)], "should have 1 revoked (registry_check)")
 
-	t.Log("Step 6: Verify audit trail counts")
+	t.Log("Step 6: Verify audit trail counts and payload content")
 	auditEvents, err := h.auditStore.ListByUser(context.Background(), h.userID)
 	require.NoError(t, err)
 	// Expected: 3 initial grants + 1 revoke + 1 re-grant = 5 events
@@ -218,9 +231,41 @@ func TestConsentExpiryAndIDReuse(t *testing.T) {
 	actionCounts := map[string]int{}
 	for _, event := range auditEvents {
 		actionCounts[event.Action]++
+
+		// Verify payload structure for all events
+		assert.Equal(t, h.userID, event.UserID, "event should have correct user ID")
+		assert.False(t, event.Timestamp.IsZero(), "event should have timestamp")
+
+		// Verify action-specific payload content
+		switch event.Action {
+		case consentModel.AuditActionConsentGranted:
+			assert.NotEmpty(t, event.Purpose, "grant event should have purpose")
+			assert.Equal(t, consentModel.AuditDecisionGranted, event.Decision, "grant event should have 'granted' decision")
+			assert.Equal(t, consentModel.AuditReasonUserInitiated, event.Reason, "grant event should have reason")
+		case consentModel.AuditActionConsentRevoked:
+			assert.NotEmpty(t, event.Purpose, "revoke event should have purpose")
+			assert.Equal(t, consentModel.AuditDecisionRevoked, event.Decision, "revoke event should have 'revoked' decision")
+			assert.Equal(t, consentModel.AuditReasonUserInitiated, event.Reason, "revoke event should have reason")
+		}
 	}
 	assert.Equal(t, 4, actionCounts["consent_granted"], "should have 4 grant events")
 	assert.Equal(t, 1, actionCounts["consent_revoked"], "should have 1 revoke event")
+}
+
+func TestAdminRevokeAllConsents(t *testing.T) {
+	h := newConsentTestHarness("550e8400-e29b-41d4-a716-446655440002")
+	defer h.Close()
+
+	h.grantConsent(t, []string{"login", "registry_check"})
+
+	resp := h.adminRevokeAllConsents(t, h.userID)
+	assert.Equal(t, "Consent revoked for 2 purposes", resp.Message)
+
+	listData := h.listConsents(t)
+	require.Len(t, listData.Consents, 2)
+	for _, record := range listData.Consents {
+		assert.Equal(t, consentModel.StatusRevoked, record.Status)
+	}
 }
 
 // TestIdempotencyWindowBoundary tests the 5-minute idempotency window behavior.
@@ -232,7 +277,7 @@ func TestConsentExpiryAndIDReuse(t *testing.T) {
 // Note: consent_flow.feature:100 tests renewal (waits 2s), but that's still
 // within the 5-min window. This test verifies the boundary behavior.
 func TestIdempotencyWindowBoundary(t *testing.T) {
-	h := newConsentTestHarness("550e8400-e29b-41d4-a716-446655440002")
+	h := newConsentTestHarness("550e8400-e29b-41d4-a716-446655440003")
 	defer h.Close()
 
 	t.Log("Step 1: Initial consent grant")

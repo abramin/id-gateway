@@ -7,13 +7,9 @@ import (
 
 	"credo/internal/consent/models"
 	id "credo/pkg/domain"
-	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/middleware/requesttime"
+	"credo/pkg/platform/sentinel"
 )
-
-// ErrNotFound is returned when a requested record is not found in the store.
-// Services should check for this error using errors.Is(err, store.ErrNotFound).
-var ErrNotFound = dErrors.New(dErrors.CodeNotFound, "record not found")
 
 // Error Contract:
 // All store methods follow this error pattern:
@@ -47,7 +43,7 @@ func (s *InMemoryStore) FindByUserAndPurpose(_ context.Context, userID id.UserID
 			return &copyRecord, nil
 		}
 	}
-	return nil, ErrNotFound
+	return nil, sentinel.ErrNotFound
 }
 
 func (s *InMemoryStore) ListByUser(ctx context.Context, userID id.UserID, filter *models.RecordFilter) ([]*models.Record, error) {
@@ -91,9 +87,11 @@ func (s *InMemoryStore) Update(_ context.Context, consent *models.Record) error 
 			return nil
 		}
 	}
-	return ErrNotFound
+	return sentinel.ErrNotFound
 }
 
+// RevokeByUserAndPurpose sets the RevokedAt timestamp for the latest active consent of the given purpose.
+// Returns the updated consent record or ErrNotFound if no active consent exists.
 func (s *InMemoryStore) RevokeByUserAndPurpose(_ context.Context, userID id.UserID, purpose models.Purpose, revokedAt time.Time) (*models.Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -105,7 +103,7 @@ func (s *InMemoryStore) RevokeByUserAndPurpose(_ context.Context, userID id.User
 			return records[i], nil
 		}
 	}
-	return nil, ErrNotFound
+	return nil, sentinel.ErrNotFound
 }
 
 func (s *InMemoryStore) DeleteByUser(_ context.Context, userID id.UserID) error {

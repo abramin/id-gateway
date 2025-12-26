@@ -10,6 +10,8 @@ import (
 // revocation without affecting other flows.
 type Purpose string
 
+// Supported consent purposes
+// These should align with the purposes defined in the PRD and system design.
 const (
 	PurposeLogin         Purpose = "login"
 	PurposeRegistryCheck Purpose = "registry_check"
@@ -36,15 +38,6 @@ func ParsePurpose(s string) (Purpose, error) {
 		return "", dErrors.New(dErrors.CodeInvalidInput, fmt.Sprintf("invalid purpose: %s", s))
 	}
 	return p, nil
-}
-
-// MustParsePurpose creates a Purpose or panics. For tests only.
-func MustParsePurpose(s string) Purpose {
-	p, err := ParsePurpose(s)
-	if err != nil {
-		panic(fmt.Sprintf("MustParsePurpose: %v", err))
-	}
-	return p
 }
 
 // IsValid checks if the consent purpose is one of the supported enum values.

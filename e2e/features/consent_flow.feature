@@ -241,3 +241,22 @@ Feature: Consent Management
     When I DELETE "/auth/consent" without authorization
     Then the response status should be 401
     And the response field "error" should equal "unauthorized"
+
+  # ============================================================================
+  # Consent Enforcement (Require)
+  # ============================================================================
+  # Note: Consent enforcement via Require() is tested in registry_flow.feature:
+  #   - "Citizen lookup without consent" (403 missing_consent)
+  #   - "Sanctions check without consent" (403 missing_consent)
+  # Expired consent enforcement is tested in integration_test.go via time manipulation.
+
+      @consent @enforcement
+  Scenario: Operations requiring consent fail when consent revoked
+    Given I am authenticated as "enforcement-test@example.com"
+    And I have granted consent for purposes "registry_check"
+    When I lookup citizen record for national_id "ENFORCE123"
+    Then the response status should be 200
+    When I revoke consent for purposes "registry_check"
+    And I lookup citizen record for national_id "ENFORCE456"
+    Then the response status should be 403
+    And the response field "error" should equal "missing_consent"

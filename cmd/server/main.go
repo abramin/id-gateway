@@ -498,7 +498,6 @@ func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consent
 		r.Post("/auth/logout-all", authMod.Handler.HandleLogoutAll)
 		r.Post("/auth/consent", consentMod.Handler.HandleGrantConsent)
 		r.Post("/auth/consent/revoke", consentMod.Handler.HandleRevokeConsent)
-		r.Post("/auth/consent/revoke-all", consentMod.Handler.HandleRevokeAllConsents)
 		r.Delete("/auth/consent", consentMod.Handler.HandleDeleteAllConsents)
 	})
 
@@ -508,6 +507,7 @@ func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consent
 			r.Use(rateLimitMiddleware.RateLimitAuthenticated(rateLimitModels.ClassWrite))
 			r.Use(adminmw.RequireAdminToken(infra.Cfg.Security.AdminAPIToken, infra.Log))
 			authMod.Handler.RegisterAdmin(r)
+			r.Post("/admin/consent/users/{user_id}/revoke-all", consentMod.Handler.HandleAdminRevokeAllConsents)
 			tenantMod.Handler.Register(r)
 		})
 	}
