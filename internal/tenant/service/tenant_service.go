@@ -37,7 +37,7 @@ func NewTenantService(tenants TenantStore, opts ...Option) *TenantService {
 func (s *TenantService) CreateTenant(ctx context.Context, name string) (*models.Tenant, error) {
 	name = strings.TrimSpace(name)
 
-	t, err := models.NewTenant(id.TenantID(uuid.New()), name)
+	t, err := models.NewTenant(id.TenantID(uuid.New()), name, requesttime.Now(ctx))
 	if err != nil {
 		return nil, err
 	}

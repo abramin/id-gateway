@@ -117,9 +117,14 @@ func (e *auditEmitter) emitToAudit(ctx context.Context, event string, attributes
 			"error", err,
 		)
 	}
-	_ = e.publisher.Emit(ctx, audit.Event{
+	if err := e.publisher.Emit(ctx, audit.Event{
 		UserID:  userID,
 		Subject: userIDStr,
 		Action:  event,
-	})
+	}); err != nil && e.logger != nil {
+		e.logger.ErrorContext(ctx, "failed to emit audit event",
+			"event", event,
+			"error", err,
+		)
+	}
 }

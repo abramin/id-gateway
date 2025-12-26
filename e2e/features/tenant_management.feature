@@ -279,3 +279,34 @@ Feature: Tenant & Client Management Admin API
     When I deactivate client with id "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
     Then the response status should be 404
     And the response field "error" should equal "not_found"
+
+    # ============================================================
+    # CLIENT VALIDATION (OAuth Security)
+    # ============================================================
+
+    @admin @client @validation @security
+  Scenario: Public client cannot use client_credentials grant
+    Given I create a tenant with name "Public Client Grant Test"
+    And the response status should be 201
+    And I save the tenant ID from the response
+    When I create a public client "Public SPA" with client_credentials grant under the tenant
+    Then the response status should be 400
+    And the response field "error" should equal "validation_error"
+
+    @admin @client @validation @security
+  Scenario: Redirect URI rejects localhost subdomain bypass
+    Given I create a tenant with name "Localhost Bypass Test"
+    And the response status should be 201
+    And I save the tenant ID from the response
+    When I create a client with redirect URI "http://localhost.attacker.com/callback" under the tenant
+    Then the response status should be 400
+    And the response field "error" should equal "validation_error"
+
+    @admin @tenant @validation
+  Scenario: Tenant name uniqueness is case-insensitive
+    When I create a tenant with exact name "CaseTest"
+    Then the response status should be 201
+    And I save the tenant ID from the response
+    When I create a tenant with exact name "casetest"
+    Then the response status should be 409
+    And the response field "error" should equal "conflict"

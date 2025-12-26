@@ -1,5 +1,11 @@
 package validation
 
+import (
+	"fmt"
+
+	dErrors "credo/pkg/domain-errors"
+)
+
 // HTTP body limits
 const (
 	// MaxBodySize is the maximum allowed request body size (64 KB).
@@ -48,3 +54,29 @@ const (
 	// MaxRefreshTokenLength is the maximum length of a refresh token.
 	MaxRefreshTokenLength = 256
 )
+
+// CheckSliceCount validates that a slice does not exceed the maximum count.
+func CheckSliceCount(fieldName string, count, max int) error {
+	if count > max {
+		return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("too many %s: max %d allowed", fieldName, max))
+	}
+	return nil
+}
+
+// CheckStringLength validates that a string does not exceed the maximum length.
+func CheckStringLength(fieldName, value string, max int) error {
+	if len(value) > max {
+		return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("%s exceeds max length of %d", fieldName, max))
+	}
+	return nil
+}
+
+// CheckEachStringLength validates that each string in a slice does not exceed the maximum length.
+func CheckEachStringLength(fieldName string, values []string, max int) error {
+	for _, v := range values {
+		if len(v) > max {
+			return dErrors.New(dErrors.CodeValidation, fmt.Sprintf("%s exceeds max length of %d", fieldName, max))
+		}
+	}
+	return nil
+}

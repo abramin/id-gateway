@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -35,6 +36,10 @@ func (s *Service) GetTenant(ctx context.Context, tenantID id.TenantID) (*models.
 	if err != nil {
 		return nil, err
 	}
+
+	// Add timeout to prevent cascade failures if count queries hang
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
 	var clientCount, userCount int
 	g, ctx := errgroup.WithContext(ctx)

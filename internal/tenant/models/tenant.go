@@ -43,14 +43,13 @@ func (t *Tenant) Reactivate(now time.Time) error {
 	return nil
 }
 
-func NewTenant(tenantID id.TenantID, name string) (*Tenant, error) {
+func NewTenant(tenantID id.TenantID, name string, now time.Time) (*Tenant, error) {
 	if name == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "tenant name cannot be empty")
 	}
 	if len(name) > 128 {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "tenant name must be 128 characters or less")
 	}
-	now := time.Now()
 	return &Tenant{
 		ID:        tenantID,
 		Name:      name,
