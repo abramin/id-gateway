@@ -105,13 +105,12 @@ paths:
                 mixed_status:
                   value:
                     consents:
-                      - id: "consent_abc123"
+                      - id: "6f8e9c2a-1d2f-4a7e-9d1e-1a2b3c4d5e6f"
                         purpose: "login"
                         granted_at: "2025-12-03T10:00:00Z"
                         expires_at: "2026-12-03T10:00:00Z"
-                        revoked_at: null
                         status: "active"
-                      - id: "consent_def456"
+                      - id: "b3f09e12-6c44-4fa1-9a0a-0e9a7b2d5c4f"
                         purpose: "registry_check"
                         granted_at: "2025-12-03T10:00:00Z"
                         expires_at: "2026-12-03T10:00:00Z"
@@ -166,8 +165,8 @@ paths:
       description: |
         Revoke consent for one or more purposes. Once revoked, future operations
         requiring that purpose will fail until consent is re-granted. Revoking
-        already revoked consent is idempotent. Attempting to revoke an expired
-        consent returns `400 bad_request`. Missing consents are ignored (no error).
+        already revoked or expired consent is idempotent. Missing consents are
+        ignored (no error). The response only includes newly revoked consents.
       security:
         - bearerAuth: []
       requestBody:
@@ -210,15 +209,16 @@ paths:
     post:
       summary: Revoke all consents
       description: |
-        Revoke all active consents for the authenticated user. This is a bulk
-        operation intended for cleanup and administrative purposes. Already
-        revoked or expired consents are not affected. Returns the count of
-        consents that were revoked.
+        Revoke all consents for the authenticated user that are not already
+        revoked. This is a bulk operation intended for cleanup and
+        administrative purposes. Expired consents without a revoked_at
+        timestamp are marked revoked as well. Returns a message that includes
+        the count of consents revoked.
       security:
         - bearerAuth: []
       responses:
         "200":
-          description: All active consents revoked successfully
+          description: Consents revoked successfully
           content:
             application/json:
               schema:
@@ -228,8 +228,8 @@ paths:
                   value:
                     revoked: null
                     message: "Consent revoked for 3 purposes"
-                no_active:
-                  summary: No active consents to revoke
+                none_to_revoke:
+                  summary: No consents to revoke
                   value:
                     revoked: null
                     message: "Consent revoked for 0 purposes"
@@ -328,7 +328,7 @@ components:
         revoked:
           type: array
           nullable: true
-          description: List of revoked consents (null for revoke-all operations)
+          description: List of revoked consents (empty when none were revoked; null for revoke-all operations)
           items:
             $ref: "#/components/schemas/RevokedConsent"
         message:
@@ -371,7 +371,7 @@ components:
         id:
           type: string
           description: Unique consent identifier
-          example: "consent_abc123"
+          example: "6f8e9c2a-1d2f-4a7e-9d1e-1a2b3c4d5e6f"
         purpose:
           $ref: "#/components/schemas/ConsentPurpose"
         granted_at:
@@ -381,13 +381,11 @@ components:
         expires_at:
           type: string
           format: date-time
-          nullable: true
           description: Timestamp when consent expires
         revoked_at:
           type: string
           format: date-time
-          nullable: true
-          description: Timestamp when consent was revoked (null if not revoked)
+          description: Timestamp when consent was revoked
         status:
           $ref: "#/components/schemas/ConsentStatus"
     ErrorResponse:
@@ -422,19 +420,19 @@ components:
             empty_purposes:
               value:
                 error: bad_request
-                error_description: "purposes array must not be empty"
+                error_description: "purposes are required"
             invalid_purpose:
               value:
                 error: bad_request
                 error_description: "invalid purpose: invalid_purpose"
-            invalid_filter:
+            invalid_status_filter:
               value:
                 error: bad_request
-                error_description: "status must be one of [active expired revoked]"
-            revoke_expired:
+                error_description: "invalid status filter"
+            invalid_purpose_filter:
               value:
                 error: bad_request
-                error_description: "cannot revoke expired consent for purpose login"
+                error_description: "invalid purpose filter"
     Unauthorized:
       description: Missing or invalid credentials
       content:
