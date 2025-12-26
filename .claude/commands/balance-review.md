@@ -13,11 +13,12 @@ Your job is to balance:
 
 Repo: Credo (Go).
 
-## Method: Three-pass review (do not blend these)
+## Method: Four-pass review (do not blend these)
 
 PASS A (Simplify): Identify over-abstraction / non-idiomatic Go and propose flattening.
 PASS B (DRY carefully): Identify repetition that increases change risk and propose minimal, idiomatic reuse.
 PASS C (Indirection & Traceability): Enforce a tight “hop budget” and eliminate boomerang flows and pass-through layers.
+PASS D(Effects Visibility ) - where's the I/O? Keep pure code disnguished from functions with side effects or I/O.
 
 You must keep your findings clearly labeled by PASS.
 
@@ -112,6 +113,103 @@ Your goal: a reviewer can answer “where does this happen?” quickly.
 
 ---
 
+---
+
+## PASS D: Effects Visibility (where's the I/O?)
+
+### Goal
+
+Any reviewer can answer "does this function do I/O?" from its signature and location alone—without tracing 5 hops deep.
+
+### Definitions
+
+- **Pure function:** deterministic, no side effects. Given the same inputs, always returns the same output. Does not read from or write to DB, network, filesystem, clock, or randomness.
+- **Effectful function:** may perform I/O, access time/randomness, or mutate external state.
+- **Local mutation:** mutating a struct you own within a function is acceptable; mutating shared/global state is not pure.
+
+### Rules
+
+1. **Signature honesty**
+
+   - Functions taking `ctx context.Context` signal "I may do I/O."
+   - Functions without `ctx` must be pure—no DB, HTTP, `time.Now()`, `rand`, or filesystem access hidden in the call chain.
+   - Review rule: if a function lacks `ctx` but a transitive callee does I/O, that's signature dishonesty.
+
+2. **Domain packages are pure**
+
+   - `internal/domain/*` must not import: `internal/store`, `internal/client`, `database/sql`, `net/http`, or any infrastructure package.
+   - Domain functions receive data as arguments, return results/decisions—never fetch or persist.
+   - Domain may define repository/client _interfaces_ but must not call them.
+   - Review rule: run `go list -f '{{.Imports}}' ./internal/domain/...` and flag any infra imports.
+
+3. **Sandwich structure for service methods**
+
+   - Each application-layer method should follow: **read → compute → write**
+   - I/O clusters at the top (gather data) and bottom (persist/emit), with pure domain logic in the middle.
+   - The pure middle can be arbitrarily deep—depth doesn't hurt when it's all pure.
+   - Violation pattern: fetch-check-fetch-check-save (I/O interleaved with decisions).
+
+4. **Return decisions, don't execute them**
+
+   - Prefer: domain logic returns a result or `Effects` struct describing what should happen.
+   - Avoid: domain logic calling notification services, event emitters, or repos directly.
+   - Exception: trivial cases where the indirection costs more than it saves.
+
+5. **Time and randomness are effects**
+
+   - Functions needing current time should receive `time.Time` as a parameter (or use a `Clock` interface in the service layer).
+   - Functions needing randomness should receive the random value or a `rand.Source`.
+   - Review rule: grep for `time.Now()` and `rand.` in domain packages—these are violations.
+
+### How to audit a flow
+
+For a given service method:
+
+1. List every function/method it calls (direct and transitive, up to 3 levels).
+2. Mark each as **PURE** or **EFFECT**:
+   - Takes `ctx`? → likely EFFECT (verify it actually does I/O)
+   - Calls store/client/repo? → EFFECT
+   - Calls `time.Now()`, `rand.*`, `os.*`, `net.*`? → EFFECT
+   - None of the above? → PURE
+3. Draw the sandwich:
+
+```
+   [EFFECT] userRepo.Get
+   [EFFECT] docRepo.Get
+   [PURE]   domain.ValidateClaims
+   [PURE]   domain.EvaluateVerification
+   [PURE]   domain.BuildResult
+   [EFFECT] resultRepo.Save
+```
+
+4. If EFFECT calls appear in the middle of PURE calls → flag as "scattered I/O."
+
+### Patterns to flag
+
+| Pattern                 | Symptom                                     | Fix                                                   |
+| ----------------------- | ------------------------------------------- | ----------------------------------------------------- |
+| Signature dishonesty    | No `ctx`, but calls something that does I/O | Add `ctx` or hoist I/O to caller                      |
+| Domain impurity         | Domain package imports store/client         | Move I/O to application layer; domain receives data   |
+| Scattered I/O           | EFFECT-PURE-EFFECT-PURE-EFFECT sandwich     | Gather all reads upfront, batch writes at end         |
+| Inline effect execution | Domain calls `notifier.Send()` directly     | Return `Effects` struct, execute in application layer |
+| Hidden time dependency  | `time.Now()` inside domain logic            | Pass `asOf time.Time` parameter                       |
+
+### Output format (per finding)
+
+```
+- PASS: D
+- Location: package/file:function
+- Pattern: signature dishonesty | domain impurity | scattered I/O | inline effects | hidden time/rand
+- Evidence: call chain showing where effect hides
+  e.g., `ValidateUser (no ctx) → checkAccount (no ctx) → cache.Get (ctx) ← EFFECT`
+- Impact: can't unit test without mocks; I/O invisible at call site; domain coupled to infra
+- Proposed fix: specific refactor (hoist effect / split function / return decision / inject time)
+- Sandwich before: [P] [E] [P] [E] [P] [E]
+- Sandwich after:  [E] [E] [P] [P] [P] [E]
+```
+
+---
+
 ## Output format (for each finding)
 
 For each finding, output:
@@ -134,8 +232,9 @@ For each finding, output:
 A) Top 5 simplifications (PASS A) ranked by leverage
 B) Top 5 safe DRY refactors (PASS B) ranked by leverage
 C) Top 5 traceability fixes (PASS C) ranked by hop reduction / boomerang elimination
-D) “Keep as-is” list: 3 abstractions that are justified and why
-E) Credo-specific style deltas: 6–10 rules (Go-idiomatic, tailored)
+D) Top 5 effects visibility fixes (PASS D) ranked by "I/O scatter" severity
+E) “Keep as-is” list: 3 abstractions that are justified and why
+F) Credo-specific style deltas: 6–10 rules (Go-idiomatic, tailored)
 
 ---
 

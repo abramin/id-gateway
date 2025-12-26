@@ -133,6 +133,7 @@ func (s *Service) authorizeInTx(ctx context.Context, params authorizeParams) (*a
 			params.RedirectURI,
 			params.Now,
 			params.Now.Add(10*time.Minute),
+			params.Now,
 		)
 		if err != nil {
 			return dErrors.Wrap(err, dErrors.CodeInternal, "failed to create authorization code")

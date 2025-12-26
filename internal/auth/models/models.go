@@ -197,7 +197,7 @@ func NewSession(id id.SessionID, userID id.UserID, clientID id.ClientID, tenantI
 	}, nil
 }
 
-func NewAuthorizationCode(code string, sessionID id.SessionID, redirectURI string, createdAt time.Time, expiresAt time.Time) (*AuthorizationCodeRecord, error) {
+func NewAuthorizationCode(code string, sessionID id.SessionID, redirectURI string, createdAt time.Time, expiresAt time.Time, now time.Time) (*AuthorizationCodeRecord, error) {
 	if code == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "authorization code cannot be empty")
 	}
@@ -211,7 +211,7 @@ func NewAuthorizationCode(code string, sessionID id.SessionID, redirectURI strin
 	if expiresAt.Before(createdAt) {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "authorization code expiry must be after creation")
 	}
-	if expiresAt.Before(time.Now()) {
+	if expiresAt.Before(now) {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, fmt.Sprintf("authorization code already expired at %v", expiresAt))
 	}
 	return &AuthorizationCodeRecord{
@@ -225,14 +225,14 @@ func NewAuthorizationCode(code string, sessionID id.SessionID, redirectURI strin
 	}, nil
 }
 
-func NewRefreshToken(token string, sessionID id.SessionID, createdAt time.Time, expiresAt time.Time) (*RefreshTokenRecord, error) {
+func NewRefreshToken(token string, sessionID id.SessionID, createdAt time.Time, expiresAt time.Time, now time.Time) (*RefreshTokenRecord, error) {
 	if token == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "refresh token cannot be empty")
 	}
 	if expiresAt.Before(createdAt) {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "refresh token expiry must be after creation")
 	}
-	if expiresAt.Before(time.Now()) {
+	if expiresAt.Before(now) {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, fmt.Sprintf("refresh token already expired at %v", expiresAt))
 	}
 	return &RefreshTokenRecord{

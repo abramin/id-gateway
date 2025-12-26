@@ -19,6 +19,7 @@ import (
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
+	"credo/pkg/platform/middleware/requesttime"
 	platformsync "credo/pkg/platform/sync"
 )
 
@@ -349,12 +350,13 @@ func (s *Service) generateTokenArtifacts(ctx context.Context, session *models.Se
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to create refresh token")
 	}
 
-	now := time.Now()
+	now := requesttime.Now(ctx)
 	tokenRecord, err := models.NewRefreshToken(
 		refreshToken,
 		session.ID,
 		now,
 		now.Add(s.RefreshTokenTTL),
+		now,
 	)
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to create refresh token record")
