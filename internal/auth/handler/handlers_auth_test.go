@@ -51,30 +51,6 @@ func (s *AuthHandlerSuite) TestHandler_Authorize() {
 		State:       "test-state",
 	}
 
-	s.T().Run("forwards authorize request to service with default scope when scopes omitted", func(t *testing.T) {
-		mockService, router := s.newHandler(t)
-		requestBody := `{"email":"user@example.com","client_id":"test-client-id","redirect_uri":"https://example.com/redirect"}`
-		// Handler normalizes the request, adding default "openid" scope when omitted
-		expectedReq := &models.AuthorizationRequest{
-			Email:       "user@example.com",
-			ClientID:    "test-client-id",
-			Scopes:      []string{"openid"},
-			RedirectURI: "https://example.com/redirect",
-			State:       "",
-		}
-		expectedResp := &models.AuthorizationResult{
-			Code:        "authz_code_123",
-			RedirectURI: expectedReq.RedirectURI,
-		}
-		mockService.EXPECT().Authorize(gomock.Any(), expectedReq).Return(expectedResp, nil)
-
-		status, got, errBody := s.doAuthRequest(t, router, requestBody)
-
-		s.assertSuccessResponse(t, status, got, errBody)
-		assert.Equal(t, expectedResp.Code, got.Code)
-		assert.Equal(t, expectedResp.RedirectURI, got.RedirectURI)
-	})
-
 	s.T().Run("returns 500 when service fails", func(t *testing.T) {
 		mockService, router := s.newHandler(t)
 		mockService.EXPECT().Authorize(gomock.Any(), validRequest).Return(nil, errors.New("boom"))

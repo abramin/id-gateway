@@ -61,6 +61,8 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc TestContext) {
 
 	// Authorization steps
 	ctx.Step(`^I initiate authorization with email "([^"]*)" and scopes "([^"]*)"$`, steps.initiateAuthorization)
+	ctx.Step(`^I initiate authorization with email "([^"]*)" and scopes "([^"]*)" and redirect uri "([^"]*)"$`, steps.initiateAuthorizationWithRedirect)
+	ctx.Step(`^I initiate authorization with email "([^"]*)" without scopes$`, steps.initiateAuthorizationWithoutScopes)
 	ctx.Step(`^I save the authorization code$`, steps.saveAuthorizationCode)
 	ctx.Step(`^I exchange the authorization code for tokens$`, steps.exchangeCodeForTokens)
 	ctx.Step(`^I exchange invalid authorization code "([^"]*)"$`, steps.exchangeInvalidCode)
@@ -130,6 +132,27 @@ func (s *authSteps) initiateAuthorization(ctx context.Context, email, scopes str
 		"email":        email,
 		"client_id":    s.tc.GetClientID(),
 		"scopes":       strings.Split(scopes, ","),
+		"redirect_uri": s.tc.GetRedirectURI(),
+		"state":        "test-state-123",
+	}
+	return s.tc.POST("/auth/authorize", body)
+}
+
+func (s *authSteps) initiateAuthorizationWithRedirect(ctx context.Context, email, scopes, redirectURI string) error {
+	body := map[string]interface{}{
+		"email":        email,
+		"client_id":    s.tc.GetClientID(),
+		"scopes":       strings.Split(scopes, ","),
+		"redirect_uri": redirectURI,
+		"state":        "test-state-123",
+	}
+	return s.tc.POST("/auth/authorize", body)
+}
+
+func (s *authSteps) initiateAuthorizationWithoutScopes(ctx context.Context, email string) error {
+	body := map[string]interface{}{
+		"email":        email,
+		"client_id":    s.tc.GetClientID(),
 		"redirect_uri": s.tc.GetRedirectURI(),
 		"state":        "test-state-123",
 	}
