@@ -71,6 +71,16 @@ func (s *Session) Activate() {
 	}
 }
 
+// CanAdvance returns true if the session is in a state that allows token operations.
+// When allowPending is true, both active and pending_consent states are valid
+// (used during code exchange). When false, only active state is valid (used during refresh).
+func (s *Session) CanAdvance(allowPending bool) bool {
+	if s.IsActive() {
+		return true
+	}
+	return allowPending && s.IsPendingConsent()
+}
+
 // GetDeviceBinding returns the device binding information as a value object.
 func (s *Session) GetDeviceBinding() DeviceBinding {
 	return DeviceBinding{

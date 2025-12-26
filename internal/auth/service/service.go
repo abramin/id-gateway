@@ -128,6 +128,22 @@ type Config struct {
 	DeviceBindingEnabled   bool
 }
 
+// applyDefaults sets default values for any unset config fields.
+func (c *Config) applyDefaults() {
+	if c.SessionTTL <= 0 {
+		c.SessionTTL = defaultSessionTTL
+	}
+	if c.TokenTTL <= 0 {
+		c.TokenTTL = defaultTokenTTL
+	}
+	if c.RefreshTokenTTL <= 0 {
+		c.RefreshTokenTTL = defaultRefreshTokenTTL
+	}
+	if len(c.AllowedRedirectSchemes) == 0 {
+		c.AllowedRedirectSchemes = []string{"https"}
+	}
+}
+
 type tokenArtifacts struct {
 	accessToken    string
 	accessTokenJTI string
@@ -264,19 +280,7 @@ func New(
 	if cfg == nil {
 		cfg = &Config{}
 	}
-	// Defaults for required config
-	if cfg.SessionTTL <= 0 {
-		cfg.SessionTTL = defaultSessionTTL
-	}
-	if cfg.TokenTTL <= 0 {
-		cfg.TokenTTL = defaultTokenTTL
-	}
-	if cfg.RefreshTokenTTL <= 0 {
-		cfg.RefreshTokenTTL = defaultRefreshTokenTTL
-	}
-	if len(cfg.AllowedRedirectSchemes) == 0 {
-		cfg.AllowedRedirectSchemes = []string{"https"}
-	}
+	cfg.applyDefaults()
 
 	svc := &Service{
 		users:          users,

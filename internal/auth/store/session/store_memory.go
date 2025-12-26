@@ -142,17 +142,11 @@ func (s *InMemorySessionStore) validateForAdvance(session *models.Session, clien
 	if session.ClientID.String() != clientID {
 		return fmt.Errorf("client_id mismatch: %w", sentinel.ErrInvalidState)
 	}
-	if session.Status == models.SessionStatusRevoked {
+	if session.IsRevoked() {
 		return ErrSessionRevoked
 	}
-	if allowPending {
-		if session.Status != models.SessionStatusPendingConsent && session.Status != models.SessionStatusActive {
-			return fmt.Errorf("session in invalid state: %w", sentinel.ErrInvalidState)
-		}
-	} else {
-		if session.Status != models.SessionStatusActive {
-			return fmt.Errorf("session in invalid state: %w", sentinel.ErrInvalidState)
-		}
+	if !session.CanAdvance(allowPending) {
+		return fmt.Errorf("session in invalid state: %w", sentinel.ErrInvalidState)
 	}
 	if at.After(session.ExpiresAt) {
 		return fmt.Errorf("session expired: %w", sentinel.ErrExpired)
