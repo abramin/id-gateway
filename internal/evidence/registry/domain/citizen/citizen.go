@@ -67,9 +67,9 @@ type CitizenVerification struct {
 	minimized  bool
 }
 
-// NewCitizenVerification creates a new citizen verification record.
+// New creates a new citizen verification record.
 // This is the only way to construct a valid CitizenVerification.
-func NewCitizenVerification(
+func New(
 	nationalID id.NationalID,
 	details PersonalDetails,
 	valid bool,

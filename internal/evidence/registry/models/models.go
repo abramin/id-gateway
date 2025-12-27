@@ -26,14 +26,3 @@ type RegistryResult struct {
 	Citizen  *CitizenRecord
 	Sanction *SanctionsRecord
 }
-
-func MinimizeCitizenRecord(record CitizenRecord) CitizenRecord {
-	return CitizenRecord{
-		NationalID:  "",
-		FullName:    "",
-		DateOfBirth: "",
-		Address:     "",
-		Valid:       record.Valid,
-		CheckedAt:   record.CheckedAt,
-	}
-}

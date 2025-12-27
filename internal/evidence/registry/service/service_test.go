@@ -49,13 +49,14 @@ func (c *stubCache) FindCitizen(_ context.Context, nationalID id.NationalID, reg
 	return nil, store.ErrNotFound
 }
 
-func (c *stubCache) SaveCitizen(_ context.Context, record *models.CitizenRecord, regulated bool) error {
+func (c *stubCache) SaveCitizen(_ context.Context, key id.NationalID, record *models.CitizenRecord, regulated bool) error {
 	c.saveCitizenCalls = append(c.saveCitizenCalls, record)
 	if c.saveCitizenErr != nil {
 		return c.saveCitizenErr
 	}
-	c.citizenRecords[record.NationalID] = record
-	c.regulatedMode[record.NationalID] = regulated
+	// Use the key parameter (not record.NationalID) to avoid collision for minimized records
+	c.citizenRecords[key.String()] = record
+	c.regulatedMode[key.String()] = regulated
 	return nil
 }
 
@@ -69,12 +70,12 @@ func (c *stubCache) FindSanction(_ context.Context, nationalID id.NationalID) (*
 	return nil, store.ErrNotFound
 }
 
-func (c *stubCache) SaveSanction(_ context.Context, record *models.SanctionsRecord) error {
+func (c *stubCache) SaveSanction(_ context.Context, key id.NationalID, record *models.SanctionsRecord) error {
 	c.saveSanctionCalls = append(c.saveSanctionCalls, record)
 	if c.saveSanctionErr != nil {
 		return c.saveSanctionErr
 	}
-	c.sanctionRecords[record.NationalID] = record
+	c.sanctionRecords[key.String()] = record
 	return nil
 }
 
@@ -162,7 +163,7 @@ func newTestOrchestrator(citizenProv, sanctionsProv *stubProvider) *orchestrator
 	if sanctionsProv != nil {
 		_ = registry.Register(sanctionsProv)
 	}
-	return orchestrator.NewOrchestrator(orchestrator.OrchestratorConfig{
+	return orchestrator.New(orchestrator.OrchestratorConfig{
 		Registry:        registry,
 		DefaultStrategy: orchestrator.StrategyFallback,
 		DefaultTimeout:  5 * time.Second,

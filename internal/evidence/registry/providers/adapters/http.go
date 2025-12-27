@@ -50,8 +50,8 @@ type HTTPAdapterConfig struct {
 	Parser       ResponseParser
 }
 
-// NewHTTPAdapter creates a new HTTP protocol adapter
-func NewHTTPAdapter(cfg HTTPAdapterConfig) *HTTPAdapter {
+// New creates a new HTTP protocol adapter
+func New(cfg HTTPAdapterConfig) *HTTPAdapter {
 	if cfg.Timeout == 0 {
 		cfg.Timeout = 10 * time.Second
 	}

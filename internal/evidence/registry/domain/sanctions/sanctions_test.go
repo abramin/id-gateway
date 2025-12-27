@@ -91,7 +91,7 @@ func (s *SanctionsDomainSuite) TestNewSanctionsCheck() {
 	source := NewSource("test-registry")
 	checkedAt := shared.NewCheckedAt(time.Now())
 	providerID := shared.NewProviderID("test-provider")
-	confidence := shared.MustConfidence(1.0)
+	confidence := shared.Authoritative()
 
 	check := NewSanctionsCheck(nationalID, source, checkedAt, providerID, confidence)
 
@@ -109,7 +109,7 @@ func (s *SanctionsDomainSuite) TestNewListedSanctionsCheck() {
 	source := NewSource("test-registry")
 	checkedAt := shared.NewCheckedAt(time.Now())
 	providerID := shared.NewProviderID("test-provider")
-	confidence := shared.MustConfidence(1.0)
+	confidence := shared.Authoritative()
 
 	s.Run("defaults ListTypeNone to ListTypeSanctions", func() {
 		check := NewListedSanctionsCheck(
@@ -152,7 +152,7 @@ func (s *SanctionsDomainSuite) TestSanctionsCheck_QueryMethods() {
 	source := NewSource("test-registry")
 	checkedAt := shared.NewCheckedAt(time.Now())
 	providerID := shared.NewProviderID("test-provider")
-	confidence := shared.MustConfidence(1.0)
+	confidence := shared.Authoritative()
 
 	s.Run("unlisted subject returns false for all queries", func() {
 		check := NewSanctionsCheck(nationalID, source, checkedAt, providerID, confidence)
@@ -194,7 +194,7 @@ func (s *SanctionsDomainSuite) TestSanctionsCheck_RequiresEnhancedDueDiligence()
 	source := NewSource("test-registry")
 	checkedAt := shared.NewCheckedAt(time.Now())
 	providerID := shared.NewProviderID("test-provider")
-	confidence := shared.MustConfidence(1.0)
+	confidence := shared.Authoritative()
 
 	s.Run("unlisted does not require EDD", func() {
 		check := NewSanctionsCheck(nationalID, source, checkedAt, providerID, confidence)

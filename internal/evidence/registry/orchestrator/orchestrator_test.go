@@ -13,12 +13,12 @@ import (
 
 // stubProvider is a test double for providers.Provider
 type stubProvider struct {
-	id         string
-	provType   providers.ProviderType
-	lookupFn   func(ctx context.Context, filters map[string]string) (*providers.Evidence, error)
-	healthFn   func(ctx context.Context) error
-	callCount  atomic.Int32
-	callTimes  []time.Time
+	id          string
+	provType    providers.ProviderType
+	lookupFn    func(ctx context.Context, filters map[string]string) (*providers.Evidence, error)
+	healthFn    func(ctx context.Context) error
+	callCount   atomic.Int32
+	callTimes   []time.Time
 	callTimesMu chan struct{} // mutex for callTimes
 }
 
@@ -105,7 +105,7 @@ func (s *OrchestratorSuite) TestBackoffBehavior() {
 		registry := providers.NewProviderRegistry()
 		_ = registry.Register(prov)
 
-		orch := NewOrchestrator(OrchestratorConfig{
+		orch := New(OrchestratorConfig{
 			Registry:        registry,
 			DefaultStrategy: StrategyFallback,
 			DefaultTimeout:  5 * time.Second,
@@ -145,7 +145,7 @@ func (s *OrchestratorSuite) TestBackoffBehavior() {
 		registry := providers.NewProviderRegistry()
 		_ = registry.Register(prov)
 
-		orch := NewOrchestrator(OrchestratorConfig{
+		orch := New(OrchestratorConfig{
 			Registry:        registry,
 			DefaultStrategy: StrategyFallback,
 			DefaultTimeout:  5 * time.Second,
@@ -183,7 +183,7 @@ func (s *OrchestratorSuite) TestBackoffBehavior() {
 		registry := providers.NewProviderRegistry()
 		_ = registry.Register(prov)
 
-		orch := NewOrchestrator(OrchestratorConfig{
+		orch := New(OrchestratorConfig{
 			Registry:        registry,
 			DefaultStrategy: StrategyFallback,
 			DefaultTimeout:  5 * time.Second,
@@ -228,7 +228,7 @@ func (s *OrchestratorSuite) TestBackoffBehavior() {
 		registry := providers.NewProviderRegistry()
 		_ = registry.Register(prov)
 
-		orch := NewOrchestrator(OrchestratorConfig{
+		orch := New(OrchestratorConfig{
 			Registry:        registry,
 			DefaultStrategy: StrategyFallback,
 			DefaultTimeout:  5 * time.Second,
@@ -267,7 +267,7 @@ func (s *OrchestratorSuite) TestContextCancellation() {
 		registry := providers.NewProviderRegistry()
 		_ = registry.Register(prov)
 
-		orch := NewOrchestrator(OrchestratorConfig{
+		orch := New(OrchestratorConfig{
 			Registry:        registry,
 			DefaultStrategy: StrategyPrimary,
 			DefaultTimeout:  5 * time.Second,
@@ -314,7 +314,7 @@ func (s *OrchestratorSuite) TestContextCancellation() {
 		registry := providers.NewProviderRegistry()
 		_ = registry.Register(prov)
 
-		orch := NewOrchestrator(OrchestratorConfig{
+		orch := New(OrchestratorConfig{
 			Registry:        registry,
 			DefaultStrategy: StrategyFallback,
 			DefaultTimeout:  10 * time.Second,
@@ -377,7 +377,7 @@ func (s *OrchestratorSuite) TestParallelStrategy() {
 		_ = registry.Register(prov1)
 		_ = registry.Register(prov2)
 
-		orch := NewOrchestrator(OrchestratorConfig{
+		orch := New(OrchestratorConfig{
 			Registry:        registry,
 			DefaultStrategy: StrategyParallel,
 			DefaultTimeout:  5 * time.Second,
@@ -430,7 +430,7 @@ func (s *OrchestratorSuite) TestParallelStrategy() {
 		_ = registry.Register(prov1)
 		_ = registry.Register(prov2)
 
-		orch := NewOrchestrator(OrchestratorConfig{
+		orch := New(OrchestratorConfig{
 			Registry:        registry,
 			DefaultStrategy: StrategyParallel,
 			DefaultTimeout:  5 * time.Second,
@@ -475,7 +475,7 @@ func (s *OrchestratorSuite) TestParallelStrategy() {
 		_ = registry.Register(prov1)
 		_ = registry.Register(prov2)
 
-		orch := NewOrchestrator(OrchestratorConfig{
+		orch := New(OrchestratorConfig{
 			Registry:        registry,
 			DefaultStrategy: StrategyParallel,
 			DefaultTimeout:  5 * time.Second,
@@ -534,7 +534,7 @@ func (s *OrchestratorSuite) TestVotingStrategy() {
 		_ = registry.Register(prov2)
 		_ = registry.Register(prov3)
 
-		orch := NewOrchestrator(OrchestratorConfig{
+		orch := New(OrchestratorConfig{
 			Registry:        registry,
 			DefaultStrategy: StrategyVoting,
 			DefaultTimeout:  5 * time.Second,
@@ -586,7 +586,7 @@ func (s *OrchestratorSuite) TestFallbackStrategy() {
 		_ = registry.Register(primaryProv)
 		_ = registry.Register(secondaryProv)
 
-		orch := NewOrchestrator(OrchestratorConfig{
+		orch := New(OrchestratorConfig{
 			Registry:        registry,
 			DefaultStrategy: StrategyFallback,
 			DefaultTimeout:  5 * time.Second,
@@ -644,7 +644,7 @@ func (s *OrchestratorSuite) TestFallbackStrategy() {
 		_ = registry.Register(primaryProv)
 		_ = registry.Register(secondaryProv)
 
-		orch := NewOrchestrator(OrchestratorConfig{
+		orch := New(OrchestratorConfig{
 			Registry:        registry,
 			DefaultStrategy: StrategyFallback,
 			DefaultTimeout:  5 * time.Second,

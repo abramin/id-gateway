@@ -39,11 +39,14 @@ type Service struct {
 // The regulated parameter indicates whether the record was stored in minimized form.
 // Cache implementations should return ErrNotFound if the stored regulated mode
 // doesn't match the requested mode, preventing stale PII from being served.
+//
+// Save methods accept the lookup key separately from the record to prevent cache
+// key collisions when records are minimized (e.g., regulated mode blanks NationalID).
 type CacheStore interface {
 	FindCitizen(ctx context.Context, nationalID id.NationalID, regulated bool) (*models.CitizenRecord, error)
-	SaveCitizen(ctx context.Context, record *models.CitizenRecord, regulated bool) error
+	SaveCitizen(ctx context.Context, key id.NationalID, record *models.CitizenRecord, regulated bool) error
 	FindSanction(ctx context.Context, nationalID id.NationalID) (*models.SanctionsRecord, error)
-	SaveSanction(ctx context.Context, record *models.SanctionsRecord) error
+	SaveSanction(ctx context.Context, key id.NationalID, record *models.SanctionsRecord) error
 }
 
 // Option configures the Service.
@@ -125,7 +128,7 @@ func (s *Service) Check(ctx context.Context, userID id.UserID, nationalID id.Nat
 	}
 
 	// Phase 4: Atomic cache commit - only cache if both lookups succeeded
-	s.commitCache(ctx, citizen, sanction, cached.citizenCached, cached.sanctionsCached)
+	s.cacheNewlyFetched(ctx, nationalID, citizen, sanction, cached)
 
 	return &models.RegistryResult{Citizen: citizen, Sanction: sanction}, nil
 }
@@ -211,18 +214,19 @@ func (s *Service) convertEvidence(result *orchestrator.LookupResult) (*models.Ci
 	for _, ev := range result.Evidence {
 		switch ev.ProviderType {
 		case providers.ProviderTypeCitizen:
-			// Convert to domain aggregate first (enforces invariants)
-			verification := EvidenceToCitizenVerification(ev)
-			// Apply full minimization (including NationalID) for GDPR compliance
+			verification, err := EvidenceToCitizenVerification(ev)
+			if err != nil {
+				return nil, nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to convert citizen evidence")
+			}
 			if s.regulated {
 				verification = verification.WithoutNationalID()
 			}
-			// Convert domain aggregate to infrastructure model
 			citizenRecord = CitizenVerificationToRecord(verification)
 		case providers.ProviderTypeSanctions:
-			// Convert to domain aggregate first (enforces invariants)
-			check := EvidenceToSanctionsCheck(ev)
-			// Convert domain aggregate to infrastructure model
+			check, err := EvidenceToSanctionsCheck(ev)
+			if err != nil {
+				return nil, nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to convert sanctions evidence")
+			}
 			sanctionRecord = SanctionsCheckToRecord(check)
 		}
 	}
@@ -230,17 +234,19 @@ func (s *Service) convertEvidence(result *orchestrator.LookupResult) (*models.Ci
 	return citizenRecord, sanctionRecord, nil
 }
 
-// commitCache saves records to cache. Only caches records that weren't already cached.
+// cacheNewlyFetched saves records to cache. Only caches records that weren't already cached.
 // Stores the current regulated mode with citizen records for cache invalidation.
-func (s *Service) commitCache(ctx context.Context, citizen *models.CitizenRecord, sanction *models.SanctionsRecord, citizenCached, sanctionsCached bool) {
+// The key parameter is the original lookup key, used to avoid cache collisions when
+// records are minimized (regulated mode blanks NationalID in the record).
+func (s *Service) cacheNewlyFetched(ctx context.Context, key id.NationalID, citizen *models.CitizenRecord, sanction *models.SanctionsRecord, fromCache cacheCheckResult) {
 	if s.cache == nil {
 		return
 	}
-	if !citizenCached && citizen != nil {
-		_ = s.cache.SaveCitizen(ctx, citizen, s.regulated)
+	if !fromCache.citizenCached && citizen != nil {
+		_ = s.cache.SaveCitizen(ctx, key, citizen, s.regulated)
 	}
-	if !sanctionsCached && sanction != nil {
-		_ = s.cache.SaveSanction(ctx, sanction)
+	if !fromCache.sanctionsCached && sanction != nil {
+		_ = s.cache.SaveSanction(ctx, key, sanction)
 	}
 }
 
@@ -281,13 +287,13 @@ func (s *Service) Citizen(ctx context.Context, userID id.UserID, nationalID id.N
 	var record *models.CitizenRecord
 	for _, ev := range result.Evidence {
 		if ev.ProviderType == providers.ProviderTypeCitizen {
-			// Convert to domain aggregate first (enforces invariants)
-			verification := EvidenceToCitizenVerification(ev)
-			// Apply full minimization (including NationalID) for GDPR compliance
+			verification, err := EvidenceToCitizenVerification(ev)
+			if err != nil {
+				return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to convert citizen evidence")
+			}
 			if s.regulated {
 				verification = verification.WithoutNationalID()
 			}
-			// Convert domain aggregate to infrastructure model
 			record = CitizenVerificationToRecord(verification)
 			break
 		}
@@ -298,7 +304,7 @@ func (s *Service) Citizen(ctx context.Context, userID id.UserID, nationalID id.N
 	}
 
 	if s.cache != nil {
-		_ = s.cache.SaveCitizen(ctx, record, s.regulated)
+		_ = s.cache.SaveCitizen(ctx, nationalID, record, s.regulated)
 	}
 
 	return record, nil
@@ -340,9 +346,10 @@ func (s *Service) Sanctions(ctx context.Context, userID id.UserID, nationalID id
 	var record *models.SanctionsRecord
 	for _, ev := range result.Evidence {
 		if ev.ProviderType == providers.ProviderTypeSanctions {
-			// Convert to domain aggregate first (enforces invariants)
-			check := EvidenceToSanctionsCheck(ev)
-			// Convert domain aggregate to infrastructure model
+			check, err := EvidenceToSanctionsCheck(ev)
+			if err != nil {
+				return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to convert sanctions evidence")
+			}
 			record = SanctionsCheckToRecord(check)
 			break
 		}
@@ -353,7 +360,7 @@ func (s *Service) Sanctions(ctx context.Context, userID id.UserID, nationalID id
 	}
 
 	if s.cache != nil {
-		_ = s.cache.SaveSanction(ctx, record)
+		_ = s.cache.SaveSanction(ctx, nationalID, record)
 	}
 
 	return record, nil

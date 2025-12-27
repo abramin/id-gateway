@@ -29,7 +29,7 @@ func NewWithClient(
 	timeout time.Duration,
 	client adapters.HTTPDoer,
 ) providers.Provider {
-	return adapters.NewHTTPAdapter(adapters.HTTPAdapterConfig{
+	return adapters.New(adapters.HTTPAdapterConfig{
 		ID:         id,
 		BaseURL:    baseURL,
 		APIKey:     apiKey,

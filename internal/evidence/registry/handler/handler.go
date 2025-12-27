@@ -128,7 +128,7 @@ func (h *Handler) HandleCitizenLookup(w http.ResponseWriter, r *http.Request) {
 		h.logger.ErrorContext(ctx, "citizen lookup failed",
 			"request_id", requestID,
 			"user_id", userID,
-			"national_id", nationalID,
+			"national_id_suffix", redactNationalID(nationalID),
 			"error", err,
 		)
 		httputil.WriteError(w, err)
@@ -185,43 +185,17 @@ func (h *Handler) HandleSanctionsLookup(w http.ResponseWriter, r *http.Request) 
 		h.logger.ErrorContext(ctx, "sanctions lookup failed",
 			"request_id", requestID,
 			"user_id", userID,
-			"national_id", nationalID,
+			"national_id_suffix", redactNationalID(nationalID),
 			"error", err,
 		)
 		httputil.WriteError(w, err)
 		return
 	}
 
-	// Emit audit event - FAIL-CLOSED for listed sanctions
-	// If someone is on a sanctions list, we MUST have an audit trail
-	decision := "not_listed"
-	if record.Listed {
-		decision = "listed"
-	}
-	auditEvent := audit.Event{
-		Action:    "registry_sanctions_checked",
-		Purpose:   "registry_check",
-		UserID:    userID,
-		Decision:  decision,
-		Reason:    "user_initiated",
-		RequestID: requestID,
-	}
-
-	if record.Listed {
-		// Critical: sanctions hit requires successful audit before returning result
-		if err := h.emitCriticalAudit(ctx, auditEvent); err != nil {
-			h.logger.ErrorContext(ctx, "CRITICAL: audit failed for listed sanctions - blocking response",
-				"request_id", requestID,
-				"user_id", userID,
-				"national_id", nationalID,
-				"error", err,
-			)
-			httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "unable to complete sanctions check"))
-			return
-		}
-	} else {
-		// Non-critical: log failure but proceed
-		h.emitAudit(ctx, auditEvent)
+	// Emit audit event with fail-closed semantics for listed sanctions
+	if err := h.auditSanctionsCheck(ctx, userID, nationalID, record.Listed, requestID); err != nil {
+		httputil.WriteError(w, err)
+		return
 	}
 
 	// Map to response
@@ -268,4 +242,49 @@ func (h *Handler) emitCriticalAudit(ctx context.Context, event audit.Event) erro
 		return dErrors.New(dErrors.CodeInternal, "audit system unavailable")
 	}
 	return h.auditPort.Emit(ctx, event)
+}
+
+// auditSanctionsCheck emits an audit event for a sanctions check with fail-closed semantics.
+// For listed sanctions, the audit MUST succeed before the response is returned.
+// For non-listed results, audit failures are logged but don't block the response.
+func (h *Handler) auditSanctionsCheck(ctx context.Context, userID id.UserID, nationalID id.NationalID, listed bool, requestID string) error {
+	decision := "not_listed"
+	if listed {
+		decision = "listed"
+	}
+
+	event := audit.Event{
+		Action:    "registry_sanctions_checked",
+		Purpose:   "registry_check",
+		UserID:    userID,
+		Decision:  decision,
+		Reason:    "user_initiated",
+		RequestID: requestID,
+	}
+
+	if listed {
+		if err := h.emitCriticalAudit(ctx, event); err != nil {
+			h.logger.ErrorContext(ctx, "CRITICAL: audit failed for listed sanctions - blocking response",
+				"request_id", requestID,
+				"user_id", userID,
+				"national_id_suffix", redactNationalID(nationalID),
+				"error", err,
+			)
+			return dErrors.New(dErrors.CodeInternal, "unable to complete sanctions check")
+		}
+		return nil
+	}
+
+	h.emitAudit(ctx, event)
+	return nil
+}
+
+// redactNationalID returns a redacted version of the NationalID safe for logging.
+// Shows only the last 4 characters to allow correlation without exposing full PII.
+func redactNationalID(nid id.NationalID) string {
+	s := nid.String()
+	if len(s) <= 4 {
+		return "****"
+	}
+	return "****" + s[len(s)-4:]
 }

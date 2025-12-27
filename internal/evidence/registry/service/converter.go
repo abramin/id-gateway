@@ -1,6 +1,8 @@
 package service
 
 import (
+	"fmt"
+
 	"credo/internal/evidence/registry/domain/citizen"
 	"credo/internal/evidence/registry/domain/sanctions"
 	"credo/internal/evidence/registry/domain/shared"
@@ -10,17 +12,26 @@ import (
 )
 
 // EvidenceToCitizenVerification converts generic Evidence to a domain CitizenVerification aggregate.
-// Invalid national IDs are converted to zero values to allow graceful degradation.
-func EvidenceToCitizenVerification(ev *providers.Evidence) citizen.CitizenVerification {
-	if ev == nil || ev.ProviderType != providers.ProviderTypeCitizen {
-		return citizen.CitizenVerification{}
+// Returns an error if required fields fail validation.
+func EvidenceToCitizenVerification(ev *providers.Evidence) (citizen.CitizenVerification, error) {
+	if ev == nil {
+		return citizen.CitizenVerification{}, fmt.Errorf("evidence is nil")
+	}
+	if ev.ProviderType != providers.ProviderTypeCitizen {
+		return citizen.CitizenVerification{}, fmt.Errorf("wrong provider type: expected %s, got %s", providers.ProviderTypeCitizen, ev.ProviderType)
 	}
 
 	nationalIDStr := getString(ev.Data, "national_id")
-	nationalID, _ := id.ParseNationalID(nationalIDStr)
-	// If validation fails, nationalID is zero value - allows graceful degradation
+	nationalID, err := id.ParseNationalID(nationalIDStr)
+	if err != nil {
+		return citizen.CitizenVerification{}, fmt.Errorf("invalid national_id: %w", err)
+	}
 
-	confidence, _ := shared.NewConfidence(ev.Confidence)
+	confidence, err := shared.New(ev.Confidence)
+	if err != nil {
+		return citizen.CitizenVerification{}, fmt.Errorf("invalid confidence: %w", err)
+	}
+
 	checkedAt := shared.NewCheckedAt(ev.CheckedAt)
 	providerID := shared.NewProviderID(ev.ProviderID)
 
@@ -30,45 +41,53 @@ func EvidenceToCitizenVerification(ev *providers.Evidence) citizen.CitizenVerifi
 		Address:     getString(ev.Data, "address"),
 	}
 
-	return citizen.NewCitizenVerification(
+	return citizen.New(
 		nationalID,
 		details,
 		getBool(ev.Data, "valid"),
 		checkedAt,
 		providerID,
 		confidence,
-	)
+	), nil
 }
 
 // EvidenceToSanctionsCheck converts generic Evidence to a domain SanctionsCheck aggregate.
-// Invalid national IDs are converted to zero values to allow graceful degradation.
-func EvidenceToSanctionsCheck(ev *providers.Evidence) sanctions.SanctionsCheck {
-	if ev == nil || ev.ProviderType != providers.ProviderTypeSanctions {
-		return sanctions.SanctionsCheck{}
+// Returns an error if required fields fail validation.
+func EvidenceToSanctionsCheck(ev *providers.Evidence) (sanctions.SanctionsCheck, error) {
+	if ev == nil {
+		return sanctions.SanctionsCheck{}, fmt.Errorf("evidence is nil")
+	}
+	if ev.ProviderType != providers.ProviderTypeSanctions {
+		return sanctions.SanctionsCheck{}, fmt.Errorf("wrong provider type: expected %s, got %s", providers.ProviderTypeSanctions, ev.ProviderType)
 	}
 
 	nationalIDStr := getString(ev.Data, "national_id")
-	nationalID, _ := id.ParseNationalID(nationalIDStr)
-	// If validation fails, nationalID is zero value - allows graceful degradation
+	nationalID, err := id.ParseNationalID(nationalIDStr)
+	if err != nil {
+		return sanctions.SanctionsCheck{}, fmt.Errorf("invalid national_id: %w", err)
+	}
 
-	confidence, _ := shared.NewConfidence(ev.Confidence)
+	confidence, err := shared.New(ev.Confidence)
+	if err != nil {
+		return sanctions.SanctionsCheck{}, fmt.Errorf("invalid confidence: %w", err)
+	}
+
 	checkedAt := shared.NewCheckedAt(ev.CheckedAt)
 	providerID := shared.NewProviderID(ev.ProviderID)
 	source := sanctions.NewSource(getString(ev.Data, "source"))
 
 	listed := getBool(ev.Data, "listed")
 	if listed {
-		// For listed subjects, use the appropriate constructor with listing details
 		return sanctions.NewListedSanctionsCheck(
 			nationalID,
-			sanctions.ListTypeSanctions, // Default to sanctions type
-			"",                          // Reason not provided in current mock
-			"",                          // ListedDate not provided in current mock
+			sanctions.ListTypeSanctions,
+			"",
+			"",
 			source,
 			checkedAt,
 			providerID,
 			confidence,
-		)
+		), nil
 	}
 
 	return sanctions.NewSanctionsCheck(
@@ -77,7 +96,7 @@ func EvidenceToSanctionsCheck(ev *providers.Evidence) sanctions.SanctionsCheck {
 		checkedAt,
 		providerID,
 		confidence,
-	)
+	), nil
 }
 
 // CitizenVerificationToRecord converts a domain CitizenVerification to an infrastructure CitizenRecord.
@@ -106,26 +125,24 @@ func SanctionsCheckToRecord(sc sanctions.SanctionsCheck) *models.SanctionsRecord
 
 // EvidenceToCitizenRecord converts generic Evidence to a CitizenRecord via domain aggregate.
 // This is a convenience function that chains Evidence → Domain → Infrastructure.
-// Returns nil if the evidence is nil or not a citizen type.
-func EvidenceToCitizenRecord(ev *providers.Evidence) *models.CitizenRecord {
-	if ev == nil || ev.ProviderType != providers.ProviderTypeCitizen {
-		return nil
+// Returns an error if conversion fails.
+func EvidenceToCitizenRecord(ev *providers.Evidence) (*models.CitizenRecord, error) {
+	verification, err := EvidenceToCitizenVerification(ev)
+	if err != nil {
+		return nil, err
 	}
-
-	verification := EvidenceToCitizenVerification(ev)
-	return CitizenVerificationToRecord(verification)
+	return CitizenVerificationToRecord(verification), nil
 }
 
 // EvidenceToSanctionsRecord converts generic Evidence to a SanctionsRecord via domain aggregate.
 // This is a convenience function that chains Evidence → Domain → Infrastructure.
-// Returns nil if the evidence is nil or not a sanctions type.
-func EvidenceToSanctionsRecord(ev *providers.Evidence) *models.SanctionsRecord {
-	if ev == nil || ev.ProviderType != providers.ProviderTypeSanctions {
-		return nil
+// Returns an error if conversion fails.
+func EvidenceToSanctionsRecord(ev *providers.Evidence) (*models.SanctionsRecord, error) {
+	check, err := EvidenceToSanctionsCheck(ev)
+	if err != nil {
+		return nil, err
 	}
-
-	check := EvidenceToSanctionsCheck(ev)
-	return SanctionsCheckToRecord(check)
+	return SanctionsCheckToRecord(check), nil
 }
 
 func getString(data map[string]interface{}, key string) string {

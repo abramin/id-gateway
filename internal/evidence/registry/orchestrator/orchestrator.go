@@ -4,10 +4,36 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"credo/internal/evidence/registry/providers"
 )
+
+// retryBudget tracks the global retry count across all providers in a lookup.
+// Uses atomic operations for thread-safe decrementing in parallel strategies.
+type retryBudget struct {
+	remaining int32
+}
+
+// newRetryBudget creates a new retry budget with the given limit.
+func newRetryBudget(limit int) *retryBudget {
+	return &retryBudget{remaining: int32(limit)}
+}
+
+// tryConsume attempts to consume one retry from the budget.
+// Returns true if a retry is available, false if the budget is exhausted.
+func (b *retryBudget) tryConsume() bool {
+	for {
+		current := atomic.LoadInt32(&b.remaining)
+		if current <= 0 {
+			return false
+		}
+		if atomic.CompareAndSwapInt32(&b.remaining, current, current-1) {
+			return true
+		}
+	}
+}
 
 // LookupStrategy defines how providers are selected and queried during evidence gathering.
 // The choice of strategy affects reliability, latency, and resource usage.
@@ -50,10 +76,11 @@ type ProviderChain struct {
 
 // BackoffConfig configures retry backoff for retryable errors
 type BackoffConfig struct {
-	InitialDelay time.Duration // Initial delay before first retry (default: 100ms)
-	MaxDelay     time.Duration // Maximum delay between retries (default: 2s)
-	MaxRetries   int           // Maximum number of retries (default: 3)
-	Multiplier   float64       // Multiplier for exponential backoff (default: 2.0)
+	InitialDelay      time.Duration // Initial delay before first retry (default: 100ms)
+	MaxDelay          time.Duration // Maximum delay between retries (default: 2s)
+	MaxRetries        int           // Maximum number of retries per provider (default: 3)
+	Multiplier        float64       // Multiplier for exponential backoff (default: 2.0)
+	GlobalRetryBudget int           // Maximum total retries across all providers (default: 10)
 }
 
 // OrchestratorConfig configures the evidence orchestrator
@@ -86,8 +113,8 @@ type Orchestrator struct {
 	backoff  BackoffConfig
 }
 
-// NewOrchestrator creates a new evidence orchestrator
-func NewOrchestrator(cfg OrchestratorConfig) *Orchestrator {
+// New creates a new evidence orchestrator
+func New(cfg OrchestratorConfig) *Orchestrator {
 	if cfg.DefaultTimeout == 0 {
 		cfg.DefaultTimeout = 5 * time.Second
 	}
@@ -107,6 +134,9 @@ func NewOrchestrator(cfg OrchestratorConfig) *Orchestrator {
 	}
 	if cfg.Backoff.Multiplier == 0 {
 		cfg.Backoff.Multiplier = 2.0
+	}
+	if cfg.Backoff.GlobalRetryBudget == 0 {
+		cfg.Backoff.GlobalRetryBudget = 10
 	}
 
 	return &Orchestrator{
@@ -206,12 +236,16 @@ func (o *Orchestrator) lookupPrimary(ctx context.Context, req LookupRequest) (*L
 	return result, nil
 }
 
-// lookupFallback tries primary, then falls back to secondary on failure
+// lookupFallback tries primary, then falls back to secondary on failure.
+// Uses a global retry budget to prevent cascade failures across providers.
 func (o *Orchestrator) lookupFallback(ctx context.Context, req LookupRequest) (*LookupResult, error) {
 	result := &LookupResult{
 		Evidence: make([]*providers.Evidence, 0, len(req.Types)),
 		Errors:   make(map[string]error),
 	}
+
+	// Create a shared retry budget for this lookup
+	budget := newRetryBudget(o.backoff.GlobalRetryBudget)
 
 	for _, typ := range req.Types {
 		chain, err := o.getChainForType(typ)
@@ -220,7 +254,7 @@ func (o *Orchestrator) lookupFallback(ctx context.Context, req LookupRequest) (*
 			continue
 		}
 
-		if evidence := o.tryChainWithFallback(ctx, chain, req.Filters, result.Errors); evidence != nil {
+		if evidence := o.tryChainWithFallback(ctx, chain, req.Filters, result.Errors, budget); evidence != nil {
 			result.Evidence = append(result.Evidence, evidence)
 		}
 	}
@@ -249,9 +283,10 @@ func (o *Orchestrator) getChainForType(typ providers.ProviderType) (ProviderChai
 
 // tryChainWithFallback attempts the primary provider, then falls back to secondaries.
 // Records errors in the provided map and returns evidence if any provider succeeds.
-func (o *Orchestrator) tryChainWithFallback(ctx context.Context, chain ProviderChain, filters map[string]string, errors map[string]error) *providers.Evidence {
+// The budget parameter limits total retries across all providers in this lookup.
+func (o *Orchestrator) tryChainWithFallback(ctx context.Context, chain ProviderChain, filters map[string]string, errors map[string]error, budget *retryBudget) *providers.Evidence {
 	// Try primary first with backoff for retryable errors
-	evidence, err := o.tryProviderWithBackoff(ctx, chain.Primary, filters)
+	evidence, err := o.tryProviderWithBackoff(ctx, chain.Primary, filters, budget)
 	if err == nil {
 		return evidence
 	}
@@ -259,7 +294,7 @@ func (o *Orchestrator) tryChainWithFallback(ctx context.Context, chain ProviderC
 
 	// Try fallbacks if primary failed
 	for _, secondaryID := range chain.Secondary {
-		evidence, err := o.tryProviderWithBackoff(ctx, secondaryID, filters)
+		evidence, err := o.tryProviderWithBackoff(ctx, secondaryID, filters, budget)
 		if err == nil {
 			return evidence
 		}
@@ -379,7 +414,10 @@ func (o *Orchestrator) lookupVoting(ctx context.Context, req LookupRequest) (*Lo
 // provider outages). Non-retryable errors (bad data, not found, auth failures) fail immediately.
 // Delay between retries grows exponentially: InitialDelay * (Multiplier ^ attempt), capped at MaxDelay.
 // Respects context cancellation between retry attempts.
-func (o *Orchestrator) tryProviderWithBackoff(ctx context.Context, providerID string, filters map[string]string) (*providers.Evidence, error) {
+//
+// The budget parameter enforces a global retry limit across all providers. If the budget is
+// exhausted, retries stop even if per-provider MaxRetries hasn't been reached.
+func (o *Orchestrator) tryProviderWithBackoff(ctx context.Context, providerID string, filters map[string]string, budget *retryBudget) (*providers.Evidence, error) {
 	provider, ok := o.registry.Get(providerID)
 	if !ok {
 		return nil, providers.ErrProviderNotFound
@@ -391,6 +429,11 @@ func (o *Orchestrator) tryProviderWithBackoff(ctx context.Context, providerID st
 	for attempt := 0; attempt <= o.backoff.MaxRetries; attempt++ {
 		// Wait before retry (skip on first attempt)
 		if attempt > 0 {
+			// Check global retry budget before retrying
+			if budget != nil && !budget.tryConsume() {
+				return nil, lastErr
+			}
+
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -420,17 +463,30 @@ func (o *Orchestrator) tryProviderWithBackoff(ctx context.Context, providerID st
 	return nil, lastErr
 }
 
-// HealthCheck checks the health of all registered providers and returns a map of results.
+// HealthCheck checks the health of all registered providers concurrently.
 //
-// Each provider's Health method is called sequentially. The returned map contains provider IDs
+// Each provider's Health method is called in parallel. The returned map contains provider IDs
 // as keys; nil values indicate healthy providers, non-nil values contain the health check error.
 // This is useful for monitoring dashboards and readiness probes.
 func (o *Orchestrator) HealthCheck(ctx context.Context) map[string]error {
-	results := make(map[string]error)
+	provs := o.registry.All()
+	results := make(map[string]error, len(provs))
 
-	for _, prov := range o.registry.All() {
-		results[prov.ID()] = prov.Health(ctx)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	for _, prov := range provs {
+		wg.Add(1)
+		go func(p providers.Provider) {
+			defer wg.Done()
+			err := p.Health(ctx)
+
+			mu.Lock()
+			results[p.ID()] = err
+			mu.Unlock()
+		}(prov)
 	}
 
+	wg.Wait()
 	return results
 }

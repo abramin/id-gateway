@@ -29,21 +29,12 @@ type Confidence struct {
 // ErrInvalidConfidence indicates the confidence score is out of range.
 var ErrInvalidConfidence = errors.New("invalid confidence: must be between 0.0 and 1.0")
 
-// NewConfidence creates a validated Confidence score.
-func NewConfidence(value float64) (Confidence, error) {
+// New creates a validated Confidence score.
+func New(value float64) (Confidence, error) {
 	if value < 0.0 || value > 1.0 {
 		return Confidence{}, ErrInvalidConfidence
 	}
 	return Confidence{value: value}, nil
-}
-
-// MustConfidence creates a Confidence, panicking if invalid.
-func MustConfidence(value float64) Confidence {
-	c, err := NewConfidence(value)
-	if err != nil {
-		panic(err)
-	}
-	return c
 }
 
 // Authoritative returns a Confidence of 1.0 (fully trusted source).

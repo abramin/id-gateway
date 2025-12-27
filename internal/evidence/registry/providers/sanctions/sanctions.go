@@ -18,7 +18,7 @@ type sanctionsHTTPResponse struct {
 }
 
 func New(id, baseURL, apiKey string, timeout time.Duration) providers.Provider {
-	return adapters.NewHTTPAdapter(adapters.HTTPAdapterConfig{
+	return adapters.New(adapters.HTTPAdapterConfig{
 		ID:      id,
 		BaseURL: baseURL,
 		APIKey:  apiKey,
