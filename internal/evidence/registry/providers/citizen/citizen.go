@@ -19,13 +19,13 @@ type citizenHTTPResponse struct {
 	CheckedAt   string `json:"checked_at"`
 }
 
-// NewCitizenProvider creates a citizen registry provider using HTTP
-func NewCitizenProvider(id, baseURL, apiKey string, timeout time.Duration) providers.Provider {
-	return NewCitizenProviderWithClient(id, baseURL, apiKey, timeout, nil)
+// New creates a citizen registry provider using HTTP
+func New(id, baseURL, apiKey string, timeout time.Duration) providers.Provider {
+	return NewWithClient(id, baseURL, apiKey, timeout, nil)
 }
 
-// NewCitizenProviderWithClient allows injecting a custom HTTP client (for testing).
-func NewCitizenProviderWithClient(
+// NewWithClient allows injecting a custom HTTP client (for testing).
+func NewWithClient(
 	id, baseURL, apiKey string,
 	timeout time.Duration,
 	client adapters.HTTPDoer,

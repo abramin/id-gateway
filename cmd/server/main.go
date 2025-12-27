@@ -29,7 +29,10 @@ import (
 	consentStore "credo/internal/consent/store"
 	registryAdapters "credo/internal/evidence/registry/adapters"
 	registryHandler "credo/internal/evidence/registry/handler"
-	citizenClient "credo/internal/evidence/registry/providers/citizen"
+	"credo/internal/evidence/registry/orchestrator"
+	"credo/internal/evidence/registry/providers"
+	citizenProvider "credo/internal/evidence/registry/providers/citizen"
+	sanctionsProvider "credo/internal/evidence/registry/providers/sanctions"
 	registryService "credo/internal/evidence/registry/service"
 	registryStore "credo/internal/evidence/registry/store"
 	jwttoken "credo/internal/jwt_token"
@@ -422,24 +425,48 @@ func buildTenantModule(infra *infraBundle) *tenantModule {
 }
 
 func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service) *registryModule {
-	// Create HTTP client for citizen registry
-	client := citizenClient.NewHTTPClient(
+	// Create provider registry
+	registry := providers.NewProviderRegistry()
+
+	// Register citizen provider
+	citizenProv := citizenProvider.New(
+		"citizen-registry",
 		infra.Cfg.Registry.CitizenRegistryURL,
 		infra.Cfg.Registry.CitizenAPIKey,
 		infra.Cfg.Registry.RegistryTimeout,
 	)
+	if err := registry.Register(citizenProv); err != nil {
+		infra.Log.Error("failed to register citizen provider", "error", err)
+	}
+
+	// Register sanctions provider (uses same timeout, placeholder URL/key for now)
+	sanctionsProv := sanctionsProvider.New(
+		"sanctions-registry",
+		infra.Cfg.Registry.CitizenRegistryURL, // TODO: add SanctionsRegistryURL to config
+		infra.Cfg.Registry.CitizenAPIKey,      // TODO: add SanctionsAPIKey to config
+		infra.Cfg.Registry.RegistryTimeout,
+	)
+	if err := registry.Register(sanctionsProv); err != nil {
+		infra.Log.Error("failed to register sanctions provider", "error", err)
+	}
+
+	// Create orchestrator
+	orch := orchestrator.NewOrchestrator(orchestrator.OrchestratorConfig{
+		Registry:        registry,
+		DefaultStrategy: orchestrator.StrategyFallback,
+		DefaultTimeout:  infra.Cfg.Registry.RegistryTimeout,
+	})
 
 	// Create cache store
 	cache := registryStore.NewInMemoryCache(infra.Cfg.Registry.CacheTTL)
 
-	// Create registry service
-	svc := registryService.NewService(
-		client,
-		nil, // sanctions client not implemented yet
+	// Create registry service with orchestrator
+	svc := registryService.New(
+		orch,
 		cache,
 		infra.Cfg.Security.RegulatedMode,
 		registryService.WithLogger(infra.Log),
-		registryService.WithAuditPort(auditpublisher.NewPublisher(
+		registryService.WithAuditor(auditpublisher.NewPublisher(
 			auditstore.NewInMemoryStore(),
 			auditpublisher.WithAsyncBuffer(1000),
 			auditpublisher.WithMetrics(infra.AuditMetrics),

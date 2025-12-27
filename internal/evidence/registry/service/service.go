@@ -6,32 +6,22 @@ import (
 	"log/slog"
 
 	"credo/internal/evidence/registry/models"
-	"credo/internal/evidence/registry/ports"
+	"credo/internal/evidence/registry/orchestrator"
 	"credo/internal/evidence/registry/providers"
 	"credo/internal/evidence/registry/store"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
+	"credo/pkg/platform/audit/publisher"
 	"credo/pkg/platform/middleware/request"
 )
 
 // Service coordinates registry lookups with caching and optional minimisation.
 type Service struct {
-	citizens  CitizenClient
-	sanctions SanctionsClient
-	cache     CacheStore
-	regulated bool
-	auditor   ports.AuditPort
-	logger    *slog.Logger
-}
-
-// CitizenClient defines the interface for citizen registry lookups
-type CitizenClient interface {
-	Lookup(ctx context.Context, nationalID string) (*models.CitizenRecord, error)
-}
-
-// SanctionsClient defines the interface for sanctions registry lookups
-type SanctionsClient interface {
-	Check(ctx context.Context, nationalID string) (*models.SanctionsRecord, error)
+	orchestrator *orchestrator.Orchestrator
+	cache        CacheStore
+	regulated    bool
+	auditor      *publisher.Publisher
+	logger       *slog.Logger
 }
 
 // CacheStore defines the interface for registry caching operations
@@ -42,29 +32,29 @@ type CacheStore interface {
 	SaveSanction(ctx context.Context, record *models.SanctionsRecord) error
 }
 
-// ServiceOption configures the Service.
-type ServiceOption func(*Service)
+// Option configures the Service.
+type Option func(*Service)
 
-// WithAuditPort sets the audit publisher for the service.
-func WithAuditPort(auditor ports.AuditPort) ServiceOption {
+// WithAuditor sets the audit publisher for the service.
+func WithAuditor(auditor *publisher.Publisher) Option {
 	return func(s *Service) {
 		s.auditor = auditor
 	}
 }
 
 // WithLogger sets the logger for the service.
-func WithLogger(logger *slog.Logger) ServiceOption {
+func WithLogger(logger *slog.Logger) Option {
 	return func(s *Service) {
 		s.logger = logger
 	}
 }
 
-func NewService(citizens CitizenClient, sanctions SanctionsClient, cache CacheStore, regulated bool, opts ...ServiceOption) *Service {
+// New creates a new registry service using the orchestrator pattern.
+func New(orch *orchestrator.Orchestrator, cache CacheStore, regulated bool, opts ...Option) *Service {
 	s := &Service{
-		citizens:  citizens,
-		sanctions: sanctions,
-		cache:     cache,
-		regulated: regulated,
+		orchestrator: orch,
+		cache:        cache,
+		regulated:    regulated,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -97,22 +87,60 @@ func (s *Service) Check(ctx context.Context, nationalID string) (*models.Registr
 		}
 	}
 
-	// Phase 2: Fetch missing records from providers (without caching yet)
-	if !citizenCached {
-		record, err := s.lookupCitizen(ctx, nationalID)
-		if err != nil {
-			return nil, err
-		}
-		citizen = record
+	// If both are cached, return immediately
+	if citizenCached && sanctionsCached {
+		return &models.RegistryResult{
+			Citizen:  citizen,
+			Sanction: sanction,
+		}, nil
 	}
 
+	// Phase 2: Determine which types to fetch from orchestrator
+	var typesToFetch []providers.ProviderType
+	if !citizenCached {
+		typesToFetch = append(typesToFetch, providers.ProviderTypeCitizen)
+	}
 	if !sanctionsCached {
-		record, err := s.lookupSanctions(ctx, nationalID)
-		if err != nil {
-			// Citizen lookup succeeded but sanctions failed - don't cache citizen
-			return nil, err
+		typesToFetch = append(typesToFetch, providers.ProviderTypeSanctions)
+	}
+
+	// Fetch missing records from providers using orchestrator
+	result, err := s.orchestrator.Lookup(ctx, orchestrator.LookupRequest{
+		Types: typesToFetch,
+		Filters: map[string]string{
+			"national_id": nationalID,
+		},
+		Strategy: orchestrator.StrategyFallback,
+	})
+	if err != nil {
+		return nil, s.translateOrchestratorError(err, result)
+	}
+
+	// Convert evidence to domain models
+	for _, ev := range result.Evidence {
+		switch ev.ProviderType {
+		case providers.ProviderTypeCitizen:
+			record := EvidenceToCitizenRecord(ev)
+			if record == nil {
+				return nil, dErrors.New(dErrors.CodeInternal, "failed to convert citizen evidence")
+			}
+			if s.regulated {
+				minimized := models.MinimizeCitizenRecord(*record)
+				record = &minimized
+			}
+			citizen = record
+		case providers.ProviderTypeSanctions:
+			record := EvidenceToSanctionsRecord(ev)
+			if record == nil {
+				return nil, dErrors.New(dErrors.CodeInternal, "failed to convert sanctions evidence")
+			}
+			sanction = record
 		}
-		sanction = record
+	}
+
+	// Validate we got all required evidence
+	if citizen == nil || sanction == nil {
+		return nil, s.translateOrchestratorError(providers.ErrAllProvidersFailed, result)
 	}
 
 	// Phase 3: Atomic cache commit - only cache if both lookups succeeded
@@ -131,30 +159,6 @@ func (s *Service) Check(ctx context.Context, nationalID string) (*models.Registr
 	}, nil
 }
 
-// lookupCitizen fetches from provider and applies minimization, but does NOT cache.
-// Used by Check() for atomic transaction semantics.
-func (s *Service) lookupCitizen(ctx context.Context, nationalID string) (*models.CitizenRecord, error) {
-	record, err := s.citizens.Lookup(ctx, nationalID)
-	if err != nil {
-		return nil, s.translateProviderError(err)
-	}
-	if s.regulated {
-		minimized := models.MinimizeCitizenRecord(*record)
-		record = &minimized
-	}
-	return record, nil
-}
-
-// lookupSanctions fetches from provider but does NOT cache.
-// Used by Check() for atomic transaction semantics.
-func (s *Service) lookupSanctions(ctx context.Context, nationalID string) (*models.SanctionsRecord, error) {
-	record, err := s.sanctions.Check(ctx, nationalID)
-	if err != nil {
-		return nil, s.translateProviderError(err)
-	}
-	return record, nil
-}
-
 // Citizen performs a single citizen lookup with caching.
 // For combined lookups, prefer Check() which provides atomic transaction semantics.
 func (s *Service) Citizen(ctx context.Context, nationalID string) (*models.CitizenRecord, error) {
@@ -165,13 +169,40 @@ func (s *Service) Citizen(ctx context.Context, nationalID string) (*models.Citiz
 			return nil, err
 		}
 	}
-	record, err := s.lookupCitizen(ctx, nationalID)
+
+	result, err := s.orchestrator.Lookup(ctx, orchestrator.LookupRequest{
+		Types: []providers.ProviderType{providers.ProviderTypeCitizen},
+		Filters: map[string]string{
+			"national_id": nationalID,
+		},
+		Strategy: orchestrator.StrategyFallback,
+	})
 	if err != nil {
-		return nil, err
+		return nil, s.translateOrchestratorError(err, result)
 	}
+
+	// Find citizen evidence in result
+	var record *models.CitizenRecord
+	for _, ev := range result.Evidence {
+		if ev.ProviderType == providers.ProviderTypeCitizen {
+			record = EvidenceToCitizenRecord(ev)
+			break
+		}
+	}
+
+	if record == nil {
+		return nil, s.translateOrchestratorError(providers.ErrAllProvidersFailed, result)
+	}
+
+	if s.regulated {
+		minimized := models.MinimizeCitizenRecord(*record)
+		record = &minimized
+	}
+
 	if s.cache != nil {
 		_ = s.cache.SaveCitizen(ctx, record)
 	}
+
 	return record, nil
 }
 
@@ -185,14 +216,61 @@ func (s *Service) Sanctions(ctx context.Context, nationalID string) (*models.San
 			return nil, err
 		}
 	}
-	record, err := s.lookupSanctions(ctx, nationalID)
+
+	result, err := s.orchestrator.Lookup(ctx, orchestrator.LookupRequest{
+		Types: []providers.ProviderType{providers.ProviderTypeSanctions},
+		Filters: map[string]string{
+			"national_id": nationalID,
+		},
+		Strategy: orchestrator.StrategyFallback,
+	})
 	if err != nil {
-		return nil, err
+		return nil, s.translateOrchestratorError(err, result)
 	}
+
+	// Find sanctions evidence in result
+	var record *models.SanctionsRecord
+	for _, ev := range result.Evidence {
+		if ev.ProviderType == providers.ProviderTypeSanctions {
+			record = EvidenceToSanctionsRecord(ev)
+			break
+		}
+	}
+
+	if record == nil {
+		return nil, s.translateOrchestratorError(providers.ErrAllProvidersFailed, result)
+	}
+
 	if s.cache != nil {
 		_ = s.cache.SaveSanction(ctx, record)
 	}
+
 	return record, nil
+}
+
+// translateOrchestratorError converts orchestrator/provider errors to domain errors.
+func (s *Service) translateOrchestratorError(err error, result *orchestrator.LookupResult) error {
+	// First check for provider-specific errors in the result
+	if result != nil && len(result.Errors) > 0 {
+		for _, provErr := range result.Errors {
+			if translated := s.translateProviderError(provErr); translated != nil {
+				return translated
+			}
+		}
+	}
+
+	// Handle sentinel errors from orchestrator
+	if errors.Is(err, providers.ErrAllProvidersFailed) {
+		return dErrors.New(dErrors.CodeInternal, "all registry providers failed")
+	}
+	if errors.Is(err, providers.ErrNoProvidersAvailable) {
+		return dErrors.New(dErrors.CodeInternal, "no registry providers available")
+	}
+	if errors.Is(err, providers.ErrProviderNotFound) {
+		return dErrors.New(dErrors.CodeInternal, "registry provider not found")
+	}
+
+	return s.translateProviderError(err)
 }
 
 // translateProviderError converts provider-specific errors to domain errors.

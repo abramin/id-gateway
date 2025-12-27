@@ -19,7 +19,7 @@ import (
 
 func TestCitizenProvider(t *testing.T) {
 	// Create provider for testing
-	provider := NewCitizenProvider(
+	provider := New(
 		"test-citizen",
 		"http://mock-registry.test",
 		"test-key",
@@ -66,7 +66,7 @@ func TestCitizenProviderContract(t *testing.T) {
 			}, nil
 		})
 
-	provider := NewCitizenProviderWithClient(
+	provider := NewWithClient(
 		"test-citizen",
 		"http://mock-registry.test",
 		"test-key",
@@ -178,7 +178,7 @@ func TestCitizenProviderScenarios(t *testing.T) {
 				return nil, req.Context().Err()
 			})
 
-		provider := NewCitizenProviderWithClient(
+		provider := NewWithClient(
 			"test-citizen",
 			"http://slow-registry.test",
 			"test-key",
@@ -207,7 +207,7 @@ func TestCitizenProviderScenarios(t *testing.T) {
 				Header:     make(http.Header),
 			}, nil)
 
-		provider := NewCitizenProviderWithClient(
+		provider := NewWithClient(
 			"test-citizen",
 			"http://mock-registry.test",
 			"test-key",

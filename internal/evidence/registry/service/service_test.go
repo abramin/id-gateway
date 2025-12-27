@@ -6,205 +6,149 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/suite"
-	"go.uber.org/mock/gomock"
 
 	"credo/internal/evidence/registry/models"
+	"credo/internal/evidence/registry/orchestrator"
 	"credo/internal/evidence/registry/providers"
-	"credo/internal/evidence/registry/service/mocks"
 	"credo/internal/evidence/registry/store"
 )
 
-//go:generate mockgen -source=service.go -destination=mocks/mocks.go -package=mocks CitizenClient,SanctionsClient,CacheStore
-type ServiceSuite struct {
-	suite.Suite
-	ctrl                *gomock.Controller
-	mockCitizenClient   *mocks.MockCitizenClient
-	mockSanctionsClient *mocks.MockSanctionsClient
-	mockCache           *mocks.MockCacheStore
-	service             *Service
+// stubCache is a test double for the cache store
+type stubCache struct {
+	citizenRecords    map[string]*models.CitizenRecord
+	sanctionRecords   map[string]*models.SanctionsRecord
+	findCitizenErr    error
+	findSanctionErr   error
+	saveCitizenErr    error
+	saveSanctionErr   error
+	saveCitizenCalls  []*models.CitizenRecord
+	saveSanctionCalls []*models.SanctionsRecord
 }
 
-func (s *ServiceSuite) SetupTest() {
-	s.ctrl = gomock.NewController(s.T())
-	s.mockCitizenClient = mocks.NewMockCitizenClient(s.ctrl)
-	s.mockSanctionsClient = mocks.NewMockSanctionsClient(s.ctrl)
-	s.mockCache = mocks.NewMockCacheStore(s.ctrl)
-
-	// Service in non-regulated mode by default
-	s.service = &Service{
-		citizens:  s.mockCitizenClient,
-		sanctions: s.mockSanctionsClient,
-		cache:     s.mockCache,
-		regulated: false,
+func newStubCache() *stubCache {
+	return &stubCache{
+		citizenRecords:  make(map[string]*models.CitizenRecord),
+		sanctionRecords: make(map[string]*models.SanctionsRecord),
 	}
 }
 
-func (s *ServiceSuite) TearDownTest() {
-	s.ctrl.Finish()
+func (c *stubCache) FindCitizen(_ context.Context, nationalID string) (*models.CitizenRecord, error) {
+	if c.findCitizenErr != nil {
+		return nil, c.findCitizenErr
+	}
+	if r, ok := c.citizenRecords[nationalID]; ok {
+		return r, nil
+	}
+	return nil, store.ErrNotFound
+}
+
+func (c *stubCache) SaveCitizen(_ context.Context, record *models.CitizenRecord) error {
+	c.saveCitizenCalls = append(c.saveCitizenCalls, record)
+	if c.saveCitizenErr != nil {
+		return c.saveCitizenErr
+	}
+	c.citizenRecords[record.NationalID] = record
+	return nil
+}
+
+func (c *stubCache) FindSanction(_ context.Context, nationalID string) (*models.SanctionsRecord, error) {
+	if c.findSanctionErr != nil {
+		return nil, c.findSanctionErr
+	}
+	if r, ok := c.sanctionRecords[nationalID]; ok {
+		return r, nil
+	}
+	return nil, store.ErrNotFound
+}
+
+func (c *stubCache) SaveSanction(_ context.Context, record *models.SanctionsRecord) error {
+	c.saveSanctionCalls = append(c.saveSanctionCalls, record)
+	if c.saveSanctionErr != nil {
+		return c.saveSanctionErr
+	}
+	c.sanctionRecords[record.NationalID] = record
+	return nil
+}
+
+// stubProvider is a test double for providers.Provider
+type stubProvider struct {
+	id       string
+	provType providers.ProviderType
+	lookupFn func(ctx context.Context, filters map[string]string) (*providers.Evidence, error)
+	called   bool
+}
+
+func (p *stubProvider) ID() string { return p.id }
+
+func (p *stubProvider) Capabilities() providers.Capabilities {
+	return providers.Capabilities{
+		Protocol: providers.ProtocolHTTP,
+		Type:     p.provType,
+	}
+}
+
+func (p *stubProvider) Lookup(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
+	p.called = true
+	if p.lookupFn != nil {
+		return p.lookupFn(ctx, filters)
+	}
+	return nil, nil
+}
+
+func (p *stubProvider) Health(_ context.Context) error { return nil }
+
+type ServiceSuite struct {
+	suite.Suite
 }
 
 func TestServiceSuite(t *testing.T) {
 	suite.Run(t, new(ServiceSuite))
 }
 
-func (s *ServiceSuite) TestCitizen() {
-	s.T().Run("returns cached citizen record on cache hit", func(t *testing.T) {
-		// TODO: Implement test
-		// - Mock cache.FindCitizen to return a valid record
-		// - Verify no call to citizenClient.Lookup
-		// - Assert returned record matches cached record
-		t.Skip("Not implemented")
-	})
-
-	s.T().Run("fetches from client on cache miss", func(t *testing.T) {
-		// TODO: Implement test
-		// - Mock cache.FindCitizen to return store.ErrNotFound
-		// - Mock citizenClient.Lookup to return a valid record
-		// - Mock cache.SaveCitizen to succeed
-		// - Assert returned record matches client record
-		t.Skip("Not implemented")
-	})
-
-	s.T().Run("minimizes citizen record in regulated mode", func(t *testing.T) {
-		// TODO: Implement test
-		// - Create service with regulated: true
-		// - Mock cache miss
-		// - Mock citizenClient.Lookup to return full record with PII
-		// - Mock cache.SaveCitizen
-		// - Assert returned record has PII fields cleared
-		// - Assert only NationalID and Valid are set
-		t.Skip("Not implemented")
-	})
-
-	s.T().Run("returns full citizen record in non-regulated mode", func(t *testing.T) {
-		// TODO: Implement test
-		// - Mock cache miss
-		// - Mock citizenClient.Lookup to return full record
-		// - Mock cache.SaveCitizen
-		// - Assert returned record contains all PII fields
-		t.Skip("Not implemented")
-	})
-
-	s.T().Run("saves fetched record to cache", func(t *testing.T) {
-		// TODO: Implement test
-		// - Mock cache miss
-		// - Mock citizenClient.Lookup
-		// - Expect cache.SaveCitizen to be called with the record
-		t.Skip("Not implemented")
-	})
-
-	s.T().Run("handles client lookup error", func(t *testing.T) {
-		// TODO: Implement test
-		// - Mock cache miss
-		// - Mock citizenClient.Lookup to return error
-		// - Assert error is returned
-		// - Verify cache.SaveCitizen is not called
-		t.Skip("Not implemented")
-	})
-
-	s.T().Run("handles cache find error that is not ErrNotFound", func(t *testing.T) {
-		// TODO: Implement test
-		// - Mock cache.FindCitizen to return non-ErrNotFound error
-		// - Assert error is propagated
-		// - Verify citizenClient.Lookup is not called
-		t.Skip("Not implemented")
-	})
-
-	s.T().Run("continues on cache save failure", func(t *testing.T) {
-		// TODO: Implement test
-		// - Mock cache miss
-		// - Mock citizenClient.Lookup to succeed
-		// - Mock cache.SaveCitizen to return error
-		// - Assert no error returned (save failure is ignored)
-		// - Assert record from client is still returned
-		t.Skip("Not implemented")
-	})
+// Helper to create evidence from domain models
+func citizenEvidence(r *models.CitizenRecord) *providers.Evidence {
+	return &providers.Evidence{
+		ProviderID:   "test-citizen",
+		ProviderType: providers.ProviderTypeCitizen,
+		Confidence:   1.0,
+		Data: map[string]interface{}{
+			"national_id":   r.NationalID,
+			"full_name":     r.FullName,
+			"date_of_birth": r.DateOfBirth,
+			"address":       r.Address,
+			"valid":         r.Valid,
+		},
+		CheckedAt: r.CheckedAt,
+	}
 }
 
-func (s *ServiceSuite) TestSanctions() {
-	s.T().Run("returns cached sanctions record on cache hit", func(t *testing.T) {
-		// TODO: Implement test
-		// - Mock cache.FindSanction to return a valid record
-		// - Verify no call to sanctionsClient.Check
-		// - Assert returned record matches cached record
-		t.Skip("Not implemented")
-	})
-
-	s.T().Run("fetches from client on cache miss", func(t *testing.T) {
-		// TODO: Implement test
-		// - Mock cache.FindSanction to return store.ErrNotFound
-		// - Mock sanctionsClient.Check to return a valid record
-		// - Mock cache.SaveSanction to succeed
-		// - Assert returned record matches client record
-		t.Skip("Not implemented")
-	})
-
-	s.T().Run("saves fetched record to cache", func(t *testing.T) {
-		// TODO: Implement test
-		// - Mock cache miss
-		// - Mock sanctionsClient.Check
-		// - Expect cache.SaveSanction to be called with the record
-		t.Skip("Not implemented")
-	})
-
-	s.T().Run("handles client check error", func(t *testing.T) {
-		// TODO: Implement test
-		// - Mock cache miss
-		// - Mock sanctionsClient.Check to return error
-		// - Assert error is returned
-		// - Verify cache.SaveSanction is not called
-		t.Skip("Not implemented")
-	})
-
-	s.T().Run("handles cache find error that is not ErrNotFound", func(t *testing.T) {
-		// TODO: Implement test
-		// - Mock cache.FindSanction to return non-ErrNotFound error
-		// - Assert error is propagated
-		// - Verify sanctionsClient.Check is not called
-		t.Skip("Not implemented")
-	})
-
-	s.T().Run("continues on cache save failure", func(t *testing.T) {
-		// TODO: Implement test
-		// - Mock cache miss
-		// - Mock sanctionsClient.Check to succeed
-		// - Mock cache.SaveSanction to return error
-		// - Assert no error returned (save failure is ignored)
-		// - Assert record from client is still returned
-		t.Skip("Not implemented")
-	})
+func sanctionsEvidence(r *models.SanctionsRecord) *providers.Evidence {
+	return &providers.Evidence{
+		ProviderID:   "test-sanctions",
+		ProviderType: providers.ProviderTypeSanctions,
+		Confidence:   1.0,
+		Data: map[string]interface{}{
+			"national_id": r.NationalID,
+			"listed":      r.Listed,
+			"source":      r.Source,
+		},
+		CheckedAt: r.CheckedAt,
+	}
 }
 
-func (s *ServiceSuite) TestCheck() {
-	s.T().Run("returns both citizen and sanctions records", func(t *testing.T) {
-		// TODO: Implement test
-		// - Mock successful Citizen() call
-		// - Mock successful Sanctions() call
-		// - Assert both records are returned in RegistryResult
-		t.Skip("Not implemented")
-	})
-
-	s.T().Run("returns error if citizen lookup fails", func(t *testing.T) {
-		// TODO: Implement test
-		// - Mock cache.FindCitizen to return error
-		// - Assert error is propagated
-		// - Verify Sanctions() is not called
-		t.Skip("Not implemented")
-	})
-
-	s.T().Run("returns error if sanctions lookup fails", func(t *testing.T) {
-		// TODO: Implement test
-		// - Mock successful Citizen() call
-		// - Mock cache.FindSanction to return error
-		// - Assert error is propagated
-		t.Skip("Not implemented")
-	})
-
-	s.T().Run("performs lookups sequentially", func(t *testing.T) {
-		// TODO: Implement test (if parallel behavior is desired, update this)
-		// - Verify Citizen() is called before Sanctions()
-		// Note: Current implementation is sequential, not parallel
-		t.Skip("Not implemented")
+// newTestOrchestrator creates an orchestrator with the given stub providers
+func newTestOrchestrator(citizenProv, sanctionsProv *stubProvider) *orchestrator.Orchestrator {
+	registry := providers.NewProviderRegistry()
+	if citizenProv != nil {
+		_ = registry.Register(citizenProv)
+	}
+	if sanctionsProv != nil {
+		_ = registry.Register(sanctionsProv)
+	}
+	return orchestrator.NewOrchestrator(orchestrator.OrchestratorConfig{
+		Registry:        registry,
+		DefaultStrategy: orchestrator.StrategyFallback,
+		DefaultTimeout:  5 * time.Second,
 	})
 }
 
@@ -229,222 +173,276 @@ func (s *ServiceSuite) TestCheckTransactionSemantics() {
 		CheckedAt:  now,
 	}
 
-	s.T().Run("caches both records only when both lookups succeed", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
+	s.Run("caches both records only when both lookups succeed", func() {
+		cache := newStubCache()
+		citizenProv := &stubProvider{
+			id:       "test-citizen",
+			provType: providers.ProviderTypeCitizen,
+			lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				return citizenEvidence(citizenRecord), nil
+			},
+		}
+		sanctionsProv := &stubProvider{
+			id:       "test-sanctions",
+			provType: providers.ProviderTypeSanctions,
+			lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				return sanctionsEvidence(sanctionsRecord), nil
+			},
+		}
 
-		mockCache := mocks.NewMockCacheStore(ctrl)
-		mockCitizens := mocks.NewMockCitizenClient(ctrl)
-		mockSanctions := mocks.NewMockSanctionsClient(ctrl)
+		orch := newTestOrchestrator(citizenProv, sanctionsProv)
+		svc := New(orch, cache, false)
 
-		svc := NewService(mockCitizens, mockSanctions, mockCache, false)
+		result, err := svc.Check(ctx, nationalID)
+		s.Require().NoError(err)
+		s.Equal(citizenRecord.NationalID, result.Citizen.NationalID)
+		s.Equal(citizenRecord.Valid, result.Citizen.Valid)
+		s.Equal(sanctionsRecord.NationalID, result.Sanction.NationalID)
+		s.Equal(sanctionsRecord.Listed, result.Sanction.Listed)
 
-		// Both cache misses
-		mockCache.EXPECT().FindCitizen(ctx, nationalID).Return(nil, store.ErrNotFound)
-		mockCache.EXPECT().FindSanction(ctx, nationalID).Return(nil, store.ErrNotFound)
+		// Both should be cached
+		s.Len(cache.saveCitizenCalls, 1)
+		s.Len(cache.saveSanctionCalls, 1)
+	})
 
-		// Both provider lookups succeed
-		mockCitizens.EXPECT().Lookup(ctx, nationalID).Return(citizenRecord, nil)
-		mockSanctions.EXPECT().Check(ctx, nationalID).Return(sanctionsRecord, nil)
+	s.Run("does not cache citizen when sanctions lookup fails", func() {
+		cache := newStubCache()
+		citizenProv := &stubProvider{
+			id:       "test-citizen",
+			provType: providers.ProviderTypeCitizen,
+			lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				return citizenEvidence(citizenRecord), nil
+			},
+		}
+		sanctionsProv := &stubProvider{
+			id:       "test-sanctions",
+			provType: providers.ProviderTypeSanctions,
+			lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				return nil, providers.NewProviderError(
+					providers.ErrorTimeout,
+					"test-sanctions",
+					"timeout",
+					nil,
+				)
+			},
+		}
 
-		// Both should be cached (atomic commit)
-		mockCache.EXPECT().SaveCitizen(ctx, citizenRecord).Return(nil)
-		mockCache.EXPECT().SaveSanction(ctx, sanctionsRecord).Return(nil)
+		orch := newTestOrchestrator(citizenProv, sanctionsProv)
+		svc := New(orch, cache, false)
+
+		result, err := svc.Check(ctx, nationalID)
+		s.Require().Error(err)
+		s.Nil(result)
+
+		// CRITICAL: Neither should be cached (atomic rollback)
+		s.Len(cache.saveCitizenCalls, 0)
+		s.Len(cache.saveSanctionCalls, 0)
+	})
+
+	s.Run("does not cache sanctions when citizen lookup fails", func() {
+		cache := newStubCache()
+		citizenProv := &stubProvider{
+			id:       "test-citizen",
+			provType: providers.ProviderTypeCitizen,
+			lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				return nil, providers.NewProviderError(
+					providers.ErrorNotFound,
+					"test-citizen",
+					"not found",
+					nil,
+				)
+			},
+		}
+		sanctionsProv := &stubProvider{
+			id:       "test-sanctions",
+			provType: providers.ProviderTypeSanctions,
+			lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				return sanctionsEvidence(sanctionsRecord), nil
+			},
+		}
+
+		orch := newTestOrchestrator(citizenProv, sanctionsProv)
+		svc := New(orch, cache, false)
+
+		result, err := svc.Check(ctx, nationalID)
+		s.Require().Error(err)
+		s.Nil(result)
+
+		// CRITICAL: Neither should be cached
+		s.Len(cache.saveCitizenCalls, 0)
+		s.Len(cache.saveSanctionCalls, 0)
+	})
+
+	s.Run("uses cached citizen but fetches sanctions when only citizen is cached", func() {
+		cache := newStubCache()
+		cache.citizenRecords[nationalID] = citizenRecord
+
+		citizenProv := &stubProvider{
+			id:       "test-citizen",
+			provType: providers.ProviderTypeCitizen,
+			lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				return citizenEvidence(citizenRecord), nil
+			},
+		}
+		sanctionsProv := &stubProvider{
+			id:       "test-sanctions",
+			provType: providers.ProviderTypeSanctions,
+			lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				return sanctionsEvidence(sanctionsRecord), nil
+			},
+		}
+
+		orch := newTestOrchestrator(citizenProv, sanctionsProv)
+		svc := New(orch, cache, false)
 
 		result, err := svc.Check(ctx, nationalID)
 		s.Require().NoError(err)
 		s.Equal(citizenRecord, result.Citizen)
-		s.Equal(sanctionsRecord, result.Sanction)
-	})
+		s.Equal(sanctionsRecord.NationalID, result.Sanction.NationalID)
 
-	s.T().Run("does not cache citizen when sanctions lookup fails", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		mockCache := mocks.NewMockCacheStore(ctrl)
-		mockCitizens := mocks.NewMockCitizenClient(ctrl)
-		mockSanctions := mocks.NewMockSanctionsClient(ctrl)
-
-		svc := NewService(mockCitizens, mockSanctions, mockCache, false)
-
-		// Both cache misses
-		mockCache.EXPECT().FindCitizen(ctx, nationalID).Return(nil, store.ErrNotFound)
-		mockCache.EXPECT().FindSanction(ctx, nationalID).Return(nil, store.ErrNotFound)
-
-		// Citizen lookup succeeds
-		mockCitizens.EXPECT().Lookup(ctx, nationalID).Return(citizenRecord, nil)
-
-		// Sanctions lookup fails
-		sanctionsErr := &providers.ProviderError{
-			Category:   providers.ErrorTimeout,
-			ProviderID: "test-sanctions",
-			Message:    "timeout",
-		}
-		mockSanctions.EXPECT().Check(ctx, nationalID).Return(nil, sanctionsErr)
-
-		// CRITICAL: Neither SaveCitizen nor SaveSanction should be called (atomic rollback)
-		// No EXPECT for SaveCitizen or SaveSanction - if called, test will fail
-
-		result, err := svc.Check(ctx, nationalID)
-		s.Require().Error(err)
-		s.Nil(result)
-	})
-
-	s.T().Run("does not cache sanctions when citizen lookup fails", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		mockCache := mocks.NewMockCacheStore(ctrl)
-		mockCitizens := mocks.NewMockCitizenClient(ctrl)
-		mockSanctions := mocks.NewMockSanctionsClient(ctrl)
-
-		svc := NewService(mockCitizens, mockSanctions, mockCache, false)
-
-		// Both cache misses
-		mockCache.EXPECT().FindCitizen(ctx, nationalID).Return(nil, store.ErrNotFound)
-		mockCache.EXPECT().FindSanction(ctx, nationalID).Return(nil, store.ErrNotFound)
-
-		// Citizen lookup fails
-		citizenErr := &providers.ProviderError{
-			Category:   providers.ErrorNotFound,
-			ProviderID: "test-citizens",
-			Message:    "not found",
-		}
-		mockCitizens.EXPECT().Lookup(ctx, nationalID).Return(nil, citizenErr)
-
-		// Sanctions client should NOT be called since citizen failed first
-		// No EXPECT for sanctionsClient.Check
-
-		// CRITICAL: Neither SaveCitizen nor SaveSanction should be called
-		// No EXPECT for SaveCitizen or SaveSanction
-
-		result, err := svc.Check(ctx, nationalID)
-		s.Require().Error(err)
-		s.Nil(result)
-	})
-
-	s.T().Run("uses cached citizen but fetches sanctions when only citizen is cached", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		mockCache := mocks.NewMockCacheStore(ctrl)
-		mockCitizens := mocks.NewMockCitizenClient(ctrl)
-		mockSanctions := mocks.NewMockSanctionsClient(ctrl)
-
-		svc := NewService(mockCitizens, mockSanctions, mockCache, false)
-
-		// Citizen cache hit, sanctions cache miss
-		mockCache.EXPECT().FindCitizen(ctx, nationalID).Return(citizenRecord, nil)
-		mockCache.EXPECT().FindSanction(ctx, nationalID).Return(nil, store.ErrNotFound)
-
-		// Citizen client should NOT be called (cache hit)
-		// Sanctions provider lookup
-		mockSanctions.EXPECT().Check(ctx, nationalID).Return(sanctionsRecord, nil)
+		// Citizen provider should NOT be called (cache hit)
+		s.False(citizenProv.called)
 
 		// Only sanctions should be cached (citizen was already cached)
-		mockCache.EXPECT().SaveSanction(ctx, sanctionsRecord).Return(nil)
-
-		result, err := svc.Check(ctx, nationalID)
-		s.Require().NoError(err)
-		s.Equal(citizenRecord, result.Citizen)
-		s.Equal(sanctionsRecord, result.Sanction)
+		s.Len(cache.saveCitizenCalls, 0)
+		s.Len(cache.saveSanctionCalls, 1)
 	})
 
-	s.T().Run("uses cached sanctions but fetches citizen when only sanctions is cached", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
+	s.Run("uses cached sanctions but fetches citizen when only sanctions is cached", func() {
+		cache := newStubCache()
+		cache.sanctionRecords[nationalID] = sanctionsRecord
 
-		mockCache := mocks.NewMockCacheStore(ctrl)
-		mockCitizens := mocks.NewMockCitizenClient(ctrl)
-		mockSanctions := mocks.NewMockSanctionsClient(ctrl)
-
-		svc := NewService(mockCitizens, mockSanctions, mockCache, false)
-
-		// Citizen cache miss, sanctions cache hit
-		mockCache.EXPECT().FindCitizen(ctx, nationalID).Return(nil, store.ErrNotFound)
-		mockCache.EXPECT().FindSanction(ctx, nationalID).Return(sanctionsRecord, nil)
-
-		// Citizen provider lookup
-		mockCitizens.EXPECT().Lookup(ctx, nationalID).Return(citizenRecord, nil)
-
-		// Sanctions client should NOT be called (cache hit)
-
-		// Only citizen should be cached (sanctions was already cached)
-		mockCache.EXPECT().SaveCitizen(ctx, citizenRecord).Return(nil)
-
-		result, err := svc.Check(ctx, nationalID)
-		s.Require().NoError(err)
-		s.Equal(citizenRecord, result.Citizen)
-		s.Equal(sanctionsRecord, result.Sanction)
-	})
-
-	s.T().Run("returns both cached records without provider calls when fully cached", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		mockCache := mocks.NewMockCacheStore(ctrl)
-		mockCitizens := mocks.NewMockCitizenClient(ctrl)
-		mockSanctions := mocks.NewMockSanctionsClient(ctrl)
-
-		svc := NewService(mockCitizens, mockSanctions, mockCache, false)
-
-		// Both cache hits
-		mockCache.EXPECT().FindCitizen(ctx, nationalID).Return(citizenRecord, nil)
-		mockCache.EXPECT().FindSanction(ctx, nationalID).Return(sanctionsRecord, nil)
-
-		// No provider calls expected (both cached)
-		// No EXPECT for citizenClient.Lookup or sanctionsClient.Check
-
-		// No cache saves expected (both already cached)
-		// No EXPECT for SaveCitizen or SaveSanction
-
-		result, err := svc.Check(ctx, nationalID)
-		s.Require().NoError(err)
-		s.Equal(citizenRecord, result.Citizen)
-		s.Equal(sanctionsRecord, result.Sanction)
-	})
-
-	s.T().Run("retry after sanctions failure fetches citizen again", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		mockCache := mocks.NewMockCacheStore(ctrl)
-		mockCitizens := mocks.NewMockCitizenClient(ctrl)
-		mockSanctions := mocks.NewMockSanctionsClient(ctrl)
-
-		svc := NewService(mockCitizens, mockSanctions, mockCache, false)
-
-		sanctionsErr := &providers.ProviderError{
-			Category:   providers.ErrorTimeout,
-			ProviderID: "test-sanctions",
-			Message:    "timeout",
+		citizenProv := &stubProvider{
+			id:       "test-citizen",
+			provType: providers.ProviderTypeCitizen,
+			lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				return citizenEvidence(citizenRecord), nil
+			},
+		}
+		sanctionsProv := &stubProvider{
+			id:       "test-sanctions",
+			provType: providers.ProviderTypeSanctions,
+			lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				return sanctionsEvidence(sanctionsRecord), nil
+			},
 		}
 
-		// First call: citizen succeeds, sanctions fails, nothing cached
-		gomock.InOrder(
-			mockCache.EXPECT().FindCitizen(ctx, nationalID).Return(nil, store.ErrNotFound),
-			mockCache.EXPECT().FindSanction(ctx, nationalID).Return(nil, store.ErrNotFound),
-			mockCitizens.EXPECT().Lookup(ctx, nationalID).Return(citizenRecord, nil),
-			mockSanctions.EXPECT().Check(ctx, nationalID).Return(nil, sanctionsErr),
-		)
+		orch := newTestOrchestrator(citizenProv, sanctionsProv)
+		svc := New(orch, cache, false)
 
 		result, err := svc.Check(ctx, nationalID)
-		s.Require().Error(err)
-		s.Nil(result)
+		s.Require().NoError(err)
+		s.Equal(citizenRecord.NationalID, result.Citizen.NationalID)
+		s.Equal(sanctionsRecord, result.Sanction)
 
-		// Second call: citizen fetched again (not cached!), sanctions succeeds, both cached
-		gomock.InOrder(
-			mockCache.EXPECT().FindCitizen(ctx, nationalID).Return(nil, store.ErrNotFound), // Still not cached
-			mockCache.EXPECT().FindSanction(ctx, nationalID).Return(nil, store.ErrNotFound),
-			mockCitizens.EXPECT().Lookup(ctx, nationalID).Return(citizenRecord, nil), // Fetched again
-			mockSanctions.EXPECT().Check(ctx, nationalID).Return(sanctionsRecord, nil),
-			mockCache.EXPECT().SaveCitizen(ctx, citizenRecord).Return(nil),
-			mockCache.EXPECT().SaveSanction(ctx, sanctionsRecord).Return(nil),
-		)
+		// Sanctions provider should NOT be called (cache hit)
+		s.False(sanctionsProv.called)
 
-		result, err = svc.Check(ctx, nationalID)
+		// Only citizen should be cached (sanctions was already cached)
+		s.Len(cache.saveCitizenCalls, 1)
+		s.Len(cache.saveSanctionCalls, 0)
+	})
+
+	s.Run("returns both cached records without provider calls when fully cached", func() {
+		cache := newStubCache()
+		cache.citizenRecords[nationalID] = citizenRecord
+		cache.sanctionRecords[nationalID] = sanctionsRecord
+
+		citizenProv := &stubProvider{
+			id:       "test-citizen",
+			provType: providers.ProviderTypeCitizen,
+			lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				return citizenEvidence(citizenRecord), nil
+			},
+		}
+		sanctionsProv := &stubProvider{
+			id:       "test-sanctions",
+			provType: providers.ProviderTypeSanctions,
+			lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				return sanctionsEvidence(sanctionsRecord), nil
+			},
+		}
+
+		orch := newTestOrchestrator(citizenProv, sanctionsProv)
+		svc := New(orch, cache, false)
+
+		result, err := svc.Check(ctx, nationalID)
 		s.Require().NoError(err)
 		s.Equal(citizenRecord, result.Citizen)
 		s.Equal(sanctionsRecord, result.Sanction)
+
+		// No provider calls expected (both cached)
+		s.False(citizenProv.called)
+		s.False(sanctionsProv.called)
+
+		// No cache saves expected (both already cached)
+		s.Len(cache.saveCitizenCalls, 0)
+		s.Len(cache.saveSanctionCalls, 0)
+	})
+}
+
+func (s *ServiceSuite) TestCitizenMinimization() {
+	ctx := context.Background()
+	nationalID := "ABC123456"
+	now := time.Now()
+
+	citizenRecord := &models.CitizenRecord{
+		NationalID:  nationalID,
+		FullName:    "Test User",
+		DateOfBirth: "1990-01-01",
+		Address:     "123 Test St",
+		Valid:       true,
+		CheckedAt:   now,
+	}
+
+	s.Run("minimizes citizen record in regulated mode", func() {
+		cache := newStubCache()
+		citizenProv := &stubProvider{
+			id:       "test-citizen",
+			provType: providers.ProviderTypeCitizen,
+			lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				return citizenEvidence(citizenRecord), nil
+			},
+		}
+
+		orch := newTestOrchestrator(citizenProv, nil)
+		svc := New(orch, cache, true) // regulated = true
+
+		result, err := svc.Citizen(ctx, nationalID)
+		s.Require().NoError(err)
+
+		// PII fields should be cleared
+		s.Equal("", result.NationalID)
+		s.Equal("", result.FullName)
+		s.Equal("", result.DateOfBirth)
+		s.Equal("", result.Address)
+
+		// Valid and CheckedAt should be preserved
+		s.True(result.Valid)
+		s.Equal(now, result.CheckedAt)
+	})
+
+	s.Run("returns full citizen record in non-regulated mode", func() {
+		cache := newStubCache()
+		citizenProv := &stubProvider{
+			id:       "test-citizen",
+			provType: providers.ProviderTypeCitizen,
+			lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				return citizenEvidence(citizenRecord), nil
+			},
+		}
+
+		orch := newTestOrchestrator(citizenProv, nil)
+		svc := New(orch, cache, false) // regulated = false
+
+		result, err := svc.Citizen(ctx, nationalID)
+		s.Require().NoError(err)
+
+		// All fields should be present
+		s.Equal(nationalID, result.NationalID)
+		s.Equal("Test User", result.FullName)
+		s.Equal("1990-01-01", result.DateOfBirth)
+		s.Equal("123 Test St", result.Address)
+		s.True(result.Valid)
 	})
 }
