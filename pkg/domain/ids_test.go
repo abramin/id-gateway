@@ -190,3 +190,107 @@ func TestAllIDTypes_ConsistentBehavior(t *testing.T) {
 		})
 	}
 }
+
+// TestParseNationalID_Invariants validates the parsing invariant:
+// "National IDs must be 6-20 uppercase alphanumeric characters"
+//
+// Justification: This is a pure function enforcing a domain invariant
+// at trust boundaries. Per testing.md, unit tests are allowed for invariants.
+func TestParseNationalID_Invariants(t *testing.T) {
+	t.Run("rejects empty string", func(t *testing.T) {
+		_, err := ParseNationalID("")
+		require.Error(t, err)
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeInvalidInput))
+		assert.Contains(t, err.Error(), "national_id is required")
+	})
+
+	t.Run("rejects too short", func(t *testing.T) {
+		_, err := ParseNationalID("ABC12") // 5 chars, need 6
+		require.Error(t, err)
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeInvalidInput))
+		assert.Contains(t, err.Error(), "invalid format")
+	})
+
+	t.Run("rejects too long", func(t *testing.T) {
+		_, err := ParseNationalID("ABCDEFGHIJ1234567890X") // 21 chars, max 20
+		require.Error(t, err)
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeInvalidInput))
+	})
+
+	t.Run("rejects lowercase characters", func(t *testing.T) {
+		_, err := ParseNationalID("abc123")
+		require.Error(t, err)
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeInvalidInput))
+	})
+
+	t.Run("rejects special characters", func(t *testing.T) {
+		_, err := ParseNationalID("ABC-123")
+		require.Error(t, err)
+		assert.True(t, dErrors.HasCode(err, dErrors.CodeInvalidInput))
+	})
+
+	t.Run("accepts valid 6-char ID", func(t *testing.T) {
+		id, err := ParseNationalID("ABC123")
+		require.NoError(t, err)
+		assert.Equal(t, "ABC123", id.String())
+		assert.False(t, id.IsNil())
+	})
+
+	t.Run("accepts valid 20-char ID", func(t *testing.T) {
+		id, err := ParseNationalID("ABCDEFGHIJ1234567890")
+		require.NoError(t, err)
+		assert.Equal(t, "ABCDEFGHIJ1234567890", id.String())
+	})
+
+	t.Run("IsNil returns true for zero value", func(t *testing.T) {
+		var id NationalID
+		assert.True(t, id.IsNil())
+	})
+}
+
+// TestParseNationalID_SecurityInvariants validates security-critical parsing rules.
+//
+// Justification: These are trust boundary invariants - parsing must reject
+// attack vectors at API entry points.
+func TestParseNationalID_SecurityInvariants(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		// Attack vectors
+		{"SQL injection attempt", "'; DROP TABLE users;--", true},
+		{"Path traversal", "../../../etc/passwd", true},
+		{"Null byte injection", "ABC123\x00DEF", true},
+		{"Oversized input", strings.Repeat("A", 100), true},
+		{"Unicode zero-width space", "ABC\u200B123", true},
+		{"Script injection", "<script>alert(1)</script>", true},
+
+		// Edge cases
+		{"Empty string", "", true},
+		{"Whitespace only", "   ", true},
+		{"Mixed case", "AbC123", true},
+		{"With spaces", "ABC 123", true},
+		{"With dash", "ABC-123", true},
+		{"With underscore", "ABC_123", true},
+
+		// Valid cases
+		{"Valid lowercase boundary (6 chars)", "ABCDEF", false},
+		{"Valid uppercase boundary (20 chars)", "ABCDEFGHIJ1234567890", false},
+		{"All numbers", "123456", false},
+		{"All letters", "ABCDEF", false},
+		{"Mixed alphanumeric", "A1B2C3D4E5", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseNationalID(tt.input)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.True(t, dErrors.HasCode(err, dErrors.CodeInvalidInput))
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
