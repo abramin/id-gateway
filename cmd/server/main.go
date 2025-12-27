@@ -48,6 +48,7 @@ import (
 	tenantService "credo/internal/tenant/service"
 	clientstore "credo/internal/tenant/store/client"
 	tenantstore "credo/internal/tenant/store/tenant"
+	auditmetrics "credo/pkg/platform/audit/metrics"
 	auditpublisher "credo/pkg/platform/audit/publisher"
 	auditstore "credo/pkg/platform/audit/store/memory"
 	adminmw "credo/pkg/platform/middleware/admin"
@@ -68,6 +69,7 @@ type infraBundle struct {
 	AuthMetrics    *authmetrics.Metrics
 	ConsentMetrics *consentmetrics.Metrics
 	TenantMetrics  *tenantmetrics.Metrics
+	AuditMetrics   *auditmetrics.Metrics
 	RequestMetrics *request.Metrics
 	JWTService     *jwttoken.JWTService
 	JWTValidator   *jwttoken.JWTServiceAdapter
@@ -270,6 +272,7 @@ func buildInfra() (*infraBundle, error) {
 	authMetrics := authmetrics.New()
 	consentMetrics := consentmetrics.New()
 	tenantMetrics := tenantmetrics.New()
+	auditMet := auditmetrics.New()
 	requestMetrics := request.NewMetrics()
 	jwtService, jwtValidator := initializeJWTService(&cfg)
 	deviceSvc := device.NewService(cfg.Auth.DeviceBindingEnabled)
@@ -280,6 +283,7 @@ func buildInfra() (*infraBundle, error) {
 		AuthMetrics:    authMetrics,
 		ConsentMetrics: consentMetrics,
 		TenantMetrics:  tenantMetrics,
+		AuditMetrics:   auditMet,
 		RequestMetrics: requestMetrics,
 		JWTService:     jwtService,
 		JWTValidator:   jwtValidator,
@@ -322,7 +326,12 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 		authService.WithMetrics(infra.AuthMetrics),
 		authService.WithLogger(infra.Log),
 		authService.WithTRL(trl),
-		authService.WithAuditPublisher(auditpublisher.NewPublisher(auditStore)),
+		authService.WithAuditPublisher(auditpublisher.NewPublisher(
+			auditStore,
+			auditpublisher.WithAsyncBuffer(1000),
+			auditpublisher.WithMetrics(infra.AuditMetrics),
+			auditpublisher.WithPublisherLogger(infra.Log),
+		)),
 	)
 	if err != nil {
 		return nil, err
@@ -362,7 +371,12 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 func buildConsentModule(infra *infraBundle) *consentModule {
 	consentSvc := consentService.NewService(
 		consentStore.NewInMemoryStore(),
-		auditpublisher.NewPublisher(auditstore.NewInMemoryStore()),
+		auditpublisher.NewPublisher(
+			auditstore.NewInMemoryStore(),
+			auditpublisher.WithAsyncBuffer(1000),
+			auditpublisher.WithMetrics(infra.AuditMetrics),
+			auditpublisher.WithPublisherLogger(infra.Log),
+		),
 		infra.Log,
 		consentService.WithConsentTTL(infra.Cfg.Consent.ConsentTTL),
 		consentService.WithGrantWindow(infra.Cfg.Consent.ConsentGrantWindow),
