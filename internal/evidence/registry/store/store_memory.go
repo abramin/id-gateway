@@ -1,6 +1,7 @@
 package store
 
 import (
+	"container/list"
 	"context"
 	"errors"
 	"sync"
@@ -17,32 +18,37 @@ const (
 )
 
 type cachedCitizen struct {
-	record     models.CitizenRecord
-	storedAt   time.Time
-	lastAccess time.Time
-	regulated  bool // Track whether this record was stored in minimized (regulated) mode
+	key       string // Cache key for LRU list reference
+	record    models.CitizenRecord
+	storedAt  time.Time
+	regulated bool // Track whether this record was stored in minimized (regulated) mode
 }
 
 type cachedSanction struct {
-	record     models.SanctionsRecord
-	storedAt   time.Time
-	lastAccess time.Time
+	key      string // Cache key for LRU list reference
+	record   models.SanctionsRecord
+	storedAt time.Time
 }
 
 // InMemoryCache provides an in-memory cache for registry records with TTL expiration
 // and LRU eviction. Citizen records track their regulated mode to prevent serving
 // stale PII when the system switches between regulated and non-regulated modes.
 //
+// The cache uses doubly-linked lists for O(1) LRU eviction. On access, entries are
+// moved to the front of the list. On eviction, entries are removed from the back.
+//
 // The cache has separate locks for citizens and sanctions to reduce contention.
 // Expired entries are cleaned up lazily on access and periodically via background cleanup.
 type InMemoryCache struct {
-	citizenMu  sync.RWMutex
-	sanctionMu sync.RWMutex
-	citizens   map[string]cachedCitizen
-	sanctions  map[string]cachedSanction
-	cacheTTL   time.Duration
-	maxSize    int
-	metrics    *metrics.Metrics
+	citizenMu   sync.Mutex
+	sanctionMu  sync.Mutex
+	citizens    map[string]*list.Element // key -> LRU list element containing *cachedCitizen
+	sanctions   map[string]*list.Element // key -> LRU list element containing *cachedSanction
+	citizenLRU  *list.List               // Front = most recent, Back = least recent
+	sanctionLRU *list.List
+	cacheTTL    time.Duration
+	maxSize     int
+	metrics     *metrics.Metrics
 }
 
 // ErrNotFound is returned when a requested record does not exist in the cache.
@@ -68,10 +74,12 @@ func WithMetrics(m *metrics.Metrics) CacheOption {
 // NewInMemoryCache creates a new in-memory cache with the specified TTL.
 func NewInMemoryCache(cacheTTL time.Duration, opts ...CacheOption) *InMemoryCache {
 	c := &InMemoryCache{
-		citizens:  make(map[string]cachedCitizen),
-		sanctions: make(map[string]cachedSanction),
-		cacheTTL:  cacheTTL,
-		maxSize:   DefaultMaxCacheSize,
+		citizens:    make(map[string]*list.Element),
+		sanctions:   make(map[string]*list.Element),
+		citizenLRU:  list.New(),
+		sanctionLRU: list.New(),
+		cacheTTL:    cacheTTL,
+		maxSize:     DefaultMaxCacheSize,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -92,21 +100,34 @@ func (c *InMemoryCache) SaveCitizen(_ context.Context, key id.NationalID, record
 		return errors.New("cannot cache citizen record with nil key")
 	}
 
+	keyStr := key.String()
 	c.citizenMu.Lock()
 	defer c.citizenMu.Unlock()
 
-	// Evict oldest entry if at capacity
-	if len(c.citizens) >= c.maxSize {
+	// If key already exists, update and move to front
+	if elem, ok := c.citizens[keyStr]; ok {
+		cached := elem.Value.(*cachedCitizen)
+		cached.record = *record
+		cached.storedAt = time.Now()
+		cached.regulated = regulated
+		c.citizenLRU.MoveToFront(elem)
+		return nil
+	}
+
+	// Evict oldest entry if at capacity (O(1) - remove from back of list)
+	if c.citizenLRU.Len() >= c.maxSize {
 		c.evictOldestCitizenLocked()
 	}
 
-	now := time.Now()
-	c.citizens[key.String()] = cachedCitizen{
-		record:     *record,
-		storedAt:   now,
-		lastAccess: now,
-		regulated:  regulated,
+	// Add new entry at front of LRU list
+	cached := &cachedCitizen{
+		key:       keyStr,
+		record:    *record,
+		storedAt:  time.Now(),
+		regulated: regulated,
 	}
+	elem := c.citizenLRU.PushFront(cached)
+	c.citizens[keyStr] = elem
 	return nil
 }
 
@@ -117,20 +138,24 @@ func (c *InMemoryCache) SaveCitizen(_ context.Context, key id.NationalID, record
 //   - The stored regulated mode doesn't match the requested mode (prevents stale PII)
 func (c *InMemoryCache) FindCitizen(_ context.Context, nationalID id.NationalID, regulated bool) (*models.CitizenRecord, error) {
 	start := time.Now()
+	keyStr := nationalID.String()
 
 	c.citizenMu.Lock()
 	defer c.citizenMu.Unlock()
 
-	cached, ok := c.citizens[nationalID.String()]
+	elem, ok := c.citizens[keyStr]
 	if !ok {
 		c.recordMiss("citizen", start)
 		return nil, ErrNotFound
 	}
 
+	cached := elem.Value.(*cachedCitizen)
+
 	// Check TTL expiration
 	if time.Since(cached.storedAt) >= c.cacheTTL {
 		// Lazy cleanup: remove expired entry
-		delete(c.citizens, nationalID.String())
+		c.citizenLRU.Remove(elem)
+		delete(c.citizens, keyStr)
 		c.recordMiss("citizen", start)
 		return nil, ErrNotFound
 	}
@@ -141,9 +166,8 @@ func (c *InMemoryCache) FindCitizen(_ context.Context, nationalID id.NationalID,
 		return nil, ErrNotFound
 	}
 
-	// Update last access time for LRU
-	cached.lastAccess = time.Now()
-	c.citizens[nationalID.String()] = cached
+	// Move to front of LRU list (O(1) access update)
+	c.citizenLRU.MoveToFront(elem)
 
 	c.recordHit("citizen", start)
 	return &cached.record, nil
@@ -160,20 +184,32 @@ func (c *InMemoryCache) SaveSanction(_ context.Context, key id.NationalID, recor
 		return errors.New("cannot cache sanction record with nil key")
 	}
 
+	keyStr := key.String()
 	c.sanctionMu.Lock()
 	defer c.sanctionMu.Unlock()
 
-	// Evict oldest entry if at capacity
-	if len(c.sanctions) >= c.maxSize {
+	// If key already exists, update and move to front
+	if elem, ok := c.sanctions[keyStr]; ok {
+		cached := elem.Value.(*cachedSanction)
+		cached.record = *record
+		cached.storedAt = time.Now()
+		c.sanctionLRU.MoveToFront(elem)
+		return nil
+	}
+
+	// Evict oldest entry if at capacity (O(1) - remove from back of list)
+	if c.sanctionLRU.Len() >= c.maxSize {
 		c.evictOldestSanctionLocked()
 	}
 
-	now := time.Now()
-	c.sanctions[key.String()] = cachedSanction{
-		record:     *record,
-		storedAt:   now,
-		lastAccess: now,
+	// Add new entry at front of LRU list
+	cached := &cachedSanction{
+		key:      keyStr,
+		record:   *record,
+		storedAt: time.Now(),
 	}
+	elem := c.sanctionLRU.PushFront(cached)
+	c.sanctions[keyStr] = elem
 	return nil
 }
 
@@ -181,66 +217,59 @@ func (c *InMemoryCache) SaveSanction(_ context.Context, key id.NationalID, recor
 // Returns ErrNotFound if the record does not exist or has expired past the cache TTL.
 func (c *InMemoryCache) FindSanction(_ context.Context, nationalID id.NationalID) (*models.SanctionsRecord, error) {
 	start := time.Now()
+	keyStr := nationalID.String()
 
 	c.sanctionMu.Lock()
 	defer c.sanctionMu.Unlock()
 
-	cached, ok := c.sanctions[nationalID.String()]
+	elem, ok := c.sanctions[keyStr]
 	if !ok {
 		c.recordMiss("sanctions", start)
 		return nil, ErrNotFound
 	}
 
+	cached := elem.Value.(*cachedSanction)
+
 	// Check TTL expiration
 	if time.Since(cached.storedAt) >= c.cacheTTL {
 		// Lazy cleanup: remove expired entry
-		delete(c.sanctions, nationalID.String())
+		c.sanctionLRU.Remove(elem)
+		delete(c.sanctions, keyStr)
 		c.recordMiss("sanctions", start)
 		return nil, ErrNotFound
 	}
 
-	// Update last access time for LRU
-	cached.lastAccess = time.Now()
-	c.sanctions[nationalID.String()] = cached
+	// Move to front of LRU list (O(1) access update)
+	c.sanctionLRU.MoveToFront(elem)
 
 	c.recordHit("sanctions", start)
 	return &cached.record, nil
 }
 
 // evictOldestCitizenLocked removes the least recently accessed citizen entry.
+// O(1) operation - removes from back of LRU list.
 // Must be called with citizenMu held.
 func (c *InMemoryCache) evictOldestCitizenLocked() {
-	var oldestKey string
-	var oldestTime time.Time
-
-	for key, cached := range c.citizens {
-		if oldestKey == "" || cached.lastAccess.Before(oldestTime) {
-			oldestKey = key
-			oldestTime = cached.lastAccess
-		}
+	elem := c.citizenLRU.Back()
+	if elem == nil {
+		return
 	}
-
-	if oldestKey != "" {
-		delete(c.citizens, oldestKey)
-	}
+	cached := elem.Value.(*cachedCitizen)
+	c.citizenLRU.Remove(elem)
+	delete(c.citizens, cached.key)
 }
 
 // evictOldestSanctionLocked removes the least recently accessed sanction entry.
+// O(1) operation - removes from back of LRU list.
 // Must be called with sanctionMu held.
 func (c *InMemoryCache) evictOldestSanctionLocked() {
-	var oldestKey string
-	var oldestTime time.Time
-
-	for key, cached := range c.sanctions {
-		if oldestKey == "" || cached.lastAccess.Before(oldestTime) {
-			oldestKey = key
-			oldestTime = cached.lastAccess
-		}
+	elem := c.sanctionLRU.Back()
+	if elem == nil {
+		return
 	}
-
-	if oldestKey != "" {
-		delete(c.sanctions, oldestKey)
-	}
+	cached := elem.Value.(*cachedSanction)
+	c.sanctionLRU.Remove(elem)
+	delete(c.sanctions, cached.key)
 }
 
 // CleanupExpired removes all expired entries from both caches.
@@ -249,31 +278,39 @@ func (c *InMemoryCache) CleanupExpired() {
 	now := time.Now()
 
 	c.citizenMu.Lock()
-	for key, cached := range c.citizens {
+	for elem := c.citizenLRU.Back(); elem != nil; {
+		prev := elem.Prev()
+		cached := elem.Value.(*cachedCitizen)
 		if now.Sub(cached.storedAt) >= c.cacheTTL {
-			delete(c.citizens, key)
+			c.citizenLRU.Remove(elem)
+			delete(c.citizens, cached.key)
 		}
+		elem = prev
 	}
 	c.citizenMu.Unlock()
 
 	c.sanctionMu.Lock()
-	for key, cached := range c.sanctions {
+	for elem := c.sanctionLRU.Back(); elem != nil; {
+		prev := elem.Prev()
+		cached := elem.Value.(*cachedSanction)
 		if now.Sub(cached.storedAt) >= c.cacheTTL {
-			delete(c.sanctions, key)
+			c.sanctionLRU.Remove(elem)
+			delete(c.sanctions, cached.key)
 		}
+		elem = prev
 	}
 	c.sanctionMu.Unlock()
 }
 
 // Size returns the current number of entries in each cache.
 func (c *InMemoryCache) Size() (citizens, sanctions int) {
-	c.citizenMu.RLock()
-	citizens = len(c.citizens)
-	c.citizenMu.RUnlock()
+	c.citizenMu.Lock()
+	citizens = c.citizenLRU.Len()
+	c.citizenMu.Unlock()
 
-	c.sanctionMu.RLock()
-	sanctions = len(c.sanctions)
-	c.sanctionMu.RUnlock()
+	c.sanctionMu.Lock()
+	sanctions = c.sanctionLRU.Len()
+	c.sanctionMu.Unlock()
 
 	return citizens, sanctions
 }
@@ -282,11 +319,13 @@ func (c *InMemoryCache) Size() (citizens, sanctions int) {
 // This is used for cache invalidation, such as when regulated mode changes.
 func (c *InMemoryCache) ClearAll() {
 	c.citizenMu.Lock()
-	c.citizens = make(map[string]cachedCitizen)
+	c.citizens = make(map[string]*list.Element)
+	c.citizenLRU.Init()
 	c.citizenMu.Unlock()
 
 	c.sanctionMu.Lock()
-	c.sanctions = make(map[string]cachedSanction)
+	c.sanctions = make(map[string]*list.Element)
+	c.sanctionLRU.Init()
 	c.sanctionMu.Unlock()
 
 	if c.metrics != nil {

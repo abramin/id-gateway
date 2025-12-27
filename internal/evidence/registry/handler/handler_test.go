@@ -76,6 +76,7 @@ func (s *stubAuditPublisher) Emit(ctx context.Context, event audit.Event) error 
 	return nil
 }
 
+
 // =============================================================================
 // Sanctions Lookup Tests - Error Mapping
 // =============================================================================
@@ -177,7 +178,34 @@ func TestHandleSanctionsLookup_ServiceInternalError(t *testing.T) {
 // Sanctions Lookup Tests - Audit Events
 // =============================================================================
 
-func TestHandleSanctionsLookup_AuditEventNotListed(t *testing.T) {
+// Note: Audit event tests have moved to service_test.go since audit logic
+// is now in the service layer per architectural guidelines.
+// Handler tests focus on HTTP request/response mapping.
+
+func TestHandleSanctionsLookup_ServiceAuditFailClosedForListed(t *testing.T) {
+	// When the service returns an error due to audit failure for listed sanctions,
+	// the handler maps it to 500 Internal Server Error.
+	// The fail-closed logic is now in the service layer.
+	service := &stubRegistryService{
+		sanctionsFunc: func(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*models.SanctionsRecord, error) {
+			// Service returns error when audit fails for listed sanctions
+			return nil, dErrors.New(dErrors.CodeInternal, "unable to complete sanctions check")
+		},
+	}
+	handler := newTestRegistryHandler(service, nil)
+
+	req := newSanctionsRequest(t, "SANCT12345", validUserID())
+	w := httptest.NewRecorder()
+	handler.HandleSanctionsLookup(w, req)
+
+	// Handler maps service error to 500
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assertErrorResponse(t, w, string(dErrors.CodeInternal))
+}
+
+func TestHandleSanctionsLookup_SuccessfulLookup(t *testing.T) {
+	// Verifies that a successful sanctions lookup returns 200 OK.
+	// Audit is handled internally by the service.
 	service := &stubRegistryService{
 		sanctionsFunc: func(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*models.SanctionsRecord, error) {
 			return &models.SanctionsRecord{
@@ -188,42 +216,13 @@ func TestHandleSanctionsLookup_AuditEventNotListed(t *testing.T) {
 			}, nil
 		},
 	}
-	auditPort := &stubAuditPublisher{}
-	handler := newTestRegistryHandler(service, auditPort)
+	handler := newTestRegistryHandler(service, nil)
 
 	req := newSanctionsRequest(t, "CLEAN12345", validUserID())
 	w := httptest.NewRecorder()
 	handler.HandleSanctionsLookup(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	require.Len(t, auditPort.events, 1)
-	assert.Equal(t, "registry_sanctions_checked", auditPort.events[0].Action)
-	assert.Equal(t, "not_listed", auditPort.events[0].Decision)
-	assert.Equal(t, "registry_check", auditPort.events[0].Purpose)
-}
-
-func TestHandleSanctionsLookup_AuditEventListed(t *testing.T) {
-	service := &stubRegistryService{
-		sanctionsFunc: func(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*models.SanctionsRecord, error) {
-			return &models.SanctionsRecord{
-				NationalID: nationalID.String(),
-				Listed:     true,
-				Source:     "OFAC SDN List",
-				CheckedAt:  time.Now(),
-			}, nil
-		},
-	}
-	auditPort := &stubAuditPublisher{}
-	handler := newTestRegistryHandler(service, auditPort)
-
-	req := newSanctionsRequest(t, "SANCT12345", validUserID())
-	w := httptest.NewRecorder()
-	handler.HandleSanctionsLookup(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	require.Len(t, auditPort.events, 1)
-	assert.Equal(t, "registry_sanctions_checked", auditPort.events[0].Action)
-	assert.Equal(t, "listed", auditPort.events[0].Decision)
 }
 
 // =============================================================================
@@ -271,6 +270,7 @@ func newTestRegistryHandler(service RegistryService, auditPort *stubAuditPublish
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return New(service, auditPort, logger)
 }
+
 
 func validUserID() id.UserID {
 	userID, _ := id.ParseUserID("550e8400-e29b-41d4-a716-446655440000")
