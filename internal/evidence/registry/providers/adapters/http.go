@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"credo/internal/evidence/registry/providers"
+	"credo/pkg/platform/middleware/requesttime"
 )
 
 // HTTPAdapter wraps HTTP-based registry providers
@@ -192,7 +193,10 @@ func (a *HTTPAdapter) Lookup(ctx context.Context, filters map[string]string) (*p
 	}
 	evidence.ProviderID = a.id
 	evidence.ProviderType = a.capabs.Type
-	evidence.CheckedAt = time.Now()
+	// Only set CheckedAt if provider didn't supply it
+	if evidence.CheckedAt.IsZero() {
+		evidence.CheckedAt = requesttime.Now(ctx)
+	}
 
 	return evidence, nil
 }
