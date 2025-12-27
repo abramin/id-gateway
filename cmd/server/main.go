@@ -480,8 +480,7 @@ func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service)
 		auditpublisher.WithPublisherLogger(infra.Log),
 	)
 
-	// Create handler (consent adapter passed for backwards compatibility but consent is checked in service)
-	handler := registryHandler.New(svc, consentAdapter, auditPort, infra.Log)
+	handler := registryHandler.New(svc, auditPort, infra.Log)
 
 	return &registryModule{
 		Service: svc,

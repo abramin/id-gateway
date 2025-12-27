@@ -60,12 +60,6 @@ func sanitizeKeySegment(s string) string {
 	return strings.ReplaceAll(s, ":", "_")
 }
 
-// SanitizeKeySegment is exported for backward compatibility with admin service.
-// Prefer using RateLimitKey constructors for new code.
-func SanitizeKeySegment(s string) string {
-	return sanitizeKeySegment(s)
-}
-
 // NewClientRateLimitKey creates a key for per-client endpoint limits.
 func NewClientRateLimitKey(clientID, endpoint string) string {
 	return fmt.Sprintf("%s:%s:%s",

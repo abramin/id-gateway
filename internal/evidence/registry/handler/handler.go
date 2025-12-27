@@ -9,7 +9,6 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"credo/internal/evidence/registry/models"
-	"credo/internal/evidence/registry/ports"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
@@ -33,19 +32,17 @@ type AuditPublisher interface {
 
 // Handler handles HTTP requests for registry operations.
 type Handler struct {
-	service     RegistryService
-	consentPort ports.ConsentPort
-	auditPort   AuditPublisher
-	logger      *slog.Logger
+	service   RegistryService
+	auditPort AuditPublisher
+	logger    *slog.Logger
 }
 
 // New creates a new registry handler.
-func New(service RegistryService, consentPort ports.ConsentPort, auditPort AuditPublisher, logger *slog.Logger) *Handler {
+func New(service RegistryService, auditPort AuditPublisher, logger *slog.Logger) *Handler {
 	return &Handler{
-		service:     service,
-		consentPort: consentPort,
-		auditPort:   auditPort,
-		logger:      logger,
+		service:   service,
+		auditPort: auditPort,
+		logger:    logger,
 	}
 }
 

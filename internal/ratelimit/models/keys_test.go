@@ -90,17 +90,3 @@ func (s *KeySecuritySuite) TestKeyCollisionAttack() {
 		s.Equal("user:ip:auth", key.String())
 	})
 }
-
-// =============================================================================
-// SanitizeKeySegment Export Tests
-// =============================================================================
-
-func (s *KeySecuritySuite) TestSanitizeKeySegment() {
-	s.Run("exported function matches internal behavior", func() {
-		input := "test:value:with:colons"
-		expected := "test_value_with_colons"
-
-		result := SanitizeKeySegment(input)
-		s.Equal(expected, result)
-	})
-}

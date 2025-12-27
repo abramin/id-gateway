@@ -67,17 +67,6 @@ func (s *stubRegistryService) Check(ctx context.Context, userID id.UserID, natio
 	return nil, nil
 }
 
-type stubConsentPort struct {
-	requireConsentFunc func(ctx context.Context, userID, purpose string) error
-}
-
-func (s *stubConsentPort) RequireConsent(ctx context.Context, userID, purpose string) error {
-	if s.requireConsentFunc != nil {
-		return s.requireConsentFunc(ctx, userID, purpose)
-	}
-	return nil
-}
-
 type stubAuditPublisher struct {
 	events []audit.Event
 }
@@ -93,7 +82,7 @@ func (s *stubAuditPublisher) Emit(ctx context.Context, event audit.Event) error 
 
 func TestHandleSanctionsLookup_MissingUserContext(t *testing.T) {
 	// Handler extracts user from context; missing = unauthorized error
-	handler := newTestRegistryHandler(nil, nil, nil)
+	handler := newTestRegistryHandler(nil, nil)
 
 	body, _ := json.Marshal(map[string]string{"national_id": "TEST123456"})
 	req := httptest.NewRequest(http.MethodPost, "/registry/sanctions", bytes.NewReader(body))
@@ -120,7 +109,7 @@ func TestHandleSanctionsLookup_InvalidNationalIDFormat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := newTestRegistryHandler(nil, nil, nil)
+			handler := newTestRegistryHandler(nil, nil)
 			req := newSanctionsRequest(t, tt.nationalID, validUserID())
 
 			w := httptest.NewRecorder()
@@ -141,7 +130,7 @@ func TestHandleSanctionsLookup_MissingConsent(t *testing.T) {
 			return nil, dErrors.New(dErrors.CodeMissingConsent, "consent required for purpose: registry_check")
 		},
 	}
-	handler := newTestRegistryHandler(service, nil, nil)
+	handler := newTestRegistryHandler(service, nil)
 
 	req := newSanctionsRequest(t, "TEST123456", validUserID())
 	w := httptest.NewRecorder()
@@ -157,7 +146,7 @@ func TestHandleSanctionsLookup_ServiceTimeout(t *testing.T) {
 			return nil, dErrors.New(dErrors.CodeTimeout, "registry lookup timed out")
 		},
 	}
-	handler := newTestRegistryHandler(service, nil, nil)
+	handler := newTestRegistryHandler(service, nil)
 
 	req := newSanctionsRequest(t, "TIMEOUT123", validUserID())
 	w := httptest.NewRecorder()
@@ -174,7 +163,7 @@ func TestHandleSanctionsLookup_ServiceInternalError(t *testing.T) {
 			return nil, dErrors.New(dErrors.CodeInternal, "storage system unavailable")
 		},
 	}
-	handler := newTestRegistryHandler(service, nil, nil)
+	handler := newTestRegistryHandler(service, nil)
 
 	req := newSanctionsRequest(t, "ERROR12345", validUserID())
 	w := httptest.NewRecorder()
@@ -200,7 +189,7 @@ func TestHandleSanctionsLookup_AuditEventNotListed(t *testing.T) {
 		},
 	}
 	auditPort := &stubAuditPublisher{}
-	handler := newTestRegistryHandler(service, nil, auditPort)
+	handler := newTestRegistryHandler(service, auditPort)
 
 	req := newSanctionsRequest(t, "CLEAN12345", validUserID())
 	w := httptest.NewRecorder()
@@ -225,7 +214,7 @@ func TestHandleSanctionsLookup_AuditEventListed(t *testing.T) {
 		},
 	}
 	auditPort := &stubAuditPublisher{}
-	handler := newTestRegistryHandler(service, nil, auditPort)
+	handler := newTestRegistryHandler(service, auditPort)
 
 	req := newSanctionsRequest(t, "SANCT12345", validUserID())
 	w := httptest.NewRecorder()
@@ -254,7 +243,7 @@ func TestHandleSanctionsLookup_ResponseFormat(t *testing.T) {
 		},
 	}
 	auditPort := &stubAuditPublisher{}
-	handler := newTestRegistryHandler(service, nil, auditPort)
+	handler := newTestRegistryHandler(service, auditPort)
 
 	req := newSanctionsRequest(t, "FORMAT1234", validUserID())
 	w := httptest.NewRecorder()
@@ -275,15 +264,12 @@ func TestHandleSanctionsLookup_ResponseFormat(t *testing.T) {
 // Test Helpers
 // =============================================================================
 
-func newTestRegistryHandler(service RegistryService, consentPort *stubConsentPort, auditPort *stubAuditPublisher) *Handler {
+func newTestRegistryHandler(service RegistryService, auditPort *stubAuditPublisher) *Handler {
 	if service == nil {
 		service = &stubRegistryService{}
 	}
-	if consentPort == nil {
-		consentPort = &stubConsentPort{}
-	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return New(service, consentPort, auditPort, logger)
+	return New(service, auditPort, logger)
 }
 
 func validUserID() id.UserID {

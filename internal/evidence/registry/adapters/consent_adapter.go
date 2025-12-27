@@ -16,7 +16,7 @@ type ConsentAdapter struct {
 	consentService *service.Service
 }
 
-// New creates a new in-process consent adapter.
+// NewConsentAdapter creates a new in-process consent adapter.
 func NewConsentAdapter(consentService *service.Service) ports.ConsentPort {
 	return &ConsentAdapter{
 		consentService: consentService,
