@@ -1,4 +1,4 @@
-package contract
+package providertest
 
 import (
 	"context"
@@ -64,4 +64,3 @@ func (s *ContractSuite) Run(t *testing.T) {
 		})
 	}
 }
-

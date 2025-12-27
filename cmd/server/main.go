@@ -33,6 +33,7 @@ import (
 	"credo/internal/evidence/registry/providers"
 	citizenProvider "credo/internal/evidence/registry/providers/citizen"
 	sanctionsProvider "credo/internal/evidence/registry/providers/sanctions"
+	registrymetrics "credo/internal/evidence/registry/metrics"
 	registryService "credo/internal/evidence/registry/service"
 	registryStore "credo/internal/evidence/registry/store"
 	jwttoken "credo/internal/jwt_token"
@@ -72,16 +73,17 @@ import (
 )
 
 type infraBundle struct {
-	Cfg            *config.Server
-	Log            *slog.Logger
-	AuthMetrics    *authmetrics.Metrics
-	ConsentMetrics *consentmetrics.Metrics
-	TenantMetrics  *tenantmetrics.Metrics
-	AuditMetrics   *auditmetrics.Metrics
-	RequestMetrics *request.Metrics
-	JWTService     *jwttoken.JWTService
-	JWTValidator   *jwttoken.JWTServiceAdapter
-	DeviceService  *device.Service
+	Cfg             *config.Server
+	Log             *slog.Logger
+	AuthMetrics     *authmetrics.Metrics
+	ConsentMetrics  *consentmetrics.Metrics
+	TenantMetrics   *tenantmetrics.Metrics
+	AuditMetrics    *auditmetrics.Metrics
+	RegistryMetrics *registrymetrics.Metrics
+	RequestMetrics  *request.Metrics
+	JWTService      *jwttoken.JWTService
+	JWTValidator    *jwttoken.JWTServiceAdapter
+	DeviceService   *device.Service
 }
 
 type authModule struct {
@@ -287,21 +289,23 @@ func buildInfra() (*infraBundle, error) {
 	consentMetrics := consentmetrics.New()
 	tenantMetrics := tenantmetrics.New()
 	auditMet := auditmetrics.New()
+	registryMet := registrymetrics.New()
 	requestMetrics := request.NewMetrics()
 	jwtService, jwtValidator := initializeJWTService(&cfg)
 	deviceSvc := device.NewService(cfg.Auth.DeviceBindingEnabled)
 
 	return &infraBundle{
-		Cfg:            &cfg,
-		Log:            log,
-		AuthMetrics:    authMetrics,
-		ConsentMetrics: consentMetrics,
-		TenantMetrics:  tenantMetrics,
-		AuditMetrics:   auditMet,
-		RequestMetrics: requestMetrics,
-		JWTService:     jwtService,
-		JWTValidator:   jwtValidator,
-		DeviceService:  deviceSvc,
+		Cfg:             &cfg,
+		Log:             log,
+		AuthMetrics:     authMetrics,
+		ConsentMetrics:  consentMetrics,
+		TenantMetrics:   tenantMetrics,
+		AuditMetrics:    auditMet,
+		RegistryMetrics: registryMet,
+		RequestMetrics:  requestMetrics,
+		JWTService:      jwtService,
+		JWTValidator:    jwtValidator,
+		DeviceService:   deviceSvc,
 	}, nil
 }
 
@@ -457,8 +461,11 @@ func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service)
 		DefaultTimeout:  infra.Cfg.Registry.RegistryTimeout,
 	})
 
-	// Create cache store
-	cache := registryStore.NewInMemoryCache(infra.Cfg.Registry.CacheTTL)
+	// Create cache store with metrics
+	cache := registryStore.NewInMemoryCache(
+		infra.Cfg.Registry.CacheTTL,
+		registryStore.WithMetrics(infra.RegistryMetrics),
+	)
 
 	// Create consent adapter (needed by both service and handler)
 	consentAdapter := registryAdapters.NewConsentAdapter(consentSvc)

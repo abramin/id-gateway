@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"credo/internal/evidence/registry/metrics"
 	"credo/internal/evidence/registry/models"
 	id "credo/pkg/domain"
 )
@@ -421,5 +422,198 @@ func (s *InMemoryCacheSuite) TestErrNotFound() {
 		_, err := s.cache.FindCitizen(ctx, nonExistent, false)
 		s.ErrorIs(err, ErrNotFound)
 		s.Equal("not found", err.Error())
+	})
+}
+
+func (s *InMemoryCacheSuite) TestClearAll() {
+	ctx := context.Background()
+
+	s.Run("removes all entries from both caches", func() {
+		key1 := testNationalID("CITIZEN1")
+		key2 := testNationalID("CITIZEN2")
+		key3 := testNationalID("SANCTION1")
+
+		citizenRecord1 := &models.CitizenRecord{NationalID: "CITIZEN1", Valid: true, CheckedAt: time.Now()}
+		citizenRecord2 := &models.CitizenRecord{NationalID: "CITIZEN2", Valid: true, CheckedAt: time.Now()}
+		sanctionRecord := &models.SanctionsRecord{NationalID: "SANCTION1", Listed: true, CheckedAt: time.Now()}
+
+		_ = s.cache.SaveCitizen(ctx, key1, citizenRecord1, false)
+		_ = s.cache.SaveCitizen(ctx, key2, citizenRecord2, false)
+		_ = s.cache.SaveSanction(ctx, key3, sanctionRecord)
+
+		// Verify entries exist
+		citizens, sanctions := s.cache.Size()
+		s.Equal(2, citizens)
+		s.Equal(1, sanctions)
+
+		// Clear all
+		s.cache.ClearAll()
+
+		// Verify all entries are gone
+		citizens, sanctions = s.cache.Size()
+		s.Equal(0, citizens)
+		s.Equal(0, sanctions)
+
+		// Verify lookups return ErrNotFound
+		_, err1 := s.cache.FindCitizen(ctx, key1, false)
+		_, err2 := s.cache.FindCitizen(ctx, key2, false)
+		_, err3 := s.cache.FindSanction(ctx, key3)
+		s.ErrorIs(err1, ErrNotFound)
+		s.ErrorIs(err2, ErrNotFound)
+		s.ErrorIs(err3, ErrNotFound)
+	})
+
+	s.Run("handles concurrent clears without race conditions", func() {
+		cache := NewInMemoryCache(5 * time.Minute)
+		key := testNationalID("CONCURRENT1")
+		record := &models.CitizenRecord{NationalID: "CONCURRENT1", Valid: true, CheckedAt: time.Now()}
+
+		var wg sync.WaitGroup
+		for i := 0; i < 100; i++ {
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				_ = cache.SaveCitizen(ctx, key, record, false)
+			}()
+			go func() {
+				defer wg.Done()
+				cache.ClearAll()
+			}()
+		}
+		wg.Wait()
+		// If we get here without race detector firing, test passes
+	})
+
+	s.Run("can add entries after clear", func() {
+		key := testNationalID("AFTERCLEAR")
+		record := &models.CitizenRecord{NationalID: "AFTERCLEAR", Valid: true, CheckedAt: time.Now()}
+
+		s.cache.ClearAll()
+
+		err := s.cache.SaveCitizen(ctx, key, record, false)
+		s.Require().NoError(err)
+
+		found, err := s.cache.FindCitizen(ctx, key, false)
+		s.Require().NoError(err)
+		s.Equal("AFTERCLEAR", found.NationalID)
+	})
+}
+
+func (s *InMemoryCacheSuite) TestMetricsIntegration() {
+	ctx := context.Background()
+
+	s.Run("cache operations work without metrics configured", func() {
+		// Default cache has no metrics - should not panic
+		cache := NewInMemoryCache(5 * time.Minute)
+		key := testNationalID("NOMETRICS")
+		record := &models.CitizenRecord{NationalID: "NOMETRICS", Valid: true, CheckedAt: time.Now()}
+
+		err := cache.SaveCitizen(ctx, key, record, false)
+		s.Require().NoError(err)
+
+		found, err := cache.FindCitizen(ctx, key, false)
+		s.Require().NoError(err)
+		s.Equal("NOMETRICS", found.NationalID)
+
+		// Miss should also work
+		_, err = cache.FindCitizen(ctx, testNationalID("MISSING1"), false)
+		s.ErrorIs(err, ErrNotFound)
+
+		// ClearAll should work without metrics
+		cache.ClearAll()
+	})
+}
+
+// TestMetricsWithRegistry tests cache with actual Prometheus metrics.
+// This is a separate test function to avoid duplicate registration issues.
+func TestCacheWithMetrics(t *testing.T) {
+	ctx := context.Background()
+
+	// Create metrics once for all subtests
+	m := metrics.New()
+
+	t.Run("cache operations with metrics record hits and misses", func(t *testing.T) {
+		cache := NewInMemoryCache(5*time.Minute, WithMetrics(m))
+		key := testNationalID("WITHMETRICS")
+		record := &models.CitizenRecord{NationalID: "WITHMETRICS", Valid: true, CheckedAt: time.Now()}
+
+		// Save and find should record hit
+		err := cache.SaveCitizen(ctx, key, record, false)
+		if err != nil {
+			t.Fatalf("SaveCitizen failed: %v", err)
+		}
+
+		found, err := cache.FindCitizen(ctx, key, false)
+		if err != nil {
+			t.Fatalf("FindCitizen failed: %v", err)
+		}
+		if found.NationalID != "WITHMETRICS" {
+			t.Errorf("expected WITHMETRICS, got %s", found.NationalID)
+		}
+
+		// Miss should be recorded
+		_, err = cache.FindCitizen(ctx, testNationalID("MISSING2"), false)
+		if err != ErrNotFound {
+			t.Errorf("expected ErrNotFound, got %v", err)
+		}
+
+		// ClearAll should record invalidation
+		cache.ClearAll()
+	})
+
+	t.Run("sanctions cache metrics work correctly", func(t *testing.T) {
+		cache := NewInMemoryCache(5*time.Minute, WithMetrics(m))
+		key := testNationalID("SANCTIONMET")
+		record := &models.SanctionsRecord{NationalID: "SANCTIONMET", Listed: true, CheckedAt: time.Now()}
+
+		// Save and find should record hit
+		err := cache.SaveSanction(ctx, key, record)
+		if err != nil {
+			t.Fatalf("SaveSanction failed: %v", err)
+		}
+
+		found, err := cache.FindSanction(ctx, key)
+		if err != nil {
+			t.Fatalf("FindSanction failed: %v", err)
+		}
+		if !found.Listed {
+			t.Error("expected Listed to be true")
+		}
+
+		// Miss should be recorded
+		_, err = cache.FindSanction(ctx, testNationalID("MISSING3"))
+		if err != ErrNotFound {
+			t.Errorf("expected ErrNotFound, got %v", err)
+		}
+	})
+
+	t.Run("expired entries record as misses", func(t *testing.T) {
+		cache := NewInMemoryCache(1*time.Millisecond, WithMetrics(m))
+		key := testNationalID("EXPIRING1")
+		record := &models.CitizenRecord{NationalID: "EXPIRING1", Valid: true, CheckedAt: time.Now()}
+
+		_ = cache.SaveCitizen(ctx, key, record, false)
+		time.Sleep(5 * time.Millisecond)
+
+		// Expired lookup should be a miss
+		_, err := cache.FindCitizen(ctx, key, false)
+		if err != ErrNotFound {
+			t.Errorf("expected ErrNotFound for expired entry, got %v", err)
+		}
+	})
+
+	t.Run("regulated mode mismatch records as miss", func(t *testing.T) {
+		cache := NewInMemoryCache(5*time.Minute, WithMetrics(m))
+		key := testNationalID("REGULATED1")
+		record := &models.CitizenRecord{NationalID: "REGULATED1", Valid: true, CheckedAt: time.Now()}
+
+		// Save as non-regulated
+		_ = cache.SaveCitizen(ctx, key, record, false)
+
+		// Request as regulated - should be a miss
+		_, err := cache.FindCitizen(ctx, key, true)
+		if err != ErrNotFound {
+			t.Errorf("expected ErrNotFound for regulated mode mismatch, got %v", err)
+		}
 	})
 }

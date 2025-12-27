@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"credo/internal/evidence/registry/metrics"
 	"credo/internal/evidence/registry/models"
 	id "credo/pkg/domain"
 )
@@ -41,6 +42,7 @@ type InMemoryCache struct {
 	sanctions  map[string]cachedSanction
 	cacheTTL   time.Duration
 	maxSize    int
+	metrics    *metrics.Metrics
 }
 
 // ErrNotFound is returned when a requested record does not exist in the cache.
@@ -53,6 +55,13 @@ type CacheOption func(*InMemoryCache)
 func WithMaxSize(size int) CacheOption {
 	return func(c *InMemoryCache) {
 		c.maxSize = size
+	}
+}
+
+// WithMetrics enables Prometheus metrics collection for cache operations.
+func WithMetrics(m *metrics.Metrics) CacheOption {
+	return func(c *InMemoryCache) {
+		c.metrics = m
 	}
 }
 
@@ -107,11 +116,14 @@ func (c *InMemoryCache) SaveCitizen(_ context.Context, key id.NationalID, record
 //   - The record has expired past the cache TTL
 //   - The stored regulated mode doesn't match the requested mode (prevents stale PII)
 func (c *InMemoryCache) FindCitizen(_ context.Context, nationalID id.NationalID, regulated bool) (*models.CitizenRecord, error) {
+	start := time.Now()
+
 	c.citizenMu.Lock()
 	defer c.citizenMu.Unlock()
 
 	cached, ok := c.citizens[nationalID.String()]
 	if !ok {
+		c.recordMiss("citizen", start)
 		return nil, ErrNotFound
 	}
 
@@ -119,11 +131,13 @@ func (c *InMemoryCache) FindCitizen(_ context.Context, nationalID id.NationalID,
 	if time.Since(cached.storedAt) >= c.cacheTTL {
 		// Lazy cleanup: remove expired entry
 		delete(c.citizens, nationalID.String())
+		c.recordMiss("citizen", start)
 		return nil, ErrNotFound
 	}
 
 	// Cache miss if regulated mode changed - prevents serving stale PII
 	if cached.regulated != regulated {
+		c.recordMiss("citizen", start)
 		return nil, ErrNotFound
 	}
 
@@ -131,6 +145,7 @@ func (c *InMemoryCache) FindCitizen(_ context.Context, nationalID id.NationalID,
 	cached.lastAccess = time.Now()
 	c.citizens[nationalID.String()] = cached
 
+	c.recordHit("citizen", start)
 	return &cached.record, nil
 }
 
@@ -165,11 +180,14 @@ func (c *InMemoryCache) SaveSanction(_ context.Context, key id.NationalID, recor
 // FindSanction retrieves a cached sanctions record by national ID.
 // Returns ErrNotFound if the record does not exist or has expired past the cache TTL.
 func (c *InMemoryCache) FindSanction(_ context.Context, nationalID id.NationalID) (*models.SanctionsRecord, error) {
+	start := time.Now()
+
 	c.sanctionMu.Lock()
 	defer c.sanctionMu.Unlock()
 
 	cached, ok := c.sanctions[nationalID.String()]
 	if !ok {
+		c.recordMiss("sanctions", start)
 		return nil, ErrNotFound
 	}
 
@@ -177,6 +195,7 @@ func (c *InMemoryCache) FindSanction(_ context.Context, nationalID id.NationalID
 	if time.Since(cached.storedAt) >= c.cacheTTL {
 		// Lazy cleanup: remove expired entry
 		delete(c.sanctions, nationalID.String())
+		c.recordMiss("sanctions", start)
 		return nil, ErrNotFound
 	}
 
@@ -184,6 +203,7 @@ func (c *InMemoryCache) FindSanction(_ context.Context, nationalID id.NationalID
 	cached.lastAccess = time.Now()
 	c.sanctions[nationalID.String()] = cached
 
+	c.recordHit("sanctions", start)
 	return &cached.record, nil
 }
 
@@ -256,4 +276,38 @@ func (c *InMemoryCache) Size() (citizens, sanctions int) {
 	c.sanctionMu.RUnlock()
 
 	return citizens, sanctions
+}
+
+// ClearAll removes all entries from both caches.
+// This is used for cache invalidation, such as when regulated mode changes.
+func (c *InMemoryCache) ClearAll() {
+	c.citizenMu.Lock()
+	c.citizens = make(map[string]cachedCitizen)
+	c.citizenMu.Unlock()
+
+	c.sanctionMu.Lock()
+	c.sanctions = make(map[string]cachedSanction)
+	c.sanctionMu.Unlock()
+
+	if c.metrics != nil {
+		c.metrics.IncrementInvalidations()
+	}
+}
+
+// recordHit records a cache hit metric if metrics are enabled.
+func (c *InMemoryCache) recordHit(recordType string, start time.Time) {
+	if c.metrics == nil {
+		return
+	}
+	c.metrics.RecordCacheHit(recordType)
+	c.metrics.ObserveLookupDuration(recordType, time.Since(start).Seconds())
+}
+
+// recordMiss records a cache miss metric if metrics are enabled.
+func (c *InMemoryCache) recordMiss(recordType string, start time.Time) {
+	if c.metrics == nil {
+		return
+	}
+	c.metrics.RecordCacheMiss(recordType)
+	c.metrics.ObserveLookupDuration(recordType, time.Since(start).Seconds())
 }

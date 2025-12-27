@@ -14,7 +14,7 @@ import (
 
 	"credo/internal/evidence/registry/providers"
 	adaptersmocks "credo/internal/evidence/registry/providers/adapters/mocks"
-	"credo/internal/evidence/registry/providers/contract"
+	"credo/internal/evidence/registry/providers/providertest"
 )
 
 func TestCitizenProvider(t *testing.T) {
@@ -74,10 +74,10 @@ func TestCitizenProviderContract(t *testing.T) {
 		mockClient,
 	)
 
-	suite := &contract.ContractSuite{
+	suite := &providertest.ContractSuite{
 		ProviderID:      "test-citizen",
 		ProviderVersion: "v1.0.0",
-		Tests: []contract.ContractTest{
+		Tests: []providertest.ContractTest{
 			{
 				Name:         "returns valid citizen evidence",
 				Provider:     provider,
