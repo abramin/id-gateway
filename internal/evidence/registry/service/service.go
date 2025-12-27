@@ -72,29 +72,68 @@ func NewService(citizens CitizenClient, sanctions SanctionsClient, cache CacheSt
 	return s
 }
 
+// Check performs atomic citizen and sanctions lookups with transaction-like semantics.
+// Both lookups must succeed before either result is cached. If one fails, no partial
+// state is cached, ensuring consistency on retry.
 func (s *Service) Check(ctx context.Context, nationalID string) (*models.RegistryResult, error) {
-	citizen, err := s.Citizen(ctx, nationalID)
-	if err != nil {
-		return nil, err
-	}
-	sanctions, err := s.Sanctions(ctx, nationalID)
-	if err != nil {
-		return nil, err
-	}
-	return &models.RegistryResult{
-		Citizen:  citizen,
-		Sanction: sanctions,
-	}, nil
-}
+	// Phase 1: Check cache for both records
+	var citizenCached, sanctionsCached bool
+	var citizen *models.CitizenRecord
+	var sanction *models.SanctionsRecord
 
-func (s *Service) Citizen(ctx context.Context, nationalID string) (*models.CitizenRecord, error) {
 	if s.cache != nil {
 		if cached, err := s.cache.FindCitizen(ctx, nationalID); err == nil {
-			return cached, nil
+			citizen = cached
+			citizenCached = true
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return nil, err
+		}
+
+		if cached, err := s.cache.FindSanction(ctx, nationalID); err == nil {
+			sanction = cached
+			sanctionsCached = true
 		} else if !errors.Is(err, store.ErrNotFound) {
 			return nil, err
 		}
 	}
+
+	// Phase 2: Fetch missing records from providers (without caching yet)
+	if !citizenCached {
+		record, err := s.lookupCitizen(ctx, nationalID)
+		if err != nil {
+			return nil, err
+		}
+		citizen = record
+	}
+
+	if !sanctionsCached {
+		record, err := s.lookupSanctions(ctx, nationalID)
+		if err != nil {
+			// Citizen lookup succeeded but sanctions failed - don't cache citizen
+			return nil, err
+		}
+		sanction = record
+	}
+
+	// Phase 3: Atomic cache commit - only cache if both lookups succeeded
+	if s.cache != nil {
+		if !citizenCached {
+			_ = s.cache.SaveCitizen(ctx, citizen)
+		}
+		if !sanctionsCached {
+			_ = s.cache.SaveSanction(ctx, sanction)
+		}
+	}
+
+	return &models.RegistryResult{
+		Citizen:  citizen,
+		Sanction: sanction,
+	}, nil
+}
+
+// lookupCitizen fetches from provider and applies minimization, but does NOT cache.
+// Used by Check() for atomic transaction semantics.
+func (s *Service) lookupCitizen(ctx context.Context, nationalID string) (*models.CitizenRecord, error) {
 	record, err := s.citizens.Lookup(ctx, nationalID)
 	if err != nil {
 		return nil, s.translateProviderError(err)
@@ -103,12 +142,41 @@ func (s *Service) Citizen(ctx context.Context, nationalID string) (*models.Citiz
 		minimized := models.MinimizeCitizenRecord(*record)
 		record = &minimized
 	}
+	return record, nil
+}
+
+// lookupSanctions fetches from provider but does NOT cache.
+// Used by Check() for atomic transaction semantics.
+func (s *Service) lookupSanctions(ctx context.Context, nationalID string) (*models.SanctionsRecord, error) {
+	record, err := s.sanctions.Check(ctx, nationalID)
+	if err != nil {
+		return nil, s.translateProviderError(err)
+	}
+	return record, nil
+}
+
+// Citizen performs a single citizen lookup with caching.
+// For combined lookups, prefer Check() which provides atomic transaction semantics.
+func (s *Service) Citizen(ctx context.Context, nationalID string) (*models.CitizenRecord, error) {
+	if s.cache != nil {
+		if cached, err := s.cache.FindCitizen(ctx, nationalID); err == nil {
+			return cached, nil
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return nil, err
+		}
+	}
+	record, err := s.lookupCitizen(ctx, nationalID)
+	if err != nil {
+		return nil, err
+	}
 	if s.cache != nil {
 		_ = s.cache.SaveCitizen(ctx, record)
 	}
 	return record, nil
 }
 
+// Sanctions performs a single sanctions lookup with caching.
+// For combined lookups, prefer Check() which provides atomic transaction semantics.
 func (s *Service) Sanctions(ctx context.Context, nationalID string) (*models.SanctionsRecord, error) {
 	if s.cache != nil {
 		if cached, err := s.cache.FindSanction(ctx, nationalID); err == nil {
@@ -117,9 +185,9 @@ func (s *Service) Sanctions(ctx context.Context, nationalID string) (*models.San
 			return nil, err
 		}
 	}
-	record, err := s.sanctions.Check(ctx, nationalID)
+	record, err := s.lookupSanctions(ctx, nationalID)
 	if err != nil {
-		return nil, s.translateProviderError(err)
+		return nil, err
 	}
 	if s.cache != nil {
 		_ = s.cache.SaveSanction(ctx, record)
