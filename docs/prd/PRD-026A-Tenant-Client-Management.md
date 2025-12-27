@@ -5,7 +5,7 @@
 **Owner:** Engineering Team
 **Dependencies:** PRD-001 (Authentication & Session Management), PRD-016 (Token Lifecycle & Revocation)
 **Phase:** 0 → 1 (Foundation to Core Identity Plane)
-**Last Updated:** 2025-12-24
+**Last Updated:** 2025-12-27
 
 ---
 
@@ -337,6 +337,33 @@ Example: `https://auth.credo.io/tenants/550e8400-e29b-41d4-a716-446655440000`
 - RFC 8414: Authorization Server Metadata
 - OpenID Connect Core 1.0, Section 2 (Issuer Identifier)
 
+### FR-11: Tenant-Admin Authentication (Future)
+
+**Status:** Not Implemented (identified gap from module README)
+
+Tenant administrators need a dedicated authentication flow separate from platform-level admin access. Currently, tenant management uses platform-admin access paths (`X-Admin-Token`).
+
+**Goals:**
+- Enable tenants to manage their own clients, users, and settings without platform admin involvement
+- Provide tenant-scoped admin credentials separate from platform-level admin tokens
+- Support tenant-admin role assignment and permission management
+
+**Proposed Endpoints:**
+- `POST /tenants/{tenant_id}/admin/auth` - Tenant admin login
+- `GET /tenants/{tenant_id}/admin/clients` - List clients (tenant-scoped)
+- `POST /tenants/{tenant_id}/admin/clients` - Create client (tenant-scoped)
+- `PUT /tenants/{tenant_id}/admin/clients/{client_id}` - Update client (tenant-scoped)
+
+**Authentication:**
+- Tenant admins authenticate via tenant-specific credentials (not platform-admin token)
+- JWT tokens include `tenant_id` claim and `tenant_admin` role
+- Tenant-admin tokens cannot access other tenants' resources
+
+**Security Considerations:**
+- Tenant-admin actions are audited with tenant context
+- Cross-tenant access is strictly forbidden
+- Platform admins retain override capability for support scenarios
+
 ---
 
 ## 4. Data Model (Minimal)
@@ -560,6 +587,7 @@ None - all MVP requirements implemented. The following is deferred to Phase 6:
 |         |            |                  | - Per-tenant issuer format: `{base_url}/tenants/{tenant_id}`           |
 |         |            |                  | - Updated FR-7 Claims & Scopes to include issuer format                |
 |         |            |                  | - Documented future work: OIDC discovery and JWKS per tenant           |
+| 1.5     | 2025-12-27 | Engineering      | Added FR-11: Tenant-Admin Authentication (identified gap from README)  |
 | 1.4     | 2025-12-24 | Engineering Team | Status verification: scope enforcement confirmed implemented           |
 |         |            |                  | - Updated FR-7 implementation note                                     |
 |         |            |                  | - Cleared Known Gaps (scope enforcement done)                          |

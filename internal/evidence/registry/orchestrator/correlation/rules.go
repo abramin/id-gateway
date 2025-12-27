@@ -2,6 +2,7 @@ package correlation
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 
 	"credo/internal/evidence/registry/providers"
@@ -80,9 +81,7 @@ func (r *CitizenNameRule) Merge(evidence []*providers.Evidence) (*providers.Evid
 	}
 
 	// Copy data from best evidence
-	for k, v := range best.Data {
-		merged.Data[k] = v
-	}
+	maps.Copy(merged.Data, best.Data)
 
 	// Add conflict markers for differing fields
 	conflicts := r.detectConflicts(citizenEvidence)
@@ -172,9 +171,7 @@ func (r *WeightedAverageRule) Merge(evidence []*providers.Evidence) (*providers.
 
 	// Merge data fields (later sources override earlier)
 	for _, e := range evidence {
-		for k, v := range e.Data {
-			merged.Data[k] = v
-		}
+		maps.Copy(merged.Data, e.Data)
 	}
 
 	return merged, nil

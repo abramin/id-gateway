@@ -197,6 +197,40 @@ Every application handling user data needs consent management for GDPR/CCPA comp
 }
 ```
 
+### FR-6: Consent Cascading/Dependencies (Future)
+
+**Status:** Not Implemented (identified gap from module README)
+
+**Description:** Support hierarchical consent relationships where revoking a parent consent automatically revokes dependent child consents.
+
+**Use Cases:**
+- Revoking "data_processing" consent should cascade to revoke "marketing", "analytics", and "personalization" (which all depend on data processing)
+- Parent-child consent for minors: revoking parental consent cascades to child's consents
+- Organizational consent bundles: revoking the bundle revokes all included purposes
+
+**Proposed Model:**
+```
+consent_dependencies
+├── parent_purpose (string)
+├── child_purpose (string)
+├── cascade_on_revoke (boolean)
+├── cascade_on_expire (boolean)
+└── created_at (timestamp)
+```
+
+**Behavior:**
+- When parent consent is revoked, automatically revoke all child consents where `cascade_on_revoke = true`
+- Emit audit events for both parent and cascaded child revocations
+- Webhook notifications sent for each cascaded revocation
+- Prevent granting child consent without active parent consent
+- Support configurable cascade depth limits to prevent infinite loops
+
+**API Extensions:**
+- `POST /admin/consent/dependencies` - Define parent-child relationships
+- `GET /admin/consent/dependencies` - List all dependency rules
+- `DELETE /admin/consent/dependencies/{id}` - Remove dependency rule
+- `GET /consent/{purpose}/dependencies` - Get dependency tree for a purpose
+
 ---
 
 ## 4. Technical Requirements
@@ -271,4 +305,5 @@ delegated_consents
 
 | Version | Date       | Author      | Changes       |
 | ------- | ---------- | ----------- | ------------- |
+| 1.1     | 2025-12-27 | Engineering | Added FR-6: Consent Cascading/Dependencies (identified gap from README) |
 | 1.0     | 2025-12-17 | Engineering | Initial draft |

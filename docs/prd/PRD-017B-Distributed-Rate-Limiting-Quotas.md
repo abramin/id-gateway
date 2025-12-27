@@ -4,7 +4,7 @@
 **Priority:** P0 (Operational)  
 **Owner:** Engineering  
 **Dependencies:** PRD-017, PRD-020  
-**Last Updated:** 2025-12-24
+**Last Updated:** 2025-12-27
 
 ---
 
@@ -19,6 +19,7 @@ stores and deferred quota APIs from PRD-017.
 - Postgres-backed limiter (TR-6 indexing patterns).
 - Quota API endpoints (FR-5) for partner billing/usage.
 - 3-state circuit breaker with half-open state.
+- IETF RateLimit header draft compliance (identified gap from module README).
 
 ## 3. Non-Scope
 
@@ -39,6 +40,13 @@ stores and deferred quota APIs from PRD-017.
    - HTTP endpoints to read/update quotas.
    - Audit events for admin changes.
 
+4. **IETF RateLimit Header Compliance** (draft-ietf-httpapi-ratelimit-headers)
+   - Migrate from `X-RateLimit-*` headers to IETF standard `RateLimit-*` headers.
+   - Support `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset` headers.
+   - Include `RateLimit-Policy` header for communicating quota policies.
+   - Maintain backward compatibility with `X-RateLimit-*` headers during transition period (configurable).
+   - Reference: https://datatracker.ietf.org/doc/draft-ietf-httpapi-ratelimit-headers/
+
 ## 5. Acceptance Criteria
 
 - Rate limiting is consistent across multiple instances.
@@ -57,4 +65,5 @@ stores and deferred quota APIs from PRD-017.
 
 | Version | Date       | Author      | Changes       |
 | ------- | ---------- | ----------- | ------------- |
+| 1.1     | 2025-12-27 | Engineering | Added IETF RateLimit header compliance (identified gap from README) |
 | 1.0     | 2025-12-24 | Engineering | Initial draft |

@@ -3,8 +3,8 @@
 **Status:** In Progress
 **Priority:** P0 (Critical)
 **Owner:** Engineering Team
-**Last Updated:** 2025-12-18
-**Version:** 1.3
+**Last Updated:** 2025-12-27
+**Version:** 1.6
 
 ---
 
@@ -1033,6 +1033,8 @@ curl -X POST http://localhost:8080/registry/citizen \
 - Circuit breaker for registry failures
 - Biometric pipeline compatibility: optional hooks for face match scores and liveness evidence treated as standardized confidence inputs alongside registry checks.
 - Bringing registry logic in-house: replace mocks with internally maintained registry connectors (caching, SLA monitoring, schema validation, resilience patterns) to reduce third-party dependency and limit downtime blast radius.
+- **Document verification provider**: Provider type for verifying identity documents (passports, national IDs, driver licenses) with OCR extraction, document authenticity checks, and data cross-referencing against registry records.
+- **Voting strategy with quorum rules**: Multi-provider consensus mechanism where evidence from multiple sources is aggregated using configurable quorum rules (e.g., 2-of-3 providers must agree, weighted voting by provider confidence scores, conflict resolution policies).
 
 ### Registry Integration Readiness Checklist (Appendix)
 
@@ -1102,6 +1104,7 @@ curl -X POST http://localhost:8080/registry/citizen \
 
 | Version | Date       | Author           | Changes                                                                                                                                          |
 | ------- | ---------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1.6     | 2025-12-27 | Engineering      | Added document verification provider and voting strategy with quorum rules to Future Enhancements                                                 |
 | 1.5     | 2025-12-21 | Engineering      | Added TR-7: SQL Indexing for Cache & TTL (partial indexes, range queries, NULL handling, covering indexes, cleanup worker) with exercises        |
 | 1.4     | 2025-12-18 | Security Eng     | Added secure-by-design and testing requirements (value objects, default-deny, immutability, typed results)                                       |
 | 1.3     | 2025-12-13 | Engineering Team | Clarify concurrent Check() requirements (errgroup + context cancel), add tracing/metrics expectations, update acceptance criteria                |

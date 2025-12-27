@@ -4,7 +4,7 @@
 **Priority:** P1 (Performance)  
 **Owner:** Engineering  
 **Dependencies:** PRD-002, PRD-020  
-**Last Updated:** 2025-12-24
+**Last Updated:** 2025-12-27
 
 ---
 
@@ -52,6 +52,13 @@ implements TR-6 deferred from PRD-002.
    - Metrics: hit/miss, lag seconds, conflicts, errors.
    - Alerts on lag > 5s or error rate > 1%.
 
+6. **Per-Purpose Expiry Configuration** (identified gap from module README)
+   - Allow different consent purposes to have different TTL/expiry settings.
+   - Configuration stored per-purpose (e.g., `marketing: 365d`, `analytics: 90d`, `registry_check: 30d`).
+   - Projection store includes per-purpose expiry metadata.
+   - Expiry evaluation uses purpose-specific TTL when configured, falling back to global default.
+   - Admin API to manage per-purpose expiry policies.
+
 ## 5. Acceptance Criteria
 
 - Projection path is enabled via config and used by default when configured.
@@ -70,4 +77,5 @@ implements TR-6 deferred from PRD-002.
 
 | Version | Date       | Author       | Changes        |
 | ------- | ---------- | ------------ | -------------- |
+| 1.1     | 2025-12-27 | Engineering  | Added per-purpose expiry configuration (identified gap from README) |
 | 1.0     | 2025-12-24 | Engineering  | Initial draft  |

@@ -4,7 +4,7 @@
 **Priority:** P0 (Critical)
 **Owner:** Engineering Team
 **Dependencies:** PRD-006 (Audit), all core PRDs
-**Last Updated:** 2025-12-12
+**Last Updated:** 2025-12-27
 
 ---
 
@@ -160,6 +160,34 @@ PRD-020 marks the transition point. The health checks (`/health/ready`) defined 
 - Check Redis connection
 - Check external API reachability
 - Return 503 if any check fails
+
+**Provider Health Checks** (identified gap from module README):
+
+The `/health/ready` endpoint should include health checks for registered registry providers. Each provider exposes a `Health()` method through the provider interface that returns availability status.
+
+- Wire provider `Health()` methods to the readiness probe
+- Include per-provider health status in the `checks` response (e.g., `"citizen_provider": "ok"`, `"sanctions_provider": "degraded"`)
+- Support configurable provider health thresholds (e.g., mark ready if 2-of-3 providers are healthy)
+- Emit metrics for provider health state changes
+- Log provider health check failures with circuit breaker context
+
+**Example Response with Provider Checks:**
+
+```json
+{
+  "status": "ready",
+  "checks": {
+    "database": "ok",
+    "redis": "ok",
+    "providers": {
+      "citizen": "ok",
+      "sanctions": "ok",
+      "biometric": "degraded"
+    }
+  },
+  "timestamp": "2025-12-27T10:00:00Z"
+}
+```
 
 ---
 
@@ -373,5 +401,6 @@ psql -h localhost -U credo credo_db < backup_20251212.sql
 
 | Version | Date       | Author       | Changes                                                                                          |
 | ------- | ---------- | ------------ | ------------------------------------------------------------------------------------------------ |
+| 1.2     | 2025-12-27 | Engineering  | Added provider health checks to FR-1 (identified gap from module README)                          |
 | 1.1     | 2025-12-21 | Engineering  | Added Section 1B: Storage Infrastructure Transition (in-memory first philosophy, migration triggers, decision matrix) |
 | 1.0     | 2025-12-12 | Product Team | Initial PRD                                                                                      |
