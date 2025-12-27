@@ -27,6 +27,11 @@ import (
 	consentmetrics "credo/internal/consent/metrics"
 	consentService "credo/internal/consent/service"
 	consentStore "credo/internal/consent/store"
+	registryAdapters "credo/internal/evidence/registry/adapters"
+	registryHandler "credo/internal/evidence/registry/handler"
+	citizenClient "credo/internal/evidence/registry/providers/citizen"
+	registryService "credo/internal/evidence/registry/service"
+	registryStore "credo/internal/evidence/registry/store"
 	jwttoken "credo/internal/jwt_token"
 	"credo/internal/platform/config"
 	"credo/internal/platform/httpserver"
@@ -100,6 +105,11 @@ type tenantModule struct {
 	Clients *clientstore.InMemory
 }
 
+type registryModule struct {
+	Service *registryService.Service
+	Handler *registryHandler.Handler
+}
+
 type tenantClientLookup struct {
 	tenantSvc *tenantService.Service
 }
@@ -145,6 +155,7 @@ func main() {
 		os.Exit(1)
 	}
 	consentMod := buildConsentModule(infra)
+	registryMod := buildRegistryModule(infra, consentMod.Service)
 
 	startCleanupWorker(appCtx, infra.Log, authMod.Cleanup)
 	go func() {
@@ -154,7 +165,7 @@ func main() {
 	}()
 
 	r := setupRouter(infra)
-	registerRoutes(r, infra, authMod, consentMod, tenantMod, rateLimitMiddleware, clientRateLimitMiddleware)
+	registerRoutes(r, infra, authMod, consentMod, tenantMod, registryMod, rateLimitMiddleware, clientRateLimitMiddleware)
 
 	mainSrv := httpserver.New(infra.Cfg.Addr, r)
 	startServer(mainSrv, infra.Log, "main API")
@@ -410,6 +421,52 @@ func buildTenantModule(infra *infraBundle) *tenantModule {
 	}
 }
 
+func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service) *registryModule {
+	// Create HTTP client for citizen registry
+	client := citizenClient.NewHTTPClient(
+		infra.Cfg.Registry.CitizenRegistryURL,
+		infra.Cfg.Registry.CitizenAPIKey,
+		infra.Cfg.Registry.RegistryTimeout,
+	)
+
+	// Create cache store
+	cache := registryStore.NewInMemoryCache(infra.Cfg.Registry.CacheTTL)
+
+	// Create registry service
+	svc := registryService.NewService(
+		client,
+		nil, // sanctions client not implemented yet
+		cache,
+		infra.Cfg.Security.RegulatedMode,
+		registryService.WithLogger(infra.Log),
+		registryService.WithAuditPort(auditpublisher.NewPublisher(
+			auditstore.NewInMemoryStore(),
+			auditpublisher.WithAsyncBuffer(1000),
+			auditpublisher.WithMetrics(infra.AuditMetrics),
+			auditpublisher.WithPublisherLogger(infra.Log),
+		)),
+	)
+
+	// Create consent adapter
+	consentAdapter := registryAdapters.NewConsentAdapter(consentSvc)
+
+	// Create audit publisher for handler
+	auditPort := auditpublisher.NewPublisher(
+		auditstore.NewInMemoryStore(),
+		auditpublisher.WithAsyncBuffer(1000),
+		auditpublisher.WithMetrics(infra.AuditMetrics),
+		auditpublisher.WithPublisherLogger(infra.Log),
+	)
+
+	// Create handler
+	handler := registryHandler.New(svc, consentAdapter, auditPort, infra.Log)
+
+	return &registryModule{
+		Service: svc,
+		Handler: handler,
+	}
+}
+
 func startCleanupWorker(ctx context.Context, log *slog.Logger, cleanupSvc *cleanupWorker.CleanupService) {
 	go func() {
 		if err := cleanupSvc.Start(ctx); err != nil && err != context.Canceled {
@@ -463,7 +520,7 @@ func setupRouter(infra *infraBundle) *chi.Mux {
 }
 
 // registerRoutes wires HTTP handlers to the shared router
-func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consentMod *consentModule, tenantMod *tenantModule, rateLimitMiddleware *rateLimitMW.Middleware, clientRateLimitMiddleware *rateLimitMW.ClientMiddleware) {
+func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consentMod *consentModule, tenantMod *tenantModule, registryMod *registryModule, rateLimitMiddleware *rateLimitMW.Middleware, clientRateLimitMiddleware *rateLimitMW.ClientMiddleware) {
 	if infra.Cfg.DemoMode {
 		r.Get("/demo/info", func(w http.ResponseWriter, _ *http.Request) {
 			resp := map[string]any{
@@ -506,6 +563,8 @@ func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consent
 		r.Post("/auth/consent", consentMod.Handler.HandleGrantConsent)
 		r.Post("/auth/consent/revoke", consentMod.Handler.HandleRevokeConsent)
 		r.Delete("/auth/consent", consentMod.Handler.HandleDeleteAllConsents)
+		// Registry endpoints
+		registryMod.Handler.Register(r)
 	})
 
 	// Admin endpoints - ClassWrite (50 req/min)

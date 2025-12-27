@@ -8,6 +8,7 @@ type CitizenRecord struct {
 	NationalID  string
 	FullName    string
 	DateOfBirth string
+	Address     string
 	Valid       bool
 	CheckedAt   time.Time
 }
@@ -31,6 +32,8 @@ func MinimizeCitizenRecord(record CitizenRecord) CitizenRecord {
 		NationalID:  "",
 		FullName:    "",
 		DateOfBirth: "",
+		Address:     "",
 		Valid:       record.Valid,
+		CheckedAt:   record.CheckedAt,
 	}
 }

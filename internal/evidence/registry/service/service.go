@@ -2,9 +2,16 @@ package service
 
 import (
 	"context"
-	"credo/internal/evidence/registry/models"
-	"credo/internal/evidence/registry/store"
 	"errors"
+	"log/slog"
+
+	"credo/internal/evidence/registry/models"
+	"credo/internal/evidence/registry/ports"
+	"credo/internal/evidence/registry/providers"
+	"credo/internal/evidence/registry/store"
+	dErrors "credo/pkg/domain-errors"
+	"credo/pkg/platform/audit"
+	"credo/pkg/platform/middleware/request"
 )
 
 // Service coordinates registry lookups with caching and optional minimisation.
@@ -13,6 +20,8 @@ type Service struct {
 	sanctions SanctionsClient
 	cache     CacheStore
 	regulated bool
+	auditor   ports.AuditPort
+	logger    *slog.Logger
 }
 
 // CitizenClient defines the interface for citizen registry lookups
@@ -33,13 +42,34 @@ type CacheStore interface {
 	SaveSanction(ctx context.Context, record *models.SanctionsRecord) error
 }
 
-func NewService(citizens CitizenClient, sanctions SanctionsClient, cache CacheStore, regulated bool) *Service {
-	return &Service{
+// ServiceOption configures the Service.
+type ServiceOption func(*Service)
+
+// WithAuditPort sets the audit publisher for the service.
+func WithAuditPort(auditor ports.AuditPort) ServiceOption {
+	return func(s *Service) {
+		s.auditor = auditor
+	}
+}
+
+// WithLogger sets the logger for the service.
+func WithLogger(logger *slog.Logger) ServiceOption {
+	return func(s *Service) {
+		s.logger = logger
+	}
+}
+
+func NewService(citizens CitizenClient, sanctions SanctionsClient, cache CacheStore, regulated bool, opts ...ServiceOption) *Service {
+	s := &Service{
 		citizens:  citizens,
 		sanctions: sanctions,
 		cache:     cache,
 		regulated: regulated,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 func (s *Service) Check(ctx context.Context, nationalID string) (*models.RegistryResult, error) {
@@ -67,7 +97,7 @@ func (s *Service) Citizen(ctx context.Context, nationalID string) (*models.Citiz
 	}
 	record, err := s.citizens.Lookup(ctx, nationalID)
 	if err != nil {
-		return nil, err
+		return nil, s.translateProviderError(err)
 	}
 	if s.regulated {
 		minimized := models.MinimizeCitizenRecord(*record)
@@ -89,10 +119,54 @@ func (s *Service) Sanctions(ctx context.Context, nationalID string) (*models.San
 	}
 	record, err := s.sanctions.Check(ctx, nationalID)
 	if err != nil {
-		return nil, err
+		return nil, s.translateProviderError(err)
 	}
 	if s.cache != nil {
 		_ = s.cache.SaveSanction(ctx, record)
 	}
 	return record, nil
+}
+
+// translateProviderError converts provider-specific errors to domain errors.
+func (s *Service) translateProviderError(err error) error {
+	var pe *providers.ProviderError
+	if errors.As(err, &pe) {
+		switch pe.Category {
+		case providers.ErrorTimeout:
+			return dErrors.New(dErrors.CodeTimeout, "registry lookup timed out")
+		case providers.ErrorNotFound:
+			return dErrors.New(dErrors.CodeNotFound, "citizen record not found")
+		case providers.ErrorAuthentication:
+			return dErrors.New(dErrors.CodeInternal, "registry authentication failed")
+		case providers.ErrorRateLimited:
+			return dErrors.New(dErrors.CodeInternal, "registry rate limited")
+		case providers.ErrorProviderOutage:
+			return dErrors.New(dErrors.CodeInternal, "registry unavailable")
+		case providers.ErrorBadData:
+			return dErrors.New(dErrors.CodeBadRequest, pe.Message)
+		default:
+			return dErrors.New(dErrors.CodeInternal, "registry lookup failed")
+		}
+	}
+	return dErrors.Wrap(err, dErrors.CodeInternal, "registry lookup failed")
+}
+
+// emitAudit publishes an audit event. Failures are logged but don't fail the operation.
+func (s *Service) emitAudit(ctx context.Context, event audit.Event) {
+	if s.auditor == nil {
+		return
+	}
+	// Enrich with RequestID for correlation
+	if event.RequestID == "" {
+		event.RequestID = request.GetRequestID(ctx)
+	}
+	if err := s.auditor.Emit(ctx, event); err != nil {
+		if s.logger != nil {
+			s.logger.ErrorContext(ctx, "failed to emit audit event",
+				"error", err,
+				"action", event.Action,
+				"user_id", event.UserID,
+			)
+		}
+	}
 }

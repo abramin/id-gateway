@@ -36,38 +36,44 @@ func NewInMemoryCache(cacheTTL time.Duration) *InMemoryCache {
 	}
 }
 
-func (c *InMemoryCache) SaveCitizen(_ context.Context, record models.CitizenRecord) error {
+func (c *InMemoryCache) SaveCitizen(_ context.Context, record *models.CitizenRecord) error {
+	if record == nil {
+		return nil
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.citizens[record.NationalID] = cachedCitizen{record: record, storedAt: time.Now()}
+	c.citizens[record.NationalID] = cachedCitizen{record: *record, storedAt: time.Now()}
 	return nil
 }
 
-func (c *InMemoryCache) FindCitizen(_ context.Context, nationalID string) (models.CitizenRecord, error) {
+func (c *InMemoryCache) FindCitizen(_ context.Context, nationalID string) (*models.CitizenRecord, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if cached, ok := c.citizens[nationalID]; ok {
 		if time.Since(cached.storedAt) < c.cacheTTL {
-			return cached.record, nil
+			return &cached.record, nil
 		}
 	}
-	return models.CitizenRecord{}, ErrNotFound
+	return nil, ErrNotFound
 }
 
-func (c *InMemoryCache) SaveSanction(_ context.Context, record models.SanctionsRecord) error {
+func (c *InMemoryCache) SaveSanction(_ context.Context, record *models.SanctionsRecord) error {
+	if record == nil {
+		return nil
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.sanctions[record.NationalID] = cachedSanction{record: record, storedAt: time.Now()}
+	c.sanctions[record.NationalID] = cachedSanction{record: *record, storedAt: time.Now()}
 	return nil
 }
 
-func (c *InMemoryCache) FindSanction(_ context.Context, nationalID string) (models.SanctionsRecord, error) {
+func (c *InMemoryCache) FindSanction(_ context.Context, nationalID string) (*models.SanctionsRecord, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if cached, ok := c.sanctions[nationalID]; ok {
 		if time.Since(cached.storedAt) < c.cacheTTL {
-			return cached.record, nil
+			return &cached.record, nil
 		}
 	}
-	return models.SanctionsRecord{}, ErrNotFound
+	return nil, ErrNotFound
 }
