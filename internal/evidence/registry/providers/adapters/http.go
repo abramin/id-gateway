@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"credo/internal/evidence/registry/providers"
+	"credo/internal/evidence/registry/tracer"
 	"credo/pkg/platform/middleware/requesttime"
 )
 
@@ -18,6 +19,9 @@ import (
 // This adapter handles the common HTTP concerns (request building, error mapping, response parsing)
 // while delegating protocol-specific parsing to a configurable ResponseParser function.
 // It maps HTTP status codes to normalized ProviderError categories for consistent error handling.
+//
+// When a tracer is configured, the adapter emits spans for outbound HTTP calls with the span name
+// based on the provider type (e.g., registry.citizen.call, registry.sanctions.call).
 type HTTPAdapter struct {
 	id      string
 	baseURL string
@@ -26,6 +30,7 @@ type HTTPAdapter struct {
 	timeout time.Duration
 	capabs  providers.Capabilities
 	parser  ResponseParser
+	tracer  tracer.Tracer
 }
 
 // HTTPDoer is the minimal interface needed from an HTTP client.
@@ -48,6 +53,7 @@ type HTTPAdapterConfig struct {
 	HTTPClient   HTTPDoer
 	Capabilities providers.Capabilities
 	Parser       ResponseParser
+	Tracer       tracer.Tracer // Optional tracer for distributed tracing
 }
 
 // New creates a new HTTP protocol adapter
@@ -64,6 +70,7 @@ func New(cfg HTTPAdapterConfig) *HTTPAdapter {
 		timeout: cfg.Timeout,
 		capabs:  cfg.Capabilities,
 		parser:  cfg.Parser,
+		tracer:  cfg.Tracer,
 	}
 }
 
@@ -94,7 +101,13 @@ func (a *HTTPAdapter) Capabilities() providers.Capabilities {
 //  2. Maps HTTP status codes to ProviderError categories (401/403→auth, 404→not found, 429→rate limited, 503→outage)
 //  3. Parses successful responses using the configured ResponseParser
 //  4. Enriches the evidence with ProviderID, ProviderType, and CheckedAt timestamp
-func (a *HTTPAdapter) Lookup(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
+//
+// When a tracer is configured, emits a span for the outbound call (e.g., registry.citizen.call).
+func (a *HTTPAdapter) Lookup(ctx context.Context, filters map[string]string) (evidence *providers.Evidence, err error) {
+	// Start span for outbound call if tracer is configured
+	ctx, span := a.startSpan(ctx)
+	defer func() { a.endSpan(span, err) }()
+
 	req, err := a.buildRequest(ctx, filters)
 	if err != nil {
 		return nil, err
@@ -105,7 +118,7 @@ func (a *HTTPAdapter) Lookup(ctx context.Context, filters map[string]string) (*p
 		return nil, err
 	}
 
-	if err := a.checkStatusCode(resp.StatusCode); err != nil {
+	if err = a.checkStatusCode(resp.StatusCode); err != nil {
 		return nil, err
 	}
 
@@ -278,4 +291,39 @@ func (a *HTTPAdapter) Health(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// -----------------------------------------------------------------------------
+// Tracing helpers
+// -----------------------------------------------------------------------------
+
+// spanName returns the appropriate span name based on the provider type.
+func (a *HTTPAdapter) spanName() string {
+	switch a.capabs.Type {
+	case providers.ProviderTypeCitizen:
+		return tracer.SpanCitizenCall
+	case providers.ProviderTypeSanctions:
+		return tracer.SpanSanctionsCall
+	default:
+		return "registry.provider.call"
+	}
+}
+
+// startSpan starts a new span if a tracer is configured.
+func (a *HTTPAdapter) startSpan(ctx context.Context) (context.Context, tracer.Span) {
+	if a.tracer == nil {
+		return ctx, nil
+	}
+	return a.tracer.Start(ctx, a.spanName(),
+		tracer.String("provider.id", a.id),
+		tracer.String("provider.type", string(a.capabs.Type)),
+		tracer.String("provider.base_url", a.baseURL),
+	)
+}
+
+// endSpan ends a span if it's not nil.
+func (a *HTTPAdapter) endSpan(span tracer.Span, err error) {
+	if span != nil {
+		span.End(err)
+	}
 }

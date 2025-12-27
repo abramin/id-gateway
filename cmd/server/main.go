@@ -36,6 +36,7 @@ import (
 	registrymetrics "credo/internal/evidence/registry/metrics"
 	registryService "credo/internal/evidence/registry/service"
 	registryStore "credo/internal/evidence/registry/store"
+	registryTracer "credo/internal/evidence/registry/tracer"
 	jwttoken "credo/internal/jwt_token"
 	"credo/internal/platform/config"
 	"credo/internal/platform/httpserver"
@@ -429,26 +430,37 @@ func buildTenantModule(infra *infraBundle) *tenantModule {
 }
 
 func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service) *registryModule {
+	// Create tracer for distributed tracing
+	// Use OpenTelemetry in production, no-op in demo mode for simpler testing
+	var tracer registryTracer.Tracer
+	if infra.Cfg.DemoMode {
+		tracer = registryTracer.NewNoop()
+	} else {
+		tracer = registryTracer.NewOTel()
+	}
+
 	// Create provider registry
 	registry := providers.NewProviderRegistry()
 
-	// Register citizen provider
-	citizenProv := citizenProvider.New(
+	// Register citizen provider with tracer
+	citizenProv := citizenProvider.NewWithTracer(
 		"citizen-registry",
 		infra.Cfg.Registry.CitizenRegistryURL,
 		infra.Cfg.Registry.CitizenAPIKey,
 		infra.Cfg.Registry.RegistryTimeout,
+		tracer,
 	)
 	if err := registry.Register(citizenProv); err != nil {
 		infra.Log.Error("failed to register citizen provider", "error", err)
 	}
 
-	// Register sanctions provider (uses same timeout, placeholder URL/key for now)
-	sanctionsProv := sanctionsProvider.New(
+	// Register sanctions provider with tracer (uses same timeout, placeholder URL/key for now)
+	sanctionsProv := sanctionsProvider.NewWithTracer(
 		"sanctions-registry",
 		infra.Cfg.Registry.CitizenRegistryURL, // TODO: add SanctionsRegistryURL to config
 		infra.Cfg.Registry.CitizenAPIKey,      // TODO: add SanctionsAPIKey to config
 		infra.Cfg.Registry.RegistryTimeout,
+		tracer,
 	)
 	if err := registry.Register(sanctionsProv); err != nil {
 		infra.Log.Error("failed to register sanctions provider", "error", err)
@@ -470,13 +482,14 @@ func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service)
 	// Create consent adapter (needed by both service and handler)
 	consentAdapter := registryAdapters.NewConsentAdapter(consentSvc)
 
-	// Create registry service with orchestrator and consent port for atomic consent checks
+	// Create registry service with orchestrator, consent port, and tracer
 	svc := registryService.New(
 		orch,
 		cache,
 		consentAdapter,
 		infra.Cfg.Security.RegulatedMode,
 		registryService.WithLogger(infra.Log),
+		registryService.WithTracer(tracer),
 	)
 
 	// Create audit publisher for handler
@@ -487,7 +500,9 @@ func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service)
 		auditpublisher.WithPublisherLogger(infra.Log),
 	)
 
-	handler := registryHandler.New(svc, auditPort, infra.Log)
+	handler := registryHandler.New(svc, auditPort, infra.Log,
+		registryHandler.WithHandlerTracer(tracer),
+	)
 
 	return &registryModule{
 		Service: svc,

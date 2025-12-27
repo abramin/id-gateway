@@ -7,6 +7,7 @@ import (
 
 	"credo/internal/evidence/registry/providers"
 	"credo/internal/evidence/registry/providers/adapters"
+	"credo/internal/evidence/registry/tracer"
 )
 
 // citizenHTTPResponse represents the response from a citizen registry API
@@ -21,6 +22,30 @@ type citizenHTTPResponse struct {
 
 func New(id, baseURL, apiKey string, timeout time.Duration) providers.Provider {
 	return NewWithClient(id, baseURL, apiKey, timeout, nil)
+}
+
+// NewWithTracer creates a citizen provider with distributed tracing enabled.
+func NewWithTracer(id, baseURL, apiKey string, timeout time.Duration, t tracer.Tracer) providers.Provider {
+	return adapters.New(adapters.HTTPAdapterConfig{
+		ID:         id,
+		BaseURL:    baseURL,
+		APIKey:     apiKey,
+		Timeout:    timeout,
+		Tracer:     t,
+		Capabilities: providers.Capabilities{
+			Protocol: providers.ProtocolHTTP,
+			Type:     providers.ProviderTypeCitizen,
+			Fields: []providers.FieldCapability{
+				{FieldName: "full_name", Available: true, Filterable: false},
+				{FieldName: "date_of_birth", Available: true, Filterable: false},
+				{FieldName: "address", Available: true, Filterable: false},
+				{FieldName: "valid", Available: true, Filterable: false},
+			},
+			Version: "v1.0.0",
+			Filters: []string{"national_id"},
+		},
+		Parser: parseCitizenResponse,
+	})
 }
 
 // NewWithClient allows injecting a custom HTTP client (for testing).

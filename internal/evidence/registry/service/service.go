@@ -10,6 +10,7 @@ import (
 	"credo/internal/evidence/registry/ports"
 	"credo/internal/evidence/registry/providers"
 	"credo/internal/evidence/registry/store"
+	"credo/internal/evidence/registry/tracer"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
@@ -24,12 +25,17 @@ import (
 //
 // Consent is checked atomically within service methods to prevent TOCTOU races between
 // consent verification and the actual lookup operation.
+//
+// Distributed tracing is supported via an optional Tracer. When configured, the service
+// emits spans for registry.check (parent), registry.citizen, and registry.sanctions operations
+// with cache hit/miss annotations.
 type Service struct {
 	orchestrator *orchestrator.Orchestrator
 	cache        CacheStore
 	consentPort  ports.ConsentPort
 	regulated    bool
 	logger       *slog.Logger
+	tracer       tracer.Tracer
 }
 
 // CacheStore defines the interface for registry caching operations.
@@ -59,6 +65,14 @@ func WithLogger(logger *slog.Logger) Option {
 	}
 }
 
+// WithTracer sets the tracer for distributed tracing.
+// When set, the service emits spans for registry operations with cache annotations.
+func WithTracer(t tracer.Tracer) Option {
+	return func(s *Service) {
+		s.tracer = t
+	}
+}
+
 // New creates a new registry service using the orchestrator pattern.
 // The consentPort enables atomic consent verification within service methods.
 func New(orch *orchestrator.Orchestrator, cache CacheStore, consentPort ports.ConsentPort, regulated bool, opts ...Option) *Service {
@@ -85,14 +99,24 @@ func New(orch *orchestrator.Orchestrator, cache CacheStore, consentPort ports.Co
 // This ensures consistency: if one lookup fails, no partial state is cached,
 // preventing scenarios where retrying would see stale data for one record type.
 // If regulated mode is enabled, citizen PII is stripped before caching.
-func (s *Service) Check(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*models.RegistryResult, error) {
+//
+// When a tracer is configured, this method emits a parent span (registry.check) with
+// child spans for citizen and sanctions lookups, annotated with cache hit/miss attributes.
+func (s *Service) Check(ctx context.Context, userID id.UserID, nationalID id.NationalID) (result *models.RegistryResult, err error) {
+	// Start parent span if tracer is configured
+	ctx, span := s.startSpan(ctx, tracer.SpanRegistryCheck,
+		tracer.String(tracer.AttrNationalID, tracer.HashNationalID(nationalID.String())),
+		tracer.Bool(tracer.AttrRegulatedMode, s.regulated),
+	)
+	defer func() { s.endSpan(span, err) }()
+
 	// Phase 1: Atomic consent check - must succeed before any lookup
-	if err := s.requireConsent(ctx, userID); err != nil {
+	if err = s.requireConsent(ctx, userID); err != nil {
 		return nil, err
 	}
 
-	// Phase 2: Check cache
-	cached, err := s.checkCache(ctx, nationalID)
+	// Phase 2: Check cache with tracing
+	cached, err := s.checkCacheWithTracing(ctx, nationalID, span)
 	if err != nil {
 		return nil, err
 	}
@@ -100,14 +124,14 @@ func (s *Service) Check(ctx context.Context, userID id.UserID, nationalID id.Nat
 		return &models.RegistryResult{Citizen: cached.citizen, Sanction: cached.sanction}, nil
 	}
 
-	// Phase 3: Fetch missing from orchestrator
-	result, err := s.fetchMissing(ctx, nationalID, cached.citizenCached, cached.sanctionsCached)
+	// Phase 3: Fetch missing from orchestrator with tracing
+	fetchResult, err := s.fetchMissingWithTracing(ctx, nationalID, cached)
 	if err != nil {
 		return nil, err
 	}
 
 	// Convert evidence to domain models
-	fetchedCitizen, fetchedSanction, err := s.convertEvidence(result)
+	fetchedCitizen, fetchedSanction, err := s.convertEvidence(fetchResult)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +148,8 @@ func (s *Service) Check(ctx context.Context, userID id.UserID, nationalID id.Nat
 
 	// Validate we got all required evidence
 	if citizen == nil || sanction == nil {
-		return nil, s.translateOrchestratorError(providers.ErrAllProvidersFailed, result)
+		err = s.translateOrchestratorError(providers.ErrAllProvidersFailed, fetchResult)
+		return nil, err
 	}
 
 	// Phase 4: Atomic cache commit - only cache if both lookups succeeded
@@ -258,18 +283,36 @@ func (s *Service) cacheNewlyFetched(ctx context.Context, key id.NationalID, citi
 //
 // For combined citizen + sanctions lookups, prefer Check() which provides atomic
 // transaction semantics ensuring both records are fetched and cached together.
-func (s *Service) Citizen(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*models.CitizenRecord, error) {
+//
+// When a tracer is configured, emits a registry.citizen span with cache.hit attribute.
+func (s *Service) Citizen(ctx context.Context, userID id.UserID, nationalID id.NationalID) (record *models.CitizenRecord, err error) {
+	// Start span if tracer is configured
+	ctx, span := s.startSpan(ctx, tracer.SpanRegistryCitizen,
+		tracer.String(tracer.AttrNationalID, tracer.HashNationalID(nationalID.String())),
+		tracer.Bool(tracer.AttrRegulatedMode, s.regulated),
+	)
+	defer func() { s.endSpan(span, err) }()
+
 	// Atomic consent check - must succeed before any lookup
-	if err := s.requireConsent(ctx, userID); err != nil {
+	if err = s.requireConsent(ctx, userID); err != nil {
 		return nil, err
 	}
 
+	// Check cache
+	cacheHit := false
 	if s.cache != nil {
-		if cached, err := s.cache.FindCitizen(ctx, nationalID, s.regulated); err == nil {
+		if cached, cacheErr := s.cache.FindCitizen(ctx, nationalID, s.regulated); cacheErr == nil {
+			cacheHit = true
+			if span != nil {
+				span.SetAttributes(tracer.Bool(tracer.AttrCacheHit, true))
+			}
 			return cached, nil
-		} else if !errors.Is(err, store.ErrNotFound) {
-			return nil, err
+		} else if !errors.Is(cacheErr, store.ErrNotFound) {
+			return nil, cacheErr
 		}
+	}
+	if span != nil && !cacheHit {
+		span.SetAttributes(tracer.Bool(tracer.AttrCacheHit, false))
 	}
 
 	result, err := s.orchestrator.Lookup(ctx, orchestrator.LookupRequest{
@@ -284,12 +327,12 @@ func (s *Service) Citizen(ctx context.Context, userID id.UserID, nationalID id.N
 	}
 
 	// Find citizen evidence and convert via domain aggregate
-	var record *models.CitizenRecord
 	for _, ev := range result.Evidence {
 		if ev.ProviderType == providers.ProviderTypeCitizen {
-			verification, err := EvidenceToCitizenVerification(ev)
-			if err != nil {
-				return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to convert citizen evidence")
+			verification, convErr := EvidenceToCitizenVerification(ev)
+			if convErr != nil {
+				err = dErrors.Wrap(convErr, dErrors.CodeInternal, "failed to convert citizen evidence")
+				return nil, err
 			}
 			if s.regulated {
 				verification = verification.WithoutNationalID()
@@ -300,7 +343,8 @@ func (s *Service) Citizen(ctx context.Context, userID id.UserID, nationalID id.N
 	}
 
 	if record == nil {
-		return nil, s.translateOrchestratorError(providers.ErrAllProvidersFailed, result)
+		err = s.translateOrchestratorError(providers.ErrAllProvidersFailed, result)
+		return nil, err
 	}
 
 	if s.cache != nil {
@@ -317,18 +361,35 @@ func (s *Service) Citizen(ctx context.Context, userID id.UserID, nationalID id.N
 //
 // For combined citizen + sanctions lookups, prefer Check() which provides atomic
 // transaction semantics ensuring both records are fetched and cached together.
-func (s *Service) Sanctions(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*models.SanctionsRecord, error) {
+//
+// When a tracer is configured, emits a registry.sanctions span with cache.hit attribute.
+func (s *Service) Sanctions(ctx context.Context, userID id.UserID, nationalID id.NationalID) (record *models.SanctionsRecord, err error) {
+	// Start span if tracer is configured
+	ctx, span := s.startSpan(ctx, tracer.SpanRegistrySanction,
+		tracer.String(tracer.AttrNationalID, tracer.HashNationalID(nationalID.String())),
+	)
+	defer func() { s.endSpan(span, err) }()
+
 	// Atomic consent check - must succeed before any lookup
-	if err := s.requireConsent(ctx, userID); err != nil {
+	if err = s.requireConsent(ctx, userID); err != nil {
 		return nil, err
 	}
 
+	// Check cache
+	cacheHit := false
 	if s.cache != nil {
-		if cached, err := s.cache.FindSanction(ctx, nationalID); err == nil {
+		if cached, cacheErr := s.cache.FindSanction(ctx, nationalID); cacheErr == nil {
+			cacheHit = true
+			if span != nil {
+				span.SetAttributes(tracer.Bool(tracer.AttrCacheHit, true))
+			}
 			return cached, nil
-		} else if !errors.Is(err, store.ErrNotFound) {
-			return nil, err
+		} else if !errors.Is(cacheErr, store.ErrNotFound) {
+			return nil, cacheErr
 		}
+	}
+	if span != nil && !cacheHit {
+		span.SetAttributes(tracer.Bool(tracer.AttrCacheHit, false))
 	}
 
 	result, err := s.orchestrator.Lookup(ctx, orchestrator.LookupRequest{
@@ -343,12 +404,12 @@ func (s *Service) Sanctions(ctx context.Context, userID id.UserID, nationalID id
 	}
 
 	// Find sanctions evidence and convert via domain aggregate
-	var record *models.SanctionsRecord
 	for _, ev := range result.Evidence {
 		if ev.ProviderType == providers.ProviderTypeSanctions {
-			check, err := EvidenceToSanctionsCheck(ev)
-			if err != nil {
-				return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to convert sanctions evidence")
+			check, convErr := EvidenceToSanctionsCheck(ev)
+			if convErr != nil {
+				err = dErrors.Wrap(convErr, dErrors.CodeInternal, "failed to convert sanctions evidence")
+				return nil, err
 			}
 			record = SanctionsCheckToRecord(check)
 			break
@@ -356,7 +417,8 @@ func (s *Service) Sanctions(ctx context.Context, userID id.UserID, nationalID id
 	}
 
 	if record == nil {
-		return nil, s.translateOrchestratorError(providers.ErrAllProvidersFailed, result)
+		err = s.translateOrchestratorError(providers.ErrAllProvidersFailed, result)
+		return nil, err
 	}
 
 	if s.cache != nil {
@@ -423,4 +485,77 @@ func (s *Service) translateProviderError(err error) error {
 		}
 	}
 	return dErrors.Wrap(err, dErrors.CodeInternal, "registry lookup failed")
+}
+
+// -----------------------------------------------------------------------------
+// Tracing helpers
+// -----------------------------------------------------------------------------
+
+// startSpan starts a new span if a tracer is configured.
+// Returns the context and span (which may be nil if no tracer is set).
+func (s *Service) startSpan(ctx context.Context, name string, attrs ...tracer.Attribute) (context.Context, tracer.Span) {
+	if s.tracer == nil {
+		return ctx, nil
+	}
+	return s.tracer.Start(ctx, name, attrs...)
+}
+
+// endSpan ends a span if it's not nil.
+func (s *Service) endSpan(span tracer.Span, err error) {
+	if span != nil {
+		span.End(err)
+	}
+}
+
+// checkCacheWithTracing performs cache lookup with tracing annotations.
+// Sets cache.hit attributes on the parent span for both citizen and sanctions lookups.
+func (s *Service) checkCacheWithTracing(ctx context.Context, nationalID id.NationalID, parentSpan tracer.Span) (cacheCheckResult, error) {
+	result, err := s.checkCache(ctx, nationalID)
+	if err != nil {
+		return result, err
+	}
+
+	// Annotate parent span with cache hit/miss for each lookup type
+	if parentSpan != nil {
+		parentSpan.SetAttributes(
+			tracer.Bool("cache.citizen.hit", result.citizenCached),
+			tracer.Bool("cache.sanctions.hit", result.sanctionsCached),
+		)
+	}
+
+	return result, nil
+}
+
+// fetchMissingWithTracing fetches missing records with child spans for each lookup type.
+func (s *Service) fetchMissingWithTracing(ctx context.Context, nationalID id.NationalID, cached cacheCheckResult) (*orchestrator.LookupResult, error) {
+	var typesToFetch []providers.ProviderType
+
+	// Fetch citizen with child span if not cached
+	if !cached.citizenCached {
+		typesToFetch = append(typesToFetch, providers.ProviderTypeCitizen)
+	}
+
+	// Fetch sanctions with child span if not cached
+	if !cached.sanctionsCached {
+		typesToFetch = append(typesToFetch, providers.ProviderTypeSanctions)
+	}
+
+	if len(typesToFetch) == 0 {
+		return &orchestrator.LookupResult{}, nil
+	}
+
+	// Start child span for the combined fetch operation
+	ctx, span := s.startSpan(ctx, "registry.fetch")
+	defer func() { s.endSpan(span, nil) }()
+
+	result, err := s.orchestrator.Lookup(ctx, orchestrator.LookupRequest{
+		Types:    typesToFetch,
+		Filters:  map[string]string{"national_id": nationalID.String()},
+		Strategy: orchestrator.StrategyFallback,
+	})
+	if err != nil {
+		s.endSpan(span, err)
+		return nil, s.translateOrchestratorError(err, result)
+	}
+	return result, nil
 }

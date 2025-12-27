@@ -936,14 +936,15 @@ In regulated mode:
 
 ### Tracing
 
-**Implementation Status:** Not yet implemented. Tracer interface and OpenTelemetry wiring pending.
+**Implementation Status:** ✅ Implemented in `internal/evidence/registry/tracer/`.
 
-- All registry flows **MUST** emit distributed traces using an internal tracer interface (do not depend directly on OpenTelemetry APIs). The interface **MUST** support `Start(ctx, name, attrs...) (context.Context, Span)` and `Span.End(err error)` so spans can record failures without panics.
-- `Service.Check` **MUST** start a parent span named `registry.check` with attributes for `national_id` (hashed or redacted) and `regulated_mode`. Child spans **MUST** wrap `Citizen` and `Sanctions` calls (`registry.citizen` and `registry.sanctions`) and annotate cache hits/misses via span attributes (`cache.hit`, `cache.ttl_remaining_ms`).
-- Mock clients **MUST** start spans for outbound calls (`registry.citizen.call`, `registry.sanctions.call`) and include attributes for simulated latency and deterministic test data branches (e.g., `listed`, `age_bucket`).
-- Emit a span event named `audit.emitted` after audit publishing to show ordering of compliance logging versus registry calls.
-- Provide a **no-op tracer** for tests and **inject** the tracer into `Service` and mock clients so tracing is optional but configurable. Production wiring should use OpenTelemetry to satisfy the interface.
-- Apply sampling rules that retain failure/error spans at 100% and downsample successful calls while keeping exemplars for p99 latency; ensure spans satisfy eIDAS/ISO/ITF audit traceability expectations where applicable.
+- [x] All registry flows emit distributed traces using an internal tracer interface (do not depend directly on OpenTelemetry APIs). The interface supports `Start(ctx, name, attrs...) (context.Context, Span)` and `Span.End(err error)` so spans can record failures without panics.
+- [x] `Service.Check` starts a parent span named `registry.check` with attributes for `national_id` (hashed) and `regulated_mode`. Child spans wrap `Citizen` and `Sanctions` calls (`registry.citizen` and `registry.sanctions`) and annotate cache hits/misses via span attributes (`cache.hit`, `cache.citizen.hit`, `cache.sanctions.hit`).
+- [x] HTTP adapters start spans for outbound calls (`registry.citizen.call`, `registry.sanctions.call`) with provider metadata attributes.
+- [x] Emit a span event named `audit.emitted` after audit publishing to show ordering of compliance logging versus registry calls.
+- [x] No-op tracer provided for tests; tracer is injected into `Service`, `Handler`, and HTTP adapters so tracing is optional but configurable.
+- [x] Production wiring uses OpenTelemetry to satisfy the interface (`registryTracer.NewOTel()`).
+- [ ] Sampling rules (100% retention for failures, downsample success with p99 exemplars) - delegated to OpenTelemetry SDK configuration at deployment time.
 
 ---
 

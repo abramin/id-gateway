@@ -7,6 +7,7 @@ import (
 
 	"credo/internal/evidence/registry/providers"
 	"credo/internal/evidence/registry/providers/adapters"
+	"credo/internal/evidence/registry/tracer"
 )
 
 // sanctionsHTTPResponse represents the response from a sanctions registry API
@@ -23,6 +24,28 @@ func New(id, baseURL, apiKey string, timeout time.Duration) providers.Provider {
 		BaseURL: baseURL,
 		APIKey:  apiKey,
 		Timeout: timeout,
+		Capabilities: providers.Capabilities{
+			Protocol: providers.ProtocolHTTP,
+			Type:     providers.ProviderTypeSanctions,
+			Fields: []providers.FieldCapability{
+				{FieldName: "listed", Available: true, Filterable: false},
+				{FieldName: "source", Available: true, Filterable: false},
+			},
+			Version: "v1.0.0",
+			Filters: []string{"national_id"},
+		},
+		Parser: parseSanctionsResponse,
+	})
+}
+
+// NewWithTracer creates a sanctions provider with distributed tracing enabled.
+func NewWithTracer(id, baseURL, apiKey string, timeout time.Duration, t tracer.Tracer) providers.Provider {
+	return adapters.New(adapters.HTTPAdapterConfig{
+		ID:      id,
+		BaseURL: baseURL,
+		APIKey:  apiKey,
+		Timeout: timeout,
+		Tracer:  t,
 		Capabilities: providers.Capabilities{
 			Protocol: providers.ProtocolHTTP,
 			Type:     providers.ProviderTypeSanctions,

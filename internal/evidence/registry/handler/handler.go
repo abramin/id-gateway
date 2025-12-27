@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"credo/internal/evidence/registry/models"
+	"credo/internal/evidence/registry/tracer"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
@@ -35,15 +36,31 @@ type Handler struct {
 	service   RegistryService
 	auditPort AuditPublisher
 	logger    *slog.Logger
+	tracer    tracer.Tracer
+}
+
+// HandlerOption configures the Handler.
+type HandlerOption func(*Handler)
+
+// WithHandlerTracer sets the tracer for the handler.
+// When set, the handler emits audit.emitted span events after audit publishing.
+func WithHandlerTracer(t tracer.Tracer) HandlerOption {
+	return func(h *Handler) {
+		h.tracer = t
+	}
 }
 
 // New creates a new registry handler.
-func New(service RegistryService, auditPort AuditPublisher, logger *slog.Logger) *Handler {
-	return &Handler{
+func New(service RegistryService, auditPort AuditPublisher, logger *slog.Logger, opts ...HandlerOption) *Handler {
+	h := &Handler{
 		service:   service,
 		auditPort: auditPort,
 		logger:    logger,
 	}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // Register mounts the handler routes on the given router.
@@ -218,6 +235,7 @@ func (h *Handler) requireUserID(ctx context.Context, requestID string) (id.UserI
 }
 
 // emitAudit publishes an audit event. Failures are logged but don't fail the operation.
+// When a tracer is configured, emits an audit.emitted span event after successful publishing.
 func (h *Handler) emitAudit(ctx context.Context, event audit.Event) {
 	if h.auditPort == nil {
 		return
@@ -228,17 +246,26 @@ func (h *Handler) emitAudit(ctx context.Context, event audit.Event) {
 			"action", event.Action,
 			"user_id", event.UserID,
 		)
+		return
 	}
+	// Emit span event for audit trail correlation
+	h.emitAuditSpanEvent(ctx, event.Action)
 }
 
 // emitCriticalAudit publishes an audit event that MUST succeed.
 // Returns an error if the audit fails, allowing callers to fail-close.
 // Use this for security-critical events like sanctions hits.
+// When a tracer is configured, emits an audit.emitted span event after successful publishing.
 func (h *Handler) emitCriticalAudit(ctx context.Context, event audit.Event) error {
 	if h.auditPort == nil {
 		return dErrors.New(dErrors.CodeInternal, "audit system unavailable")
 	}
-	return h.auditPort.Emit(ctx, event)
+	if err := h.auditPort.Emit(ctx, event); err != nil {
+		return err
+	}
+	// Emit span event for audit trail correlation
+	h.emitAuditSpanEvent(ctx, event.Action)
+	return nil
 }
 
 // auditSanctionsCheck emits an audit event for a sanctions check with fail-closed semantics.
@@ -284,4 +311,24 @@ func redactNationalID(nid id.NationalID) string {
 		return "****"
 	}
 	return "****" + s[len(s)-4:]
+}
+
+// emitAuditSpanEvent adds an audit.emitted span event to the current trace if a tracer is configured.
+// This correlates audit logs with distributed traces for compliance analysis.
+func (h *Handler) emitAuditSpanEvent(ctx context.Context, action string) {
+	if h.tracer == nil {
+		return
+	}
+	// Get or create a span from context to add the event
+	// Since we're adding an event to an existing span, we start a minimal span
+	// that ends immediately after adding the event
+	_, span := h.tracer.Start(ctx, "audit.publish",
+		tracer.String("audit.action", action),
+	)
+	if span != nil {
+		span.AddEvent(tracer.EventAuditEmitted,
+			tracer.String("audit.action", action),
+		)
+		span.End(nil)
+	}
 }
