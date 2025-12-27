@@ -8,6 +8,7 @@ import (
 	"credo/e2e/steps/common"
 	"credo/e2e/steps/consent"
 	"credo/e2e/steps/ratelimit"
+	"credo/e2e/steps/registry"
 )
 
 // RegisterSteps registers all step definitions from modular packages
@@ -26,4 +27,7 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 
 	// Register rate-limiting steps (PRD-017 FR-2b)
 	ratelimit.RegisterSteps(ctx, tc)
+
+	// Register registry steps (PRD-003 citizen/sanctions lookups)
+	registry.RegisterSteps(ctx, tc)
 }

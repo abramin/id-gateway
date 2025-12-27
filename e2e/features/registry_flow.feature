@@ -213,3 +213,19 @@ Feature: Registry Integration - Citizen and Sanctions Lookup
     When I lookup citizen record for national_id "EXPIRE123"
     Then the response status should be 200
     And the "checked_at" timestamp should be recent
+
+    @registry @fallback
+  Scenario: Primary provider failure triggers fallback
+    Given the primary citizen registry provider returns 503
+    When I lookup citizen record for national_id "FALLBACK123"
+    Then the response status should be 200
+    And the response field "valid" should equal true
+    And the response should indicate fallback provider was used
+
+    @registry @fallback
+  Scenario: All providers unavailable returns 503
+    Given all citizen registry providers are unavailable
+    When I lookup citizen record for national_id "ALLFAIL123"
+    Then the response status should be 503
+    And the response field "error" should equal "registry_unavailable"
+    And the response field "error_description" should contain "all providers failed"

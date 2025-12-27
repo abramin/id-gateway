@@ -7,8 +7,27 @@ import (
 	"credo/internal/evidence/registry/providers"
 )
 
+// CitizenNameRuleConfig configures field names for citizen conflict detection
+type CitizenNameRuleConfig struct {
+	FullNameField    string // Field name for full name (default: "full_name")
+	DateOfBirthField string // Field name for date of birth (default: "date_of_birth")
+}
+
 // CitizenNameRule reconciles conflicting names from multiple citizen sources
-type CitizenNameRule struct{}
+type CitizenNameRule struct {
+	config CitizenNameRuleConfig
+}
+
+// NewCitizenNameRule creates a CitizenNameRule with configurable field names
+func NewCitizenNameRule(cfg CitizenNameRuleConfig) *CitizenNameRule {
+	if cfg.FullNameField == "" {
+		cfg.FullNameField = "full_name"
+	}
+	if cfg.DateOfBirthField == "" {
+		cfg.DateOfBirthField = "date_of_birth"
+	}
+	return &CitizenNameRule{config: cfg}
+}
 
 // Applicable checks if this rule applies
 func (r *CitizenNameRule) Applicable(types []providers.ProviderType) bool {
@@ -85,23 +104,23 @@ func (r *CitizenNameRule) detectConflicts(evidence []*providers.Evidence) []stri
 	// Check full_name conflicts
 	names := make(map[string]bool)
 	for _, e := range evidence {
-		if name, ok := e.Data["full_name"].(string); ok {
+		if name, ok := e.Data[r.config.FullNameField].(string); ok {
 			names[name] = true
 		}
 	}
 	if len(names) > 1 {
-		conflicts = append(conflicts, "full_name")
+		conflicts = append(conflicts, r.config.FullNameField)
 	}
 
 	// Check date_of_birth conflicts
 	dobs := make(map[string]bool)
 	for _, e := range evidence {
-		if dob, ok := e.Data["date_of_birth"].(string); ok {
+		if dob, ok := e.Data[r.config.DateOfBirthField].(string); ok {
 			dobs[dob] = true
 		}
 	}
 	if len(dobs) > 1 {
-		conflicts = append(conflicts, "date_of_birth")
+		conflicts = append(conflicts, r.config.DateOfBirthField)
 	}
 
 	return conflicts

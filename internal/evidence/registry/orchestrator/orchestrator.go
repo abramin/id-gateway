@@ -42,6 +42,14 @@ type ProviderChain struct {
 	Timeout   time.Duration
 }
 
+// BackoffConfig configures retry backoff for retryable errors
+type BackoffConfig struct {
+	InitialDelay time.Duration // Initial delay before first retry (default: 100ms)
+	MaxDelay     time.Duration // Maximum delay between retries (default: 2s)
+	MaxRetries   int           // Maximum number of retries (default: 3)
+	Multiplier   float64       // Multiplier for exponential backoff (default: 2.0)
+}
+
 // OrchestratorConfig configures the evidence orchestrator
 type OrchestratorConfig struct {
 	Registry        *providers.ProviderRegistry
@@ -53,6 +61,9 @@ type OrchestratorConfig struct {
 
 	// Rules defines how to correlate multi-source evidence
 	Rules []CorrelationRule
+
+	// Backoff configures retry behavior for retryable errors
+	Backoff BackoffConfig
 }
 
 // Orchestrator coordinates multi-source evidence gathering
@@ -62,6 +73,7 @@ type Orchestrator struct {
 	rules    []CorrelationRule
 	strategy LookupStrategy
 	timeout  time.Duration
+	backoff  BackoffConfig
 }
 
 // NewOrchestrator creates a new evidence orchestrator
@@ -73,12 +85,27 @@ func NewOrchestrator(cfg OrchestratorConfig) *Orchestrator {
 		cfg.DefaultStrategy = StrategyFallback
 	}
 
+	// Apply backoff defaults
+	if cfg.Backoff.InitialDelay == 0 {
+		cfg.Backoff.InitialDelay = 100 * time.Millisecond
+	}
+	if cfg.Backoff.MaxDelay == 0 {
+		cfg.Backoff.MaxDelay = 2 * time.Second
+	}
+	if cfg.Backoff.MaxRetries == 0 {
+		cfg.Backoff.MaxRetries = 3
+	}
+	if cfg.Backoff.Multiplier == 0 {
+		cfg.Backoff.Multiplier = 2.0
+	}
+
 	return &Orchestrator{
 		registry: cfg.Registry,
 		chains:   cfg.Chains,
 		rules:    cfg.Rules,
 		strategy: cfg.DefaultStrategy,
 		timeout:  cfg.DefaultTimeout,
+		backoff:  cfg.Backoff,
 	}
 }
 
@@ -136,15 +163,10 @@ func (o *Orchestrator) lookupPrimary(ctx context.Context, req LookupRequest) (*L
 	}
 
 	for _, typ := range req.Types {
-		chain, ok := o.chains[typ]
-		if !ok {
-			// No chain defined, try to find any provider of this type
-			provs := o.registry.ListByType(typ)
-			if len(provs) == 0 {
-				result.Errors["no-provider"] = providers.ErrNoProvidersAvailable
-				continue
-			}
-			chain = ProviderChain{Primary: provs[0].ID()}
+		chain, err := o.getChainForType(typ)
+		if err != nil {
+			result.Errors["no-provider"] = err
+			continue
 		}
 
 		provider, ok := o.registry.Get(chain.Primary)
@@ -177,36 +199,14 @@ func (o *Orchestrator) lookupFallback(ctx context.Context, req LookupRequest) (*
 	}
 
 	for _, typ := range req.Types {
-		chain, ok := o.chains[typ]
-		if !ok {
-			// No chain defined, try to find any provider of this type
-			provs := o.registry.ListByType(typ)
-			if len(provs) == 0 {
-				result.Errors["no-provider"] = providers.ErrNoProvidersAvailable
-				continue
-			}
-			chain = ProviderChain{Primary: provs[0].ID()}
-		}
-
-		// Try primary first
-		evidence, err := o.tryProvider(ctx, chain.Primary, req.Filters)
-		if err == nil {
-			result.Evidence = append(result.Evidence, evidence)
+		chain, err := o.getChainForType(typ)
+		if err != nil {
+			result.Errors["no-provider"] = err
 			continue
 		}
 
-		result.Errors[chain.Primary] = err
-
-		// Try fallbacks if primary failed and error is not retryable
-		if !providers.IsRetryable(err) {
-			for _, secondaryID := range chain.Secondary {
-				evidence, err := o.tryProvider(ctx, secondaryID, req.Filters)
-				if err == nil {
-					result.Evidence = append(result.Evidence, evidence)
-					break
-				}
-				result.Errors[secondaryID] = err
-			}
+		if evidence := o.tryChainWithFallback(ctx, chain, req.Filters, result.Errors); evidence != nil {
+			result.Evidence = append(result.Evidence, evidence)
 		}
 	}
 
@@ -215,6 +215,43 @@ func (o *Orchestrator) lookupFallback(ctx context.Context, req LookupRequest) (*
 	}
 
 	return result, nil
+}
+
+// getChainForType returns the provider chain for a given type.
+// If no chain is configured, it creates one from the first available provider.
+func (o *Orchestrator) getChainForType(typ providers.ProviderType) (ProviderChain, error) {
+	if chain, ok := o.chains[typ]; ok {
+		return chain, nil
+	}
+
+	provs := o.registry.ListByType(typ)
+	if len(provs) == 0 {
+		return ProviderChain{}, providers.ErrNoProvidersAvailable
+	}
+
+	return ProviderChain{Primary: provs[0].ID()}, nil
+}
+
+// tryChainWithFallback attempts the primary provider, then falls back to secondaries.
+// Records errors in the provided map and returns evidence if any provider succeeds.
+func (o *Orchestrator) tryChainWithFallback(ctx context.Context, chain ProviderChain, filters map[string]string, errors map[string]error) *providers.Evidence {
+	// Try primary first with backoff for retryable errors
+	evidence, err := o.tryProviderWithBackoff(ctx, chain.Primary, filters)
+	if err == nil {
+		return evidence
+	}
+	errors[chain.Primary] = err
+
+	// Try fallbacks if primary failed
+	for _, secondaryID := range chain.Secondary {
+		evidence, err := o.tryProviderWithBackoff(ctx, secondaryID, filters)
+		if err == nil {
+			return evidence
+		}
+		errors[secondaryID] = err
+	}
+
+	return nil
 }
 
 // lookupParallel queries all providers in parallel
@@ -311,6 +348,48 @@ func (o *Orchestrator) tryProvider(ctx context.Context, providerID string, filte
 	}
 
 	return provider.Lookup(ctx, filters)
+}
+
+// tryProviderWithBackoff attempts to get evidence with exponential backoff for retryable errors
+func (o *Orchestrator) tryProviderWithBackoff(ctx context.Context, providerID string, filters map[string]string) (*providers.Evidence, error) {
+	provider, ok := o.registry.Get(providerID)
+	if !ok {
+		return nil, providers.ErrProviderNotFound
+	}
+
+	var lastErr error
+	delay := o.backoff.InitialDelay
+
+	for attempt := 0; attempt <= o.backoff.MaxRetries; attempt++ {
+		// Wait before retry (skip on first attempt)
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+
+			// Calculate next delay with exponential backoff
+			delay = time.Duration(float64(delay) * o.backoff.Multiplier)
+			if delay > o.backoff.MaxDelay {
+				delay = o.backoff.MaxDelay
+			}
+		}
+
+		evidence, err := provider.Lookup(ctx, filters)
+		if err == nil {
+			return evidence, nil
+		}
+
+		lastErr = err
+
+		// Only retry if error is retryable
+		if !providers.IsRetryable(err) {
+			return nil, err
+		}
+	}
+
+	return nil, lastErr
 }
 
 // HealthCheck checks the health of all registered providers

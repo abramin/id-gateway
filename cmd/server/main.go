@@ -27,6 +27,14 @@ import (
 	consentmetrics "credo/internal/consent/metrics"
 	consentService "credo/internal/consent/service"
 	consentStore "credo/internal/consent/store"
+	registryAdapters "credo/internal/evidence/registry/adapters"
+	registryHandler "credo/internal/evidence/registry/handler"
+	"credo/internal/evidence/registry/orchestrator"
+	"credo/internal/evidence/registry/providers"
+	citizenProvider "credo/internal/evidence/registry/providers/citizen"
+	sanctionsProvider "credo/internal/evidence/registry/providers/sanctions"
+	registryService "credo/internal/evidence/registry/service"
+	registryStore "credo/internal/evidence/registry/store"
 	jwttoken "credo/internal/jwt_token"
 	"credo/internal/platform/config"
 	"credo/internal/platform/httpserver"
@@ -100,6 +108,11 @@ type tenantModule struct {
 	Clients *clientstore.InMemory
 }
 
+type registryModule struct {
+	Service *registryService.Service
+	Handler *registryHandler.Handler
+}
+
 type tenantClientLookup struct {
 	tenantSvc *tenantService.Service
 }
@@ -145,6 +158,7 @@ func main() {
 		os.Exit(1)
 	}
 	consentMod := buildConsentModule(infra)
+	registryMod := buildRegistryModule(infra, consentMod.Service)
 
 	startCleanupWorker(appCtx, infra.Log, authMod.Cleanup)
 	go func() {
@@ -154,7 +168,7 @@ func main() {
 	}()
 
 	r := setupRouter(infra)
-	registerRoutes(r, infra, authMod, consentMod, tenantMod, rateLimitMiddleware, clientRateLimitMiddleware)
+	registerRoutes(r, infra, authMod, consentMod, tenantMod, registryMod, rateLimitMiddleware, clientRateLimitMiddleware)
 
 	mainSrv := httpserver.New(infra.Cfg.Addr, r)
 	startServer(mainSrv, infra.Log, "main API")
@@ -410,6 +424,70 @@ func buildTenantModule(infra *infraBundle) *tenantModule {
 	}
 }
 
+func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service) *registryModule {
+	// Create provider registry
+	registry := providers.NewProviderRegistry()
+
+	// Register citizen provider
+	citizenProv := citizenProvider.New(
+		"citizen-registry",
+		infra.Cfg.Registry.CitizenRegistryURL,
+		infra.Cfg.Registry.CitizenAPIKey,
+		infra.Cfg.Registry.RegistryTimeout,
+	)
+	if err := registry.Register(citizenProv); err != nil {
+		infra.Log.Error("failed to register citizen provider", "error", err)
+	}
+
+	// Register sanctions provider (uses same timeout, placeholder URL/key for now)
+	sanctionsProv := sanctionsProvider.New(
+		"sanctions-registry",
+		infra.Cfg.Registry.CitizenRegistryURL, // TODO: add SanctionsRegistryURL to config
+		infra.Cfg.Registry.CitizenAPIKey,      // TODO: add SanctionsAPIKey to config
+		infra.Cfg.Registry.RegistryTimeout,
+	)
+	if err := registry.Register(sanctionsProv); err != nil {
+		infra.Log.Error("failed to register sanctions provider", "error", err)
+	}
+
+	// Create orchestrator
+	orch := orchestrator.NewOrchestrator(orchestrator.OrchestratorConfig{
+		Registry:        registry,
+		DefaultStrategy: orchestrator.StrategyFallback,
+		DefaultTimeout:  infra.Cfg.Registry.RegistryTimeout,
+	})
+
+	// Create cache store
+	cache := registryStore.NewInMemoryCache(infra.Cfg.Registry.CacheTTL)
+
+	// Create registry service with orchestrator
+	svc := registryService.New(
+		orch,
+		cache,
+		infra.Cfg.Security.RegulatedMode,
+		registryService.WithLogger(infra.Log),
+	)
+
+	// Create consent adapter
+	consentAdapter := registryAdapters.NewConsentAdapter(consentSvc)
+
+	// Create audit publisher for handler
+	auditPort := auditpublisher.NewPublisher(
+		auditstore.NewInMemoryStore(),
+		auditpublisher.WithAsyncBuffer(1000),
+		auditpublisher.WithMetrics(infra.AuditMetrics),
+		auditpublisher.WithPublisherLogger(infra.Log),
+	)
+
+	// Create handler
+	handler := registryHandler.New(svc, consentAdapter, auditPort, infra.Log)
+
+	return &registryModule{
+		Service: svc,
+		Handler: handler,
+	}
+}
+
 func startCleanupWorker(ctx context.Context, log *slog.Logger, cleanupSvc *cleanupWorker.CleanupService) {
 	go func() {
 		if err := cleanupSvc.Start(ctx); err != nil && err != context.Canceled {
@@ -463,7 +541,7 @@ func setupRouter(infra *infraBundle) *chi.Mux {
 }
 
 // registerRoutes wires HTTP handlers to the shared router
-func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consentMod *consentModule, tenantMod *tenantModule, rateLimitMiddleware *rateLimitMW.Middleware, clientRateLimitMiddleware *rateLimitMW.ClientMiddleware) {
+func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consentMod *consentModule, tenantMod *tenantModule, registryMod *registryModule, rateLimitMiddleware *rateLimitMW.Middleware, clientRateLimitMiddleware *rateLimitMW.ClientMiddleware) {
 	if infra.Cfg.DemoMode {
 		r.Get("/demo/info", func(w http.ResponseWriter, _ *http.Request) {
 			resp := map[string]any{
@@ -506,6 +584,8 @@ func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consent
 		r.Post("/auth/consent", consentMod.Handler.HandleGrantConsent)
 		r.Post("/auth/consent/revoke", consentMod.Handler.HandleRevokeConsent)
 		r.Delete("/auth/consent", consentMod.Handler.HandleDeleteAllConsents)
+		// Registry endpoints
+		registryMod.Handler.Register(r)
 	})
 
 	// Admin endpoints - ClassWrite (50 req/min)

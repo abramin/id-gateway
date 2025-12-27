@@ -49,7 +49,10 @@ type ConsentConfig struct {
 
 // RegistryConfig holds registry integration configuration
 type RegistryConfig struct {
-	CacheTTL time.Duration
+	CacheTTL           time.Duration
+	CitizenRegistryURL string
+	CitizenAPIKey      string
+	RegistryTimeout    time.Duration
 }
 
 // SecurityConfig holds security and compliance settings
@@ -67,6 +70,9 @@ var (
 	DefaultConsentTTL                     = 365 * 24 * time.Hour
 	DefaultConsentGrantWindow             = 5 * time.Minute
 	DefaultRegistryCacheTTL               = 5 * time.Minute
+	DefaultCitizenRegistryURL             = "http://localhost:8082"
+	DefaultCitizenAPIKey                  = "citizen-registry-secret-key"
+	DefaultRegistryTimeout                = 5 * time.Second
 	DefaultDeviceCookieName               = "__Secure-Device-ID"
 	DefaultDeviceCookieMaxAge             = 31536000 // 1 year
 )
@@ -133,7 +139,10 @@ func loadConsentConfig() ConsentConfig {
 
 func loadRegistryConfig() RegistryConfig {
 	return RegistryConfig{
-		CacheTTL: parseDuration("REGISTRY_CACHE_TTL", DefaultRegistryCacheTTL),
+		CacheTTL:           parseDuration("REGISTRY_CACHE_TTL", DefaultRegistryCacheTTL),
+		CitizenRegistryURL: getEnv("CITIZEN_REGISTRY_URL", DefaultCitizenRegistryURL),
+		CitizenAPIKey:      getEnv("CITIZEN_REGISTRY_API_KEY", DefaultCitizenAPIKey),
+		RegistryTimeout:    parseDuration("REGISTRY_TIMEOUT", DefaultRegistryTimeout),
 	}
 }
 

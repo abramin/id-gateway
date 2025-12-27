@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"credo/internal/evidence/registry/providers"
+	"credo/pkg/platform/middleware/requesttime"
 )
 
 // HTTPAdapter wraps HTTP-based registry providers
@@ -82,7 +83,25 @@ func (a *HTTPAdapter) Capabilities() providers.Capabilities {
 
 // Lookup performs an evidence check via HTTP
 func (a *HTTPAdapter) Lookup(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
-	// Build request body from filters
+	req, err := a.buildRequest(ctx, filters)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, body, err := a.executeRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := a.checkStatusCode(resp.StatusCode); err != nil {
+		return nil, err
+	}
+
+	return a.parseAndEnrich(ctx, resp.StatusCode, body)
+}
+
+// buildRequest creates an HTTP request from filters.
+func (a *HTTPAdapter) buildRequest(ctx context.Context, filters map[string]string) (*http.Request, error) {
 	bodyBytes, err := json.Marshal(filters)
 	if err != nil {
 		return nil, providers.NewProviderError(
@@ -93,7 +112,6 @@ func (a *HTTPAdapter) Lookup(ctx context.Context, filters map[string]string) (*p
 		)
 	}
 
-	// Create HTTP request with context
 	url := fmt.Sprintf("%s/lookup", a.baseURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
 	if err != nil {
@@ -105,25 +123,27 @@ func (a *HTTPAdapter) Lookup(ctx context.Context, filters map[string]string) (*p
 		)
 	}
 
-	// Set headers
 	req.Header.Set("Content-Type", "application/json")
 	if a.apiKey != "" {
 		req.Header.Set("X-API-Key", a.apiKey)
 	}
 
-	// Execute request
+	return req, nil
+}
+
+// executeRequest sends the HTTP request and returns the response with body.
+func (a *HTTPAdapter) executeRequest(ctx context.Context, req *http.Request) (*http.Response, []byte, error) {
 	resp, err := a.client.Do(req)
 	if err != nil {
-		// Classify error type
 		if ctx.Err() == context.DeadlineExceeded {
-			return nil, providers.NewProviderError(
+			return nil, nil, providers.NewProviderError(
 				providers.ErrorTimeout,
 				a.id,
 				"request timeout",
 				err,
 			)
 		}
-		return nil, providers.NewProviderError(
+		return nil, nil, providers.NewProviderError(
 			providers.ErrorProviderOutage,
 			a.id,
 			"failed to execute request",
@@ -132,10 +152,9 @@ func (a *HTTPAdapter) Lookup(ctx context.Context, filters map[string]string) (*p
 	}
 	defer resp.Body.Close()
 
-	// Read response body
-	respBodyBytes, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, providers.NewProviderError(
+		return nil, nil, providers.NewProviderError(
 			providers.ErrorBadData,
 			a.id,
 			"failed to read response",
@@ -143,40 +162,47 @@ func (a *HTTPAdapter) Lookup(ctx context.Context, filters map[string]string) (*p
 		)
 	}
 
-	// Handle error status codes
-	switch resp.StatusCode {
+	return resp, body, nil
+}
+
+// checkStatusCode maps HTTP status codes to provider errors.
+func (a *HTTPAdapter) checkStatusCode(statusCode int) error {
+	switch statusCode {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return nil, providers.NewProviderError(
+		return providers.NewProviderError(
 			providers.ErrorAuthentication,
 			a.id,
-			fmt.Sprintf("authentication failed: %d", resp.StatusCode),
+			fmt.Sprintf("authentication failed: %d", statusCode),
 			nil,
 		)
 	case http.StatusNotFound:
-		return nil, providers.NewProviderError(
+		return providers.NewProviderError(
 			providers.ErrorNotFound,
 			a.id,
 			"record not found",
 			nil,
 		)
 	case http.StatusTooManyRequests:
-		return nil, providers.NewProviderError(
+		return providers.NewProviderError(
 			providers.ErrorRateLimited,
 			a.id,
 			"rate limit exceeded",
 			nil,
 		)
 	case http.StatusServiceUnavailable, http.StatusGatewayTimeout:
-		return nil, providers.NewProviderError(
+		return providers.NewProviderError(
 			providers.ErrorProviderOutage,
 			a.id,
-			fmt.Sprintf("provider unavailable: %d", resp.StatusCode),
+			fmt.Sprintf("provider unavailable: %d", statusCode),
 			nil,
 		)
 	}
+	return nil
+}
 
-	// Use custom parser to convert response to Evidence
-	evidence, err := a.parser(resp.StatusCode, respBodyBytes)
+// parseAndEnrich converts the response body to Evidence and adds provider metadata.
+func (a *HTTPAdapter) parseAndEnrich(ctx context.Context, statusCode int, body []byte) (*providers.Evidence, error) {
+	evidence, err := a.parser(statusCode, body)
 	if err != nil {
 		return nil, providers.NewProviderError(
 			providers.ErrorBadData,
@@ -186,13 +212,14 @@ func (a *HTTPAdapter) Lookup(ctx context.Context, filters map[string]string) (*p
 		)
 	}
 
-	// Enrich evidence with provider metadata
 	if evidence.Metadata == nil {
 		evidence.Metadata = make(map[string]string)
 	}
 	evidence.ProviderID = a.id
 	evidence.ProviderType = a.capabs.Type
-	evidence.CheckedAt = time.Now()
+	if evidence.CheckedAt.IsZero() {
+		evidence.CheckedAt = requesttime.Now(ctx)
+	}
 
 	return evidence, nil
 }
