@@ -466,12 +466,6 @@ func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service)
 		cache,
 		infra.Cfg.Security.RegulatedMode,
 		registryService.WithLogger(infra.Log),
-		registryService.WithAuditor(auditpublisher.NewPublisher(
-			auditstore.NewInMemoryStore(),
-			auditpublisher.WithAsyncBuffer(1000),
-			auditpublisher.WithMetrics(infra.AuditMetrics),
-			auditpublisher.WithPublisherLogger(infra.Log),
-		)),
 	)
 
 	// Create consent adapter

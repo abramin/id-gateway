@@ -10,9 +10,6 @@ import (
 	"credo/internal/evidence/registry/providers"
 	"credo/internal/evidence/registry/store"
 	dErrors "credo/pkg/domain-errors"
-	"credo/pkg/platform/audit"
-	"credo/pkg/platform/audit/publisher"
-	"credo/pkg/platform/middleware/request"
 )
 
 // Service coordinates registry lookups with caching and optional minimisation.
@@ -20,7 +17,6 @@ type Service struct {
 	orchestrator *orchestrator.Orchestrator
 	cache        CacheStore
 	regulated    bool
-	auditor      *publisher.Publisher
 	logger       *slog.Logger
 }
 
@@ -34,13 +30,6 @@ type CacheStore interface {
 
 // Option configures the Service.
 type Option func(*Service)
-
-// WithAuditor sets the audit publisher for the service.
-func WithAuditor(auditor *publisher.Publisher) Option {
-	return func(s *Service) {
-		s.auditor = auditor
-	}
-}
 
 // WithLogger sets the logger for the service.
 func WithLogger(logger *slog.Logger) Option {
@@ -295,24 +284,4 @@ func (s *Service) translateProviderError(err error) error {
 		}
 	}
 	return dErrors.Wrap(err, dErrors.CodeInternal, "registry lookup failed")
-}
-
-// emitAudit publishes an audit event. Failures are logged but don't fail the operation.
-func (s *Service) emitAudit(ctx context.Context, event audit.Event) {
-	if s.auditor == nil {
-		return
-	}
-	// Enrich with RequestID for correlation
-	if event.RequestID == "" {
-		event.RequestID = request.GetRequestID(ctx)
-	}
-	if err := s.auditor.Emit(ctx, event); err != nil {
-		if s.logger != nil {
-			s.logger.ErrorContext(ctx, "failed to emit audit event",
-				"error", err,
-				"action", event.Action,
-				"user_id", event.UserID,
-			)
-		}
-	}
 }
