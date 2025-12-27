@@ -151,19 +151,6 @@ flowchart TD
 
 For retryable errors (timeout, rate limit, outage), the orchestrator applies exponential backoff:
 
-```mermaid
-flowchart LR
-    subgraph Backoff ["Exponential Backoff"]
-        A["Attempt 1"] --> |Fail| W1["Wait 100ms"]
-        W1 --> A2["Attempt 2"]
-        A2 --> |Fail| W2["Wait 200ms"]
-        W2 --> A3["Attempt 3"]
-        A3 --> |Fail| W3["Wait 400ms"]
-        W3 --> A4["Attempt 4"]
-        A4 --> |Fail| GIVE["Give Up → Try Fallback"]
-    end
-```
-
 Default configuration:
 - Initial delay: 100ms
 - Max delay: 2s
