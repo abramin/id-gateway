@@ -29,16 +29,21 @@ type RegistryService interface {
 	Check(ctx context.Context, nationalID string) (*models.RegistryResult, error)
 }
 
+// AuditPublisher emits audit events for security-relevant operations.
+type AuditPublisher interface {
+	Emit(ctx context.Context, event audit.Event) error
+}
+
 // Handler handles HTTP requests for registry operations.
 type Handler struct {
 	service     RegistryService
 	consentPort ports.ConsentPort
-	auditPort   ports.AuditPort
+	auditPort   AuditPublisher
 	logger      *slog.Logger
 }
 
 // New creates a new registry handler.
-func New(service RegistryService, consentPort ports.ConsentPort, auditPort ports.AuditPort, logger *slog.Logger) *Handler {
+func New(service RegistryService, consentPort ports.ConsentPort, auditPort AuditPublisher, logger *slog.Logger) *Handler {
 	return &Handler{
 		service:     service,
 		consentPort: consentPort,

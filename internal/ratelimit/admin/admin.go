@@ -6,8 +6,9 @@ import (
 	"log/slog"
 
 	"credo/internal/ratelimit/models"
-	"credo/internal/ratelimit/ports"
+	"credo/internal/ratelimit/observability"
 	id "credo/pkg/domain"
+	"credo/pkg/platform/audit"
 	"credo/pkg/platform/middleware/requesttime"
 )
 
@@ -24,8 +25,10 @@ type BucketStore interface {
 	GetCurrentCount(ctx context.Context, key string) (int, error)
 }
 
-// AuditPublisher is an alias to the shared interface.
-type AuditPublisher = ports.AuditPublisher
+// AuditPublisher emits audit events for security-relevant operations.
+type AuditPublisher interface {
+	Emit(ctx context.Context, event audit.Event) error
+}
 
 type Service struct {
 	allowlist      AllowlistStore
@@ -87,7 +90,7 @@ func (s *Service) AddToAllowlist(ctx context.Context, req *models.AddAllowlistRe
 		return nil, fmt.Errorf("failed to add to allowlist: %w", err)
 	}
 
-	ports.LogAudit(ctx, s.logger, s.auditPublisher, "rate_limit_allowlist_added",
+	observability.LogAudit(ctx, s.logger, s.auditPublisher, "rate_limit_allowlist_added",
 		"identifier", entry.Identifier,
 		"type", entry.Type,
 		"expires_at", entry.ExpiresAt,
@@ -105,7 +108,7 @@ func (s *Service) RemoveFromAllowlist(ctx context.Context, req *models.RemoveAll
 		return fmt.Errorf("failed to remove from allowlist: %w", err)
 	}
 
-	ports.LogAudit(ctx, s.logger, s.auditPublisher, "rate_limit_allowlist_removed",
+	observability.LogAudit(ctx, s.logger, s.auditPublisher, "rate_limit_allowlist_removed",
 		"identifier", req.Identifier,
 		"type", req.Type,
 	)
@@ -156,7 +159,7 @@ func (s *Service) ResetRateLimit(ctx context.Context, req *models.ResetRateLimit
 		}
 	}
 
-	ports.LogAudit(ctx, s.logger, s.auditPublisher, "rate_limit_reset",
+	observability.LogAudit(ctx, s.logger, s.auditPublisher, "rate_limit_reset",
 		"identifier", req.Identifier,
 		"type", req.Type,
 		"class", req.Class,

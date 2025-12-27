@@ -30,14 +30,14 @@ import (
 
 	"credo/internal/ratelimit/config"
 	"credo/internal/ratelimit/models"
-	"credo/internal/ratelimit/ports"
+	"credo/internal/ratelimit/observability"
 	dErrors "credo/pkg/domain-errors"
+	"credo/pkg/platform/audit"
 	requesttime "credo/pkg/platform/middleware/requesttime"
 	"credo/pkg/platform/privacy"
 )
 
 // Store is the persistence interface for auth lockout records.
-// A subset of ports.AuthLockoutStore (excludes cleanup worker methods).
 type Store interface {
 	RecordFailure(ctx context.Context, identifier string) (*models.AuthLockout, error)
 	Get(ctx context.Context, identifier string) (*models.AuthLockout, error)
@@ -46,8 +46,10 @@ type Store interface {
 	Update(ctx context.Context, record *models.AuthLockout) error
 }
 
-// AuditPublisher is an alias to the shared interface.
-type AuditPublisher = ports.AuditPublisher
+// AuditPublisher emits audit events for security-relevant operations.
+type AuditPublisher interface {
+	Emit(ctx context.Context, event audit.Event) error
+}
 
 // Service tracks authentication failures and enforces lockout policies.
 // Thread-safe for concurrent use by auth handlers.
@@ -129,7 +131,7 @@ func (s *Service) Check(ctx context.Context, identifier, ip string) (*models.Aut
 	// Check if currently hard-locked (FR-2b: "hard lock for 15 minutes")
 	if record.IsLockedAt(now) {
 		retryAfter := max(int(record.LockedUntil.Sub(now).Seconds()), 0)
-		ports.LogAudit(ctx, s.logger, s.auditPublisher, "auth_lockout_triggered",
+		observability.LogAudit(ctx, s.logger, s.auditPublisher, "auth_lockout_triggered",
 			"identifier", identifier,
 			"ip", privacy.AnonymizeIP(ip),
 			"locked_until", record.LockedUntil,
@@ -202,7 +204,7 @@ func (s *Service) RecordFailure(ctx context.Context, identifier, ip string) (*mo
 
 	if shouldHardLock {
 		current.ApplyHardLock(s.config.HardLockDuration, now)
-		ports.LogAudit(ctx, s.logger, s.auditPublisher, "auth_lockout_triggered",
+		observability.LogAudit(ctx, s.logger, s.auditPublisher, "auth_lockout_triggered",
 			"identifier", identifier,
 			"ip", privacy.AnonymizeIP(ip),
 			"locked_until", current.LockedUntil,
@@ -232,7 +234,7 @@ func (s *Service) Clear(ctx context.Context, identifier, ip string) error {
 		return dErrors.Wrap(err, dErrors.CodeInternal, "failed to clear auth failures")
 	}
 
-	ports.LogAudit(ctx, s.logger, s.auditPublisher, "auth_lockout_cleared",
+	observability.LogAudit(ctx, s.logger, s.auditPublisher, "auth_lockout_cleared",
 		"identifier", identifier,
 		"ip", privacy.AnonymizeIP(ip),
 	)
