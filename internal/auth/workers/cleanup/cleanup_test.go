@@ -19,9 +19,9 @@ import (
 func TestCleanupService_RunOnce_Integration(t *testing.T) {
 	ctx := context.Background()
 
-	sessions := sessionStore.NewInMemorySessionStore()
-	codes := authCodeStore.NewInMemoryAuthorizationCodeStore()
-	refreshTokens := refreshtoken.NewInMemoryRefreshTokenStore()
+	sessions := sessionStore.New()
+	codes := authCodeStore.New()
+	refreshTokens := refreshtoken.New()
 
 	expiredSessionID := id.SessionID(uuid.New())
 	expiredSession := &models.Session{

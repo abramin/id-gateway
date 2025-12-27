@@ -11,14 +11,17 @@ import (
 	"github.com/mssola/useragent"
 )
 
+// Service provides device binding helpers for auth sessions.
 type Service struct {
 	enabled bool
 }
 
+// NewService constructs a device binding helper with enablement flag.
 func NewService(enabled bool) *Service {
 	return &Service{enabled: enabled}
 }
 
+// GenerateDeviceID returns a new device identifier for session binding.
 func (s *Service) GenerateDeviceID() string {
 	return uuid.New().String()
 }

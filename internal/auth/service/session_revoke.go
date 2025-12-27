@@ -10,6 +10,8 @@ import (
 	"credo/pkg/platform/audit"
 )
 
+// RevokeSession revokes a single session for the given user.
+// It validates ownership before performing the revocation.
 func (s *Service) RevokeSession(ctx context.Context, userID id.UserID, sessionID id.SessionID) error {
 	if userID.IsNil() {
 		return dErrors.New(dErrors.CodeUnauthorized, "user ID required")

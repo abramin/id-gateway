@@ -1,6 +1,6 @@
 package models
 
-// pending_consent, active, revoked
+// SessionStatus represents the lifecycle state of an auth session.
 type SessionStatus string
 
 const (
@@ -35,7 +35,7 @@ func (s SessionStatus) CanTransitionTo(target SessionStatus) bool {
 	}
 }
 
-// Valid types: authorization_code, refresh_token
+// Grant represents supported OAuth grant types.
 type Grant string
 
 const (
@@ -43,7 +43,7 @@ const (
 	GrantRefreshToken      Grant = "refresh_token"
 )
 
-// Scope represents a valid OAuth 2.0 / OIDC scope
+// Scope represents a valid OAuth 2.0 / OIDC scope.
 type Scope string
 
 const (
@@ -57,7 +57,7 @@ const (
 	ScopeEmail Scope = "email"
 )
 
-// Valid tokens: access_token, refresh_token
+// TokenType represents supported token types in revocation flows.
 type TokenType string
 
 const (
@@ -65,7 +65,7 @@ const (
 	TokenTypeRefresh TokenType = "refresh_token"
 )
 
-// Valid statuses: "active", "inactive"
+// UserStatus represents whether a user is active or inactive.
 type UserStatus string
 
 const (
@@ -73,7 +73,7 @@ const (
 	UserStatusInactive UserStatus = "inactive"
 )
 
-// Valid statuses: "active", "inactive"
+// ClientStatus represents whether a client is active or inactive.
 type ClientStatus string
 
 const (
@@ -81,7 +81,7 @@ const (
 	ClientStatusInactive ClientStatus = "inactive"
 )
 
-// Valid statuses: "active", "inactive"
+// TenantStatus represents whether a tenant is active or inactive.
 type TenantStatus string
 
 const (

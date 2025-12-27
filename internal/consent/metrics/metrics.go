@@ -5,6 +5,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+// Metrics holds Prometheus collectors for consent operations.
 type Metrics struct {
 	ConsentsGranted       *prometheus.CounterVec
 	ConsentsRevoked       *prometheus.CounterVec
@@ -18,6 +19,7 @@ type Metrics struct {
 	RecordsPerUser        prometheus.Histogram
 }
 
+// New registers and returns consent metrics collectors.
 func New() *Metrics {
 	return &Metrics{
 		ConsentsGranted: promauto.NewCounterVec(prometheus.CounterOpts{

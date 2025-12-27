@@ -65,10 +65,10 @@ func SetupSuite(t *testing.T) (
 ) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	userStore := userStore.NewInMemoryUserStore()
-	sessionStore := sessionStore.NewInMemorySessionStore()
-	authCodeStore := authCodeStore.NewInMemoryAuthorizationCodeStore()
-	refreshTokenStore := refreshTokenStore.NewInMemoryRefreshTokenStore()
+	userStore := userStore.New()
+	sessionStore := sessionStore.New()
+	authCodeStore := authCodeStore.New()
+	refreshTokenStore := refreshTokenStore.New()
 	jwtService := jwttoken.NewJWTService(
 		"test-secret-key",
 		"credo",

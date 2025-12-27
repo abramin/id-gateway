@@ -8,19 +8,23 @@ import (
 	"time"
 )
 
+// AuthorizationCodeStore exposes cleanup for expired authorization codes.
 type AuthorizationCodeStore interface {
 	DeleteExpiredCodes(ctx context.Context, now time.Time) (int, error)
 }
 
+// RefreshTokenStore exposes cleanup for refresh tokens and rotation artifacts.
 type RefreshTokenStore interface {
 	DeleteExpiredTokens(ctx context.Context, now time.Time) (int, error)
 	DeleteUsedTokens(ctx context.Context) (int, error)
 }
 
+// SessionStore exposes cleanup for expired sessions.
 type SessionStore interface {
 	DeleteExpiredSessions(ctx context.Context, now time.Time) (int, error)
 }
 
+// CleanupResult summarizes the deletions performed by a cleanup run.
 type CleanupResult struct {
 	DeletedAuthorizationCodes int
 	DeletedRefreshTokens      int
@@ -28,6 +32,7 @@ type CleanupResult struct {
 	DeletedSessions           int
 }
 
+// CleanupService periodically removes expired auth artifacts.
 type CleanupService struct {
 	sessionStore      SessionStore
 	codeStore         AuthorizationCodeStore
@@ -36,8 +41,10 @@ type CleanupService struct {
 	logger            *slog.Logger
 }
 
+// CleanupOption configures CleanupService.
 type CleanupOption func(*CleanupService)
 
+// WithCleanupInterval overrides the cleanup interval when greater than zero.
 func WithCleanupInterval(interval time.Duration) CleanupOption {
 	return func(s *CleanupService) {
 		if interval > 0 {
@@ -46,6 +53,7 @@ func WithCleanupInterval(interval time.Duration) CleanupOption {
 	}
 }
 
+// WithCleanupLogger overrides the logger used for cleanup errors.
 func WithCleanupLogger(logger *slog.Logger) CleanupOption {
 	return func(s *CleanupService) {
 		if logger != nil {
@@ -54,6 +62,7 @@ func WithCleanupLogger(logger *slog.Logger) CleanupOption {
 	}
 }
 
+// New constructs a CleanupService with required stores and options applied.
 func New(
 	sessionStore SessionStore,
 	codeStore AuthorizationCodeStore,

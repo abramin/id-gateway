@@ -21,7 +21,7 @@ type InMemoryAuthorizationCodeStoreSuite struct {
 }
 
 func (s *InMemoryAuthorizationCodeStoreSuite) SetupTest() {
-	s.store = NewInMemoryAuthorizationCodeStore()
+	s.store = New()
 }
 
 func (s *InMemoryAuthorizationCodeStoreSuite) TestSave() {

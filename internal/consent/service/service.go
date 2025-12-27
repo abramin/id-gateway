@@ -35,6 +35,7 @@ type Store interface {
 	DeleteByUser(ctx context.Context, userID id.UserID) error
 }
 
+// Option configures Service during initialization.
 type Option func(*Service)
 
 const (
@@ -43,6 +44,7 @@ const (
 )
 
 // Service persists consent decisions and enforces lifecycle rules per PRD-002.
+// It coordinates store writes, audit events, and metrics for consent operations.
 type Service struct {
 	store                  Store
 	tx                     ConsentStoreTx
@@ -53,7 +55,8 @@ type Service struct {
 	grantIdempotencyWindow time.Duration
 }
 
-func NewService(store Store, auditor *auditpublisher.Publisher, logger *slog.Logger, opts ...Option) *Service {
+// New constructs a consent service with defaults applied.
+func New(store Store, auditor *auditpublisher.Publisher, logger *slog.Logger, opts ...Option) *Service {
 	svc := &Service{
 		store:                  store,
 		tx:                     &shardedConsentTx{mu: platformsync.NewShardedMutex(), store: store},
@@ -82,7 +85,7 @@ func WithTx(tx ConsentStoreTx) Option {
 	}
 }
 
-// WithMetrics sets the metrics instance for the service
+// WithMetrics sets the metrics instance for the service.
 func WithMetrics(m *consentmetrics.Metrics) Option {
 	return func(s *Service) {
 		s.metrics = m
@@ -107,7 +110,7 @@ func WithConsentTTL(ttl time.Duration) Option {
 }
 
 // WithGrantWindow configures the idempotency window for repeated grants.
-// If not set or set to zero/negative, defaults to 1 second.
+// If not set or set to zero/negative, defaults to 5 minutes.
 func WithGrantWindow(window time.Duration) Option {
 	return func(s *Service) {
 		if window > 0 {
@@ -117,6 +120,8 @@ func WithGrantWindow(window time.Duration) Option {
 }
 
 // Grant grants consent for the specified purposes.
+// It performs transactional upserts, applies idempotency rules,
+// and emits audit/metrics for any changes.
 // Returns the granted records (domain objects), not HTTP response DTOs.
 func (s *Service) Grant(ctx context.Context, userID id.UserID, purposes []models.Purpose) ([]*models.Record, error) {
 	if userID.IsNil() {
@@ -229,7 +234,8 @@ func (s *Service) emitGrantAudit(ctx context.Context, userID id.UserID, purpose 
 }
 
 // Revoke revokes consent for the specified purposes.
-// Returns the revoked records (domain objects), not HTTP response DTOs.
+// It skips missing, expired, or already revoked records while emitting audit/metrics
+// for successful revocations. Returns domain objects, not HTTP response DTOs.
 func (s *Service) Revoke(ctx context.Context, userID id.UserID, purposes []models.Purpose) ([]*models.Record, error) {
 	if userID.IsNil() {
 		return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, "user ID required")
@@ -288,8 +294,7 @@ func (s *Service) Revoke(ctx context.Context, userID id.UserID, purposes []model
 }
 
 // RevokeAll revokes all active consents for a user.
-// Intended administrative purposes.
-// Returns the count of revoked consents.
+// Intended for administrative purposes. Returns the count of revoked consents.
 func (s *Service) RevokeAll(ctx context.Context, userID id.UserID) (int, error) {
 	if userID.IsNil() {
 		return 0, pkgerrors.New(pkgerrors.CodeBadRequest, "user ID required")
@@ -336,7 +341,7 @@ func (s *Service) DeleteAll(ctx context.Context, userID id.UserID) error {
 }
 
 // List returns all consent records for a user.
-// Returns domain objects, not HTTP response DTOs.
+// It applies optional filters and returns domain objects, not HTTP DTOs.
 func (s *Service) List(ctx context.Context, userID id.UserID, filter *models.RecordFilter) ([]*models.Record, error) {
 	if userID.IsNil() {
 		return nil, pkgerrors.New(pkgerrors.CodeUnauthorized, "user ID required")
@@ -352,6 +357,8 @@ func (s *Service) List(ctx context.Context, userID id.UserID, filter *models.Rec
 	return records, nil
 }
 
+// Require enforces that a user has active consent for the given purpose.
+// It records audit/metrics outcomes for missing, revoked, expired, or active states.
 func (s *Service) Require(ctx context.Context, userID id.UserID, purpose models.Purpose) error {
 	if userID.IsNil() {
 		return pkgerrors.New(pkgerrors.CodeUnauthorized, "user ID required")

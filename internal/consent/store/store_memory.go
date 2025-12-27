@@ -17,12 +17,14 @@ import (
 // - Return nil for successful operations
 // - Return wrapped errors with context for infrastructure failures (future: DB errors, network issues, etc.)
 
+// InMemoryStore stores consent records in memory for tests/dev.
 type InMemoryStore struct {
 	mu       sync.RWMutex
 	consents map[id.UserID][]*models.Record
 }
 
-func NewInMemoryStore() *InMemoryStore {
+// New constructs an empty in-memory consent store.
+func New() *InMemoryStore {
 	return &InMemoryStore{consents: make(map[id.UserID][]*models.Record)}
 }
 

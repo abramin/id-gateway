@@ -28,17 +28,17 @@ All review agents inherit these rules. Individual agents should not repeat them;
 
 Use this decision tree to select the right agent:
 
-| Question | Agent |
-|----------|-------|
-| "Is this too complicated to read?" | **complexity-review** |
-| "Is this doing too many things?" | **balance-review** (PASS A) |
-| "Is the model/aggregate design right?" | **ddd-review** |
-| "Is there a security gap?" | **secure-design-agent** |
-| "Is there unnecessary indirection?" | **balance-review** (PASS C) |
-| "Is there harmful duplication?" | **balance-review** (PASS B) |
-| "Where's the I/O hiding?" | **balance-review** (PASS D) |
-| "Will this scale?" | **performance-review** |
-| "Are the tests right?" | **testing-review** |
+| Question                               | Agent                       |
+| -------------------------------------- | --------------------------- |
+| "Is this too complicated to read?"     | **complexity-review**       |
+| "Is this doing too many things?"       | **balance-review** (PASS A) |
+| "Is the model/aggregate design right?" | **ddd-review**              |
+| "Is there a security gap?"             | **secure-design-agent**     |
+| "Is there unnecessary indirection?"    | **balance-review** (PASS C) |
+| "Is there harmful duplication?"        | **balance-review** (PASS B) |
+| "Where's the I/O hiding?"              | **balance-review** (PASS D) |
+| "Will this scale?"                     | **performance-review**      |
+| "Are the tests right?"                 | **testing-review**          |
 
 ## Agent roster
 
@@ -126,5 +126,5 @@ All agents should:
 
 ## Comment rules
 
-- Add comments only when they provide information not already obvious from names or structure.
-- Do not comment to restate self-documenting methods or code.
+- Add detailed comments for exported methods and types, especially for complex methods that perform various processing steps or state changes.
+- For very simple methods that do a single thing that is clear from method name, skip comments.

@@ -10,6 +10,8 @@ import (
 	"credo/pkg/platform/middleware/requesttime"
 )
 
+// ListSessions returns active sessions for a user, ordered by recent activity.
+// It filters out inactive or expired sessions and marks the current session.
 func (s *Service) ListSessions(ctx context.Context, userID id.UserID, currentSessionID id.SessionID) (*models.SessionsResult, error) {
 	if userID.IsNil() {
 		return nil, dErrors.New(dErrors.CodeUnauthorized, "user ID required")

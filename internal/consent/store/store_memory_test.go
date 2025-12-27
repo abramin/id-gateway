@@ -15,7 +15,7 @@ import (
 )
 
 func TestInMemoryStoreOperations(t *testing.T) {
-	store := NewInMemoryStore()
+	store := New()
 	ctx := context.Background()
 	now := time.Now()
 	expiry := now.Add(time.Hour)

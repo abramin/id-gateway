@@ -16,6 +16,7 @@ type RateLimitPort interface {
 	ClearAuthFailures(ctx context.Context, identifier, ip string) error
 }
 
+// AuthRateLimitResult describes the current rate limit status for a request.
 type AuthRateLimitResult struct {
 	Allowed    bool
 	Remaining  int
@@ -23,6 +24,7 @@ type AuthRateLimitResult struct {
 	ResetAt    time.Time
 }
 
+// AuthLockoutState reports the current lockout and captcha requirements.
 type AuthLockoutState struct {
 	FailureCount    int
 	LockedUntil     *time.Time

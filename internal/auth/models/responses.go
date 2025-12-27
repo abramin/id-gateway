@@ -5,12 +5,14 @@ import "time"
 // This file contains transport-layer response models for JSON output.
 // These are shaped for API responses and should avoid domain behavior.
 
+// AuthorizationResult is the response payload for /auth/authorize.
 type AuthorizationResult struct {
 	Code        string `json:"code"`
 	RedirectURI string `json:"redirect_uri"`
 	DeviceID    string `json:"device_id,omitempty"`
 }
 
+// TokenResult is the response payload for /auth/token.
 type TokenResult struct {
 	AccessToken  string `json:"access_token"`
 	IDToken      string `json:"id_token"`
@@ -20,6 +22,7 @@ type TokenResult struct {
 	Scope        string `json:"scope,omitempty"` // space-delimited scopes granted
 }
 
+// UserInfoResult is the OIDC userinfo response payload.
 type UserInfoResult struct {
 	Sub           string `json:"sub"`            // Subject - Identifier for the End-User at the Issuer.
 	Email         string `json:"email"`          // End-User's preferred e-mail address.
@@ -45,12 +48,14 @@ type SessionsResult struct {
 	Sessions []SessionSummary `json:"sessions"`
 }
 
+// SessionRevocationResult reports the outcome of revoking a session.
 type SessionRevocationResult struct {
 	Revoked   bool   `json:"revoked"`
 	SessionID string `json:"session_id"`
 	Message   string `json:"message"`
 }
 
+// LogoutAllResult reports how many sessions were revoked during logout-all.
 type LogoutAllResult struct {
 	RevokedCount int `json:"revoked_count"`
 	FailedCount  int `json:"failed_count,omitempty"`

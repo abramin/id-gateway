@@ -21,7 +21,7 @@ type InMemorySessionStoreSuite struct {
 }
 
 func (s *InMemorySessionStoreSuite) SetupTest() {
-	s.store = NewInMemorySessionStore()
+	s.store = New()
 }
 
 func (s *InMemorySessionStoreSuite) TestCreateAndFind() {

@@ -29,12 +29,14 @@ type Service interface {
 	List(ctx context.Context, userID id.UserID, filter *models.RecordFilter) ([]*models.Record, error)
 }
 
+// Handler wires HTTP consent endpoints to the consent service.
 type Handler struct {
 	logger  *slog.Logger
 	consent Service
 	metrics *consentmetrics.Metrics
 }
 
+// New constructs a consent handler with dependencies wired.
 func New(consent Service, logger *slog.Logger, metrics *consentmetrics.Metrics) *Handler {
 	return &Handler{
 		logger:  logger,
@@ -43,7 +45,8 @@ func New(consent Service, logger *slog.Logger, metrics *consentmetrics.Metrics) 
 	}
 }
 
-// HandleGrantConsent grants consent for the authenticated user
+// HandleGrantConsent grants consent for the authenticated user.
+// It validates input, invokes the service, and returns grant details.
 func (h *Handler) HandleGrantConsent(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	start := time.Now()
@@ -78,6 +81,8 @@ func (h *Handler) HandleGrantConsent(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, toGrantResponse(records, requesttime.Now(ctx)))
 }
 
+// HandleRevokeConsent revokes consent for the authenticated user.
+// It validates input, invokes the service, and returns revocation details.
 func (h *Handler) HandleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
@@ -105,6 +110,7 @@ func (h *Handler) HandleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, toRevokeResponse(records, requesttime.Now(ctx)))
 }
 
+// HandleAdminRevokeAllConsents revokes all consents for a user by admin action.
 func (h *Handler) HandleAdminRevokeAllConsents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
@@ -132,6 +138,7 @@ func (h *Handler) HandleAdminRevokeAllConsents(w http.ResponseWriter, r *http.Re
 	})
 }
 
+// HandleDeleteAllConsents deletes all consent records for the authenticated user.
 func (h *Handler) HandleDeleteAllConsents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
@@ -155,6 +162,7 @@ func (h *Handler) HandleDeleteAllConsents(w http.ResponseWriter, r *http.Request
 	})
 }
 
+// HandleGetConsents lists consent records for the authenticated user.
 func (h *Handler) HandleGetConsents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)

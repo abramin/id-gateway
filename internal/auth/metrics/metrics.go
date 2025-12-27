@@ -5,6 +5,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+// Metrics holds Prometheus collectors for auth operations.
 type Metrics struct {
 	UsersCreated           prometheus.Counter
 	ActiveSessions         prometheus.Gauge
@@ -18,6 +19,7 @@ type Metrics struct {
 	TokenRefreshDurationMs  prometheus.Histogram
 }
 
+// New registers and returns auth metrics collectors.
 func New() *Metrics {
 	return &Metrics{
 		UsersCreated: promauto.NewCounter(prometheus.CounterOpts{

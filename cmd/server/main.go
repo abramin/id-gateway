@@ -306,10 +306,10 @@ func buildInfra() (*infraBundle, error) {
 }
 
 func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *tenantService.Service, authLockoutSvc *authlockout.Service, requestSvc *requestlimit.Service) (*authModule, error) {
-	users := userStore.NewInMemoryUserStore()
-	sessions := sessionStore.NewInMemorySessionStore()
-	codes := authCodeStore.NewInMemoryAuthorizationCodeStore()
-	refreshTokens := refreshTokenStore.NewInMemoryRefreshTokenStore()
+	users := userStore.New()
+	sessions := sessionStore.New()
+	codes := authCodeStore.New()
+	refreshTokens := refreshTokenStore.New()
 	auditStore := auditstore.NewInMemoryStore()
 
 	if infra.Cfg.DemoMode {
@@ -366,7 +366,7 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 	// Create rate limit adapter for auth handler (nil if rate limiting is disabled)
 	var rateLimitAdapter authPorts.RateLimitPort
 	if !infra.Cfg.DemoMode && !infra.Cfg.DisableRateLimiting {
-		rateLimitAdapter = authAdapters.NewRateLimitAdapter(authLockoutSvc, requestSvc)
+		rateLimitAdapter = authAdapters.New(authLockoutSvc, requestSvc)
 	}
 
 	return &authModule{
@@ -383,8 +383,8 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 }
 
 func buildConsentModule(infra *infraBundle) *consentModule {
-	consentSvc := consentService.NewService(
-		consentStore.NewInMemoryStore(),
+	consentSvc := consentService.New(
+		consentStore.New(),
 		auditpublisher.NewPublisher(
 			auditstore.NewInMemoryStore(),
 			auditpublisher.WithAsyncBuffer(1000),

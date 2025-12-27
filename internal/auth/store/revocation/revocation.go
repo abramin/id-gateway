@@ -20,8 +20,10 @@ type InMemoryTRL struct {
 	stopCh          chan struct{}
 }
 
+// InMemoryTRLOption configures an InMemoryTRL instance.
 type InMemoryTRLOption func(*InMemoryTRL)
 
+// WithCleanupInterval overrides the background cleanup interval.
 func WithCleanupInterval(d time.Duration) InMemoryTRLOption {
 	return func(trl *InMemoryTRL) {
 		if d > 0 {
@@ -40,6 +42,7 @@ func WithMaxSize(maxSize int) InMemoryTRLOption {
 	}
 }
 
+// NewInMemoryTRL constructs an in-memory token revocation list.
 func NewInMemoryTRL(opts ...InMemoryTRLOption) *InMemoryTRL {
 	trl := &InMemoryTRL{
 		revoked:         make(map[string]time.Time),

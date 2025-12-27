@@ -25,6 +25,7 @@ type tokenResolution struct {
 	JTI     string // Only set for access tokens
 }
 
+// RevokeToken revokes an access or refresh token and invalidates its session.
 func (s *Service) RevokeToken(ctx context.Context, token string, tokenTypeHint string) error {
 	token = strings.TrimSpace(token)
 	tokenTypeHint = strings.TrimSpace(tokenTypeHint)
@@ -165,6 +166,7 @@ func (s *Service) revokeSessionInternal(ctx context.Context, session *models.Ses
 	return revokeSessionOutcomeRevoked, nil
 }
 
+// IsTokenRevoked checks whether a token JTI is present in the revocation list.
 func (s *Service) IsTokenRevoked(ctx context.Context, jti string) (bool, error) {
 	return s.trl.IsRevoked(ctx, jti)
 }

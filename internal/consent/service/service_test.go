@@ -49,7 +49,7 @@ func (s *ServiceSuite) SetupTest() {
 	s.mockStore = mocks.NewMockStore(s.ctrl)
 	s.auditStore = auditstore.NewInMemoryStore()
 	auditor := auditpublisher.NewPublisher(s.auditStore)
-	s.service = NewService(
+	s.service = New(
 		s.mockStore,
 		auditor,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),

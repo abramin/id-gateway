@@ -20,7 +20,7 @@ type InMemoryUserStoreSuite struct {
 }
 
 func (s *InMemoryUserStoreSuite) SetupTest() {
-	s.store = NewInMemoryUserStore()
+	s.store = New()
 }
 
 func (s *InMemoryUserStoreSuite) TestSaveAndFind() {

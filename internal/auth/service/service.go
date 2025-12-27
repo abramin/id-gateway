@@ -70,6 +70,7 @@ type SessionStore interface {
 	AdvanceLastRefreshed(ctx context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, deviceID string, deviceFingerprintHash string) (*models.Session, error)
 }
 
+// AuthCodeStore defines persistence operations for authorization codes and their lifecycle.
 type AuthCodeStore interface {
 	Create(ctx context.Context, authCode *models.AuthorizationCodeRecord) error
 	FindByCode(ctx context.Context, code string) (*models.AuthorizationCodeRecord, error)
@@ -78,6 +79,7 @@ type AuthCodeStore interface {
 	DeleteExpiredCodes(ctx context.Context, now time.Time) (int, error)
 }
 
+// RefreshTokenStore defines persistence operations for refresh tokens, including rotation.
 type RefreshTokenStore interface {
 	Create(ctx context.Context, token *models.RefreshTokenRecord) error
 	FindBySessionID(ctx context.Context, sessionID id.SessionID) (*models.RefreshTokenRecord, error)
@@ -86,6 +88,7 @@ type RefreshTokenStore interface {
 	DeleteBySessionID(ctx context.Context, sessionID id.SessionID) error
 }
 
+// TokenGenerator issues signed access/ID tokens and generates refresh tokens.
 type TokenGenerator interface {
 	GenerateAccessToken(ctx context.Context, userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string, scopes []string) (string, error)
 	GenerateAccessTokenWithJTI(ctx context.Context, userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string, scopes []string) (string, string, error)
@@ -96,16 +99,19 @@ type TokenGenerator interface {
 	ParseTokenSkipClaimsValidation(token string) (*jwttoken.AccessTokenClaims, error)
 }
 
+// AuditPublisher emits auth-related audit events.
 type AuditPublisher interface {
 	Emit(ctx context.Context, base audit.Event) error
 }
 
+// ClientResolver resolves client metadata and tenant ownership for a client ID.
 type ClientResolver interface {
 	// ResolveClient maps client_id -> client and tenant as a single choke point.
 	// If the client or tenant is inactive, returns an invalid_client error.
 	ResolveClient(ctx context.Context, clientID string) (*tenant.Client, *tenant.Tenant, error)
 }
 
+// Service orchestrates auth workflows across stores, tokens, audits, and metrics.
 type Service struct {
 	users          UserStore
 	sessions       SessionStore
@@ -142,6 +148,7 @@ const TRLFailureModeWarn = "warn"
 // TRLFailureModeFail returns an error if TRL write fails.
 const TRLFailureModeFail = "fail"
 
+// Config controls auth timeouts, redirect scheme policy, and TRL behavior.
 type Config struct {
 	SessionTTL             time.Duration
 	TokenTTL               time.Duration
@@ -181,6 +188,7 @@ type tokenArtifacts struct {
 	refreshRecord  *models.RefreshTokenRecord
 }
 
+// Option configures Service during initialization.
 type Option func(*Service)
 
 // txAuthStores groups the stores used inside a transaction.
@@ -253,36 +261,42 @@ type txSessionKey struct{}
 
 var txSessionKeyCtx = txSessionKey{}
 
+// WithLogger sets the logger used by auth operations.
 func WithLogger(logger *slog.Logger) Option {
 	return func(s *Service) {
 		s.logger = logger
 	}
 }
 
+// WithAuditPublisher sets the audit publisher used to emit auth events.
 func WithAuditPublisher(publisher AuditPublisher) Option {
 	return func(s *Service) {
 		s.auditPublisher = publisher
 	}
 }
 
+// WithMetrics sets the metrics recorder for auth operations.
 func WithMetrics(m *metrics.Metrics) Option {
 	return func(s *Service) {
 		s.metrics = m
 	}
 }
 
+// WithAuthStoreTx overrides the default transaction wrapper for auth stores.
 func WithAuthStoreTx(tx *shardedAuthTx) Option {
 	return func(s *Service) {
 		s.tx = tx
 	}
 }
 
+// WithDeviceBindingEnabled toggles device binding logic for session issuance.
 func WithDeviceBindingEnabled(enabled bool) Option {
 	return func(s *Service) {
 		s.DeviceBindingEnabled = enabled
 	}
 }
 
+// WithTRL sets the token revocation list implementation.
 func WithTRL(trl TokenRevocationList) Option {
 	return func(s *Service) {
 		s.trl = trl

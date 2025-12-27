@@ -10,6 +10,7 @@ import (
 	"credo/pkg/platform/sentinel"
 )
 
+// DeleteUser deletes a user and revokes their sessions as an admin operation.
 func (s *Service) DeleteUser(ctx context.Context, userID id.UserID) error {
 	if userID.IsNil() {
 		return dErrors.New(dErrors.CodeBadRequest, "user ID required")

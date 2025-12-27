@@ -54,6 +54,9 @@ type authorizeResult struct {
 	UserWasCreated bool
 }
 
+// Authorize starts an authorization flow for a user and client.
+// It validates input, resolves client and tenant, creates user/session/code,
+// and emits audit signals before returning the auth code payload.
 func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationRequest) (*models.AuthorizationResult, error) {
 	start := time.Now()
 	defer func() {

@@ -16,6 +16,7 @@ import (
 
 const authorizationCodePrefix = "authz_"
 
+// User represents an authenticated end-user in the auth domain.
 type User struct {
 	ID        id.UserID   `json:"id"`
 	TenantID  id.TenantID `json:"tenant_id"`
@@ -26,6 +27,7 @@ type User struct {
 	Status    UserStatus  `json:"status"`
 }
 
+// Session represents an authentication session and its lifecycle state.
 type Session struct {
 	ID             id.SessionID  `json:"id"`
 	UserID         id.UserID     `json:"user_id"`
@@ -163,6 +165,7 @@ func (u *User) IsActive() bool {
 	return u.Status == UserStatusActive
 }
 
+// NewUser constructs a User and enforces basic invariants.
 func NewUser(id id.UserID, tenantID id.TenantID, email, firstName, lastName string, verified bool) (*User, error) {
 	if email == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "user email cannot be empty")
@@ -178,6 +181,7 @@ func NewUser(id id.UserID, tenantID id.TenantID, email, firstName, lastName stri
 	}, nil
 }
 
+// NewSession constructs a Session and validates lifecycle invariants.
 func NewSession(id id.SessionID, userID id.UserID, clientID id.ClientID, tenantID id.TenantID, scopes []string, status SessionStatus, createdAt time.Time, expiresAt time.Time, lastSeenAt time.Time) (*Session, error) {
 	if len(scopes) == 0 {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "scopes cannot be empty")
@@ -201,6 +205,7 @@ func NewSession(id id.SessionID, userID id.UserID, clientID id.ClientID, tenantI
 	}, nil
 }
 
+// NewAuthorizationCode constructs an AuthorizationCodeRecord with invariant checks.
 func NewAuthorizationCode(code string, sessionID id.SessionID, redirectURI string, createdAt time.Time, expiresAt time.Time, now time.Time) (*AuthorizationCodeRecord, error) {
 	if code == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "authorization code cannot be empty")
@@ -229,6 +234,7 @@ func NewAuthorizationCode(code string, sessionID id.SessionID, redirectURI strin
 	}, nil
 }
 
+// NewRefreshToken constructs a RefreshTokenRecord with invariant checks.
 func NewRefreshToken(token string, sessionID id.SessionID, createdAt time.Time, expiresAt time.Time, now time.Time) (*RefreshTokenRecord, error) {
 	if token == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "refresh token cannot be empty")

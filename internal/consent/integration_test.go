@@ -44,14 +44,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	auditpublisher "credo/pkg/platform/audit/publisher"
-	auditstore "credo/pkg/platform/audit/store/memory"
 	"credo/internal/consent/handler"
 	consentModel "credo/internal/consent/models"
 	"credo/internal/consent/service"
 	"credo/internal/consent/store"
-	authmw "credo/pkg/platform/middleware/auth"
 	id "credo/pkg/domain"
+	auditpublisher "credo/pkg/platform/audit/publisher"
+	auditstore "credo/pkg/platform/audit/store/memory"
+	authmw "credo/pkg/platform/middleware/auth"
 )
 
 // consentTestHarness provides common setup for consent integration tests.
@@ -65,9 +65,9 @@ type consentTestHarness struct {
 
 func newConsentTestHarness(userIDStr string) *consentTestHarness {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	consentStore := store.NewInMemoryStore()
+	consentStore := store.New()
 	auditStore := auditstore.NewInMemoryStore()
-	svc := service.NewService(
+	svc := service.New(
 		consentStore,
 		auditpublisher.NewPublisher(auditStore),
 		logger,

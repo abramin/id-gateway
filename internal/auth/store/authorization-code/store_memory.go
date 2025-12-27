@@ -17,12 +17,14 @@ import (
 // - Return wrapped errors with context for infrastructure failures (future: DB errors, network issues, etc.)
 //
 
+// InMemoryAuthorizationCodeStore stores authorization codes in memory for tests/dev.
 type InMemoryAuthorizationCodeStore struct {
 	mu        sync.RWMutex
 	authCodes map[string]*models.AuthorizationCodeRecord
 }
 
-func NewInMemoryAuthorizationCodeStore() *InMemoryAuthorizationCodeStore {
+// New constructs an empty in-memory auth code store.
+func New() *InMemoryAuthorizationCodeStore {
 	return &InMemoryAuthorizationCodeStore{
 		authCodes: make(map[string]*models.AuthorizationCodeRecord),
 	}

@@ -16,12 +16,14 @@ import (
 // - Return ErrNotFound when the requested entity does not exist
 // - Return nil for successful operations
 // - Return wrapped errors with context for infrastructure failures (future: DB errors, network issues, etc.)
+// InMemoryRefreshTokenStore stores refresh tokens in memory for tests/dev.
 type InMemoryRefreshTokenStore struct {
 	mu     sync.RWMutex
 	tokens map[string]*models.RefreshTokenRecord
 }
 
-func NewInMemoryRefreshTokenStore() *InMemoryRefreshTokenStore {
+// New constructs an empty in-memory refresh token store.
+func New() *InMemoryRefreshTokenStore {
 	return &InMemoryRefreshTokenStore{tokens: make(map[string]*models.RefreshTokenRecord)}
 }
 

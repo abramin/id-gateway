@@ -15,6 +15,7 @@ import (
 // - Return ErrNotFound when the requested entity does not exist
 // - Return nil for successful operations
 // - Return wrapped errors with context for infrastructure failures (future: DB errors, network issues, etc.)
+// InMemoryUserStore stores users in memory for tests/dev.
 type InMemoryUserStore struct {
 	mu    sync.RWMutex
 	users map[id.UserID]*models.User
@@ -24,7 +25,8 @@ func (s *InMemoryUserStore) ListAll(context context.Context) (map[id.UserID]*mod
 	return s.users, nil
 }
 
-func NewInMemoryUserStore() *InMemoryUserStore {
+// New constructs an empty in-memory user store.
+func New() *InMemoryUserStore {
 	return &InMemoryUserStore{users: make(map[id.UserID]*models.User)}
 }
 

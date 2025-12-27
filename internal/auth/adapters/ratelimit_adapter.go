@@ -19,7 +19,8 @@ type RateLimitAdapter struct {
 	requests    *requestlimit.Service
 }
 
-func NewRateLimitAdapter(authLockout *authlockout.Service, requests *requestlimit.Service) ports.RateLimitPort {
+// NewRateLimitAdapter builds an in-process adapter backed by ratelimit services.
+func New(authLockout *authlockout.Service, requests *requestlimit.Service) ports.RateLimitPort {
 	return &RateLimitAdapter{
 		authLockout: authLockout,
 		requests:    requests,

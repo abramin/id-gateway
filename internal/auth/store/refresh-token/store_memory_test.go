@@ -21,7 +21,7 @@ type InMemoryRefreshTokenStoreSuite struct {
 }
 
 func (s *InMemoryRefreshTokenStoreSuite) SetupTest() {
-	s.store = NewInMemoryRefreshTokenStore()
+	s.store = New()
 }
 
 func (s *InMemoryRefreshTokenStoreSuite) TestCreateAndFind() {

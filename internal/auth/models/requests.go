@@ -15,6 +15,7 @@ import (
 // This file contains transport-layer request models and validation logic.
 // These types may include HTTP/JSON-specific fields or normalization rules.
 
+// AuthorizationRequest represents the /auth/authorize payload.
 type AuthorizationRequest struct {
 	Email       string   `json:"email"`
 	ClientID    string   `json:"client_id"`
@@ -23,8 +24,8 @@ type AuthorizationRequest struct {
 	State       string   `json:"state"`
 }
 
-// Trims and deduplicates fields in the authorization request.
-// Sets default scope if none provided.
+// Normalize trims and deduplicates fields in the authorization request.
+// It also sets a default scope when none is provided.
 func (r *AuthorizationRequest) Normalize() {
 	if r == nil {
 		return
@@ -42,7 +43,7 @@ func (r *AuthorizationRequest) Normalize() {
 }
 
 // Validate validates the authorization request following strict validation order:
-// size -> required fields -> syntax -> semantics
+// size -> required fields -> syntax -> semantics.
 func (r *AuthorizationRequest) Validate() error {
 	if r == nil {
 		return dErrors.New(dErrors.CodeBadRequest, "request is required")
@@ -102,6 +103,7 @@ func (r *AuthorizationRequest) Validate() error {
 	return nil
 }
 
+// TokenRequest represents the /auth/token payload for supported grant types.
 type TokenRequest struct {
 	GrantType    string `json:"grant_type"`
 	ClientID     string `json:"client_id"`
@@ -110,6 +112,7 @@ type TokenRequest struct {
 	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
+// Normalize trims whitespace from token request fields.
 func (r *TokenRequest) Normalize() {
 	if r == nil {
 		return
@@ -122,7 +125,7 @@ func (r *TokenRequest) Normalize() {
 }
 
 // Validate validates the token request following strict validation order:
-// size -> required fields -> syntax -> semantics
+// size -> required fields -> syntax -> semantics.
 func (r *TokenRequest) Validate() error {
 	if r == nil {
 		return dErrors.New(dErrors.CodeBadRequest, "request is required")
@@ -171,13 +174,14 @@ func (r *TokenRequest) Validate() error {
 	return nil
 }
 
+// RevokeTokenRequest represents an RFC 7009 token revocation request.
 type RevokeTokenRequest struct {
 	Token         string `json:"token"`
 	ClientID      string `json:"client_id"`
 	TokenTypeHint string `json:"token_type_hint,omitempty"`
 }
 
-// Validate validates the revoke token request following strict validation order:
+// Validate validates the revoke token request with required fields and hints.
 func (r *RevokeTokenRequest) Validate() error {
 	if r == nil {
 		return dErrors.New(dErrors.CodeBadRequest, "request is required")
@@ -202,6 +206,7 @@ func (r *RevokeTokenRequest) Validate() error {
 	return nil
 }
 
+// Normalize trims whitespace from revoke token request fields.
 func (r *RevokeTokenRequest) Normalize() {
 	if r == nil {
 		return

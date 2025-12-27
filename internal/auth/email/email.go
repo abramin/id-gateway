@@ -5,6 +5,7 @@ import (
 	"unicode"
 )
 
+// IsValidEmail performs lightweight validation of an email address format.
 func IsValidEmail(email string) bool {
 	if email == "" {
 		return false
@@ -22,6 +23,7 @@ func IsValidEmail(email string) bool {
 	return true
 }
 
+// DeriveNameFromEmail heuristically derives first/last names from an email.
 func DeriveNameFromEmail(email string) (string, string) {
 	localPart := email
 	if at := strings.IndexByte(email, '@'); at > 0 {

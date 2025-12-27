@@ -21,6 +21,7 @@ import (
 	request "credo/pkg/platform/middleware/request"
 )
 
+// Service defines the auth use cases consumed by HTTP handlers.
 type Service interface {
 	Authorize(ctx context.Context, req *models.AuthorizationRequest) (*models.AuthorizationResult, error)
 	Token(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error)
@@ -32,6 +33,7 @@ type Service interface {
 	RevokeToken(ctx context.Context, token string, tokenTypeHint string) error
 }
 
+// Handler wires HTTP auth endpoints to the auth service and rate limiting.
 type Handler struct {
 	auth             Service
 	ratelimit        ports.RateLimitPort
@@ -42,6 +44,7 @@ type Handler struct {
 }
 
 // TODO: pass device config in main.go
+// New constructs an auth HTTP handler and applies device cookie defaults.
 func New(auth Service, ratelimit ports.RateLimitPort, m *metrics.Metrics, logger *slog.Logger, deviceCookieName string, deviceCookieMaxAge int) *Handler {
 	if deviceCookieName == "" {
 		deviceCookieName = config.DefaultDeviceCookieName
@@ -60,6 +63,7 @@ func New(auth Service, ratelimit ports.RateLimitPort, m *metrics.Metrics, logger
 	}
 }
 
+// Register wires public auth routes onto the provided router.
 func (h *Handler) Register(r chi.Router) {
 	r.Post("/auth/authorize", h.HandleAuthorize)
 	r.Post("/auth/token", h.HandleToken)
@@ -70,6 +74,7 @@ func (h *Handler) Register(r chi.Router) {
 	r.Post("/auth/revoke", h.HandleRevoke)
 }
 
+// RegisterAdmin wires admin auth routes onto the provided router.
 func (h *Handler) RegisterAdmin(r chi.Router) {
 	r.Delete("/admin/auth/users/{user_id}", h.HandleAdminDeleteUser)
 }
@@ -137,6 +142,9 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, res)
 }
 
+// HandleToken implements POST /auth/token.
+// It enforces rate limits, validates the request, invokes the auth service,
+// and returns token response data.
 func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
@@ -182,6 +190,8 @@ func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, res)
 }
 
+// HandleUserInfo implements GET /auth/userinfo.
+// It resolves the session from context and returns OIDC user info.
 func (h *Handler) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
@@ -210,6 +220,7 @@ func (h *Handler) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, res)
 }
 
+// HandleListSessions implements GET /auth/sessions for the current user.
 func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
@@ -238,6 +249,8 @@ func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, res)
 }
 
+// HandleRevokeSession implements DELETE /auth/sessions/{session_id}.
+// It verifies session ownership before revocation.
 func (h *Handler) HandleRevokeSession(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
@@ -372,6 +385,8 @@ func (h *Handler) writeRateLimitError(w http.ResponseWriter, retryAfter int) {
 	})
 }
 
+// HandleAdminDeleteUser implements DELETE /admin/auth/users/{user_id}.
+// It deletes the user and related sessions as an administrative action.
 func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
