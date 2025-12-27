@@ -7,8 +7,10 @@ import (
 
 	"credo/internal/evidence/registry/models"
 	"credo/internal/evidence/registry/orchestrator"
+	"credo/internal/evidence/registry/ports"
 	"credo/internal/evidence/registry/providers"
 	"credo/internal/evidence/registry/store"
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
 
@@ -19,9 +21,13 @@ import (
 //
 // When regulated mode is enabled, citizen records are minimized to remove PII (name, DOB, address)
 // before being returned or cached, retaining only the Valid flag for GDPR compliance.
+//
+// Consent is checked atomically within service methods to prevent TOCTOU races between
+// consent verification and the actual lookup operation.
 type Service struct {
 	orchestrator *orchestrator.Orchestrator
 	cache        CacheStore
+	consentPort  ports.ConsentPort
 	regulated    bool
 	logger       *slog.Logger
 }
@@ -29,10 +35,14 @@ type Service struct {
 // CacheStore defines the interface for registry caching operations.
 // Implementations should return store.ErrNotFound for cache misses to distinguish
 // from actual errors. The service treats any non-ErrNotFound error as a failure.
+//
+// The regulated parameter indicates whether the record was stored in minimized form.
+// Cache implementations should return ErrNotFound if the stored regulated mode
+// doesn't match the requested mode, preventing stale PII from being served.
 type CacheStore interface {
-	FindCitizen(ctx context.Context, nationalID string) (*models.CitizenRecord, error)
-	SaveCitizen(ctx context.Context, record *models.CitizenRecord) error
-	FindSanction(ctx context.Context, nationalID string) (*models.SanctionsRecord, error)
+	FindCitizen(ctx context.Context, nationalID id.NationalID, regulated bool) (*models.CitizenRecord, error)
+	SaveCitizen(ctx context.Context, record *models.CitizenRecord, regulated bool) error
+	FindSanction(ctx context.Context, nationalID id.NationalID) (*models.SanctionsRecord, error)
 	SaveSanction(ctx context.Context, record *models.SanctionsRecord) error
 }
 
@@ -47,10 +57,12 @@ func WithLogger(logger *slog.Logger) Option {
 }
 
 // New creates a new registry service using the orchestrator pattern.
-func New(orch *orchestrator.Orchestrator, cache CacheStore, regulated bool, opts ...Option) *Service {
+// The consentPort enables atomic consent verification within service methods.
+func New(orch *orchestrator.Orchestrator, cache CacheStore, consentPort ports.ConsentPort, regulated bool, opts ...Option) *Service {
 	s := &Service{
 		orchestrator: orch,
 		cache:        cache,
+		consentPort:  consentPort,
 		regulated:    regulated,
 	}
 	for _, opt := range opts {
@@ -61,16 +73,22 @@ func New(orch *orchestrator.Orchestrator, cache CacheStore, regulated bool, opts
 
 // Check performs atomic citizen and sanctions lookups with transaction-like semantics.
 //
-// The method operates in three phases:
-//  1. Cache check: Retrieves any cached records to avoid redundant lookups
-//  2. Fetch missing: Queries the orchestrator only for records not in cache
-//  3. Atomic commit: Caches results only if BOTH lookups succeeded
+// The method operates in four phases:
+//  1. Consent check: Verifies consent atomically before any lookup
+//  2. Cache check: Retrieves any cached records to avoid redundant lookups
+//  3. Fetch missing: Queries the orchestrator only for records not in cache
+//  4. Atomic commit: Caches results only if BOTH lookups succeeded
 //
 // This ensures consistency: if one lookup fails, no partial state is cached,
 // preventing scenarios where retrying would see stale data for one record type.
 // If regulated mode is enabled, citizen PII is stripped before caching.
-func (s *Service) Check(ctx context.Context, nationalID string) (*models.RegistryResult, error) {
-	// Phase 1: Check cache
+func (s *Service) Check(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*models.RegistryResult, error) {
+	// Phase 1: Atomic consent check - must succeed before any lookup
+	if err := s.requireConsent(ctx, userID); err != nil {
+		return nil, err
+	}
+
+	// Phase 2: Check cache
 	citizen, sanction, citizenCached, sanctionsCached, err := s.checkCache(ctx, nationalID)
 	if err != nil {
 		return nil, err
@@ -79,7 +97,7 @@ func (s *Service) Check(ctx context.Context, nationalID string) (*models.Registr
 		return &models.RegistryResult{Citizen: citizen, Sanction: sanction}, nil
 	}
 
-	// Phase 2: Fetch missing from orchestrator
+	// Phase 3: Fetch missing from orchestrator
 	result, err := s.fetchMissing(ctx, nationalID, citizenCached, sanctionsCached)
 	if err != nil {
 		return nil, err
@@ -104,15 +122,24 @@ func (s *Service) Check(ctx context.Context, nationalID string) (*models.Registr
 		return nil, s.translateOrchestratorError(providers.ErrAllProvidersFailed, result)
 	}
 
-	// Phase 3: Atomic cache commit - only cache if both lookups succeeded
+	// Phase 4: Atomic cache commit - only cache if both lookups succeeded
 	s.commitCache(ctx, citizen, sanction, citizenCached, sanctionsCached)
 
 	return &models.RegistryResult{Citizen: citizen, Sanction: sanction}, nil
 }
 
+// requireConsent checks consent for registry_check purpose.
+// This is called atomically within service methods to prevent TOCTOU races.
+func (s *Service) requireConsent(ctx context.Context, userID id.UserID) error {
+	if s.consentPort == nil {
+		return nil
+	}
+	return s.consentPort.RequireConsent(ctx, userID.String(), "registry_check")
+}
+
 // checkCache retrieves cached citizen and sanctions records.
 // Returns the records (if cached), flags indicating cache hits, and any error.
-func (s *Service) checkCache(ctx context.Context, nationalID string) (
+func (s *Service) checkCache(ctx context.Context, nationalID id.NationalID) (
 	citizen *models.CitizenRecord,
 	sanction *models.SanctionsRecord,
 	citizenCached, sanctionsCached bool,
@@ -122,7 +149,7 @@ func (s *Service) checkCache(ctx context.Context, nationalID string) (
 		return nil, nil, false, false, nil
 	}
 
-	if cached, cacheErr := s.cache.FindCitizen(ctx, nationalID); cacheErr == nil {
+	if cached, cacheErr := s.cache.FindCitizen(ctx, nationalID, s.regulated); cacheErr == nil {
 		citizen = cached
 		citizenCached = true
 	} else if !errors.Is(cacheErr, store.ErrNotFound) {
@@ -140,7 +167,7 @@ func (s *Service) checkCache(ctx context.Context, nationalID string) (
 }
 
 // fetchMissing retrieves records not found in cache from the orchestrator.
-func (s *Service) fetchMissing(ctx context.Context, nationalID string, citizenCached, sanctionsCached bool) (*orchestrator.LookupResult, error) {
+func (s *Service) fetchMissing(ctx context.Context, nationalID id.NationalID, citizenCached, sanctionsCached bool) (*orchestrator.LookupResult, error) {
 	var typesToFetch []providers.ProviderType
 	if !citizenCached {
 		typesToFetch = append(typesToFetch, providers.ProviderTypeCitizen)
@@ -151,7 +178,7 @@ func (s *Service) fetchMissing(ctx context.Context, nationalID string, citizenCa
 
 	result, err := s.orchestrator.Lookup(ctx, orchestrator.LookupRequest{
 		Types:    typesToFetch,
-		Filters:  map[string]string{"national_id": nationalID},
+		Filters:  map[string]string{"national_id": nationalID.String()},
 		Strategy: orchestrator.StrategyFallback,
 	})
 	if err != nil {
@@ -191,12 +218,13 @@ func (s *Service) convertEvidence(result *orchestrator.LookupResult) (*models.Ci
 }
 
 // commitCache saves records to cache. Only caches records that weren't already cached.
+// Stores the current regulated mode with citizen records for cache invalidation.
 func (s *Service) commitCache(ctx context.Context, citizen *models.CitizenRecord, sanction *models.SanctionsRecord, citizenCached, sanctionsCached bool) {
 	if s.cache == nil {
 		return
 	}
 	if !citizenCached && citizen != nil {
-		_ = s.cache.SaveCitizen(ctx, citizen)
+		_ = s.cache.SaveCitizen(ctx, citizen, s.regulated)
 	}
 	if !sanctionsCached && sanction != nil {
 		_ = s.cache.SaveSanction(ctx, sanction)
@@ -205,15 +233,20 @@ func (s *Service) commitCache(ctx context.Context, citizen *models.CitizenRecord
 
 // Citizen performs a single citizen lookup with cache-through semantics.
 //
-// The method first checks the cache; on a miss, it queries the orchestrator using
-// the fallback strategy and caches successful results. If regulated mode is enabled,
-// PII is stripped from the record before returning and caching.
+// The method first checks consent atomically, then checks the cache; on a miss,
+// it queries the orchestrator using the fallback strategy and caches successful results.
+// If regulated mode is enabled, PII is stripped from the record before returning and caching.
 //
 // For combined citizen + sanctions lookups, prefer Check() which provides atomic
 // transaction semantics ensuring both records are fetched and cached together.
-func (s *Service) Citizen(ctx context.Context, nationalID string) (*models.CitizenRecord, error) {
+func (s *Service) Citizen(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*models.CitizenRecord, error) {
+	// Atomic consent check - must succeed before any lookup
+	if err := s.requireConsent(ctx, userID); err != nil {
+		return nil, err
+	}
+
 	if s.cache != nil {
-		if cached, err := s.cache.FindCitizen(ctx, nationalID); err == nil {
+		if cached, err := s.cache.FindCitizen(ctx, nationalID, s.regulated); err == nil {
 			return cached, nil
 		} else if !errors.Is(err, store.ErrNotFound) {
 			return nil, err
@@ -223,7 +256,7 @@ func (s *Service) Citizen(ctx context.Context, nationalID string) (*models.Citiz
 	result, err := s.orchestrator.Lookup(ctx, orchestrator.LookupRequest{
 		Types: []providers.ProviderType{providers.ProviderTypeCitizen},
 		Filters: map[string]string{
-			"national_id": nationalID,
+			"national_id": nationalID.String(),
 		},
 		Strategy: orchestrator.StrategyFallback,
 	})
@@ -250,7 +283,7 @@ func (s *Service) Citizen(ctx context.Context, nationalID string) (*models.Citiz
 	}
 
 	if s.cache != nil {
-		_ = s.cache.SaveCitizen(ctx, record)
+		_ = s.cache.SaveCitizen(ctx, record, s.regulated)
 	}
 
 	return record, nil
@@ -258,12 +291,17 @@ func (s *Service) Citizen(ctx context.Context, nationalID string) (*models.Citiz
 
 // Sanctions performs a single sanctions lookup with cache-through semantics.
 //
-// The method first checks the cache; on a miss, it queries the orchestrator using
-// the fallback strategy and caches successful results.
+// The method first checks consent atomically, then checks the cache; on a miss,
+// it queries the orchestrator using the fallback strategy and caches successful results.
 //
 // For combined citizen + sanctions lookups, prefer Check() which provides atomic
 // transaction semantics ensuring both records are fetched and cached together.
-func (s *Service) Sanctions(ctx context.Context, nationalID string) (*models.SanctionsRecord, error) {
+func (s *Service) Sanctions(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*models.SanctionsRecord, error) {
+	// Atomic consent check - must succeed before any lookup
+	if err := s.requireConsent(ctx, userID); err != nil {
+		return nil, err
+	}
+
 	if s.cache != nil {
 		if cached, err := s.cache.FindSanction(ctx, nationalID); err == nil {
 			return cached, nil
@@ -275,7 +313,7 @@ func (s *Service) Sanctions(ctx context.Context, nationalID string) (*models.San
 	result, err := s.orchestrator.Lookup(ctx, orchestrator.LookupRequest{
 		Types: []providers.ProviderType{providers.ProviderTypeSanctions},
 		Filters: map[string]string{
-			"national_id": nationalID,
+			"national_id": nationalID.String(),
 		},
 		Strategy: orchestrator.StrategyFallback,
 	})

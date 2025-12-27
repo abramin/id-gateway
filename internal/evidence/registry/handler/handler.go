@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"regexp"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -19,14 +18,12 @@ import (
 	"credo/pkg/platform/middleware/request"
 )
 
-// nationalIDPattern validates the national ID format: 6-20 alphanumeric characters
-var nationalIDPattern = regexp.MustCompile(`^[A-Z0-9]{6,20}$`)
-
-// RegistryService defines the interface for registry operations used by handlers
+// RegistryService defines the interface for registry operations used by handlers.
+// Methods accept type-safe NationalID to enforce validation at parse time.
 type RegistryService interface {
-	Citizen(ctx context.Context, nationalID string) (*models.CitizenRecord, error)
-	Sanctions(ctx context.Context, nationalID string) (*models.SanctionsRecord, error)
-	Check(ctx context.Context, nationalID string) (*models.RegistryResult, error)
+	Citizen(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*models.CitizenRecord, error)
+	Sanctions(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*models.SanctionsRecord, error)
+	Check(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*models.RegistryResult, error)
 }
 
 // AuditPublisher emits audit events for security-relevant operations.
@@ -55,6 +52,7 @@ func New(service RegistryService, consentPort ports.ConsentPort, auditPort Audit
 // Register mounts the handler routes on the given router.
 func (h *Handler) Register(r chi.Router) {
 	r.Post("/registry/citizen", h.HandleCitizenLookup)
+	r.Post("/registry/sanctions", h.HandleSanctionsLookup)
 }
 
 // CitizenLookupRequest is the request body for citizen lookup.
@@ -62,13 +60,11 @@ type CitizenLookupRequest struct {
 	NationalID string `json:"national_id"`
 }
 
-// Validate validates the citizen lookup request.
+// Validate validates the citizen lookup request using the NationalID domain primitive.
 func (r *CitizenLookupRequest) Validate() error {
-	if r.NationalID == "" {
-		return dErrors.New(dErrors.CodeBadRequest, "national_id is required")
-	}
-	if !nationalIDPattern.MatchString(r.NationalID) {
-		return dErrors.New(dErrors.CodeBadRequest, "national_id has invalid format: must be 6-20 alphanumeric characters")
+	_, err := id.ParseNationalID(r.NationalID)
+	if err != nil {
+		return dErrors.New(dErrors.CodeBadRequest, err.Error())
 	}
 	return nil
 }
@@ -81,6 +77,28 @@ type CitizenLookupResponse struct {
 	Address     string `json:"address,omitempty"`
 	Valid       bool   `json:"valid"`
 	CheckedAt   string `json:"checked_at"`
+}
+
+// SanctionsCheckRequest is the request body for sanctions lookup.
+type SanctionsCheckRequest struct {
+	NationalID string `json:"national_id"`
+}
+
+// Validate validates the sanctions check request using the NationalID domain primitive.
+func (r *SanctionsCheckRequest) Validate() error {
+	_, err := id.ParseNationalID(r.NationalID)
+	if err != nil {
+		return dErrors.New(dErrors.CodeBadRequest, err.Error())
+	}
+	return nil
+}
+
+// SanctionsCheckResponse is the response body for sanctions lookup.
+type SanctionsCheckResponse struct {
+	NationalID string `json:"national_id"`
+	Listed     bool   `json:"listed"`
+	Source     string `json:"source"`
+	CheckedAt  string `json:"checked_at"`
 }
 
 // HandleCitizenLookup handles POST /registry/citizen requests.
@@ -101,24 +119,16 @@ func (h *Handler) HandleCitizenLookup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check consent for registry_check purpose
-	if err := h.consentPort.RequireConsent(ctx, userID.String(), "registry_check"); err != nil {
-		h.logger.ErrorContext(ctx, "consent check failed",
-			"request_id", requestID,
-			"user_id", userID,
-			"error", err,
-		)
-		httputil.WriteError(w, err)
-		return
-	}
+	// Parse NationalID into domain primitive (validation already done in Validate)
+	nationalID, _ := id.ParseNationalID(req.NationalID)
 
-	// Perform citizen lookup
-	record, err := h.service.Citizen(ctx, req.NationalID)
+	// Perform citizen lookup (consent check is atomic within service)
+	record, err := h.service.Citizen(ctx, userID, nationalID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "citizen lookup failed",
 			"request_id", requestID,
 			"user_id", userID,
-			"national_id", req.NationalID,
+			"national_id", nationalID,
 			"error", err,
 		)
 		httputil.WriteError(w, err)
@@ -148,6 +158,83 @@ func (h *Handler) HandleCitizenLookup(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, response)
 }
 
+// HandleSanctionsLookup handles POST /registry/sanctions requests.
+func (h *Handler) HandleSanctionsLookup(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	requestID := request.GetRequestID(ctx)
+
+	// Extract authenticated user ID
+	userID, err := h.requireUserID(ctx, requestID)
+	if err != nil {
+		httputil.WriteError(w, err)
+		return
+	}
+
+	// Decode and validate request
+	req, ok := httputil.DecodeAndPrepare[SanctionsCheckRequest](w, r, h.logger, ctx, requestID)
+	if !ok {
+		return
+	}
+
+	// Parse NationalID into domain primitive (validation already done in Validate)
+	nationalID, _ := id.ParseNationalID(req.NationalID)
+
+	// Perform sanctions lookup (consent check is atomic within service)
+	record, err := h.service.Sanctions(ctx, userID, nationalID)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "sanctions lookup failed",
+			"request_id", requestID,
+			"user_id", userID,
+			"national_id", nationalID,
+			"error", err,
+		)
+		httputil.WriteError(w, err)
+		return
+	}
+
+	// Emit audit event - FAIL-CLOSED for listed sanctions
+	// If someone is on a sanctions list, we MUST have an audit trail
+	decision := "not_listed"
+	if record.Listed {
+		decision = "listed"
+	}
+	auditEvent := audit.Event{
+		Action:    "registry_sanctions_checked",
+		Purpose:   "registry_check",
+		UserID:    userID,
+		Decision:  decision,
+		Reason:    "user_initiated",
+		RequestID: requestID,
+	}
+
+	if record.Listed {
+		// Critical: sanctions hit requires successful audit before returning result
+		if err := h.emitCriticalAudit(ctx, auditEvent); err != nil {
+			h.logger.ErrorContext(ctx, "CRITICAL: audit failed for listed sanctions - blocking response",
+				"request_id", requestID,
+				"user_id", userID,
+				"national_id", nationalID,
+				"error", err,
+			)
+			httputil.WriteError(w, dErrors.New(dErrors.CodeInternal, "unable to complete sanctions check"))
+			return
+		}
+	} else {
+		// Non-critical: log failure but proceed
+		h.emitAudit(ctx, auditEvent)
+	}
+
+	// Map to response
+	response := SanctionsCheckResponse{
+		NationalID: record.NationalID,
+		Listed:     record.Listed,
+		Source:     record.Source,
+		CheckedAt:  record.CheckedAt.Format(time.RFC3339),
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, response)
+}
+
 // requireUserID extracts and validates the authenticated user ID from context.
 func (h *Handler) requireUserID(ctx context.Context, requestID string) (id.UserID, error) {
 	userID := auth.GetUserID(ctx)
@@ -171,4 +258,14 @@ func (h *Handler) emitAudit(ctx context.Context, event audit.Event) {
 			"user_id", event.UserID,
 		)
 	}
+}
+
+// emitCriticalAudit publishes an audit event that MUST succeed.
+// Returns an error if the audit fails, allowing callers to fail-close.
+// Use this for security-critical events like sanctions hits.
+func (h *Handler) emitCriticalAudit(ctx context.Context, event audit.Event) error {
+	if h.auditPort == nil {
+		return dErrors.New(dErrors.CodeInternal, "audit system unavailable")
+	}
+	return h.auditPort.Emit(ctx, event)
 }

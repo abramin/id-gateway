@@ -3,6 +3,8 @@ package ports
 import (
 	"context"
 	"time"
+
+	id "credo/pkg/domain"
 )
 
 // RegistryPort defines the interface for registry lookups
@@ -11,15 +13,18 @@ import (
 type RegistryPort interface {
 	// CheckCitizen retrieves citizen record by national ID
 	// Returns minimized data in regulated mode
-	CheckCitizen(ctx context.Context, nationalID string) (*CitizenRecord, error)
+	// userID is required for consent verification
+	CheckCitizen(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*CitizenRecord, error)
 
 	// CheckSanctions retrieves sanctions record by national ID
 	// Always returns minimal data (no PII)
-	CheckSanctions(ctx context.Context, nationalID string) (*SanctionsRecord, error)
+	// userID is required for consent verification
+	CheckSanctions(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*SanctionsRecord, error)
 
 	// Check performs combined citizen + sanctions lookup
 	// Optimized for parallel execution
-	Check(ctx context.Context, nationalID string) (*CitizenRecord, *SanctionsRecord, error)
+	// userID is required for consent verification
+	Check(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*CitizenRecord, *SanctionsRecord, error)
 }
 
 // CitizenRecord represents citizen identity data (port model)

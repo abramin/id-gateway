@@ -11,6 +11,7 @@ import (
 	"credo/internal/evidence/registry/orchestrator"
 	"credo/internal/evidence/registry/providers"
 	"credo/internal/evidence/registry/store"
+	id "credo/pkg/domain"
 )
 
 // stubCache is a test double for the cache store
@@ -23,39 +24,46 @@ type stubCache struct {
 	saveSanctionErr   error
 	saveCitizenCalls  []*models.CitizenRecord
 	saveSanctionCalls []*models.SanctionsRecord
+	regulatedMode     map[string]bool // track regulated mode per record
 }
 
 func newStubCache() *stubCache {
 	return &stubCache{
 		citizenRecords:  make(map[string]*models.CitizenRecord),
 		sanctionRecords: make(map[string]*models.SanctionsRecord),
+		regulatedMode:   make(map[string]bool),
 	}
 }
 
-func (c *stubCache) FindCitizen(_ context.Context, nationalID string) (*models.CitizenRecord, error) {
+func (c *stubCache) FindCitizen(_ context.Context, nationalID id.NationalID, regulated bool) (*models.CitizenRecord, error) {
 	if c.findCitizenErr != nil {
 		return nil, c.findCitizenErr
 	}
-	if r, ok := c.citizenRecords[nationalID]; ok {
+	if r, ok := c.citizenRecords[nationalID.String()]; ok {
+		// Check if regulated mode matches
+		if storedRegulated, exists := c.regulatedMode[nationalID.String()]; exists && storedRegulated != regulated {
+			return nil, store.ErrNotFound
+		}
 		return r, nil
 	}
 	return nil, store.ErrNotFound
 }
 
-func (c *stubCache) SaveCitizen(_ context.Context, record *models.CitizenRecord) error {
+func (c *stubCache) SaveCitizen(_ context.Context, record *models.CitizenRecord, regulated bool) error {
 	c.saveCitizenCalls = append(c.saveCitizenCalls, record)
 	if c.saveCitizenErr != nil {
 		return c.saveCitizenErr
 	}
 	c.citizenRecords[record.NationalID] = record
+	c.regulatedMode[record.NationalID] = regulated
 	return nil
 }
 
-func (c *stubCache) FindSanction(_ context.Context, nationalID string) (*models.SanctionsRecord, error) {
+func (c *stubCache) FindSanction(_ context.Context, nationalID id.NationalID) (*models.SanctionsRecord, error) {
 	if c.findSanctionErr != nil {
 		return nil, c.findSanctionErr
 	}
-	if r, ok := c.sanctionRecords[nationalID]; ok {
+	if r, ok := c.sanctionRecords[nationalID.String()]; ok {
 		return r, nil
 	}
 	return nil, store.ErrNotFound
@@ -68,6 +76,15 @@ func (c *stubCache) SaveSanction(_ context.Context, record *models.SanctionsReco
 	}
 	c.sanctionRecords[record.NationalID] = record
 	return nil
+}
+
+// stubConsentPort is a test double for consent checks
+type stubConsentPort struct {
+	err error
+}
+
+func (c *stubConsentPort) RequireConsent(_ context.Context, _, _ string) error {
+	return c.err
 }
 
 // stubProvider is a test double for providers.Provider
@@ -152,13 +169,26 @@ func newTestOrchestrator(citizenProv, sanctionsProv *stubProvider) *orchestrator
 	})
 }
 
+// Helper to create test IDs
+func testUserID() id.UserID {
+	userID, _ := id.ParseUserID("550e8400-e29b-41d4-a716-446655440000")
+	return userID
+}
+
+func testNationalID(s string) id.NationalID {
+	nid, _ := id.ParseNationalID(s)
+	return nid
+}
+
 func (s *ServiceSuite) TestCheckTransactionSemantics() {
 	ctx := context.Background()
-	nationalID := "ABC123456"
+	nationalIDStr := "ABC123456"
+	nationalID := testNationalID(nationalIDStr)
+	userID := testUserID()
 	now := time.Now()
 
 	citizenRecord := &models.CitizenRecord{
-		NationalID:  nationalID,
+		NationalID:  nationalIDStr,
 		FullName:    "Test User",
 		DateOfBirth: "1990-01-01",
 		Address:     "123 Test St",
@@ -167,7 +197,7 @@ func (s *ServiceSuite) TestCheckTransactionSemantics() {
 	}
 
 	sanctionsRecord := &models.SanctionsRecord{
-		NationalID: nationalID,
+		NationalID: nationalIDStr,
 		Listed:     false,
 		Source:     "test-source",
 		CheckedAt:  now,
@@ -191,9 +221,9 @@ func (s *ServiceSuite) TestCheckTransactionSemantics() {
 		}
 
 		orch := newTestOrchestrator(citizenProv, sanctionsProv)
-		svc := New(orch, cache, false)
+		svc := New(orch, cache, nil, false)
 
-		result, err := svc.Check(ctx, nationalID)
+		result, err := svc.Check(ctx, userID, nationalID)
 		s.Require().NoError(err)
 		s.Equal(citizenRecord.NationalID, result.Citizen.NationalID)
 		s.Equal(citizenRecord.Valid, result.Citizen.Valid)
@@ -228,9 +258,9 @@ func (s *ServiceSuite) TestCheckTransactionSemantics() {
 		}
 
 		orch := newTestOrchestrator(citizenProv, sanctionsProv)
-		svc := New(orch, cache, false)
+		svc := New(orch, cache, nil, false)
 
-		result, err := svc.Check(ctx, nationalID)
+		result, err := svc.Check(ctx, userID, nationalID)
 		s.Require().Error(err)
 		s.Nil(result)
 
@@ -262,9 +292,9 @@ func (s *ServiceSuite) TestCheckTransactionSemantics() {
 		}
 
 		orch := newTestOrchestrator(citizenProv, sanctionsProv)
-		svc := New(orch, cache, false)
+		svc := New(orch, cache, nil, false)
 
-		result, err := svc.Check(ctx, nationalID)
+		result, err := svc.Check(ctx, userID, nationalID)
 		s.Require().Error(err)
 		s.Nil(result)
 
@@ -275,7 +305,7 @@ func (s *ServiceSuite) TestCheckTransactionSemantics() {
 
 	s.Run("uses cached citizen but fetches sanctions when only citizen is cached", func() {
 		cache := newStubCache()
-		cache.citizenRecords[nationalID] = citizenRecord
+		cache.citizenRecords[nationalIDStr] = citizenRecord
 
 		citizenProv := &stubProvider{
 			id:       "test-citizen",
@@ -293,9 +323,9 @@ func (s *ServiceSuite) TestCheckTransactionSemantics() {
 		}
 
 		orch := newTestOrchestrator(citizenProv, sanctionsProv)
-		svc := New(orch, cache, false)
+		svc := New(orch, cache, nil, false)
 
-		result, err := svc.Check(ctx, nationalID)
+		result, err := svc.Check(ctx, userID, nationalID)
 		s.Require().NoError(err)
 		s.Equal(citizenRecord, result.Citizen)
 		s.Equal(sanctionsRecord.NationalID, result.Sanction.NationalID)
@@ -310,7 +340,7 @@ func (s *ServiceSuite) TestCheckTransactionSemantics() {
 
 	s.Run("uses cached sanctions but fetches citizen when only sanctions is cached", func() {
 		cache := newStubCache()
-		cache.sanctionRecords[nationalID] = sanctionsRecord
+		cache.sanctionRecords[nationalIDStr] = sanctionsRecord
 
 		citizenProv := &stubProvider{
 			id:       "test-citizen",
@@ -328,9 +358,9 @@ func (s *ServiceSuite) TestCheckTransactionSemantics() {
 		}
 
 		orch := newTestOrchestrator(citizenProv, sanctionsProv)
-		svc := New(orch, cache, false)
+		svc := New(orch, cache, nil, false)
 
-		result, err := svc.Check(ctx, nationalID)
+		result, err := svc.Check(ctx, userID, nationalID)
 		s.Require().NoError(err)
 		s.Equal(citizenRecord.NationalID, result.Citizen.NationalID)
 		s.Equal(sanctionsRecord, result.Sanction)
@@ -345,8 +375,8 @@ func (s *ServiceSuite) TestCheckTransactionSemantics() {
 
 	s.Run("returns both cached records without provider calls when fully cached", func() {
 		cache := newStubCache()
-		cache.citizenRecords[nationalID] = citizenRecord
-		cache.sanctionRecords[nationalID] = sanctionsRecord
+		cache.citizenRecords[nationalIDStr] = citizenRecord
+		cache.sanctionRecords[nationalIDStr] = sanctionsRecord
 
 		citizenProv := &stubProvider{
 			id:       "test-citizen",
@@ -364,9 +394,9 @@ func (s *ServiceSuite) TestCheckTransactionSemantics() {
 		}
 
 		orch := newTestOrchestrator(citizenProv, sanctionsProv)
-		svc := New(orch, cache, false)
+		svc := New(orch, cache, nil, false)
 
-		result, err := svc.Check(ctx, nationalID)
+		result, err := svc.Check(ctx, userID, nationalID)
 		s.Require().NoError(err)
 		s.Equal(citizenRecord, result.Citizen)
 		s.Equal(sanctionsRecord, result.Sanction)
@@ -383,11 +413,13 @@ func (s *ServiceSuite) TestCheckTransactionSemantics() {
 
 func (s *ServiceSuite) TestCitizenMinimization() {
 	ctx := context.Background()
-	nationalID := "ABC123456"
+	nationalIDStr := "ABC123456"
+	nationalID := testNationalID(nationalIDStr)
+	userID := testUserID()
 	now := time.Now()
 
 	citizenRecord := &models.CitizenRecord{
-		NationalID:  nationalID,
+		NationalID:  nationalIDStr,
 		FullName:    "Test User",
 		DateOfBirth: "1990-01-01",
 		Address:     "123 Test St",
@@ -406,9 +438,9 @@ func (s *ServiceSuite) TestCitizenMinimization() {
 		}
 
 		orch := newTestOrchestrator(citizenProv, nil)
-		svc := New(orch, cache, true) // regulated = true
+		svc := New(orch, cache, nil, true) // regulated = true
 
-		result, err := svc.Citizen(ctx, nationalID)
+		result, err := svc.Citizen(ctx, userID, nationalID)
 		s.Require().NoError(err)
 
 		// PII fields should be cleared
@@ -433,13 +465,13 @@ func (s *ServiceSuite) TestCitizenMinimization() {
 		}
 
 		orch := newTestOrchestrator(citizenProv, nil)
-		svc := New(orch, cache, false) // regulated = false
+		svc := New(orch, cache, nil, false) // regulated = false
 
-		result, err := svc.Citizen(ctx, nationalID)
+		result, err := svc.Citizen(ctx, userID, nationalID)
 		s.Require().NoError(err)
 
 		// All fields should be present
-		s.Equal(nationalID, result.NationalID)
+		s.Equal(nationalIDStr, result.NationalID)
 		s.Equal("Test User", result.FullName)
 		s.Equal("1990-01-01", result.DateOfBirth)
 		s.Equal("123 Test St", result.Address)

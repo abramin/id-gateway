@@ -5,6 +5,7 @@ import (
 
 	"credo/internal/decision/ports"
 	registryService "credo/internal/evidence/registry/service"
+	id "credo/pkg/domain"
 )
 
 // RegistryAdapter is an in-process adapter that implements ports.RegistryPort
@@ -24,8 +25,8 @@ func NewRegistryAdapter(registryService *registryService.Service) ports.Registry
 }
 
 // CheckCitizen retrieves citizen record by national ID
-func (a *RegistryAdapter) CheckCitizen(ctx context.Context, nationalID string) (*ports.CitizenRecord, error) {
-	record, err := a.registryService.Citizen(ctx, nationalID)
+func (a *RegistryAdapter) CheckCitizen(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*ports.CitizenRecord, error) {
+	record, err := a.registryService.Citizen(ctx, userID, nationalID)
 	if err != nil {
 		return nil, err
 	}
@@ -40,8 +41,8 @@ func (a *RegistryAdapter) CheckCitizen(ctx context.Context, nationalID string) (
 }
 
 // CheckSanctions retrieves sanctions record by national ID
-func (a *RegistryAdapter) CheckSanctions(ctx context.Context, nationalID string) (*ports.SanctionsRecord, error) {
-	record, err := a.registryService.Sanctions(ctx, nationalID)
+func (a *RegistryAdapter) CheckSanctions(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*ports.SanctionsRecord, error) {
+	record, err := a.registryService.Sanctions(ctx, userID, nationalID)
 	if err != nil {
 		return nil, err
 	}
@@ -55,8 +56,8 @@ func (a *RegistryAdapter) CheckSanctions(ctx context.Context, nationalID string)
 }
 
 // Check performs combined citizen + sanctions lookup
-func (a *RegistryAdapter) Check(ctx context.Context, nationalID string) (*ports.CitizenRecord, *ports.SanctionsRecord, error) {
-	result, err := a.registryService.Check(ctx, nationalID)
+func (a *RegistryAdapter) Check(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*ports.CitizenRecord, *ports.SanctionsRecord, error) {
+	result, err := a.registryService.Check(ctx, userID, nationalID)
 	if err != nil {
 		return nil, nil, err
 	}
