@@ -107,6 +107,95 @@ Every unit test must answer:
 
 ---
 
+## Test Structure Patterns
+
+### Test Suites (Default)
+
+Use testify test suites by default for testing a type or module with multiple methods or behaviors:
+
+```go
+type ServiceSuite struct {
+    suite.Suite
+}
+
+func TestServiceSuite(t *testing.T) {
+    suite.Run(t, new(ServiceSuite))
+}
+
+func (s *ServiceSuite) TestMethodBehavior() {
+    s.Run("variation one", func() {
+        // Use s.Require(), s.Assert(), s.Equal(), etc.
+        s.Require().NoError(err)
+        s.Equal(expected, actual)
+    })
+
+    s.Run("variation two", func() {
+        s.Assert().True(condition)
+    })
+}
+```
+
+Suite benefits:
+* Shared setup/teardown via `SetupTest()`, `TearDownTest()`
+* Consistent assertion style with `s.Require()`, `s.Assert()`
+* Subtests via `s.Run()` for method variations
+
+### Subtests for Method Variations
+
+Use `s.Run()` or `t.Run()` when testing different scenarios of the same method:
+
+```go
+func (s *ServiceSuite) TestLookup() {
+    s.Run("returns cached record when available", func() { ... })
+    s.Run("fetches from provider when cache miss", func() { ... })
+    s.Run("handles provider timeout", func() { ... })
+}
+```
+
+### Single Tests Without Suites
+
+For isolated tests with no shared state or related variations, use plain test functions:
+
+```go
+func TestParseNationalID_ValidFormat(t *testing.T) {
+    id, err := ParseNationalID("ABC123456")
+    require.NoError(t, err)
+    assert.Equal(t, "ABC123456", id.String())
+}
+```
+
+### Table Tests (Narrow Use)
+
+Only use table-driven tests when calling the same method with a single parameter change:
+
+```go
+// GOOD: Single parameter varies (status code)
+func TestParser_RejectsNon200Status(t *testing.T) {
+    codes := []int{400, 401, 404, 500, 503}
+    for _, code := range codes {
+        t.Run(fmt.Sprintf("status_%d", code), func(t *testing.T) {
+            _, err := parseResponse(code, []byte(`{}`))
+            assert.Error(t, err)
+        })
+    }
+}
+
+// BAD: Multiple parameters and complex assertions - use subtests instead
+func TestParser_Various(t *testing.T) {
+    tests := []struct {
+        name       string
+        statusCode int
+        body       []byte
+        wantErr    bool
+        wantData   map[string]any
+    }{ ... }  // Don't do this
+}
+```
+
+When multiple parameters vary or assertions differ per case, use explicit subtests for clarity.
+
+---
+
 ## Conservative Change Policy
 
 * Tests are not deleted by default.
