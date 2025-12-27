@@ -17,7 +17,6 @@ type sanctionsHTTPResponse struct {
 	CheckedAt  string `json:"checked_at"`
 }
 
-// New creates a sanctions registry provider using HTTP
 func New(id, baseURL, apiKey string, timeout time.Duration) providers.Provider {
 	return adapters.NewHTTPAdapter(adapters.HTTPAdapterConfig{
 		ID:      id,

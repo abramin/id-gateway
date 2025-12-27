@@ -27,7 +27,6 @@ type RegistryResult struct {
 	Sanction *SanctionsRecord
 }
 
-// MinimizeCitizenRecord strips PII when regulated mode is enabled.
 func MinimizeCitizenRecord(record CitizenRecord) CitizenRecord {
 	return CitizenRecord{
 		NationalID:  "",

@@ -88,7 +88,6 @@ type ProviderRegistry struct {
 	providers map[string]Provider
 }
 
-// NewProviderRegistry creates a new empty registry
 func NewProviderRegistry() *ProviderRegistry {
 	return &ProviderRegistry{
 		providers: make(map[string]Provider),
@@ -106,7 +105,6 @@ func (r *ProviderRegistry) Register(p Provider) error {
 	return nil
 }
 
-// Get retrieves a provider by ID
 func (r *ProviderRegistry) Get(id string) (Provider, bool) {
 	p, ok := r.providers[id]
 	return p, ok
@@ -124,7 +122,6 @@ func (r *ProviderRegistry) ListByType(t ProviderType) []Provider {
 	return result
 }
 
-// All returns all registered providers
 func (r *ProviderRegistry) All() []Provider {
 	result := make([]Provider, 0, len(r.providers))
 	for _, p := range r.providers {

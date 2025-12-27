@@ -19,7 +19,6 @@ type citizenHTTPResponse struct {
 	CheckedAt   string `json:"checked_at"`
 }
 
-// New creates a citizen registry provider using HTTP
 func New(id, baseURL, apiKey string, timeout time.Duration) providers.Provider {
 	return NewWithClient(id, baseURL, apiKey, timeout, nil)
 }

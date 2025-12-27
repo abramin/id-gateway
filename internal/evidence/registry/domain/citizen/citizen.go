@@ -90,52 +90,42 @@ func NewCitizenVerification(
 	}
 }
 
-// NationalID returns the lookup key.
 func (c CitizenVerification) NationalID() id.NationalID {
 	return c.nationalID
 }
 
-// PersonalDetails returns the PII. Returns empty details if minimized.
 func (c CitizenVerification) PersonalDetails() PersonalDetails {
 	return c.details
 }
 
-// FullName returns the full name, or empty string if minimized.
 func (c CitizenVerification) FullName() string {
 	return c.details.FullName
 }
 
-// DateOfBirth returns the date of birth, or empty string if minimized.
 func (c CitizenVerification) DateOfBirth() string {
 	return c.details.DateOfBirth
 }
 
-// Address returns the address, or empty string if minimized.
 func (c CitizenVerification) Address() string {
 	return c.details.Address
 }
 
-// IsValid returns whether the citizen record is valid/active.
 func (c CitizenVerification) IsValid() bool {
 	return c.status.Valid
 }
 
-// CheckedAt returns when this verification was performed.
 func (c CitizenVerification) CheckedAt() shared.CheckedAt {
 	return c.status.CheckedAt
 }
 
-// ProviderID returns which provider produced this evidence.
 func (c CitizenVerification) ProviderID() shared.ProviderID {
 	return c.providerID
 }
 
-// Confidence returns the confidence level of this evidence.
 func (c CitizenVerification) Confidence() shared.Confidence {
 	return c.confidence
 }
 
-// IsMinimized returns true if PII has been stripped.
 func (c CitizenVerification) IsMinimized() bool {
 	return c.minimized
 }

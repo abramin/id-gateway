@@ -51,12 +51,10 @@ func Authoritative() Confidence {
 	return Confidence{value: 1.0}
 }
 
-// Value returns the confidence score.
 func (c Confidence) Value() float64 {
 	return c.value
 }
 
-// IsAuthoritative returns true if confidence is 1.0.
 func (c Confidence) IsAuthoritative() bool {
 	return c.value == 1.0
 }
@@ -73,7 +71,6 @@ func NewCheckedAt(t time.Time) CheckedAt {
 	return CheckedAt{value: t}
 }
 
-// Time returns the underlying time value.
 func (c CheckedAt) Time() time.Time {
 	return c.value
 }
@@ -89,7 +86,6 @@ func (c CheckedAt) IsFreshAt(now time.Time, ttl time.Duration) bool {
 	return !c.IsExpiredAt(now, ttl)
 }
 
-// IsZero returns true if this is the zero value.
 func (c CheckedAt) IsZero() bool {
 	return c.value.IsZero()
 }
@@ -105,12 +101,10 @@ func NewProviderID(value string) ProviderID {
 	return ProviderID{value: value}
 }
 
-// String returns the provider ID.
 func (p ProviderID) String() string {
 	return p.value
 }
 
-// IsZero returns true if this is the zero value.
 func (p ProviderID) IsZero() bool {
 	return p.value == ""
 }

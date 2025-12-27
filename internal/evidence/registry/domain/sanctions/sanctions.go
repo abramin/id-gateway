@@ -38,7 +38,6 @@ const (
 	ListTypeWatchlist ListType = "watchlist"
 )
 
-// IsValid returns true if this is a recognized list type.
 func (l ListType) IsValid() bool {
 	switch l {
 	case ListTypeNone, ListTypeSanctions, ListTypePEP, ListTypeWatchlist:
@@ -48,7 +47,6 @@ func (l ListType) IsValid() bool {
 	}
 }
 
-// String returns the list type as a string.
 func (l ListType) String() string {
 	return string(l)
 }
@@ -76,12 +74,10 @@ func NewSource(value string) Source {
 	return Source{value: value}
 }
 
-// String returns the source name.
 func (s Source) String() string {
 	return s.value
 }
 
-// IsZero returns true if this is the zero value.
 func (s Source) IsZero() bool {
 	return s.value == ""
 }
@@ -162,52 +158,42 @@ func NewListedSanctionsCheck(
 	}
 }
 
-// NationalID returns the subject identifier.
 func (s SanctionsCheck) NationalID() id.NationalID {
 	return s.nationalID
 }
 
-// IsListed returns true if the subject is on any sanctions/watchlist.
 func (s SanctionsCheck) IsListed() bool {
 	return s.listed
 }
 
-// ListType returns the type of listing, or ListTypeNone if not listed.
 func (s SanctionsCheck) ListType() ListType {
 	return s.details.ListType
 }
 
-// Reason returns the reason for listing, or empty string if not listed.
 func (s SanctionsCheck) Reason() string {
 	return s.details.Reason
 }
 
-// ListedDate returns when the subject was added to the list, or empty if not listed.
 func (s SanctionsCheck) ListedDate() string {
 	return s.details.ListedDate
 }
 
-// ListingDetails returns the full listing details.
 func (s SanctionsCheck) ListingDetails() ListingDetails {
 	return s.details
 }
 
-// Source returns the source of this check.
 func (s SanctionsCheck) Source() Source {
 	return s.source
 }
 
-// CheckedAt returns when this check was performed.
 func (s SanctionsCheck) CheckedAt() shared.CheckedAt {
 	return s.checkedAt
 }
 
-// ProviderID returns which provider produced this evidence.
 func (s SanctionsCheck) ProviderID() shared.ProviderID {
 	return s.providerID
 }
 
-// Confidence returns the confidence level of this evidence.
 func (s SanctionsCheck) Confidence() shared.Confidence {
 	return s.confidence
 }
