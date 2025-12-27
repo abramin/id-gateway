@@ -145,17 +145,11 @@ func (h *Handler) HandleCitizenLookup(w http.ResponseWriter, r *http.Request) {
 
 // requireUserID extracts and validates the authenticated user ID from context.
 func (h *Handler) requireUserID(ctx context.Context, requestID string) (id.UserID, error) {
-	userIDStr := auth.GetUserID(ctx)
-	if userIDStr == "" {
+	userID := auth.GetUserID(ctx)
+	if userID.IsNil() {
 		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
 			"request_id", requestID)
 		return id.UserID{}, dErrors.New(dErrors.CodeUnauthorized, "authentication required")
-	}
-	userID, err := id.ParseUserID(userIDStr)
-	if err != nil {
-		h.logger.ErrorContext(ctx, "invalid userID in context",
-			"request_id", requestID, "error", err)
-		return id.UserID{}, dErrors.New(dErrors.CodeInternal, "authentication context error")
 	}
 	return userID, nil
 }
