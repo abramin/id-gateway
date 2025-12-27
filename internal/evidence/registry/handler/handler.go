@@ -61,15 +61,27 @@ func (h *Handler) Register(r chi.Router) {
 // CitizenLookupRequest is the request body for citizen lookup.
 type CitizenLookupRequest struct {
 	NationalID string `json:"national_id"`
+
+	// parsedNationalID holds the validated domain primitive after Validate() succeeds.
+	// This avoids double-parsing: Validate() parses once, handler uses the result.
+	parsedNationalID id.NationalID
 }
 
-// Validate validates the citizen lookup request using the NationalID domain primitive.
+// Validate validates the citizen lookup request and parses NationalID into a domain primitive.
+// After validation succeeds, use ParsedNationalID() to access the domain type.
 func (r *CitizenLookupRequest) Validate() error {
-	_, err := id.ParseNationalID(r.NationalID)
+	parsed, err := id.ParseNationalID(r.NationalID)
 	if err != nil {
 		return dErrors.New(dErrors.CodeBadRequest, err.Error())
 	}
+	r.parsedNationalID = parsed
 	return nil
+}
+
+// ParsedNationalID returns the validated NationalID domain primitive.
+// Must only be called after Validate() succeeds.
+func (r *CitizenLookupRequest) ParsedNationalID() id.NationalID {
+	return r.parsedNationalID
 }
 
 // CitizenLookupResponse is the response body for citizen lookup.
@@ -79,21 +91,33 @@ type CitizenLookupResponse struct {
 	DateOfBirth string `json:"date_of_birth,omitempty"`
 	Address     string `json:"address,omitempty"`
 	Valid       bool   `json:"valid"`
+	Source      string `json:"source"`
 	CheckedAt   string `json:"checked_at"`
 }
 
 // SanctionsCheckRequest is the request body for sanctions lookup.
 type SanctionsCheckRequest struct {
 	NationalID string `json:"national_id"`
+
+	// parsedNationalID holds the validated domain primitive after Validate() succeeds.
+	parsedNationalID id.NationalID
 }
 
-// Validate validates the sanctions check request using the NationalID domain primitive.
+// Validate validates the sanctions check request and parses NationalID into a domain primitive.
+// After validation succeeds, use ParsedNationalID() to access the domain type.
 func (r *SanctionsCheckRequest) Validate() error {
-	_, err := id.ParseNationalID(r.NationalID)
+	parsed, err := id.ParseNationalID(r.NationalID)
 	if err != nil {
 		return dErrors.New(dErrors.CodeBadRequest, err.Error())
 	}
+	r.parsedNationalID = parsed
 	return nil
+}
+
+// ParsedNationalID returns the validated NationalID domain primitive.
+// Must only be called after Validate() succeeds.
+func (r *SanctionsCheckRequest) ParsedNationalID() id.NationalID {
+	return r.parsedNationalID
 }
 
 // SanctionsCheckResponse is the response body for sanctions lookup.
@@ -122,8 +146,8 @@ func (h *Handler) HandleCitizenLookup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse NationalID into domain primitive (validation already done in Validate)
-	nationalID, _ := id.ParseNationalID(req.NationalID)
+	// Use the already-parsed domain primitive from validation
+	nationalID := req.ParsedNationalID()
 
 	// Perform citizen lookup (consent check is atomic within service)
 	record, err := h.service.Citizen(ctx, userID, nationalID)
@@ -155,6 +179,7 @@ func (h *Handler) HandleCitizenLookup(w http.ResponseWriter, r *http.Request) {
 		DateOfBirth: record.DateOfBirth,
 		Address:     record.Address,
 		Valid:       record.Valid,
+		Source:      record.Source,
 		CheckedAt:   record.CheckedAt.Format(time.RFC3339),
 	}
 
@@ -179,10 +204,11 @@ func (h *Handler) HandleSanctionsLookup(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Parse NationalID into domain primitive (validation already done in Validate)
-	nationalID, _ := id.ParseNationalID(req.NationalID)
+	// Use the already-parsed domain primitive from validation
+	nationalID := req.ParsedNationalID()
 
-	// Perform sanctions lookup (consent check is atomic within service)
+	// Perform sanctions lookup (consent check and audit are atomic within service)
+	// The service implements fail-closed audit semantics for listed sanctions.
 	record, err := h.service.Sanctions(ctx, userID, nationalID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "sanctions lookup failed",
@@ -191,12 +217,6 @@ func (h *Handler) HandleSanctionsLookup(w http.ResponseWriter, r *http.Request) 
 			"national_id_suffix", redactNationalID(nationalID),
 			"error", err,
 		)
-		httputil.WriteError(w, err)
-		return
-	}
-
-	// Emit audit event with fail-closed semantics for listed sanctions
-	if err := h.auditSanctionsCheck(ctx, userID, nationalID, record.Listed, requestID); err != nil {
 		httputil.WriteError(w, err)
 		return
 	}
