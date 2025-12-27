@@ -55,36 +55,77 @@ func New(orch *orchestrator.Orchestrator, cache CacheStore, regulated bool, opts
 // Both lookups must succeed before either result is cached. If one fails, no partial
 // state is cached, ensuring consistency on retry.
 func (s *Service) Check(ctx context.Context, nationalID string) (*models.RegistryResult, error) {
-	// Phase 1: Check cache for both records
-	var citizenCached, sanctionsCached bool
-	var citizen *models.CitizenRecord
-	var sanction *models.SanctionsRecord
-
-	if s.cache != nil {
-		if cached, err := s.cache.FindCitizen(ctx, nationalID); err == nil {
-			citizen = cached
-			citizenCached = true
-		} else if !errors.Is(err, store.ErrNotFound) {
-			return nil, err
-		}
-
-		if cached, err := s.cache.FindSanction(ctx, nationalID); err == nil {
-			sanction = cached
-			sanctionsCached = true
-		} else if !errors.Is(err, store.ErrNotFound) {
-			return nil, err
-		}
+	// Phase 1: Check cache
+	citizen, sanction, citizenCached, sanctionsCached, err := s.checkCache(ctx, nationalID)
+	if err != nil {
+		return nil, err
 	}
-
-	// If both are cached, return immediately
 	if citizenCached && sanctionsCached {
-		return &models.RegistryResult{
-			Citizen:  citizen,
-			Sanction: sanction,
-		}, nil
+		return &models.RegistryResult{Citizen: citizen, Sanction: sanction}, nil
 	}
 
-	// Phase 2: Determine which types to fetch from orchestrator
+	// Phase 2: Fetch missing from orchestrator
+	result, err := s.fetchMissing(ctx, nationalID, citizenCached, sanctionsCached)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert evidence to domain models
+	fetchedCitizen, fetchedSanction, err := s.convertEvidence(result)
+	if err != nil {
+		return nil, err
+	}
+
+	// Merge cached and fetched records
+	if !citizenCached {
+		citizen = fetchedCitizen
+	}
+	if !sanctionsCached {
+		sanction = fetchedSanction
+	}
+
+	// Validate we got all required evidence
+	if citizen == nil || sanction == nil {
+		return nil, s.translateOrchestratorError(providers.ErrAllProvidersFailed, result)
+	}
+
+	// Phase 3: Atomic cache commit - only cache if both lookups succeeded
+	s.commitCache(ctx, citizen, sanction, citizenCached, sanctionsCached)
+
+	return &models.RegistryResult{Citizen: citizen, Sanction: sanction}, nil
+}
+
+// checkCache retrieves cached citizen and sanctions records.
+// Returns the records (if cached), flags indicating cache hits, and any error.
+func (s *Service) checkCache(ctx context.Context, nationalID string) (
+	citizen *models.CitizenRecord,
+	sanction *models.SanctionsRecord,
+	citizenCached, sanctionsCached bool,
+	err error,
+) {
+	if s.cache == nil {
+		return nil, nil, false, false, nil
+	}
+
+	if cached, cacheErr := s.cache.FindCitizen(ctx, nationalID); cacheErr == nil {
+		citizen = cached
+		citizenCached = true
+	} else if !errors.Is(cacheErr, store.ErrNotFound) {
+		return nil, nil, false, false, cacheErr
+	}
+
+	if cached, cacheErr := s.cache.FindSanction(ctx, nationalID); cacheErr == nil {
+		sanction = cached
+		sanctionsCached = true
+	} else if !errors.Is(cacheErr, store.ErrNotFound) {
+		return nil, nil, false, false, cacheErr
+	}
+
+	return citizen, sanction, citizenCached, sanctionsCached, nil
+}
+
+// fetchMissing retrieves records not found in cache from the orchestrator.
+func (s *Service) fetchMissing(ctx context.Context, nationalID string, citizenCached, sanctionsCached bool) (*orchestrator.LookupResult, error) {
 	var typesToFetch []providers.ProviderType
 	if !citizenCached {
 		typesToFetch = append(typesToFetch, providers.ProviderTypeCitizen)
@@ -93,25 +134,29 @@ func (s *Service) Check(ctx context.Context, nationalID string) (*models.Registr
 		typesToFetch = append(typesToFetch, providers.ProviderTypeSanctions)
 	}
 
-	// Fetch missing records from providers using orchestrator
 	result, err := s.orchestrator.Lookup(ctx, orchestrator.LookupRequest{
-		Types: typesToFetch,
-		Filters: map[string]string{
-			"national_id": nationalID,
-		},
+		Types:    typesToFetch,
+		Filters:  map[string]string{"national_id": nationalID},
 		Strategy: orchestrator.StrategyFallback,
 	})
 	if err != nil {
 		return nil, s.translateOrchestratorError(err, result)
 	}
+	return result, nil
+}
 
-	// Convert evidence to domain models
+// convertEvidence transforms orchestrator evidence into domain models.
+// Applies regulated mode minimization to citizen records.
+func (s *Service) convertEvidence(result *orchestrator.LookupResult) (*models.CitizenRecord, *models.SanctionsRecord, error) {
+	var citizen *models.CitizenRecord
+	var sanction *models.SanctionsRecord
+
 	for _, ev := range result.Evidence {
 		switch ev.ProviderType {
 		case providers.ProviderTypeCitizen:
 			record := EvidenceToCitizenRecord(ev)
 			if record == nil {
-				return nil, dErrors.New(dErrors.CodeInternal, "failed to convert citizen evidence")
+				return nil, nil, dErrors.New(dErrors.CodeInternal, "failed to convert citizen evidence")
 			}
 			if s.regulated {
 				minimized := models.MinimizeCitizenRecord(*record)
@@ -121,31 +166,26 @@ func (s *Service) Check(ctx context.Context, nationalID string) (*models.Registr
 		case providers.ProviderTypeSanctions:
 			record := EvidenceToSanctionsRecord(ev)
 			if record == nil {
-				return nil, dErrors.New(dErrors.CodeInternal, "failed to convert sanctions evidence")
+				return nil, nil, dErrors.New(dErrors.CodeInternal, "failed to convert sanctions evidence")
 			}
 			sanction = record
 		}
 	}
 
-	// Validate we got all required evidence
-	if citizen == nil || sanction == nil {
-		return nil, s.translateOrchestratorError(providers.ErrAllProvidersFailed, result)
-	}
+	return citizen, sanction, nil
+}
 
-	// Phase 3: Atomic cache commit - only cache if both lookups succeeded
-	if s.cache != nil {
-		if !citizenCached {
-			_ = s.cache.SaveCitizen(ctx, citizen)
-		}
-		if !sanctionsCached {
-			_ = s.cache.SaveSanction(ctx, sanction)
-		}
+// commitCache saves records to cache. Only caches records that weren't already cached.
+func (s *Service) commitCache(ctx context.Context, citizen *models.CitizenRecord, sanction *models.SanctionsRecord, citizenCached, sanctionsCached bool) {
+	if s.cache == nil {
+		return
 	}
-
-	return &models.RegistryResult{
-		Citizen:  citizen,
-		Sanction: sanction,
-	}, nil
+	if !citizenCached && citizen != nil {
+		_ = s.cache.SaveCitizen(ctx, citizen)
+	}
+	if !sanctionsCached && sanction != nil {
+		_ = s.cache.SaveSanction(ctx, sanction)
+	}
 }
 
 // Citizen performs a single citizen lookup with caching.

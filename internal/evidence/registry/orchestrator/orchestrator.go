@@ -163,15 +163,10 @@ func (o *Orchestrator) lookupPrimary(ctx context.Context, req LookupRequest) (*L
 	}
 
 	for _, typ := range req.Types {
-		chain, ok := o.chains[typ]
-		if !ok {
-			// No chain defined, try to find any provider of this type
-			provs := o.registry.ListByType(typ)
-			if len(provs) == 0 {
-				result.Errors["no-provider"] = providers.ErrNoProvidersAvailable
-				continue
-			}
-			chain = ProviderChain{Primary: provs[0].ID()}
+		chain, err := o.getChainForType(typ)
+		if err != nil {
+			result.Errors["no-provider"] = err
+			continue
 		}
 
 		provider, ok := o.registry.Get(chain.Primary)
@@ -204,34 +199,14 @@ func (o *Orchestrator) lookupFallback(ctx context.Context, req LookupRequest) (*
 	}
 
 	for _, typ := range req.Types {
-		chain, ok := o.chains[typ]
-		if !ok {
-			// No chain defined, try to find any provider of this type
-			provs := o.registry.ListByType(typ)
-			if len(provs) == 0 {
-				result.Errors["no-provider"] = providers.ErrNoProvidersAvailable
-				continue
-			}
-			chain = ProviderChain{Primary: provs[0].ID()}
-		}
-
-		// Try primary first with backoff for retryable errors
-		evidence, err := o.tryProviderWithBackoff(ctx, chain.Primary, req.Filters)
-		if err == nil {
-			result.Evidence = append(result.Evidence, evidence)
+		chain, err := o.getChainForType(typ)
+		if err != nil {
+			result.Errors["no-provider"] = err
 			continue
 		}
 
-		result.Errors[chain.Primary] = err
-
-		// Try fallbacks if primary failed (backoff already exhausted retries for retryable errors)
-		for _, secondaryID := range chain.Secondary {
-			evidence, err := o.tryProviderWithBackoff(ctx, secondaryID, req.Filters)
-			if err == nil {
-				result.Evidence = append(result.Evidence, evidence)
-				break
-			}
-			result.Errors[secondaryID] = err
+		if evidence := o.tryChainWithFallback(ctx, chain, req.Filters, result.Errors); evidence != nil {
+			result.Evidence = append(result.Evidence, evidence)
 		}
 	}
 
@@ -240,6 +215,43 @@ func (o *Orchestrator) lookupFallback(ctx context.Context, req LookupRequest) (*
 	}
 
 	return result, nil
+}
+
+// getChainForType returns the provider chain for a given type.
+// If no chain is configured, it creates one from the first available provider.
+func (o *Orchestrator) getChainForType(typ providers.ProviderType) (ProviderChain, error) {
+	if chain, ok := o.chains[typ]; ok {
+		return chain, nil
+	}
+
+	provs := o.registry.ListByType(typ)
+	if len(provs) == 0 {
+		return ProviderChain{}, providers.ErrNoProvidersAvailable
+	}
+
+	return ProviderChain{Primary: provs[0].ID()}, nil
+}
+
+// tryChainWithFallback attempts the primary provider, then falls back to secondaries.
+// Records errors in the provided map and returns evidence if any provider succeeds.
+func (o *Orchestrator) tryChainWithFallback(ctx context.Context, chain ProviderChain, filters map[string]string, errors map[string]error) *providers.Evidence {
+	// Try primary first with backoff for retryable errors
+	evidence, err := o.tryProviderWithBackoff(ctx, chain.Primary, filters)
+	if err == nil {
+		return evidence
+	}
+	errors[chain.Primary] = err
+
+	// Try fallbacks if primary failed
+	for _, secondaryID := range chain.Secondary {
+		evidence, err := o.tryProviderWithBackoff(ctx, secondaryID, filters)
+		if err == nil {
+			return evidence
+		}
+		errors[secondaryID] = err
+	}
+
+	return nil
 }
 
 // lookupParallel queries all providers in parallel
