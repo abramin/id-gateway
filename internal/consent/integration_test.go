@@ -92,6 +92,7 @@ func newConsentTestHarness(userIDStr string) *consentTestHarness {
 	})
 	router.Post("/auth/consent", h.HandleGrantConsent)
 	router.Post("/auth/consent/revoke", h.HandleRevokeConsent)
+	router.Post("/auth/consent/revoke-all", h.HandleRevokeAllConsents)
 	router.Get("/auth/consent", h.HandleGetConsents)
 	router.Delete("/auth/consent", h.HandleDeleteAllConsents)
 	router.Post("/admin/consent/users/{user_id}/revoke-all", h.HandleAdminRevokeAllConsents)

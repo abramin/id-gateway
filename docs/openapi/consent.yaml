@@ -403,6 +403,7 @@ components:
             - unauthorized
             - forbidden
             - not_found
+            - validation_error
             - internal_error
             - invalid_consent
             - missing_consent
@@ -419,19 +420,19 @@ components:
           examples:
             empty_purposes:
               value:
-                error: bad_request
+                error: validation_error
                 error_description: "purposes are required"
             invalid_purpose:
               value:
-                error: bad_request
+                error: validation_error
                 error_description: "invalid purpose: invalid_purpose"
             invalid_status_filter:
               value:
-                error: bad_request
+                error: validation_error
                 error_description: "invalid status filter"
             invalid_purpose_filter:
               value:
-                error: bad_request
+                error: validation_error
                 error_description: "invalid purpose filter"
     Unauthorized:
       description: Missing or invalid credentials

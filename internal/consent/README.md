@@ -222,7 +222,8 @@ The service maps store errors to domain errors:
 ## HTTP Endpoints
 
 - `POST /auth/consent` - Grant consent for purposes
-- `POST /auth/consent/revoke` - Revoke specific consents
+- `POST /auth/consent/revoke` - Revoke one or more purposes
+- `POST /auth/consent/revoke-all` - Revoke all consents (bulk)
 - `GET /auth/consent` - List user's consents
 - `DELETE /auth/consent` - Delete all consents (GDPR)
 - `POST /admin/consent/users/{user_id}/revoke-all` - Admin revoke-all

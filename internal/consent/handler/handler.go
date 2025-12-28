@@ -120,6 +120,32 @@ func (h *Handler) HandleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, toRevokeResponse(records, requesttime.Now(ctx)))
 }
 
+// HandleRevokeAllConsents revokes all consents for the authenticated user.
+func (h *Handler) HandleRevokeAllConsents(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	requestID := request.GetRequestID(ctx)
+	userID, err := h.requireUserID(ctx, requestID)
+	if err != nil {
+		httputil.WriteError(w, err)
+		return
+	}
+
+	count, err := h.consent.RevokeAll(ctx, userID)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "failed to revoke all consents",
+			"request_id", requestID,
+			"error", err,
+		)
+		httputil.WriteError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, &consentdto.RevokeResponse{
+		Revoked: nil,
+		Message: formatActionMessage("Consent revoked for %d purpose", count),
+	})
+}
+
 // HandleAdminRevokeAllConsents revokes all consents for a user by admin action.
 func (h *Handler) HandleAdminRevokeAllConsents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

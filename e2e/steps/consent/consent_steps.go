@@ -131,7 +131,7 @@ func (s *consentSteps) revokeConsentForPurposes(ctx context.Context, purposes st
 }
 
 func (s *consentSteps) revokeAllConsents(ctx context.Context) error {
-	return s.tc.DELETE("/auth/consent", map[string]string{
+	return s.tc.POSTWithHeaders("/auth/consent/revoke-all", map[string]interface{}{}, map[string]string{
 		"Authorization": "Bearer " + s.tc.GetAccessToken(),
 	})
 }

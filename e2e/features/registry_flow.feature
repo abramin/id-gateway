@@ -165,7 +165,6 @@ Feature: Registry Integration - Citizen and Sanctions Lookup
     Given the system is running in regulated mode
     When I lookup citizen record for national_id "REGULATED123"
     Then the response status should be 200
-    And the response should contain "national_id"
     And the response should contain "valid"
     And the response should contain "checked_at"
     And the response should not contain "full_name"
@@ -239,9 +238,9 @@ Feature: Registry Integration - Citizen and Sanctions Lookup
     And the response field "source" should contain "fallback"
 
     @registry @fallback
-  Scenario: All providers unavailable returns 503
+  Scenario: All providers unavailable returns 500
     Given all citizen registry providers are unavailable
     When I lookup citizen record for national_id "ALLFAIL123"
-    Then the response status should be 503
-    And the response field "error" should equal "registry_unavailable"
-    And the response field "error_description" should contain "all providers failed"
+    Then the response status should be 500
+    And the response field "error" should equal "internal_error"
+    And the response field "error_description" should contain "all registry providers failed"

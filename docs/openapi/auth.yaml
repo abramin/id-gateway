@@ -277,7 +277,9 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
-          description: Forbidden — session does not belong to user
+          description: |
+            Forbidden — session does not belong to the authenticated user.
+            Note: Non-existent session IDs also return 403 to prevent session enumeration.
           content:
             application/json:
               schema:
@@ -514,7 +516,9 @@ components:
           description: |
             Session lifecycle status:
             - `active`: Session is valid and can be used for token operations
-            - `pending_consent`: Session created but awaiting user consent
+            - `pending_consent`: Session created but awaiting required user consent.
+              Transitions to `active` automatically when the user grants consent
+              via `POST /auth/consent`. Token operations will fail until consent is granted.
             - `revoked`: Session has been invalidated and cannot be used
     RevokeSessionResponse:
       type: object

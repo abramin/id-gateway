@@ -37,8 +37,9 @@ paths:
         **Caching:** Responses are cached for 5 minutes. Repeated lookups within the
         TTL window will return cached data without calling the external registry.
 
-        **Data Minimization:** In regulated mode, PII fields (full_name, date_of_birth,
-        address) are stripped from the response, returning only validation status.
+        **Data Minimization:** In regulated mode, PII fields (national_id, full_name,
+        date_of_birth, address) are stripped from the response, returning only
+        validation status, source, and timestamps.
 
         **Audit:** All lookups emit an audit event with action `registry_citizen_checked`.
 
@@ -82,7 +83,6 @@ paths:
                 regulated_mode:
                   summary: Regulated mode (minimized data)
                   value:
-                    national_id: "CITIZEN123456"
                     valid: true
                     source: "Mock Citizen Registry"
                     checked_at: "2025-12-11T10:00:00Z"
@@ -121,9 +121,6 @@ paths:
 
         "500":
           $ref: "#/components/responses/InternalError"
-
-        "503":
-          $ref: "#/components/responses/RegistryUnavailable"
 
         "504":
           $ref: "#/components/responses/RegistryTimeout"
@@ -196,9 +193,6 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
-        "503":
-          $ref: "#/components/responses/RegistryUnavailable"
-
         "504":
           $ref: "#/components/responses/RegistryTimeout"
 
@@ -229,11 +223,11 @@ components:
 
     CitizenRecord:
       type: object
-      required: [national_id, valid, source, checked_at]
+      required: [valid, source, checked_at]
       properties:
         national_id:
           type: string
-          description: National identifier
+          description: National identifier (omitted in regulated mode)
           example: "CITIZEN123456"
         full_name:
           type: string
@@ -332,7 +326,6 @@ components:
             - policy_violation
             - internal_error
             - registry_timeout
-            - registry_unavailable
         error_description:
           type: string
           description: Human-readable error explanation
@@ -431,24 +424,6 @@ components:
               value:
                 error: not_found
                 error_description: "Citizen record not found in registry"
-
-    RegistryUnavailable:
-      description: All registry providers are unavailable
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorResponse"
-          examples:
-            all_providers_failed:
-              summary: All registry providers failed
-              value:
-                error: registry_unavailable
-                error_description: "All registry providers are unavailable"
-            primary_and_fallback_failed:
-              summary: Primary and fallback providers failed
-              value:
-                error: registry_unavailable
-                error_description: "Registry service temporarily unavailable"
 
     RegistryTimeout:
       description: External registry did not respond within timeout window

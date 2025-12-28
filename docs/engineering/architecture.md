@@ -1208,7 +1208,8 @@ The system exposes two HTTP servers:
 | GET | `/auth/sessions` | List user's active sessions |
 | DELETE | `/auth/sessions/{session_id}` | Revoke a specific session |
 | POST | `/auth/consent` | Grant consent for purposes |
-| POST | `/auth/consent/revoke` | Revoke consent for a purpose (user-facing, per-purpose) |
+| POST | `/auth/consent/revoke` | Revoke consent for one or more purposes |
+| POST | `/auth/consent/revoke-all` | Revoke all consents (bulk) |
 | GET | `/auth/consent` | List user's consents |
 | DELETE | `/auth/consent` | Delete all consents (GDPR) |
 

@@ -404,7 +404,7 @@ flowchart LR
 
 ## Regulated Mode (PII Minimization)
 
-When `REGULATED_MODE=true`, the service strips PII from citizen records:
+When `REGULATED_MODE=true`, the service strips PII (including the national ID) from citizen records:
 
 ```go
 func MinimizeCitizenRecord(record CitizenRecord) CitizenRecord {
@@ -519,9 +519,10 @@ type AuditPort interface {
 
 ## Audit Events
 
-| Transition              | Audit Action              |
-| ----------------------- | ------------------------- |
-| Citizen lookup complete | `registry_citizen_checked`|
+| Transition               | Audit Action                 |
+| ------------------------ | ---------------------------- |
+| Citizen lookup complete  | `registry_citizen_checked`   |
+| Sanctions check complete | `registry_sanctions_checked` |
 
 ---
 
@@ -569,8 +570,6 @@ if err := s.auditor.Emit(ctx, event); err != nil {
 
 ## Known Gaps / Follow-ups
 
-- Cache implementation is placeholder (panic stubs)
-- Only citizen endpoint exposed; sanctions endpoint pending
 - Biometric, document, and wallet providers planned
 - Full voting strategy with quorum rules not implemented
 - Provider health checks not wired to readiness probes
