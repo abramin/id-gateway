@@ -22,7 +22,7 @@ Multi-tenancy and OAuth 2.0 client management for the Credo platform.
 | ------------------ | -------------------------------------------- |
 | **Tenant**         | `models.Tenant`                              |
 | **Client**         | `models.Client`                              |
-| **TenantDetails**  | `models.TenantDetails` (read model)          |
+| **TenantDetails**  | `readmodels.TenantDetails` (read model)      |
 | **Create Tenant**  | `service.TenantService.CreateTenant()`       |
 | **Create Client**  | `service.ClientService.CreateClient()`       |
 | **Resolve Client** | `service.ClientService.ResolveClient()`      |
@@ -176,7 +176,8 @@ type AuditPublisher interface {
 ```
 internal/tenant/
 ├── handler/           # HTTP handlers for admin endpoints
-├── models/            # Domain entities and value objects
+├── models/            # Domain entities, value objects, and events
+├── readmodels/        # Query-optimized read models (e.g., TenantDetails)
 ├── secrets/           # Secret generation and hashing
 ├── service/           # Application services (tenant + client)
 └── store/             # Persistence adapters

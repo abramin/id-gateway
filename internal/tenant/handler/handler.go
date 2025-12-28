@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"credo/internal/tenant/models"
+	"credo/internal/tenant/readmodels"
 	"credo/internal/tenant/service"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
@@ -25,7 +26,7 @@ import (
 // - When tenant admin auth is added, handlers must extract tenant context and use scoped methods
 type Service interface {
 	CreateTenant(ctx context.Context, name string) (*models.Tenant, error)
-	GetTenant(ctx context.Context, id id.TenantID) (*models.TenantDetails, error)
+	GetTenant(ctx context.Context, id id.TenantID) (*readmodels.TenantDetails, error)
 	DeactivateTenant(ctx context.Context, id id.TenantID) (*models.Tenant, error)
 	ReactivateTenant(ctx context.Context, id id.TenantID) (*models.Tenant, error)
 	CreateClient(ctx context.Context, cmd *service.CreateClientCommand) (*models.Client, string, error)
@@ -330,7 +331,7 @@ func toTenantResponse(t *models.Tenant) *TenantResponse {
 	}
 }
 
-func toTenantDetailsResponse(td *models.TenantDetails) *TenantDetailsResponse {
+func toTenantDetailsResponse(td *readmodels.TenantDetails) *TenantDetailsResponse {
 	return &TenantDetailsResponse{
 		ID:          td.ID.String(),
 		Name:        td.Name,

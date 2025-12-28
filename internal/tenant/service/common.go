@@ -137,6 +137,49 @@ func (e *auditEmitter) emit(ctx context.Context, event string, attributes ...any
 	e.emitToAudit(ctx, event, attributes)
 }
 
+// Typed event emitters provide stronger typing for domain events.
+
+func (e *auditEmitter) emitTenantCreated(ctx context.Context, evt models.TenantCreated) {
+	e.emit(ctx, string(audit.EventTenantCreated), "tenant_id", evt.TenantID)
+}
+
+func (e *auditEmitter) emitTenantDeactivated(ctx context.Context, evt models.TenantDeactivated) {
+	e.emit(ctx, string(audit.EventTenantDeactivated), "tenant_id", evt.TenantID)
+}
+
+func (e *auditEmitter) emitTenantReactivated(ctx context.Context, evt models.TenantReactivated) {
+	e.emit(ctx, string(audit.EventTenantReactivated), "tenant_id", evt.TenantID)
+}
+
+func (e *auditEmitter) emitClientCreated(ctx context.Context, evt models.ClientCreated) {
+	e.emit(ctx, string(audit.EventClientCreated),
+		"tenant_id", evt.TenantID,
+		"client_id", evt.ClientID,
+		"client_name", evt.ClientName,
+	)
+}
+
+func (e *auditEmitter) emitClientDeactivated(ctx context.Context, evt models.ClientDeactivated) {
+	e.emit(ctx, string(audit.EventClientDeactivated),
+		"client_id", evt.ClientID,
+		"tenant_id", evt.TenantID,
+	)
+}
+
+func (e *auditEmitter) emitClientReactivated(ctx context.Context, evt models.ClientReactivated) {
+	e.emit(ctx, string(audit.EventClientReactivated),
+		"client_id", evt.ClientID,
+		"tenant_id", evt.TenantID,
+	)
+}
+
+func (e *auditEmitter) emitClientSecretRotated(ctx context.Context, evt models.ClientSecretRotated) {
+	e.emit(ctx, string(audit.EventClientSecretRotated),
+		"tenant_id", evt.TenantID,
+		"client_id", evt.ClientID,
+	)
+}
+
 func (e *auditEmitter) enrichAttributes(ctx context.Context, attributes []any) []any {
 	if requestID := request.GetRequestID(ctx); requestID != "" {
 		attributes = append(attributes, "request_id", requestID)

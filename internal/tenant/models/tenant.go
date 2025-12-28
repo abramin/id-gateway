@@ -7,6 +7,13 @@ import (
 	dErrors "credo/pkg/domain-errors"
 )
 
+// Tenant is the aggregate root for a tenant organization.
+//
+// Invariants:
+//   - Name is non-empty and at most 128 characters
+//   - Status is either active or inactive
+//   - Status transitions: active ↔ inactive only (no other states)
+//   - CreatedAt is immutable after construction
 type Tenant struct {
 	ID        id.TenantID  `json:"id"`
 	Name      string       `json:"name"`
@@ -59,14 +66,3 @@ func NewTenant(tenantID id.TenantID, name string, now time.Time) (*Tenant, error
 	}, nil
 }
 
-// TenantDetails aggregates tenant metadata with counts for admin dashboards.
-// Internal type - converted to TenantDetailsResponse for HTTP serialization.
-type TenantDetails struct {
-	ID          id.TenantID
-	Name        string
-	Status      TenantStatus
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	UserCount   int
-	ClientCount int
-}

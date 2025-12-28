@@ -7,6 +7,16 @@ import (
 	dErrors "credo/pkg/domain-errors"
 )
 
+// Client is the aggregate root for an OAuth 2.0 client registration.
+//
+// Invariants:
+//   - Name is non-empty and at most 128 characters
+//   - OAuthClientID is non-empty (the public client_id for OAuth flows)
+//   - RedirectURIs, AllowedGrants, and AllowedScopes are non-empty
+//   - Status is either active or inactive
+//   - Status transitions: active ↔ inactive only
+//   - TenantID is immutable after construction
+//   - client_credentials grant requires IsConfidential() == true
 type Client struct {
 	ID               id.ClientID  `json:"id"`
 	TenantID         id.TenantID  `json:"tenant_id"`

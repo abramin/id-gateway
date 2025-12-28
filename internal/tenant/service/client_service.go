@@ -12,7 +12,6 @@ import (
 	"credo/internal/tenant/secrets"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
-	"credo/pkg/platform/audit"
 	"credo/pkg/platform/middleware/requesttime"
 )
 
@@ -79,11 +78,11 @@ func (s *ClientService) CreateClient(ctx context.Context, cmd *CreateClientComma
 		return nil, "", dErrors.Wrap(err, dErrors.CodeInternal, "failed to create client")
 	}
 
-	s.auditEmitter.emit(ctx, string(audit.EventClientCreated),
-		"tenant_id", client.TenantID,
-		"client_id", client.ID,
-		"client_name", client.Name,
-	)
+	s.auditEmitter.emitClientCreated(ctx, models.ClientCreated{
+		TenantID:   client.TenantID,
+		ClientID:   client.ID,
+		ClientName: client.Name,
+	})
 
 	return client, secret, nil
 }
@@ -166,9 +165,10 @@ func (s *ClientService) DeactivateClient(ctx context.Context, clientID id.Client
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to update client")
 	}
 
-	s.auditEmitter.emit(ctx, string(audit.EventClientDeactivated),
-		"client_id", client.ID,
-		"tenant_id", client.TenantID)
+	s.auditEmitter.emitClientDeactivated(ctx, models.ClientDeactivated{
+		TenantID: client.TenantID,
+		ClientID: client.ID,
+	})
 
 	return client, nil
 }
@@ -195,9 +195,10 @@ func (s *ClientService) ReactivateClient(ctx context.Context, clientID id.Client
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to update client")
 	}
 
-	s.auditEmitter.emit(ctx, string(audit.EventClientReactivated),
-		"client_id", client.ID,
-		"tenant_id", client.TenantID)
+	s.auditEmitter.emitClientReactivated(ctx, models.ClientReactivated{
+		TenantID: client.TenantID,
+		ClientID: client.ID,
+	})
 
 	return client, nil
 }
@@ -278,10 +279,10 @@ func (s *ClientService) rotateSecret(ctx context.Context, client *models.Client)
 		return nil, "", dErrors.Wrap(err, dErrors.CodeInternal, "failed to update client")
 	}
 
-	s.auditEmitter.emit(ctx, string(audit.EventClientSecretRotated),
-		"tenant_id", client.TenantID,
-		"client_id", client.ID,
-	)
+	s.auditEmitter.emitClientSecretRotated(ctx, models.ClientSecretRotated{
+		TenantID: client.TenantID,
+		ClientID: client.ID,
+	})
 
 	return client, secret, nil
 }
@@ -312,10 +313,10 @@ func (s *ClientService) applyClientUpdate(ctx context.Context, client *models.Cl
 	}
 
 	if cmd.RotateSecret {
-		s.auditEmitter.emit(ctx, "client.secret_rotated",
-			"tenant_id", client.TenantID,
-			"client_id", client.ID,
-		)
+		s.auditEmitter.emitClientSecretRotated(ctx, models.ClientSecretRotated{
+			TenantID: client.TenantID,
+			ClientID: client.ID,
+		})
 	}
 
 	return client, rotatedSecret, nil

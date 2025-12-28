@@ -2,6 +2,12 @@ package models
 
 // TenantStatus represents the lifecycle state of a tenant.
 // Tenants can be active (operational) or inactive (suspended).
+//
+// State machine:
+//
+//	active ↔ inactive
+//
+// Invariant: Only these two states are valid; no terminal states exist.
 type TenantStatus string
 
 const (
@@ -35,6 +41,12 @@ func (s TenantStatus) CanTransitionTo(target TenantStatus) bool {
 
 // ClientStatus represents the lifecycle state of an OAuth client.
 // Clients can be active (operational) or inactive (blocked from OAuth flows).
+//
+// State machine:
+//
+//	active ↔ inactive
+//
+// Invariant: Only these two states are valid; no terminal states exist.
 type ClientStatus string
 
 const (
@@ -67,6 +79,9 @@ func (s ClientStatus) CanTransitionTo(target ClientStatus) bool {
 }
 
 // GrantType represents an OAuth 2.0 grant type that a client can use.
+//
+// Invariant: client_credentials requires a confidential client (one with a secret).
+// Public clients (SPAs, mobile apps) cannot use client_credentials.
 type GrantType string
 
 const (
