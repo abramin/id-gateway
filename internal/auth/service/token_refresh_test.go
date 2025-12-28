@@ -210,7 +210,7 @@ func (s *ServiceSuite) TestTokenRefreshFlow() {
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
 		_, accessTokenJTI, _, _ := s.expectTokenGeneration(userID, sessionID, clientUUID, tenantID, sess.RequestedScope)
 		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), sess.ID, clientUUID, gomock.Any(), accessTokenJTI, sess.DeviceID, sess.DeviceFingerprintHash).
-			DoAndReturn(func(ctx context.Context, sessionID id.SessionID, client string, ts time.Time, jti string, deviceID string, fingerprint string) (*models.Session, error) {
+			DoAndReturn(func(ctx context.Context, sessionID id.SessionID, client id.ClientID, ts time.Time, jti string, deviceID string, fingerprint string) (*models.Session, error) {
 				s.Require().Equal(sess.DeviceID, deviceID)
 				return &sess, nil
 			})
