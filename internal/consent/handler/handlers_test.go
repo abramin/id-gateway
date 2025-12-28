@@ -21,16 +21,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
 	"credo/internal/consent/handler/mocks"
 	consentModel "credo/internal/consent/models"
-	authmw "credo/pkg/platform/middleware/auth"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
+	authmw "credo/pkg/platform/middleware/auth"
 )
 
 //go:generate mockgen -source=handler.go -destination=mocks/consent-mocks.go -package=mocks Service
@@ -56,45 +54,45 @@ func TestConsentHandlerSuite(t *testing.T) {
 // Reason not a feature test: Feature tests verify HTTP status codes via end-to-end requests;
 // these tests verify handler-level error code mapping in isolation.
 func (s *ConsentHandlerSuite) TestHandleGrantConsent_ErrorMapping() {
-	s.T().Run("missing user context returns 500", func(t *testing.T) {
+	s.Run("missing user context returns 500", func() {
 		// Handler extracts user from context; missing = internal error
-		handler, _ := newTestHandler(t)
+		handler, _ := newTestHandler(s.T())
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent",
 			consentModel.GrantRequest{Purposes: []consentModel.Purpose{consentModel.PurposeLogin}}, "")
-		require.NoError(t, err)
+		s.Require().NoError(err)
 
 		w := httptest.NewRecorder()
 		handler.HandleGrantConsent(w, req)
 
-		assertStatusAndError(t, w, http.StatusInternalServerError, string(dErrors.CodeInternal))
+		s.assertStatusAndError(w, http.StatusInternalServerError, string(dErrors.CodeInternal))
 	})
 
-	s.T().Run("empty purposes array returns 400", func(t *testing.T) {
-		handler, _ := newTestHandler(t)
+	s.Run("empty purposes array returns 400", func() {
+		handler, _ := newTestHandler(s.T())
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent",
 			consentModel.GrantRequest{Purposes: []consentModel.Purpose{}}, "550e8400-e29b-41d4-a716-446655440000")
-		require.NoError(t, err)
+		s.Require().NoError(err)
 
 		w := httptest.NewRecorder()
 		handler.HandleGrantConsent(w, req)
 
-		assertStatusAndError(t, w, http.StatusBadRequest, "validation_error")
+		s.assertStatusAndError(w, http.StatusBadRequest, "validation_error")
 	})
 
-	s.T().Run("invalid purpose value returns 400", func(t *testing.T) {
-		handler, _ := newTestHandler(t)
+	s.Run("invalid purpose value returns 400", func() {
+		handler, _ := newTestHandler(s.T())
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent",
 			consentModel.GrantRequest{Purposes: []consentModel.Purpose{"invalid_purpose"}}, "550e8400-e29b-41d4-a716-446655440000")
-		require.NoError(t, err)
+		s.Require().NoError(err)
 
 		w := httptest.NewRecorder()
 		handler.HandleGrantConsent(w, req)
 
-		assertStatusAndError(t, w, http.StatusBadRequest, "validation_error")
+		s.assertStatusAndError(w, http.StatusBadRequest, "validation_error")
 	})
 
-	s.T().Run("service CodeInternal error returns 500", func(t *testing.T) {
-		handler, mockService := newTestHandler(t)
+	s.Run("service CodeInternal error returns 500", func() {
+		handler, mockService := newTestHandler(s.T())
 		testUserIDStr := "550e8400-e29b-41d4-a716-446655440000"
 		userID, _ := id.ParseUserID(testUserIDStr)
 		mockService.EXPECT().Grant(
@@ -106,12 +104,12 @@ func (s *ConsentHandlerSuite) TestHandleGrantConsent_ErrorMapping() {
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent",
 			consentModel.GrantRequest{Purposes: []consentModel.Purpose{consentModel.PurposeLogin}},
 			testUserIDStr)
-		require.NoError(t, err)
+		s.Require().NoError(err)
 
 		w := httptest.NewRecorder()
 		handler.HandleGrantConsent(w, req)
 
-		assertStatusAndError(t, w, http.StatusInternalServerError, string(dErrors.CodeInternal))
+		s.assertStatusAndError(w, http.StatusInternalServerError, string(dErrors.CodeInternal))
 	})
 }
 
@@ -121,18 +119,18 @@ func (s *ConsentHandlerSuite) TestHandleGrantConsent_ErrorMapping() {
 
 // TestHandleGetConsents_ErrorMapping verifies HTTP error mapping for list endpoint.
 func (s *ConsentHandlerSuite) TestHandleGetConsents_ErrorMapping() {
-	s.T().Run("missing user context returns 500", func(t *testing.T) {
-		handler, _ := newTestHandler(t)
+	s.Run("missing user context returns 500", func() {
+		handler, _ := newTestHandler(s.T())
 		req := httptest.NewRequest(http.MethodGet, "/auth/consent", nil)
 		w := httptest.NewRecorder()
 
 		handler.HandleGetConsents(w, req)
 
-		assertStatusAndError(t, w, http.StatusInternalServerError, string(dErrors.CodeInternal))
+		s.assertStatusAndError(w, http.StatusInternalServerError, string(dErrors.CodeInternal))
 	})
 
-	s.T().Run("service CodeInternal error returns 500", func(t *testing.T) {
-		handler, mockService := newTestHandler(t)
+	s.Run("service CodeInternal error returns 500", func() {
+		handler, mockService := newTestHandler(s.T())
 		testUserIDStr := "550e8400-e29b-41d4-a716-446655440000"
 		userID, _ := id.ParseUserID(testUserIDStr)
 		mockService.EXPECT().List(gomock.Any(), userID, gomock.Any()).
@@ -145,12 +143,12 @@ func (s *ConsentHandlerSuite) TestHandleGetConsents_ErrorMapping() {
 
 		handler.HandleGetConsents(w, req)
 
-		assertStatusAndError(t, w, http.StatusInternalServerError, string(dErrors.CodeInternal))
+		s.assertStatusAndError(w, http.StatusInternalServerError, string(dErrors.CodeInternal))
 	})
 
-	s.T().Run("invalid status filter returns 400", func(t *testing.T) {
+	s.Run("invalid status filter returns 400", func() {
 		// Handler-level validation of query param
-		handler, _ := newTestHandler(t)
+		handler, _ := newTestHandler(s.T())
 		userID, _ := id.ParseUserID("550e8400-e29b-41d4-a716-446655440000")
 		req := httptest.NewRequest(http.MethodGet, "/auth/consent?status=unknown", nil)
 		ctx := context.WithValue(req.Context(), authmw.ContextKeyUserID, userID)
@@ -159,7 +157,7 @@ func (s *ConsentHandlerSuite) TestHandleGetConsents_ErrorMapping() {
 
 		handler.HandleGetConsents(w, req)
 
-		assertStatusAndError(t, w, http.StatusBadRequest, "validation_error")
+		s.assertStatusAndError(w, http.StatusBadRequest, "validation_error")
 	})
 }
 
@@ -169,32 +167,32 @@ func (s *ConsentHandlerSuite) TestHandleGetConsents_ErrorMapping() {
 
 // TestHandleRevokeConsent_ErrorMapping verifies HTTP error mapping for revoke endpoint.
 func (s *ConsentHandlerSuite) TestHandleRevokeConsent_ErrorMapping() {
-	s.T().Run("missing user context returns 500", func(t *testing.T) {
-		handler, _ := newTestHandler(t)
+	s.Run("missing user context returns 500", func() {
+		handler, _ := newTestHandler(s.T())
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent/revoke",
 			consentModel.RevokeRequest{Purposes: []consentModel.Purpose{consentModel.PurposeLogin}}, "")
-		require.NoError(t, err)
+		s.Require().NoError(err)
 
 		w := httptest.NewRecorder()
 		handler.HandleRevokeConsent(w, req)
 
-		assertStatusAndError(t, w, http.StatusInternalServerError, string(dErrors.CodeInternal))
+		s.assertStatusAndError(w, http.StatusInternalServerError, string(dErrors.CodeInternal))
 	})
 
-	s.T().Run("empty purposes array returns 400", func(t *testing.T) {
-		handler, _ := newTestHandler(t)
+	s.Run("empty purposes array returns 400", func() {
+		handler, _ := newTestHandler(s.T())
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent/revoke",
 			consentModel.RevokeRequest{Purposes: []consentModel.Purpose{}}, "550e8400-e29b-41d4-a716-446655440000")
-		require.NoError(t, err)
+		s.Require().NoError(err)
 
 		w := httptest.NewRecorder()
 		handler.HandleRevokeConsent(w, req)
 
-		assertStatusAndError(t, w, http.StatusBadRequest, "validation_error")
+		s.assertStatusAndError(w, http.StatusBadRequest, "validation_error")
 	})
 
-	s.T().Run("service CodeInternal error returns 500", func(t *testing.T) {
-		handler, mockService := newTestHandler(t)
+	s.Run("service CodeInternal error returns 500", func() {
+		handler, mockService := newTestHandler(s.T())
 		testUserIDStr := "550e8400-e29b-41d4-a716-446655440000"
 		userID, _ := id.ParseUserID(testUserIDStr)
 		mockService.EXPECT().Revoke(gomock.Any(), userID, []consentModel.Purpose{consentModel.PurposeLogin}).
@@ -202,12 +200,12 @@ func (s *ConsentHandlerSuite) TestHandleRevokeConsent_ErrorMapping() {
 
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent/revoke",
 			consentModel.RevokeRequest{Purposes: []consentModel.Purpose{consentModel.PurposeLogin}}, testUserIDStr)
-		require.NoError(t, err)
+		s.Require().NoError(err)
 
 		w := httptest.NewRecorder()
 		handler.HandleRevokeConsent(w, req)
 
-		assertStatusAndError(t, w, http.StatusInternalServerError, string(dErrors.CodeInternal))
+		s.assertStatusAndError(w, http.StatusInternalServerError, string(dErrors.CodeInternal))
 	})
 }
 
@@ -244,16 +242,14 @@ func newRequestWithBody(method, endpoint string, body interface{}, userID string
 }
 
 // assertErrorResponse unmarshals the response body and asserts the error code.
-func assertErrorResponse(t *testing.T, w *httptest.ResponseRecorder, expectedCode string) {
-	t.Helper()
+func (s *ConsentHandlerSuite) assertErrorResponse(w *httptest.ResponseRecorder, expectedCode string) {
 	var resp map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, expectedCode, resp["error"])
+	s.Require().NoError(json.Unmarshal(w.Body.Bytes(), &resp))
+	s.Assert().Equal(expectedCode, resp["error"])
 }
 
 // assertStatusAndError asserts both status code and error response in one call.
-func assertStatusAndError(t *testing.T, w *httptest.ResponseRecorder, expectedStatus int, expectedCode string) {
-	t.Helper()
-	assert.Equal(t, expectedStatus, w.Code)
-	assertErrorResponse(t, w, expectedCode)
+func (s *ConsentHandlerSuite) assertStatusAndError(w *httptest.ResponseRecorder, expectedStatus int, expectedCode string) {
+	s.Assert().Equal(expectedStatus, w.Code)
+	s.assertErrorResponse(w, expectedCode)
 }
