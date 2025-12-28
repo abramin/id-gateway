@@ -21,6 +21,10 @@ import (
 // Tracer for distributed tracing of outbound HTTP calls.
 var adapterTracer = otel.Tracer("credo/registry/adapter")
 
+// MaxResponseSize is the maximum allowed response body size from registry providers.
+// This prevents memory exhaustion from malicious or misconfigured providers.
+const MaxResponseSize = 10 * 1024 * 1024 // 10MB
+
 // HTTPAdapter wraps HTTP-based registry providers implementing the Provider interface.
 //
 // This adapter handles the common HTTP concerns (request building, error mapping, response parsing)
@@ -161,6 +165,7 @@ func (a *HTTPAdapter) buildRequest(ctx context.Context, filters map[string]strin
 }
 
 // executeRequest sends the HTTP request and returns the response with body.
+// Uses io.LimitReader to prevent memory exhaustion from oversized responses.
 func (a *HTTPAdapter) executeRequest(ctx context.Context, req *http.Request) (*http.Response, []byte, error) {
 	resp, err := a.client.Do(req)
 	if err != nil {
@@ -181,13 +186,25 @@ func (a *HTTPAdapter) executeRequest(ctx context.Context, req *http.Request) (*h
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	// Limit response size to prevent memory exhaustion from malicious providers
+	limitedReader := io.LimitReader(resp.Body, MaxResponseSize+1)
+	body, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, nil, providers.NewProviderError(
 			providers.ErrorBadData,
 			a.id,
 			"failed to read response",
 			err,
+		)
+	}
+
+	// Check if response exceeded the limit (we read MaxResponseSize+1 to detect overflow)
+	if int64(len(body)) > MaxResponseSize {
+		return nil, nil, providers.NewProviderError(
+			providers.ErrorBadData,
+			a.id,
+			fmt.Sprintf("response too large: exceeds %d bytes", MaxResponseSize),
+			nil,
 		)
 	}
 

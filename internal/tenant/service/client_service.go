@@ -66,7 +66,7 @@ func (s *ClientService) CreateClient(ctx context.Context, cmd *CreateClientComma
 		uuid.NewString(),
 		secretHash,
 		cmd.RedirectURIs,
-		grantTypesToStrings(cmd.AllowedGrants),
+		cmd.AllowedGrants,
 		cmd.AllowedScopes,
 		requesttime.Now(ctx),
 	)
@@ -232,6 +232,66 @@ func (s *ClientService) RotateClientSecretForTenant(ctx context.Context, tenantI
 	return s.rotateSecret(ctx, client)
 }
 
+// VerifyClientSecret verifies a client's credentials for authentication.
+// Returns nil if the secret is valid, or an error if verification fails.
+// This is the explicit entry point for auth module to verify client secrets.
+//
+// Security: Uses bcrypt constant-time comparison via secrets.Verify.
+// Returns a generic "invalid credentials" error to prevent enumeration attacks.
+func (s *ClientService) VerifyClientSecret(ctx context.Context, clientID id.ClientID, providedSecret string) error {
+	if err := requireClientID(clientID); err != nil {
+		return err
+	}
+
+	client, err := s.clients.FindByID(ctx, clientID)
+	if err != nil {
+		// Return generic error to prevent client enumeration
+		return dErrors.New(dErrors.CodeInvalidClient, "invalid client credentials")
+	}
+
+	// Public clients cannot authenticate with a secret
+	if !client.IsConfidential() {
+		return dErrors.New(dErrors.CodeInvalidClient, "public client cannot use secret authentication")
+	}
+
+	// Verify the secret using bcrypt constant-time comparison
+	if err := secrets.Verify(providedSecret, client.ClientSecretHash); err != nil {
+		return dErrors.New(dErrors.CodeInvalidClient, "invalid client credentials")
+	}
+
+	return nil
+}
+
+// VerifyClientSecretByOAuthID verifies a client's credentials using the OAuth client_id string.
+// This is the common entry point used during token endpoint authentication.
+//
+// Security: Uses bcrypt constant-time comparison via secrets.Verify.
+// Returns a generic "invalid credentials" error to prevent enumeration attacks.
+func (s *ClientService) VerifyClientSecretByOAuthID(ctx context.Context, oauthClientID, providedSecret string) error {
+	oauthClientID = strings.TrimSpace(oauthClientID)
+	if oauthClientID == "" {
+		return dErrors.New(dErrors.CodeInvalidClient, "client_id is required")
+	}
+
+	client, err := s.clients.FindByOAuthClientID(ctx, oauthClientID)
+	if err != nil {
+		// Return generic error to prevent client enumeration
+		return dErrors.New(dErrors.CodeInvalidClient, "invalid client credentials")
+	}
+
+	// Public clients cannot authenticate with a secret
+	if !client.IsConfidential() {
+		return dErrors.New(dErrors.CodeInvalidClient, "public client cannot use secret authentication")
+	}
+
+	// Verify the secret using bcrypt constant-time comparison
+	if err := secrets.Verify(providedSecret, client.ClientSecretHash); err != nil {
+		return dErrors.New(dErrors.CodeInvalidClient, "invalid client credentials")
+	}
+
+	return nil
+}
+
 // ResolveClient maps client_id -> client and tenant as a single choke point.
 // If the client or tenant is inactive, returns an invalid_client error.
 func (s *ClientService) ResolveClient(ctx context.Context, clientID string) (*models.Client, *models.Tenant, error) {
@@ -346,7 +406,7 @@ func validateGrantChanges(client *models.Client, cmd *UpdateClientCommand) error
 		return nil
 	}
 	for _, grant := range cmd.AllowedGrants {
-		if !client.CanUseGrant(grant.String()) {
+		if !client.CanUseGrant(grant) {
 			return dErrors.New(dErrors.CodeValidation, "client_credentials grant requires a confidential client")
 		}
 	}
@@ -362,7 +422,7 @@ func applyFieldUpdates(client *models.Client, cmd *UpdateClientCommand) {
 		client.RedirectURIs = cmd.RedirectURIs
 	}
 	if cmd.HasAllowedGrants() {
-		client.AllowedGrants = grantTypesToStrings(cmd.AllowedGrants)
+		client.AllowedGrants = cmd.AllowedGrants
 	}
 	if cmd.HasAllowedScopes() {
 		client.AllowedScopes = cmd.AllowedScopes
@@ -398,11 +458,3 @@ func generateSecret(isPublic bool) (secret, hash string, err error) {
 	return secret, hash, nil
 }
 
-// grantTypesToStrings converts typed grant types to strings for storage.
-func grantTypesToStrings(grants []models.GrantType) []string {
-	result := make([]string, len(grants))
-	for i, g := range grants {
-		result[i] = g.String()
-	}
-	return result
-}

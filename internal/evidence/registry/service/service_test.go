@@ -642,7 +642,7 @@ func (s *ServiceSuite) TestSanctionsAuditFailClosed() {
 		s.Equal("registry_sanctions_checked", auditPort.lastAction)
 	})
 
-	s.Run("returns result when audit fails for non-listed sanctions", func() {
+	s.Run("fails when audit fails for non-listed sanctions (fail-closed)", func() {
 		cache := newStubCache()
 		auditPort := &stubAuditPort{
 			emitErr: &auditError{message: "audit system unavailable"},
@@ -650,7 +650,7 @@ func (s *ServiceSuite) TestSanctionsAuditFailClosed() {
 
 		sanctionsRecord := &models.SanctionsRecord{
 			NationalID: "ABC123456",
-			Listed:     false, // Not listed = non-critical audit
+			Listed:     false, // Not listed, but audit is still fail-closed
 			Source:     "Test DB",
 			CheckedAt:  now,
 		}
@@ -667,10 +667,10 @@ func (s *ServiceSuite) TestSanctionsAuditFailClosed() {
 		svc := New(orch, cache, nil, false, WithAuditor(auditPort))
 
 		result, err := svc.Sanctions(ctx, userID, nationalID)
-		// Should succeed despite audit failure for non-listed
-		s.Require().NoError(err)
-		s.NotNil(result)
-		s.False(result.Listed)
+		// All sanctions audits are now fail-closed for complete audit trail
+		s.Require().Error(err)
+		s.Nil(result)
+		s.Contains(err.Error(), "unable to complete sanctions check")
 	})
 }
 

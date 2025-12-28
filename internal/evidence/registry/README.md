@@ -525,6 +525,48 @@ type AuditPort interface {
 
 ---
 
+## Security Considerations
+
+### Provider Response Validation
+
+All provider responses are validated with fail-fast semantics:
+
+- **Required field extraction** uses `getRequiredString()`/`getRequiredBool()` which return errors on missing or wrong-typed fields (no silent defaults)
+- **Domain error codes** wrap all validation errors for consistent error handling
+- This prevents silent failures that could create invalid domain state
+
+### Response Size Limiting
+
+HTTP provider adapters enforce a maximum response size (10MB) using `io.LimitReader`:
+
+```go
+limitedReader := io.LimitReader(resp.Body, MaxResponseSize+1)
+body, err := io.ReadAll(limitedReader)
+if int64(len(body)) > MaxResponseSize {
+    return providers.NewProviderError(providers.ErrorBadData, ...)
+}
+```
+
+This prevents memory exhaustion attacks from malicious or misconfigured providers.
+
+### Fail-Closed Audit Semantics
+
+Sanctions checks use **fail-closed** audit semantics:
+
+- Audit MUST succeed for both listed and non-listed sanctions results
+- If audit emission fails, the lookup returns an error (blocks response)
+- This ensures complete audit trail for compliance purposes
+- Rationale: Sanctions screening is security-critical; an incomplete audit trail is unacceptable
+
+```go
+// service/service.go
+if err := s.auditor.Emit(ctx, event); err != nil {
+    return dErrors.New(dErrors.CodeInternal, "unable to complete sanctions check")
+}
+```
+
+---
+
 ## Known Gaps / Follow-ups
 
 - Cache implementation is placeholder (panic stubs)

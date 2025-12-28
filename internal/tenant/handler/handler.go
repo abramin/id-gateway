@@ -351,9 +351,18 @@ func toClientResponse(client *models.Client, secret string) *ClientResponse {
 		OAuthClientID: client.OAuthClientID,
 		ClientSecret:  secret, // Empty string omitted due to omitempty tag
 		RedirectURIs:  client.RedirectURIs,
-		AllowedGrants: client.AllowedGrants,
+		AllowedGrants: grantTypesToStrings(client.AllowedGrants),
 		AllowedScopes: client.AllowedScopes,
 		Status:        client.Status.String(),
 		PublicClient:  !client.IsConfidential(),
 	}
+}
+
+// grantTypesToStrings converts typed grant types to strings for DTO serialization.
+func grantTypesToStrings(grants []models.GrantType) []string {
+	result := make([]string, len(grants))
+	for i, g := range grants {
+		result[i] = g.String()
+	}
+	return result
 }

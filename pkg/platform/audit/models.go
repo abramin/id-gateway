@@ -20,6 +20,10 @@ type Event struct {
 	// PRD-001B: Enrichment fields for audit trail completeness
 	Email     string // User email when available (e.g., during user deletion)
 	RequestID string // Correlation ID from HTTP request context
+	// ActorID tracks who performed the action when different from UserID.
+	// Used for admin operations where an admin acts on a user's behalf.
+	// This is a string to support various actor identification schemes.
+	ActorID string
 }
 
 type AuditEvent string

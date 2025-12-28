@@ -24,7 +24,7 @@ type Client struct {
 	OAuthClientID    string       `json:"client_id"`
 	ClientSecretHash string       `json:"-"` // Never serialize - contains bcrypt hash
 	RedirectURIs     []string     `json:"redirect_uris"`
-	AllowedGrants    []string     `json:"allowed_grants"`
+	AllowedGrants    []GrantType  `json:"allowed_grants"`
 	AllowedScopes    []string     `json:"allowed_scopes"`
 	Status           ClientStatus `json:"status"`
 	CreatedAt        time.Time    `json:"created_at"`
@@ -38,7 +38,7 @@ func NewClient(
 	oauthClientID string,
 	clientSecretHash string,
 	redirectURIs []string,
-	allowedGrants []string,
+	allowedGrants []GrantType,
 	allowedScopes []string,
 	now time.Time,
 ) (*Client, error) {
@@ -56,6 +56,11 @@ func NewClient(
 	}
 	if len(allowedGrants) == 0 {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "allowed_grants cannot be empty")
+	}
+	for _, grant := range allowedGrants {
+		if !grant.IsValid() {
+			return nil, dErrors.New(dErrors.CodeInvariantViolation, "invalid allowed_grant")
+		}
 	}
 	if len(allowedScopes) == 0 {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "allowed_scopes cannot be empty")
@@ -111,8 +116,8 @@ func (c *Client) IsConfidential() bool {
 
 // CanUseGrant checks if the client is allowed to use the specified grant type.
 // Public clients cannot use client_credentials (requires secure secret storage).
-func (c *Client) CanUseGrant(grant string) bool {
-	if GrantType(grant).RequiresConfidentialClient() && !c.IsConfidential() {
+func (c *Client) CanUseGrant(grant GrantType) bool {
+	if grant.RequiresConfidentialClient() && !c.IsConfidential() {
 		return false
 	}
 	return true

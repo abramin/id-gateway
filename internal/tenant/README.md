@@ -253,11 +253,52 @@ Events emitted at lifecycle transitions:
 
 ---
 
+## Security Considerations
+
+### Cascade Invariant
+
+When a tenant is deactivated, all OAuth flows for its clients fail immediately:
+
+- `ResolveClient()` checks `tenant.IsActive()` as well as `client.IsActive()`
+- Clients do NOT need explicit deactivation when tenant is inactive
+- This provides single point of enforcement at the OAuth choke point
+- Existing tokens remain valid until expiry (revoke separately if needed)
+
+See `models/tenant.go` for the full invariant documentation.
+
+### Client Secret Verification
+
+The service provides constant-time secret verification methods:
+
+```go
+// Verify by internal ClientID
+VerifyClientSecret(ctx, clientID, providedSecret) error
+
+// Verify by OAuth client_id (public identifier)
+VerifyClientSecretByOAuthID(ctx, oauthClientID, providedSecret) error
+```
+
+Security properties:
+- Uses bcrypt for timing-attack resistant comparison
+- Returns same error (`CodeInvalidClient`) for both "not found" and "wrong secret"
+- Rejects secret auth for public clients (no secret stored)
+- Logs internal details, returns generic message to client
+
+### Secret Handling
+
+- Client secrets are one-time visible (returned only at creation/rotation)
+- Secrets are bcrypt-hashed before storage
+- `ClientSecretHash` is never serialized (json:"-" tag)
+- Secret rotation generates new 32-byte random value
+
+---
+
 ## Known Gaps / Follow-ups
 
 - Tenant-admin auth is not yet wired; handlers use platform-admin access paths.
 - Persistence is demo-only (in-memory stores).
 - Consider argon2id for new installations; bcrypt is CPU-bound.
+- Grace period for rotated secrets not yet implemented (in-flight requests fail immediately).
 
 ---
 

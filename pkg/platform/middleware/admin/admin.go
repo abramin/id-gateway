@@ -1,12 +1,28 @@
 package admin
 
 import (
+	"context"
 	"crypto/subtle"
 	"log/slog"
 	"net/http"
 
 	request "credo/pkg/platform/middleware/request"
 )
+
+// Context key for storing admin actor identifier.
+type contextKeyAdminActorID struct{}
+
+// ContextKeyAdminActorID is exported for use in handlers and tests.
+var ContextKeyAdminActorID = contextKeyAdminActorID{}
+
+// GetAdminActorID retrieves the admin actor identifier from the context.
+// Returns empty string if not set or if this is not an admin request.
+func GetAdminActorID(ctx context.Context) string {
+	if actorID, ok := ctx.Value(ContextKeyAdminActorID).(string); ok {
+		return actorID
+	}
+	return ""
+}
 
 func RequireAdminToken(expectedToken string, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -24,7 +40,14 @@ func RequireAdminToken(expectedToken string, logger *slog.Logger) func(http.Hand
 				return
 			}
 
-			next.ServeHTTP(w, r)
+			ctx := r.Context()
+			// Capture admin actor identifier for audit attribution.
+			// This header identifies which admin performed the action.
+			if actorID := r.Header.Get("X-Admin-Actor-ID"); actorID != "" {
+				ctx = context.WithValue(ctx, ContextKeyAdminActorID, actorID)
+			}
+
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

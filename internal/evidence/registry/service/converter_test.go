@@ -130,7 +130,7 @@ func (s *ConverterSuite) TestEvidenceToSanctionsCheck_InvalidNationalID() {
 		}
 		_, err := EvidenceToSanctionsCheck(evidence)
 		s.Error(err)
-		s.Contains(err.Error(), "invalid national_id")
+		s.Contains(err.Error(), "invalid provider response")
 	})
 
 	s.Run("wrong type (int) returns error", func() {
@@ -147,7 +147,7 @@ func (s *ConverterSuite) TestEvidenceToSanctionsCheck_InvalidNationalID() {
 		}
 		_, err := EvidenceToSanctionsCheck(evidence)
 		s.Error(err)
-		s.Contains(err.Error(), "invalid national_id")
+		s.Contains(err.Error(), "invalid provider response")
 	})
 }
 
@@ -200,7 +200,7 @@ func (s *ConverterSuite) TestEvidenceToSanctionsCheck_MissingFields() {
 		}
 		_, err := EvidenceToSanctionsCheck(evidence)
 		s.Error(err)
-		s.Contains(err.Error(), "invalid national_id")
+		s.Contains(err.Error(), "invalid provider response")
 	})
 }
 

@@ -43,6 +43,11 @@ func TestCitizenProvider(t *testing.T) {
 }
 
 func TestCitizenProviderContract(t *testing.T) {
+	// Only run if we have a mock server available
+	if testing.Short() {
+		t.Skip("Skipping contract tests in short mode")
+	}
+
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -105,10 +110,6 @@ func TestCitizenProviderContract(t *testing.T) {
 		},
 	}
 
-	// Only run if we have a mock server available
-	if testing.Short() {
-		t.Skip("Skipping contract tests in short mode")
-	}
 	suite.Run(t)
 }
 

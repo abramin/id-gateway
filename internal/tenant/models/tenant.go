@@ -14,6 +14,25 @@ import (
 //   - Status is either active or inactive
 //   - Status transitions: active ↔ inactive only (no other states)
 //   - CreatedAt is immutable after construction
+//
+// # Cascade Invariant
+//
+// When a tenant is deactivated, all OAuth flows for its clients MUST fail,
+// even if the client itself has Status=active. This is enforced at the
+// service layer (ResolveClient) rather than by cascading status changes.
+//
+// Security Implications:
+//   - Tenant deactivation is an immediate security boundary enforcement
+//   - Clients do NOT need explicit deactivation when tenant is inactive
+//   - ResolveClient MUST check tenant.IsActive() before returning client
+//   - This prevents suspended organizations from issuing new tokens
+//   - Existing tokens remain valid until expiry (revoke separately if needed)
+//
+// This design choice:
+//   - Avoids expensive cascade updates to all clients on tenant status change
+//   - Provides single point of enforcement (ResolveClient)
+//   - Allows easy reactivation without touching client records
+//   - Maintains audit trail clarity (tenant status is the source of truth)
 type Tenant struct {
 	ID        id.TenantID  `json:"id"`
 	Name      string       `json:"name"`

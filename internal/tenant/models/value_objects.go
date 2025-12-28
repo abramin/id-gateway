@@ -1,5 +1,7 @@
 package models
 
+import domain "credo/pkg/domain"
+
 // TenantStatus represents the lifecycle state of a tenant.
 // Tenants can be active (operational) or inactive (suspended).
 //
@@ -82,33 +84,13 @@ func (s ClientStatus) CanTransitionTo(target ClientStatus) bool {
 //
 // Invariant: client_credentials requires a confidential client (one with a secret).
 // Public clients (SPAs, mobile apps) cannot use client_credentials.
-type GrantType string
+type GrantType = domain.GrantType
 
 const (
 	// GrantTypeAuthorizationCode is the standard OAuth 2.0 authorization code flow.
-	GrantTypeAuthorizationCode GrantType = "authorization_code"
+	GrantTypeAuthorizationCode = domain.GrantTypeAuthorizationCode
 	// GrantTypeRefreshToken allows exchanging refresh tokens for new access tokens.
-	GrantTypeRefreshToken GrantType = "refresh_token"
+	GrantTypeRefreshToken = domain.GrantTypeRefreshToken
 	// GrantTypeClientCredentials is for machine-to-machine authentication (confidential clients only).
-	GrantTypeClientCredentials GrantType = "client_credentials"
+	GrantTypeClientCredentials = domain.GrantTypeClientCredentials
 )
-
-// IsValid returns true if the grant type is a known valid value.
-func (g GrantType) IsValid() bool {
-	switch g {
-	case GrantTypeAuthorizationCode, GrantTypeRefreshToken, GrantTypeClientCredentials:
-		return true
-	}
-	return false
-}
-
-// String returns the string representation of the grant type.
-func (g GrantType) String() string {
-	return string(g)
-}
-
-// RequiresConfidentialClient returns true if this grant type can only be used
-// by confidential clients (those with a client secret).
-func (g GrantType) RequiresConfidentialClient() bool {
-	return g == GrantTypeClientCredentials
-}

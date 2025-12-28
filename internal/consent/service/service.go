@@ -15,6 +15,7 @@ import (
 	pkgerrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
 	auditpublisher "credo/pkg/platform/audit/publisher"
+	admin "credo/pkg/platform/middleware/admin"
 	request "credo/pkg/platform/middleware/request"
 	requesttime "credo/pkg/platform/middleware/requesttime"
 	"credo/pkg/platform/sentinel"
@@ -41,6 +42,7 @@ type Option func(*Service)
 const (
 	defaultConsentTTL             = 365 * 24 * time.Hour // 1 year
 	defaultGrantIdempotencyWindow = 5 * time.Minute
+	defaultReGrantCooldown        = models.DefaultReGrantCooldown
 )
 
 // Service persists consent decisions and enforces lifecycle rules per PRD-002.
@@ -53,6 +55,7 @@ type Service struct {
 	logger                 *slog.Logger
 	consentTTL             time.Duration
 	grantIdempotencyWindow time.Duration
+	reGrantCooldown        time.Duration
 }
 
 // New constructs a consent service with defaults applied.
@@ -64,6 +67,7 @@ func New(store Store, auditor *auditpublisher.Publisher, logger *slog.Logger, op
 		logger:                 logger,
 		consentTTL:             defaultConsentTTL,
 		grantIdempotencyWindow: defaultGrantIdempotencyWindow,
+		reGrantCooldown:        defaultReGrantCooldown,
 	}
 	for _, opt := range opts {
 		opt(svc)
@@ -74,6 +78,9 @@ func New(store Store, auditor *auditpublisher.Publisher, logger *slog.Logger, op
 	}
 	if svc.grantIdempotencyWindow <= 0 {
 		svc.grantIdempotencyWindow = defaultGrantIdempotencyWindow
+	}
+	if svc.reGrantCooldown <= 0 {
+		svc.reGrantCooldown = defaultReGrantCooldown
 	}
 	return svc
 }
@@ -115,6 +122,17 @@ func WithGrantWindow(window time.Duration) Option {
 	return func(s *Service) {
 		if window > 0 {
 			s.grantIdempotencyWindow = window
+		}
+	}
+}
+
+// WithReGrantCooldown configures the minimum time after revocation before re-grant is allowed.
+// This prevents rapid revoke→grant cycles that could be abused.
+// If not set or set to zero/negative, defaults to 5 minutes.
+func WithReGrantCooldown(cooldown time.Duration) Option {
+	return func(s *Service) {
+		if cooldown > 0 {
+			s.reGrantCooldown = cooldown
 		}
 	}
 }
@@ -177,6 +195,13 @@ func (s *Service) renewGrantTx(ctx context.Context, txStore Store, userID id.Use
 	// Idempotent within configured window: skip update if recently granted
 	if wasActive && now.Sub(existing.GrantedAt) < s.grantIdempotencyWindow {
 		return existing, nil
+	}
+
+	// Security: prevent rapid revoke→grant cycles
+	// If consent was recently revoked, enforce cooldown before allowing re-grant
+	if !existing.CanReGrant(now, s.reGrantCooldown) {
+		return nil, pkgerrors.New(pkgerrors.CodeBadRequest,
+			fmt.Sprintf("consent was recently revoked; please wait before re-granting (cooldown: %v)", s.reGrantCooldown))
 	}
 
 	expiry := now.Add(s.consentTTL)
@@ -295,6 +320,8 @@ func (s *Service) Revoke(ctx context.Context, userID id.UserID, purposes []model
 
 // RevokeAll revokes all active consents for a user.
 // Intended for administrative purposes. Returns the count of revoked consents.
+// If an admin actor ID is present in context (via X-Admin-Actor-ID header),
+// it is included in the audit event for attribution.
 func (s *Service) RevokeAll(ctx context.Context, userID id.UserID) (int, error) {
 	if userID.IsNil() {
 		return 0, pkgerrors.New(pkgerrors.CodeBadRequest, "user ID required")
@@ -306,12 +333,15 @@ func (s *Service) RevokeAll(ctx context.Context, userID id.UserID) (int, error) 
 	}
 
 	if count > 0 {
+		// Include admin actor ID for audit attribution if present
+		actorID := admin.GetAdminActorID(ctx)
 		s.emitAudit(ctx, audit.Event{
 			UserID:    userID,
 			Action:    models.AuditActionConsentRevoked,
 			Decision:  models.AuditDecisionRevoked,
 			Reason:    "bulk_revocation",
 			Timestamp: now,
+			ActorID:   actorID,
 		})
 		s.decrementActiveConsents(float64(count))
 	}
@@ -321,6 +351,7 @@ func (s *Service) RevokeAll(ctx context.Context, userID id.UserID) (int, error) 
 
 // DeleteAll removes all consent records for a user.
 // Intended for GDPR right to erasure and test cleanup.
+// If an admin actor ID is present in context, it is included in the audit event.
 func (s *Service) DeleteAll(ctx context.Context, userID id.UserID) error {
 	if userID.IsNil() {
 		return pkgerrors.New(pkgerrors.CodeBadRequest, "user ID required")
@@ -329,12 +360,15 @@ func (s *Service) DeleteAll(ctx context.Context, userID id.UserID) error {
 		return pkgerrors.Wrap(err, pkgerrors.CodeInternal, "failed to delete all consents")
 	}
 
+	// Include admin actor ID for audit attribution if present
+	actorID := admin.GetAdminActorID(ctx)
 	s.emitAudit(ctx, audit.Event{
 		UserID:    userID,
 		Action:    "consent_deleted",
 		Decision:  "deleted",
 		Reason:    "bulk_deletion",
 		Timestamp: requesttime.Now(ctx),
+		ActorID:   actorID,
 	})
 
 	return nil

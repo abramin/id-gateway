@@ -229,6 +229,54 @@ The service maps store errors to domain errors:
 
 ---
 
+## Security Considerations
+
+### ConsentID Scoping Invariant
+
+A ConsentID is ALWAYS scoped by (UserID, Purpose). Security implications:
+
+- ConsentID alone is NOT sufficient to authorize access to a record
+- All queries MUST include UserID to prevent cross-user access
+- Never expose ConsentID in URLs/APIs without validating UserID ownership
+- This prevents IDOR vulnerabilities and enumeration attacks
+
+See `models/models.go` for the full invariant documentation.
+
+### Admin Actor Attribution
+
+Admin operations (RevokeAll, DeleteAll) include actor attribution in audit events:
+
+```go
+// Admin actor is extracted from X-Admin-Actor-ID header
+actorID := admin.GetAdminActorID(ctx)
+s.emitAudit(ctx, audit.Event{
+    UserID:  targetUserID,
+    ActorID: actorID,  // Who performed the action
+    Action:  models.AuditActionConsentRevoked,
+    ...
+})
+```
+
+This ensures complete audit trails for compliance and incident investigation.
+
+### Re-Grant Cooldown
+
+The service enforces a cooldown period (default: 5 minutes) after revocation before re-granting:
+
+```go
+// models/models.go
+func (c Record) CanReGrant(now time.Time, cooldown time.Duration) bool
+```
+
+This prevents abuse patterns:
+- Rapid revoke→grant cycles to circumvent audit trail analysis
+- Race condition exploitation in consent-dependent workflows
+- Artificial consent churn for gaming metrics
+
+Configure via `WithReGrantCooldown(duration)` option.
+
+---
+
 ## Known Gaps / Follow-ups
 
 - CQRS projection path deferred until Postgres migration.
