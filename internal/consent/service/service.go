@@ -478,24 +478,11 @@ type consentCheckOutcome struct {
 	decision string // models.AuditDecisionGranted or models.AuditDecisionDenied
 }
 
-// newConsentCheckOutcome creates a consent check outcome with invariant enforcement.
-// Panics if the passed/decision combination is invalid (indicates a programming error).
-func newConsentCheckOutcome(passed bool, state string, decision string) consentCheckOutcome {
-	// Invariant: passed and decision must be consistent
-	if passed && decision != models.AuditDecisionGranted {
-		panic("consent check invariant violation: passed=true requires decision=granted")
-	}
-	if !passed && decision != models.AuditDecisionDenied {
-		panic("consent check invariant violation: passed=false requires decision=denied")
-	}
-	return consentCheckOutcome{passed: passed, state: state, decision: decision}
-}
-
 var (
-	outcomeMissing = newConsentCheckOutcome(false, "missing", models.AuditDecisionDenied)
-	outcomeRevoked = newConsentCheckOutcome(false, "revoked", models.AuditDecisionDenied)
-	outcomeExpired = newConsentCheckOutcome(false, "expired", models.AuditDecisionDenied)
-	outcomePassed  = newConsentCheckOutcome(true, "active", models.AuditDecisionGranted)
+	outcomeMissing = consentCheckOutcome{passed: false, state: "missing", decision: models.AuditDecisionDenied}
+	outcomeRevoked = consentCheckOutcome{passed: false, state: "revoked", decision: models.AuditDecisionDenied}
+	outcomeExpired = consentCheckOutcome{passed: false, state: "expired", decision: models.AuditDecisionDenied}
+	outcomePassed  = consentCheckOutcome{passed: true, state: "active", decision: models.AuditDecisionGranted}
 )
 
 // recordConsentCheckOutcome emits audit event, logs, and updates metrics for a consent check.

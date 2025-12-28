@@ -29,18 +29,27 @@ const (
 
 // Record captures a user's decision for a specific purpose.
 type Record struct {
-	ID        id.ConsentID `json:"id"`
-	UserID    id.UserID    `json:"user_id"`
-	Purpose   Purpose      `json:"purpose"`
-	GrantedAt time.Time    `json:"granted_at"`
-	ExpiresAt *time.Time   `json:"expires_at,omitempty"`
-	RevokedAt *time.Time   `json:"revoked_at,omitempty"`
+	ID        id.ConsentID
+	UserID    id.UserID
+	Purpose   Purpose
+	GrantedAt time.Time
+	ExpiresAt *time.Time
+	RevokedAt *time.Time
 }
 
 // NewRecord creates a Record with domain invariant checks.
 func NewRecord(consentID id.ConsentID, userID id.UserID, purpose Purpose, grantedAt time.Time, expiresAt *time.Time) (*Record, error) {
+	if consentID.IsNil() {
+		return nil, dErrors.New(dErrors.CodeInvariantViolation, "consent ID required")
+	}
+	if userID.IsNil() {
+		return nil, dErrors.New(dErrors.CodeInvariantViolation, "user ID required")
+	}
 	if !purpose.IsValid() {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "invalid consent purpose")
+	}
+	if grantedAt.IsZero() {
+		return nil, dErrors.New(dErrors.CodeInvariantViolation, "grant time required")
 	}
 	if expiresAt != nil && expiresAt.Before(grantedAt) {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "expiry must be after grant time")
@@ -89,8 +98,8 @@ func (c Record) ComputeStatus(now time.Time) Status {
 
 // RecordFilter allows filtering consent records by purpose and status.
 type RecordFilter struct {
-	Purpose string
-	Status  string
+	Purpose *Purpose
+	Status  *Status
 }
 
 // Ensure enforces that consent exists and is active for the given purpose.

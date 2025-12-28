@@ -45,6 +45,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"credo/internal/consent/handler"
+	consentdto "credo/internal/consent/handler/dto"
 	consentModel "credo/internal/consent/models"
 	"credo/internal/consent/service"
 	"credo/internal/consent/store"
@@ -108,7 +109,7 @@ func (h *consentTestHarness) Close() {
 	h.server.Close()
 }
 
-func (h *consentTestHarness) grantConsent(t *testing.T, purposes []string) *consentModel.GrantResponse {
+func (h *consentTestHarness) grantConsent(t *testing.T, purposes []string) *consentdto.GrantResponse {
 	body, _ := json.Marshal(map[string]any{"purposes": purposes})
 	resp, err := http.Post(h.server.URL+"/auth/consent", "application/json", bytes.NewReader(body))
 	require.NoError(t, err)
@@ -116,24 +117,24 @@ func (h *consentTestHarness) grantConsent(t *testing.T, purposes []string) *cons
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	respBody, _ := io.ReadAll(resp.Body)
-	var data consentModel.GrantResponse
+	var data consentdto.GrantResponse
 	require.NoError(t, json.Unmarshal(respBody, &data))
 	return &data
 }
 
-func (h *consentTestHarness) listConsents(t *testing.T) *consentModel.ListResponse {
+func (h *consentTestHarness) listConsents(t *testing.T) *consentdto.ListResponse {
 	resp, err := http.Get(h.server.URL + "/auth/consent")
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	body, _ := io.ReadAll(resp.Body)
-	var data consentModel.ListResponse
+	var data consentdto.ListResponse
 	require.NoError(t, json.Unmarshal(body, &data))
 	return &data
 }
 
-func (h *consentTestHarness) revokeConsent(t *testing.T, purposes []string) *consentModel.RevokeResponse {
+func (h *consentTestHarness) revokeConsent(t *testing.T, purposes []string) *consentdto.RevokeResponse {
 	body, _ := json.Marshal(map[string]any{"purposes": purposes})
 	resp, err := http.Post(h.server.URL+"/auth/consent/revoke", "application/json", bytes.NewReader(body))
 	require.NoError(t, err)
@@ -141,19 +142,19 @@ func (h *consentTestHarness) revokeConsent(t *testing.T, purposes []string) *con
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	respBody, _ := io.ReadAll(resp.Body)
-	var data consentModel.RevokeResponse
+	var data consentdto.RevokeResponse
 	require.NoError(t, json.Unmarshal(respBody, &data))
 	return &data
 }
 
-func (h *consentTestHarness) adminRevokeAllConsents(t *testing.T, userID id.UserID) *consentModel.RevokeResponse {
+func (h *consentTestHarness) adminRevokeAllConsents(t *testing.T, userID id.UserID) *consentdto.RevokeResponse {
 	resp, err := http.Post(h.server.URL+"/admin/consent/users/"+userID.String()+"/revoke-all", "application/json", nil)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	respBody, _ := io.ReadAll(resp.Body)
-	var data consentModel.RevokeResponse
+	var data consentdto.RevokeResponse
 	require.NoError(t, json.Unmarshal(respBody, &data))
 	return &data
 }
@@ -194,12 +195,12 @@ func TestConsentExpiryAndIDReuse(t *testing.T) {
 	for _, record := range listData.Consents {
 		statusCounts[string(record.Status)]++
 		switch record.Purpose {
-		case consentModel.PurposeLogin:
-			assert.Equal(t, consentModel.StatusActive, record.Status, "login should be active")
-		case consentModel.PurposeRegistryCheck:
-			assert.Equal(t, consentModel.StatusRevoked, record.Status, "registry_check should be revoked")
-		case consentModel.PurposeVCIssuance:
-			assert.Equal(t, consentModel.StatusExpired, record.Status, "vc_issuance should be expired")
+		case consentModel.PurposeLogin.String():
+			assert.Equal(t, string(consentModel.StatusActive), record.Status, "login should be active")
+		case consentModel.PurposeRegistryCheck.String():
+			assert.Equal(t, string(consentModel.StatusRevoked), record.Status, "registry_check should be revoked")
+		case consentModel.PurposeVCIssuance.String():
+			assert.Equal(t, string(consentModel.StatusExpired), record.Status, "vc_issuance should be expired")
 			assert.True(t, record.ExpiresAt.Before(time.Now()), "vc_issuance expiry should be in past")
 		}
 	}
@@ -210,8 +211,8 @@ func TestConsentExpiryAndIDReuse(t *testing.T) {
 	t.Log("Step 3: Re-grant the expired consent (distinct from re-granting revoked)")
 	regrantData := h.grantConsent(t, []string{"vc_issuance"})
 	require.Len(t, regrantData.Granted, 1)
-	assert.Equal(t, consentModel.PurposeVCIssuance, regrantData.Granted[0].Purpose)
-	assert.Equal(t, consentModel.StatusActive, regrantData.Granted[0].Status)
+	assert.Equal(t, consentModel.PurposeVCIssuance.String(), regrantData.Granted[0].Purpose)
+	assert.Equal(t, string(consentModel.StatusActive), regrantData.Granted[0].Status)
 
 	t.Log("Step 4: Verify consent ID was reused (not creating a new record)")
 	regrantedRecord, err := h.consentStore.FindByUserAndPurpose(context.Background(), h.userID, consentModel.PurposeVCIssuance)
@@ -269,7 +270,7 @@ func TestAdminRevokeAllConsents(t *testing.T) {
 	listData := h.listConsents(t)
 	require.Len(t, listData.Consents, 2)
 	for _, record := range listData.Consents {
-		assert.Equal(t, consentModel.StatusRevoked, record.Status)
+		assert.Equal(t, string(consentModel.StatusRevoked), record.Status)
 	}
 }
 

@@ -1,4 +1,4 @@
-package models
+package dto
 
 import "time"
 
@@ -10,10 +10,10 @@ type GrantResponse struct {
 
 // Grant represents a granted consent in HTTP responses.
 type Grant struct {
-	Purpose   Purpose    `json:"purpose"`
+	Purpose   string     `json:"purpose"`
 	GrantedAt time.Time  `json:"granted_at"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
-	Status    Status     `json:"status"`
+	Status    string     `json:"status"`
 }
 
 // RevokeResponse is returned after revoking consent.
@@ -24,9 +24,9 @@ type RevokeResponse struct {
 
 // Revoked represents a revoked consent in HTTP responses.
 type Revoked struct {
-	Purpose   Purpose   `json:"purpose"`
+	Purpose   string    `json:"purpose"`
 	RevokedAt time.Time `json:"revoked_at"`
-	Status    Status    `json:"status"`
+	Status    string    `json:"status"`
 }
 
 // ListResponse is returned when listing consents.
@@ -37,7 +37,7 @@ type ListResponse struct {
 // Consent represents a consent record in HTTP responses (without status).
 type Consent struct {
 	ID        string     `json:"id"`
-	Purpose   Purpose    `json:"purpose"`
+	Purpose   string     `json:"purpose"`
 	GrantedAt time.Time  `json:"granted_at"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 	RevokedAt *time.Time `json:"revoked_at,omitempty"`
@@ -46,5 +46,5 @@ type Consent struct {
 // ConsentWithStatus extends Consent with computed status.
 type ConsentWithStatus struct {
 	Consent
-	Status Status `json:"status"`
+	Status string `json:"status"`
 }

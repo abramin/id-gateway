@@ -1,21 +1,17 @@
-package models
+package dto
 
 import (
 	"fmt"
+	"strings"
 
+	"credo/internal/consent/models"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/validation"
 )
 
-// ConsentRequest is the interface for consent request types that can be prepared for processing.
-type ConsentRequest interface {
-	Normalize()
-	Validate() error
-}
-
 // GrantRequest specifies which purposes to grant consent for.
 type GrantRequest struct {
-	Purposes []Purpose `json:"purposes"`
+	Purposes []string `json:"purposes"`
 }
 
 // Normalize applies business defaults and sanitizes inputs.
@@ -23,7 +19,6 @@ func (r *GrantRequest) Normalize() {
 	if r == nil {
 		return
 	}
-	// Deduplicate purposes
 	r.Purposes = dedupePurposes(r.Purposes)
 }
 
@@ -42,16 +37,27 @@ func (r *GrantRequest) Validate() error {
 	}
 	// Phase 3: Syntax validation
 	for _, p := range r.Purposes {
-		if !p.IsValid() {
-			return dErrors.New(dErrors.CodeValidation, "invalid purpose: "+string(p))
+		if p == "" {
+			return dErrors.New(dErrors.CodeValidation, "invalid purpose: "+p)
+		}
+		if _, err := models.ParsePurpose(p); err != nil {
+			return dErrors.New(dErrors.CodeValidation, "invalid purpose: "+p)
 		}
 	}
 	return nil
 }
 
+// ToPurposes converts validated request purposes into domain purposes.
+func (r *GrantRequest) ToPurposes() ([]models.Purpose, error) {
+	if r == nil {
+		return nil, dErrors.New(dErrors.CodeBadRequest, "request is required")
+	}
+	return toDomainPurposes(r.Purposes)
+}
+
 // RevokeRequest specifies which purposes to revoke consent for.
 type RevokeRequest struct {
-	Purposes []Purpose `json:"purposes"`
+	Purposes []string `json:"purposes"`
 }
 
 // Normalize applies business defaults and sanitizes inputs.
@@ -59,7 +65,6 @@ func (r *RevokeRequest) Normalize() {
 	if r == nil {
 		return
 	}
-	// Deduplicate purposes
 	r.Purposes = dedupePurposes(r.Purposes)
 }
 
@@ -78,37 +83,47 @@ func (r *RevokeRequest) Validate() error {
 	}
 	// Phase 3: Syntax validation
 	for _, p := range r.Purposes {
-		if !p.IsValid() {
-			return dErrors.New(dErrors.CodeValidation, "invalid purpose: "+string(p))
+		if p == "" {
+			return dErrors.New(dErrors.CodeValidation, "invalid purpose: "+p)
+		}
+		if _, err := models.ParsePurpose(p); err != nil {
+			return dErrors.New(dErrors.CodeValidation, "invalid purpose: "+p)
 		}
 	}
 	return nil
 }
 
-// dedupePurposes removes duplicate purposes while preserving order.
-func dedupePurposes(purposes []Purpose) []Purpose {
-	seen := make(map[Purpose]struct{})
-	result := make([]Purpose, 0, len(purposes))
-	for _, p := range purposes {
-		if _, ok := seen[p]; !ok {
-			seen[p] = struct{}{}
-			result = append(result, p)
-		}
+// ToPurposes converts validated request purposes into domain purposes.
+func (r *RevokeRequest) ToPurposes() ([]models.Purpose, error) {
+	if r == nil {
+		return nil, dErrors.New(dErrors.CodeBadRequest, "request is required")
 	}
-	return result
+	return toDomainPurposes(r.Purposes)
 }
 
-// ParseRecordFilter parses and validates query parameters for consent listing.
-// Returns a validated filter or a domain error if validation fails.
-func ParseRecordFilter(status, purpose string) (*RecordFilter, error) {
-	if status != "" && !Status(status).IsValid() {
-		return nil, dErrors.New(dErrors.CodeValidation, "invalid status filter")
+func toDomainPurposes(purposes []string) ([]models.Purpose, error) {
+	parsed := make([]models.Purpose, 0, len(purposes))
+	for _, p := range purposes {
+		purpose, err := models.ParsePurpose(p)
+		if err != nil {
+			return nil, err
+		}
+		parsed = append(parsed, purpose)
 	}
-	if purpose != "" && !Purpose(purpose).IsValid() {
-		return nil, dErrors.New(dErrors.CodeValidation, "invalid purpose filter")
+	return parsed, nil
+}
+
+// dedupePurposes removes duplicate purposes while preserving order.
+func dedupePurposes(purposes []string) []string {
+	seen := make(map[string]struct{})
+	result := make([]string, 0, len(purposes))
+	for _, p := range purposes {
+		normalized := strings.TrimSpace(p)
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		result = append(result, normalized)
 	}
-	return &RecordFilter{
-		Status:  status,
-		Purpose: purpose,
-	}, nil
+	return result
 }
