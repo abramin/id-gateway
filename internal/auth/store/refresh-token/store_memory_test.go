@@ -10,11 +10,11 @@ import (
 	"credo/pkg/platform/sentinel"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
+// AGENTS.MD JUSTIFICATION: Refresh token lifecycle invariants (consume, newest active)
+// are verified here because feature tests exercise only external behavior.
 type InMemoryRefreshTokenStoreSuite struct {
 	suite.Suite
 	store *InMemoryRefreshTokenStore
@@ -24,7 +24,7 @@ func (s *InMemoryRefreshTokenStoreSuite) SetupTest() {
 	s.store = New()
 }
 
-func (s *InMemoryRefreshTokenStoreSuite) TestCreateAndFind() {
+func (s *InMemoryRefreshTokenStoreSuite) TestRefreshTokenStore_PersistAndLookup() {
 	sessionID := id.SessionID(uuid.New())
 	record := &models.RefreshTokenRecord{
 		ID:        uuid.New(),
@@ -35,42 +35,42 @@ func (s *InMemoryRefreshTokenStoreSuite) TestCreateAndFind() {
 	}
 
 	err := s.store.Create(context.Background(), record)
-	require.NoError(s.T(), err)
+	s.Require().NoError(err)
 
 	foundByID, err := s.store.FindBySessionID(context.Background(), sessionID)
-	require.NoError(s.T(), err)
-	assert.Equal(s.T(), record, foundByID)
+	s.Require().NoError(err)
+	s.Equal(record, foundByID)
 }
 
-func (s *InMemoryRefreshTokenStoreSuite) TestFindNotFound() {
+func (s *InMemoryRefreshTokenStoreSuite) TestRefreshTokenStore_NotFound() {
 	_, err := s.store.FindBySessionID(context.Background(), id.SessionID(uuid.New()))
-	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
+	s.Require().ErrorIs(err, sentinel.ErrNotFound)
 }
 
-func (s *InMemoryRefreshTokenStoreSuite) TestDeleteSessionsByUser() {
+func (s *InMemoryRefreshTokenStoreSuite) TestRefreshTokenStore_DeleteBySession() {
 	sessionID := id.SessionID(uuid.New())
 	otherSessionID := id.SessionID(uuid.New())
 	matching := &models.RefreshTokenRecord{ID: uuid.New(), Token: "ref_match", SessionID: sessionID}
 	other := &models.RefreshTokenRecord{ID: uuid.New(), Token: "ref_other", SessionID: otherSessionID}
 
-	require.NoError(s.T(), s.store.Create(context.Background(), matching))
-	require.NoError(s.T(), s.store.Create(context.Background(), other))
+	s.Require().NoError(s.store.Create(context.Background(), matching))
+	s.Require().NoError(s.store.Create(context.Background(), other))
 
 	err := s.store.DeleteBySessionID(context.Background(), sessionID)
-	require.NoError(s.T(), err)
+	s.Require().NoError(err)
 
 	_, err = s.store.FindBySessionID(context.Background(), matching.SessionID)
-	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
+	s.Require().ErrorIs(err, sentinel.ErrNotFound)
 
 	fetchedOther, err := s.store.FindBySessionID(context.Background(), other.SessionID)
-	require.NoError(s.T(), err)
-	assert.Equal(s.T(), other, fetchedOther)
+	s.Require().NoError(err)
+	s.Equal(other, fetchedOther)
 
 	err = s.store.DeleteBySessionID(context.Background(), sessionID)
-	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
+	s.Require().ErrorIs(err, sentinel.ErrNotFound)
 }
 
-func (s *InMemoryRefreshTokenStoreSuite) TestConsumeMarksUsedAndTouches() {
+func (s *InMemoryRefreshTokenStoreSuite) TestRefreshTokenStore_ConsumeMarksUsedAndTouches() {
 	sessionID := id.SessionID(uuid.New())
 	now := time.Now()
 	record := &models.RefreshTokenRecord{
@@ -82,21 +82,21 @@ func (s *InMemoryRefreshTokenStoreSuite) TestConsumeMarksUsedAndTouches() {
 		Used:      false,
 	}
 
-	require.NoError(s.T(), s.store.Create(context.Background(), record))
+	s.Require().NoError(s.store.Create(context.Background(), record))
 
 	consumeAt := now.Add(10 * time.Second)
 	consumed, err := s.store.ConsumeRefreshToken(context.Background(), record.Token, consumeAt)
-	require.NoError(s.T(), err)
+	s.Require().NoError(err)
 
-	assert.True(s.T(), consumed.Used)
-	require.NotNil(s.T(), consumed.LastRefreshedAt)
-	assert.Equal(s.T(), consumeAt, *consumed.LastRefreshedAt)
+	s.True(consumed.Used)
+	s.Require().NotNil(consumed.LastRefreshedAt)
+	s.Equal(consumeAt, *consumed.LastRefreshedAt)
 
 	_, err = s.store.ConsumeRefreshToken(context.Background(), record.Token, consumeAt)
-	assert.ErrorIs(s.T(), err, sentinel.ErrAlreadyUsed)
+	s.Require().ErrorIs(err, sentinel.ErrAlreadyUsed)
 }
 
-func (s *InMemoryRefreshTokenStoreSuite) TestFindBySessionIDReturnsNewestActive() {
+func (s *InMemoryRefreshTokenStoreSuite) TestRefreshTokenStore_NewestActiveSelection() {
 	sessionID := id.SessionID(uuid.New())
 	now := time.Now()
 
@@ -117,22 +117,22 @@ func (s *InMemoryRefreshTokenStoreSuite) TestFindBySessionIDReturnsNewestActive(
 		Used:      false,
 	}
 
-	require.NoError(s.T(), s.store.Create(context.Background(), old))
-	require.NoError(s.T(), s.store.Create(context.Background(), newer))
+	s.Require().NoError(s.store.Create(context.Background(), old))
+	s.Require().NoError(s.store.Create(context.Background(), newer))
 
 	found, err := s.store.FindBySessionID(context.Background(), sessionID)
-	require.NoError(s.T(), err)
-	assert.Equal(s.T(), newer, found)
+	s.Require().NoError(err)
+	s.Equal(newer, found)
 
 	// Once the newest is used, it should return the remaining active token.
 	_, err = s.store.ConsumeRefreshToken(context.Background(), newer.Token, now)
-	require.NoError(s.T(), err)
+	s.Require().NoError(err)
 	found, err = s.store.FindBySessionID(context.Background(), sessionID)
-	require.NoError(s.T(), err)
-	assert.Equal(s.T(), old, found)
+	s.Require().NoError(err)
+	s.Equal(old, found)
 }
 
-func (s *InMemoryRefreshTokenStoreSuite) TestConsumeRefreshTokenRejectsExpired() {
+func (s *InMemoryRefreshTokenStoreSuite) TestRefreshTokenStore_RejectsExpired() {
 	now := time.Now()
 	record := &models.RefreshTokenRecord{
 		ID:        uuid.New(),
@@ -142,10 +142,10 @@ func (s *InMemoryRefreshTokenStoreSuite) TestConsumeRefreshTokenRejectsExpired()
 		ExpiresAt: now.Add(-time.Minute),
 		Used:      false,
 	}
-	require.NoError(s.T(), s.store.Create(context.Background(), record))
+	s.Require().NoError(s.store.Create(context.Background(), record))
 
 	_, err := s.store.ConsumeRefreshToken(context.Background(), record.Token, now)
-	assert.ErrorIs(s.T(), err, sentinel.ErrExpired)
+	s.Require().ErrorIs(err, sentinel.ErrExpired)
 }
 
 func TestInMemoryRefreshTokenStoreSuite(t *testing.T) {

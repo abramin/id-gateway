@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"testing"
 	"time"
 
 	"credo/internal/auth/device"
@@ -13,12 +12,10 @@ import (
 	devicectx "credo/pkg/platform/middleware/device"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
-// TestToken_RefreshToken tests refresh token grant (PRD-016 FR-2)
+// TestTokenRefreshFlow tests refresh token grant (PRD-016 FR-2)
 //
 // AGENTS.MD JUSTIFICATION:
 // These unit tests verify:
@@ -29,7 +26,7 @@ import (
 //
 // E2E coverage: e2e/features/auth_token_lifecycle.feature covers happy path
 // and reuse rejection. Unit tests add client/user inactive scenarios.
-func (s *ServiceSuite) TestToken_RefreshToken() {
+func (s *ServiceSuite) TestTokenRefreshFlow() {
 	sessionID := id.SessionID(uuid.New())
 	userID := id.UserID(uuid.New())
 	clientUUID := id.ClientID(uuid.New())
@@ -69,7 +66,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		ExpiresAt:      time.Now().Add(23 * time.Hour),
 	}
 
-	s.T().Run("happy path - successful token refresh", func(t *testing.T) {
+	s.Run("happy path - successful token refresh", func() {
 		req := newReq()
 		refreshRec := *validRefreshToken
 		sess := *validSession
@@ -91,34 +88,34 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		// Note: AdvanceLastRefreshed receives tc.Client.ID.String() (UUID string), not req.ClientID
 		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), sess.ID, clientUUID.String(), gomock.Any(), accessTokenJTI, sess.DeviceID, sess.DeviceFingerprintHash).DoAndReturn(
 			func(ctx context.Context, sessionID id.SessionID, clientID string, ts time.Time, jti string, deviceID string, fingerprint string) (*models.Session, error) {
-				assert.Equal(s.T(), sess.ID, sessionID)
-				assert.False(s.T(), ts.IsZero())
-				assert.Equal(s.T(), accessTokenJTI, jti)
+				s.Require().Equal(sess.ID, sessionID)
+				s.Require().False(ts.IsZero())
+				s.Require().Equal(accessTokenJTI, jti)
 				return &sess, nil
 			})
 		s.mockRefreshStore.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(ctx context.Context, token *models.RefreshTokenRecord) error {
-				assert.Equal(s.T(), refreshToken, token.Token)
-				assert.Equal(s.T(), sessionID, token.SessionID)
-				assert.False(s.T(), token.Used)
+				s.Require().Equal(refreshToken, token.Token)
+				s.Require().Equal(sessionID, token.SessionID)
+				s.Require().False(token.Used)
 				return nil
 			})
 		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 		result, err := s.service.Token(ctx, &req)
-		require.NoError(s.T(), err)
-		assert.Equal(s.T(), accessToken, result.AccessToken)
-		assert.Equal(s.T(), idToken, result.IDToken)
-		assert.Equal(s.T(), refreshToken, result.RefreshToken)
-		assert.Equal(s.T(), "Bearer", result.TokenType)
-		assert.Equal(s.T(), int(s.service.TokenTTL.Seconds()), result.ExpiresIn)
+		s.Require().NoError(err)
+		s.Equal(accessToken, result.AccessToken)
+		s.Equal(idToken, result.IDToken)
+		s.Equal(refreshToken, result.RefreshToken)
+		s.Equal("Bearer", result.TokenType)
+		s.Equal(int(s.service.TokenTTL.Seconds()), result.ExpiresIn)
 	})
 
 	// NOTE: RFC 6749 §5.2 invalid_grant scenarios (token used, not found, expired, session not found, session revoked)
 	// are covered by e2e/features/auth_token_lifecycle.feature - deleted per testing.md doctrine
 
 	// RFC 6749 §5.2: "The provided authorization grant ... was issued to another client."
-	s.T().Run("client_id mismatch - invalid_grant", func(t *testing.T) {
+	s.Run("client_id mismatch - invalid_grant", func() {
 		req := models.TokenRequest{
 			GrantType:    string(models.GrantRefreshToken),
 			RefreshToken: refreshTokenString,
@@ -136,14 +133,14 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 		result, err := s.service.Token(context.Background(), &req)
-		assert.Error(s.T(), err)
-		assert.Nil(s.T(), result)
+		s.Require().Error(err)
+		s.Nil(result)
 		// RFC 6749 §5.2: token issued to another client returns invalid_grant
-		assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeInvalidGrant),
+		s.True(dErrors.HasCode(err, dErrors.CodeInvalidGrant),
 			"expected invalid_grant error code per RFC 6749 §5.2 - got %s", err.Error())
 	})
 
-	s.T().Run("client inactive - PRD-026A FR-4.5.4", func(t *testing.T) {
+	s.Run("client inactive - PRD-026A FR-4.5.4", func() {
 		req := newReq()
 		refreshRec := *validRefreshToken
 		sess := *validSession
@@ -158,14 +155,14 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		// Transaction should NOT be entered because validation fails
 
 		result, err := s.service.Token(context.Background(), &req)
-		assert.Error(s.T(), err)
-		assert.Nil(s.T(), result)
+		s.Require().Error(err)
+		s.Nil(result)
 		// Should get forbidden error for inactive client (client validation is after token context)
-		assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeForbidden))
-		assert.Contains(s.T(), err.Error(), "client is not active")
+		s.True(dErrors.HasCode(err, dErrors.CodeForbidden))
+		s.Contains(err.Error(), "client is not active")
 	})
 
-	s.T().Run("user inactive - PRD-026A FR-4.5.4", func(t *testing.T) {
+	s.Run("user inactive - PRD-026A FR-4.5.4", func() {
 		req := newReq()
 		refreshRec := *validRefreshToken
 		sess := *validSession
@@ -180,14 +177,14 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		// Transaction should NOT be entered because validation fails
 
 		result, err := s.service.Token(context.Background(), &req)
-		assert.Error(s.T(), err)
-		assert.Nil(s.T(), result)
+		s.Require().Error(err)
+		s.Nil(result)
 		// User inactive propagates as Forbidden from token context
-		assert.True(s.T(), dErrors.HasCode(err, dErrors.CodeForbidden))
-		assert.Contains(s.T(), err.Error(), "user inactive")
+		s.True(dErrors.HasCode(err, dErrors.CodeForbidden))
+		s.Contains(err.Error(), "user inactive")
 	})
 
-	s.T().Run("device binding enabled ignores mismatched cookie device_id", func(t *testing.T) {
+	s.Run("device binding enabled ignores mismatched cookie device_id", func() {
 		req := newReq()
 		refreshRec := *validRefreshToken
 		sess := *validSession
@@ -199,7 +196,7 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		prevDeviceSvc := s.service.deviceService
 		s.service.DeviceBindingEnabled = true
 		s.service.deviceService = device.NewService(true)
-		t.Cleanup(func() {
+		s.T().Cleanup(func() {
 			s.service.DeviceBindingEnabled = prevBinding
 			s.service.deviceService = prevDeviceSvc
 		})
@@ -215,15 +212,15 @@ func (s *ServiceSuite) TestToken_RefreshToken() {
 		_, accessTokenJTI, _, _ := s.expectTokenGeneration(userID, sessionID, clientUUID, tenantID, sess.RequestedScope)
 		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), sess.ID, clientUUID.String(), gomock.Any(), accessTokenJTI, sess.DeviceID, sess.DeviceFingerprintHash).
 			DoAndReturn(func(ctx context.Context, sessionID id.SessionID, client string, ts time.Time, jti string, deviceID string, fingerprint string) (*models.Session, error) {
-				assert.Equal(s.T(), sess.DeviceID, deviceID)
+				s.Require().Equal(sess.DeviceID, deviceID)
 				return &sess, nil
 			})
 		s.mockRefreshStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 		result, err := s.service.Token(ctx, &req)
-		require.NoError(s.T(), err)
-		assert.NotNil(s.T(), result)
-		assert.Equal(s.T(), "session-device", sess.DeviceID)
+		s.Require().NoError(err)
+		s.NotNil(result)
+		s.Equal("session-device", sess.DeviceID)
 	})
 }

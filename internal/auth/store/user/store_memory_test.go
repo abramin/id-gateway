@@ -9,11 +9,11 @@ import (
 	"credo/pkg/platform/sentinel"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
+// AGENTS.MD JUSTIFICATION: User store invariants (lookup, delete, ErrNotFound)
+// are validated here to protect service behavior outside feature coverage.
 type InMemoryUserStoreSuite struct {
 	suite.Suite
 	store *InMemoryUserStore
@@ -23,7 +23,7 @@ func (s *InMemoryUserStoreSuite) SetupTest() {
 	s.store = New()
 }
 
-func (s *InMemoryUserStoreSuite) TestSaveAndFind() {
+func (s *InMemoryUserStoreSuite) TestUserStore_PersistAndLookup() {
 	user := &models.User{
 		ID:        id.UserID(uuid.New()),
 		Email:     "jane.doe@example.com",
@@ -33,41 +33,41 @@ func (s *InMemoryUserStoreSuite) TestSaveAndFind() {
 	}
 
 	err := s.store.Save(context.Background(), user)
-	require.NoError(s.T(), err)
+	s.Require().NoError(err)
 
 	foundByID, err := s.store.FindByID(context.Background(), user.ID)
-	require.NoError(s.T(), err)
-	assert.Equal(s.T(), user, foundByID)
+	s.Require().NoError(err)
+	s.Equal(user, foundByID)
 
 	foundByEmail, err := s.store.FindByEmail(context.Background(), user.Email)
-	require.NoError(s.T(), err)
-	assert.Equal(s.T(), user, foundByEmail)
+	s.Require().NoError(err)
+	s.Equal(user, foundByEmail)
 }
 
-func (s *InMemoryUserStoreSuite) TestFindNotFound() {
+func (s *InMemoryUserStoreSuite) TestUserStore_NotFound() {
 	_, err := s.store.FindByID(context.Background(), id.UserID(uuid.New()))
-	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
+	s.Require().ErrorIs(err, sentinel.ErrNotFound)
 
 	_, err = s.store.FindByEmail(context.Background(), "missing@example.com")
-	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
+	s.Require().ErrorIs(err, sentinel.ErrNotFound)
 }
 
-func (s *InMemoryUserStoreSuite) TestDelete() {
+func (s *InMemoryUserStoreSuite) TestUserStore_Delete() {
 	user := &models.User{
 		ID:        id.UserID(uuid.New()),
 		Email:     "delete.me@example.com",
 		FirstName: "Delete",
 		LastName:  "Me",
 	}
-	require.NoError(s.T(), s.store.Save(context.Background(), user))
+	s.Require().NoError(s.store.Save(context.Background(), user))
 
-	require.NoError(s.T(), s.store.Delete(context.Background(), user.ID))
+	s.Require().NoError(s.store.Delete(context.Background(), user.ID))
 
 	_, err := s.store.FindByID(context.Background(), user.ID)
-	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
+	s.Require().ErrorIs(err, sentinel.ErrNotFound)
 
 	err = s.store.Delete(context.Background(), user.ID)
-	assert.ErrorIs(s.T(), err, sentinel.ErrNotFound)
+	s.Require().ErrorIs(err, sentinel.ErrNotFound)
 }
 
 func TestInMemoryUserStoreSuite(t *testing.T) {

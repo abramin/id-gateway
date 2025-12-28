@@ -1,28 +1,24 @@
 package service
 
-import (
-	"testing"
-
-	"github.com/stretchr/testify/require"
-)
-
-func (s *ServiceSuite) TestNewService_RequiresDepsAndConfig() {
-	s.T().Run("missing stores fails", func(t *testing.T) {
+// AGENTS.MD JUSTIFICATION: Constructor validation/defaulting prevents misconfiguration
+// and is not covered by feature tests.
+func (s *ServiceSuite) TestServiceConstruction_RequiresDependencies() {
+	s.Run("missing stores fails", func() {
 		_, err := New(nil, nil, nil, nil, s.mockJWT, s.mockClientResolver, &Config{})
-		require.Error(t, err)
+		s.Require().Error(err)
 	})
 
-	s.T().Run("missing jwt fails", func(t *testing.T) {
+	s.Run("missing jwt fails", func() {
 		_, err := New(s.mockUserStore, s.mockSessionStore, s.mockCodeStore, s.mockRefreshStore, nil, s.mockClientResolver, &Config{})
-		require.Error(t, err)
+		s.Require().Error(err)
 	})
 
-	s.T().Run("missing client resolver fails", func(t *testing.T) {
+	s.Run("missing client resolver fails", func() {
 		_, err := New(s.mockUserStore, s.mockSessionStore, s.mockCodeStore, s.mockRefreshStore, s.mockJWT, nil, &Config{})
-		require.Error(t, err)
+		s.Require().Error(err)
 	})
 
-	s.T().Run("sets defaults with required deps", func(t *testing.T) {
+	s.Run("sets defaults with required deps", func() {
 		svc, err := New(
 			s.mockUserStore,
 			s.mockSessionStore,
@@ -32,7 +28,7 @@ func (s *ServiceSuite) TestNewService_RequiresDepsAndConfig() {
 			s.mockClientResolver,
 			&Config{}, // empty config
 		)
-		require.NoError(t, err)
+		s.Require().NoError(err)
 		s.Equal(defaultSessionTTL, svc.SessionTTL)
 		s.Equal(defaultTokenTTL, svc.TokenTTL)
 		s.Equal([]string{"https"}, svc.AllowedRedirectSchemes)

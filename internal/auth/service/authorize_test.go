@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"testing"
 
 	authdevice "credo/internal/auth/device"
 	"credo/internal/auth/models"
@@ -17,13 +16,13 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// TestAuthorize tests the OAuth 2.0 authorization code flow
+// TestAuthorizationCodeFlow tests the OAuth 2.0 authorization code flow
 //
 // These unit tests verify behaviors NOT covered by Gherkin:
 // - Device binding with fingerprint hashing (needs device setup not available in e2e)
 // - Input validation error mapping (fast feedback)
 // - Store error propagation to domain errors
-func (s *ServiceSuite) TestAuthorize() {
+func (s *ServiceSuite) TestAuthorizationCodeFlow() {
 	tenantID := id.TenantID(uuid.New())
 	clientID := id.ClientID(uuid.New())
 
@@ -58,7 +57,7 @@ func (s *ServiceSuite) TestAuthorize() {
 		Email:       "email@test.com",
 	}
 
-	s.T().Run("device binding enabled attaches device metadata", func(t *testing.T) {
+	s.Run("device binding enabled attaches device metadata", func() {
 		// Temporarily enable device binding on the service
 		prevBinding := s.service.DeviceBindingEnabled
 		prevDeviceSvc := s.service.deviceService
@@ -90,30 +89,30 @@ func (s *ServiceSuite) TestAuthorize() {
 
 		s.mockSessionStore.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(ctx context.Context, session *models.Session) error {
-				assert.NotEmpty(s.T(), session.DeviceID)
-				assert.NotEmpty(s.T(), session.DeviceFingerprintHash)
-				assert.Equal(s.T(), clientID, session.ClientID)
-				assert.Equal(s.T(), tenantID, session.TenantID)
+				s.Require().NotEmpty(session.DeviceID)
+				s.Require().NotEmpty(session.DeviceFingerprintHash)
+				s.Require().Equal(clientID, session.ClientID)
+				s.Require().Equal(tenantID, session.TenantID)
 				return nil
 			})
 
 		result, err := s.service.Authorize(ctx, &req)
-		s.NoError(err)
+		s.Require().NoError(err)
 		s.NotEmpty(result.DeviceID)
 	})
 
-	s.T().Run("invalid redirect_uri scheme rejected", func(t *testing.T) {
+	s.Run("invalid redirect_uri scheme rejected", func() {
 		req := baseReq
 		req.RedirectURI = "ftp://client.app/callback" // Invalid scheme
 
 		result, err := s.service.Authorize(context.Background(), &req)
-		s.Error(err)
+		s.Require().Error(err)
 		s.Nil(result)
 		s.True(dErrors.HasCode(err, dErrors.CodeBadRequest))
 		s.Contains(err.Error(), "redirect_uri scheme")
 	})
 
-	s.T().Run("user store error", func(t *testing.T) {
+	s.Run("user store error", func() {
 		req := baseReq
 		ctx := context.Background()
 
@@ -121,11 +120,11 @@ func (s *ServiceSuite) TestAuthorize() {
 		s.mockUserStore.EXPECT().FindOrCreateByTenantAndEmail(gomock.Any(), tenantID, req.Email, gomock.Any()).Return(nil, assert.AnError)
 
 		result, err := s.service.Authorize(ctx, &req)
-		assert.Error(s.T(), err)
-		assert.Nil(s.T(), result)
+		s.Require().Error(err)
+		s.Nil(result)
 	})
 
-	s.T().Run("session store error", func(t *testing.T) {
+	s.Run("session store error", func() {
 		req := baseReq
 		ctx := context.Background()
 
@@ -135,7 +134,7 @@ func (s *ServiceSuite) TestAuthorize() {
 		s.mockSessionStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(assert.AnError)
 
 		result, err := s.service.Authorize(ctx, &req)
-		s.Error(err)
+		s.Require().Error(err)
 		s.Nil(result)
 	})
 }
@@ -143,8 +142,8 @@ func (s *ServiceSuite) TestAuthorize() {
 // TestAuthorizeClientValidation tests that authorize rejects requests
 // when the client is inactive (PRD-026A FR-4.5.3).
 
-func (s *ServiceSuite) TestAuthorizeClientValidation() {
-	s.T().Run("inactive client rejected", func(t *testing.T) {
+func (s *ServiceSuite) TestAuthorizationClientStatusValidation() {
+	s.Run("inactive client rejected", func() {
 		req := models.AuthorizationRequest{
 			ClientID:    "inactive-client",
 			Scopes:      []string{"openid"},
@@ -160,7 +159,7 @@ func (s *ServiceSuite) TestAuthorizeClientValidation() {
 		result, err := s.service.Authorize(ctx, &req)
 
 		// PRD-026A FR-4.5.3: inactive client returns invalid_client
-		s.Error(err, "expected error when client is inactive")
+		s.Require().Error(err, "expected error when client is inactive")
 		s.Nil(result)
 		s.True(dErrors.HasCode(err, dErrors.CodeInvalidClient),
 			"expected invalid_client error code")

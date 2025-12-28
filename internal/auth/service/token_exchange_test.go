@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"testing"
 	"time"
 
 	"credo/internal/auth/models"
@@ -14,7 +13,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// TestToken_Exchange tests the OAuth 2.0 token exchange endpoint (PRD-001 FR-2)
+// TestTokenExchangeFlow tests the OAuth 2.0 token exchange endpoint (PRD-001 FR-2)
 //
 // AGENTS.MD JUSTIFICATION (per testing.md doctrine):
 // These unit tests verify behaviors NOT covered by Gherkin:
@@ -23,7 +22,7 @@ import (
 // - JWT generation errors: Tests error propagation from token generation
 // RFC 6749 §5.2 invalid_grant scenarios are covered by e2e feature tests
 // (auth_normal_flow.feature, auth_token_lifecycle.feature).
-func (s *ServiceSuite) TestToken_Exchange() {
+func (s *ServiceSuite) TestTokenExchangeFlow_ValidationAndErrorMapping() {
 	sessionID := id.SessionID(uuid.New())
 	userID := id.UserID(uuid.New())
 	tenantID := id.TenantID(uuid.New())
@@ -63,144 +62,125 @@ func (s *ServiceSuite) TestToken_Exchange() {
 		ExpiresAt:      time.Now().Add(24 * time.Hour),
 	}
 
-	s.T().Run("validation errors", func(t *testing.T) {
-		tests := []struct {
-			name          string
-			modifyReq     func(*models.TokenRequest)
-			expectedCode  dErrors.Code
-			expectLogAuth bool // Should this increment auth failure metrics?
-			expectedMsg   string
-		}{
-			{
-				name: "unsupported grant_type",
-				modifyReq: func(r *models.TokenRequest) {
-					r.GrantType = "password"
-				},
-				expectedCode:  dErrors.CodeBadRequest,
-				expectLogAuth: false, // Client error, not security failure
-				expectedMsg:   "unsupported grant_type",
-			},
-			{
-				name: "authorization_code missing code",
-				modifyReq: func(r *models.TokenRequest) {
-					r.Code = ""
-				},
-				expectedCode:  dErrors.CodeValidation,
-				expectLogAuth: false,
-				expectedMsg:   "code is required",
-			},
-			{
-				name: "authorization_code missing redirect_uri",
-				modifyReq: func(r *models.TokenRequest) {
-					r.RedirectURI = ""
-				},
-				expectedCode:  dErrors.CodeValidation,
-				expectLogAuth: false,
-				expectedMsg:   "redirect_uri is required",
-			},
-			{
-				name: "refresh_token missing refresh_token",
-				modifyReq: func(r *models.TokenRequest) {
-					r.GrantType = string(models.GrantRefreshToken)
-					r.RefreshToken = ""
-					r.Code = ""
-					r.RedirectURI = ""
-				},
-				expectedCode:  dErrors.CodeValidation,
-				expectLogAuth: false,
-				expectedMsg:   "refresh_token is required",
-			},
-		}
+	s.Run("validation: unsupported grant_type", func() {
+		req := baseReq
+		req.GrantType = "password"
 
-		for _, tt := range tests {
-			s.T().Run(tt.name, func(t *testing.T) {
-				req := baseReq
-				tt.modifyReq(&req)
+		result, err := s.service.Token(context.Background(), &req)
+		s.Require().Error(err)
+		s.Nil(result)
+		s.True(dErrors.HasCode(err, dErrors.CodeBadRequest))
+		s.Contains(err.Error(), "unsupported grant_type")
+	})
 
-				result, err := s.service.Token(context.Background(), &req)
-				s.Error(err)
-				s.Nil(result)
-				s.True(dErrors.HasCode(err, tt.expectedCode))
-				if tt.expectedMsg != "" {
-					s.Contains(err.Error(), tt.expectedMsg)
-				}
-			})
-		}
+	s.Run("validation: authorization_code missing code", func() {
+		req := baseReq
+		req.Code = ""
+
+		result, err := s.service.Token(context.Background(), &req)
+		s.Require().Error(err)
+		s.Nil(result)
+		s.True(dErrors.HasCode(err, dErrors.CodeValidation))
+		s.Contains(err.Error(), "code is required")
+	})
+
+	s.Run("validation: authorization_code missing redirect_uri", func() {
+		req := baseReq
+		req.RedirectURI = ""
+
+		result, err := s.service.Token(context.Background(), &req)
+		s.Require().Error(err)
+		s.Nil(result)
+		s.True(dErrors.HasCode(err, dErrors.CodeValidation))
+		s.Contains(err.Error(), "redirect_uri is required")
+	})
+
+	s.Run("validation: refresh_token missing refresh_token", func() {
+		req := baseReq
+		req.GrantType = string(models.GrantRefreshToken)
+		req.RefreshToken = ""
+		req.Code = ""
+		req.RedirectURI = ""
+
+		result, err := s.service.Token(context.Background(), &req)
+		s.Require().Error(err)
+		s.Nil(result)
+		s.True(dErrors.HasCode(err, dErrors.CodeValidation))
+		s.Contains(err.Error(), "refresh_token is required")
 	})
 
 	// Infrastructure errors - verify error propagation through handleTokenError
 	// NOTE: RFC 6749 §5.2 invalid_grant scenarios (code not found, expired, used, redirect_uri mismatch)
 	// are covered by e2e/features/auth_normal_flow.feature and auth_token_lifecycle.feature
-	s.T().Run("code store lookup error", func(t *testing.T) {
+	s.Run("code store lookup error", func() {
 		req := baseReq
 		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(nil, errors.New("db error"))
 		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 		result, err := s.service.Token(context.Background(), &req)
-		s.Error(err)
+		s.Require().Error(err)
 		s.Nil(result)
 		s.True(dErrors.HasCode(err, dErrors.CodeInternal))
 	})
 
-	s.T().Run("JWT generation errors", func(t *testing.T) {
-		tests := []struct {
-			name        string
-			setupMocks  func(t *testing.T)
-			expectedErr string
-		}{
-			{
-				name: "access token generation fails",
-				setupMocks: func(t *testing.T) {
-					s.mockJWT.EXPECT().GenerateAccessTokenWithJTI(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-						Return("", "", errors.New("jwt error"))
-				},
-				expectedErr: "failed to generate tokens",
-			},
-			{
-				name: "id token generation fails",
-				setupMocks: func(t *testing.T) {
-					s.mockJWT.EXPECT().GenerateAccessTokenWithJTI(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-						Return("access-token", "access-token-jti", nil)
-					s.mockJWT.EXPECT().GenerateIDToken(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-						Return("", errors.New("jwt error"))
-				},
-				expectedErr: "failed to generate tokens",
-			},
-			{
-				name: "refresh token generation fails",
-				setupMocks: func(t *testing.T) {
-					s.mockJWT.EXPECT().GenerateAccessTokenWithJTI(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-						Return("access-token", "access-token-jti", nil)
-					s.mockJWT.EXPECT().GenerateIDToken(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-						Return("mock-id", nil)
-					s.mockJWT.EXPECT().CreateRefreshToken().
-						Return("", errors.New("jwt error"))
-				},
-				expectedErr: "failed to generate tokens",
-			},
-		}
+	setupPreTx := func(req models.TokenRequest, codeRec models.AuthorizationCodeRecord, sess models.Session) {
+		s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
+		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
+		s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientID).Return(mockClient, mockTenant, nil)
+		s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(mockUser, nil)
+	}
 
-		for _, tt := range tests {
-			s.T().Run(tt.name, func(t *testing.T) {
-				req := baseReq
-				codeRec := *validCodeRecord
-				sess := *validSession
+	s.Run("JWT generation error: access token generation fails", func() {
+		req := baseReq
+		codeRec := *validCodeRecord
+		sess := *validSession
+		setupPreTx(req, codeRec, sess)
 
-				// Pre-transaction mocks: code lookup, session lookup, resolve context
-				s.mockCodeStore.EXPECT().FindByCode(gomock.Any(), req.Code).Return(&codeRec, nil)
-				s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
-				s.mockClientResolver.EXPECT().ResolveClient(gomock.Any(), clientID).Return(mockClient, mockTenant, nil)
-				s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(mockUser, nil)
+		s.mockJWT.EXPECT().GenerateAccessTokenWithJTI(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return("", "", errors.New("jwt error"))
 
-				// JWT generation happens BEFORE transaction - errors prevent tx from running
-				tt.setupMocks(s.T())
+		result, err := s.service.Token(context.Background(), &req)
+		s.Require().Error(err)
+		s.Nil(result)
+		s.True(dErrors.HasCode(err, dErrors.CodeInternal))
+		s.Contains(err.Error(), "failed to generate tokens")
+	})
 
-				result, err := s.service.Token(context.Background(), &req)
-				s.Error(err)
-				s.Nil(result)
-				s.True(dErrors.HasCode(err, dErrors.CodeInternal))
-				s.Contains(err.Error(), tt.expectedErr)
-			})
-		}
+	s.Run("JWT generation error: id token generation fails", func() {
+		req := baseReq
+		codeRec := *validCodeRecord
+		sess := *validSession
+		setupPreTx(req, codeRec, sess)
+
+		s.mockJWT.EXPECT().GenerateAccessTokenWithJTI(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return("access-token", "access-token-jti", nil)
+		s.mockJWT.EXPECT().GenerateIDToken(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return("", errors.New("jwt error"))
+
+		result, err := s.service.Token(context.Background(), &req)
+		s.Require().Error(err)
+		s.Nil(result)
+		s.True(dErrors.HasCode(err, dErrors.CodeInternal))
+		s.Contains(err.Error(), "failed to generate tokens")
+	})
+
+	s.Run("JWT generation error: refresh token generation fails", func() {
+		req := baseReq
+		codeRec := *validCodeRecord
+		sess := *validSession
+		setupPreTx(req, codeRec, sess)
+
+		s.mockJWT.EXPECT().GenerateAccessTokenWithJTI(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return("access-token", "access-token-jti", nil)
+		s.mockJWT.EXPECT().GenerateIDToken(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return("mock-id", nil)
+		s.mockJWT.EXPECT().CreateRefreshToken().
+			Return("", errors.New("jwt error"))
+
+		result, err := s.service.Token(context.Background(), &req)
+		s.Require().Error(err)
+		s.Nil(result)
+		s.True(dErrors.HasCode(err, dErrors.CodeInternal))
+		s.Contains(err.Error(), "failed to generate tokens")
 	})
 }

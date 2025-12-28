@@ -8,12 +8,12 @@ import (
 	id "credo/pkg/domain"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
-func (s *ServiceSuite) TestListSessions() {
+// AGENTS.MD JUSTIFICATION: Session listing filters/sorting and current-session flag
+// are internal formatting details not covered by feature tests.
+func (s *ServiceSuite) TestSessionListing_FiltersAndMarksCurrent() {
 	ctx := context.Background()
 	userID := id.UserID(uuid.New())
 	currentSessionID := id.SessionID(uuid.New())
@@ -59,14 +59,14 @@ func (s *ServiceSuite) TestListSessions() {
 		Return([]*models.Session{activeOther, revoked, activeCurrent, expired}, nil)
 
 	res, err := s.service.ListSessions(ctx, userID, currentSessionID)
-	require.NoError(s.T(), err)
-	require.Len(s.T(), res.Sessions, 2)
+	s.Require().NoError(err)
+	s.Require().Len(res.Sessions, 2)
 
-	assert.Equal(s.T(), activeCurrent.ID.String(), res.Sessions[0].SessionID)
-	assert.True(s.T(), res.Sessions[0].IsCurrent)
-	assert.Equal(s.T(), "Chrome on macOS", res.Sessions[0].Device)
+	s.Equal(activeCurrent.ID.String(), res.Sessions[0].SessionID)
+	s.True(res.Sessions[0].IsCurrent)
+	s.Equal("Chrome on macOS", res.Sessions[0].Device)
 
-	assert.Equal(s.T(), activeOther.ID.String(), res.Sessions[1].SessionID)
-	assert.False(s.T(), res.Sessions[1].IsCurrent)
-	assert.Equal(s.T(), "Safari on iPhone", res.Sessions[1].Device)
+	s.Equal(activeOther.ID.String(), res.Sessions[1].SessionID)
+	s.False(res.Sessions[1].IsCurrent)
+	s.Equal("Safari on iPhone", res.Sessions[1].Device)
 }

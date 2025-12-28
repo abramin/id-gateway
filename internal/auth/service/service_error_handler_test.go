@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"testing"
 
 	sessionStore "credo/internal/auth/store/session"
 	dErrors "credo/pkg/domain-errors"
@@ -12,173 +11,61 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+// AGENTS.MD JUSTIFICATION: Stable error-code mapping across boundary failures
+// is validated here because feature tests don't cover internal error translation.
 func (s *ServiceSuite) TestHandleTokenError() {
 	clientID := "client-123"
 	recordID := "record-456"
 
-	tests := []struct {
-		name           string
-		err            error
-		flow           TokenFlow
-		expectedCode   dErrors.Code
-		expectedMsg    string
-		auditReason    string
-		expectRecordID bool
-	}{
-		{
-			name:           "auth code not found",
-			err:            sentinel.ErrNotFound,
-			flow:           TokenFlowCode,
-			expectedCode:   dErrors.CodeInvalidGrant,
-			expectedMsg:    "invalid authorization code",
-			auditReason:    "code_not_found",
-			expectRecordID: false,
-		},
-		{
-			name:           "auth code expired",
-			err:            sentinel.ErrExpired,
-			flow:           TokenFlowCode,
-			expectedCode:   dErrors.CodeInvalidGrant,
-			expectedMsg:    "authorization code expired",
-			auditReason:    "authorization_code_expired",
-			expectRecordID: false,
-		},
-		{
-			name:           "auth code already used",
-			err:            sentinel.ErrAlreadyUsed,
-			flow:           TokenFlowCode,
-			expectedCode:   dErrors.CodeInvalidGrant,
-			expectedMsg:    "authorization code already used",
-			auditReason:    "authorization_code_reused",
-			expectRecordID: true,
-		},
-		// Refresh token errors
-		{
-			name:           "refresh token not found",
-			err:            sentinel.ErrNotFound,
-			flow:           TokenFlowRefresh,
-			expectedCode:   dErrors.CodeInvalidGrant,
-			expectedMsg:    "invalid refresh token",
-			auditReason:    "refresh_token_not_found",
-			expectRecordID: false,
-		},
-		{
-			name:           "refresh token expired",
-			err:            sentinel.ErrExpired,
-			flow:           TokenFlowRefresh,
-			expectedCode:   dErrors.CodeInvalidGrant,
-			expectedMsg:    "refresh token expired",
-			auditReason:    "refresh_token_expired",
-			expectRecordID: true,
-		},
-		{
-			name:           "refresh token already used",
-			err:            sentinel.ErrAlreadyUsed,
-			flow:           TokenFlowRefresh,
-			expectedCode:   dErrors.CodeInvalidGrant,
-			expectedMsg:    "invalid refresh token",
-			auditReason:    "refresh_token_reused",
-			expectRecordID: true,
-		},
-		// Session errors - context-aware (code flow)
-		{
-			name:           "session not found - code flow",
-			err:            sentinel.ErrNotFound,
-			flow:           TokenFlowCode,
-			expectedCode:   dErrors.CodeInvalidGrant,
-			expectedMsg:    "invalid authorization code",
-			auditReason:    "session_not_found",
-			expectRecordID: true,
-		},
-		{
-			name:           "session not found - refresh flow",
-			err:            sentinel.ErrNotFound,
-			flow:           TokenFlowRefresh,
-			expectedCode:   dErrors.CodeInvalidGrant,
-			expectedMsg:    "invalid refresh token",
-			auditReason:    "session_not_found",
-			expectRecordID: true,
-		},
-		{
-			name:           "session revoked",
-			err:            sessionStore.ErrSessionRevoked,
-			flow:           TokenFlowCode,
-			expectedCode:   dErrors.CodeInvalidGrant,
-			expectedMsg:    "session has been revoked",
-			auditReason:    "session_revoked",
-			expectRecordID: true,
-		},
-		// Domain errors passthrough
-		{
-			name:           "bad request passthrough",
-			err:            dErrors.New(dErrors.CodeBadRequest, "redirect_uri mismatch"),
-			flow:           TokenFlowCode,
-			expectedCode:   dErrors.CodeBadRequest,
-			expectedMsg:    "redirect_uri mismatch",
-			auditReason:    "bad_request",
-			expectRecordID: false,
-		},
-		{
-			name:           "unauthorized - invalid session state",
-			err:            dErrors.New(dErrors.CodeUnauthorized, "session expired"),
-			flow:           TokenFlowCode,
-			expectedCode:   dErrors.CodeUnauthorized,
-			expectedMsg:    "session expired",
-			auditReason:    "invalid_session_state",
-			expectRecordID: true,
-		},
-		{
-			name:           "internal error passthrough",
-			err:            dErrors.New(dErrors.CodeInternal, "db connection failed"),
-			flow:           TokenFlowCode,
-			expectedCode:   dErrors.CodeInternal,
-			expectedMsg:    "db connection failed",
-			auditReason:    "", // No audit for passthrough
-			expectRecordID: false,
-		},
-		// Unknown errors
-		{
-			name:           "unknown error",
-			err:            errors.New("random error"),
-			flow:           TokenFlowCode,
-			expectedCode:   dErrors.CodeInternal,
-			expectedMsg:    "token handling failed",
-			auditReason:    "internal_error",
-			expectRecordID: false,
-		},
-	}
-
-	for _, tt := range tests {
-		s.T().Run(tt.name, func(t *testing.T) {
+	assertTokenError := func(name string, err error, flow TokenFlow, expectedCode dErrors.Code, expectedMsg string) {
+		s.Run(name, func() {
 			ctx := context.Background()
 			s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
-			result := s.service.handleTokenError(ctx, tt.err, clientID, &recordID, tt.flow)
+			result := s.service.handleTokenError(ctx, err, clientID, &recordID, flow)
 
-			s.Error(result)
-			s.True(dErrors.HasCode(result, tt.expectedCode))
-			s.Contains(result.Error(), tt.expectedMsg)
+			s.Require().Error(result)
+			s.True(dErrors.HasCode(result, expectedCode))
+			s.Contains(result.Error(), expectedMsg)
 		})
 	}
+
+	assertTokenError("auth code not found", sentinel.ErrNotFound, TokenFlowCode, dErrors.CodeInvalidGrant, "invalid authorization code")
+	assertTokenError("auth code expired", sentinel.ErrExpired, TokenFlowCode, dErrors.CodeInvalidGrant, "authorization code expired")
+	assertTokenError("auth code already used", sentinel.ErrAlreadyUsed, TokenFlowCode, dErrors.CodeInvalidGrant, "authorization code already used")
+
+	assertTokenError("refresh token not found", sentinel.ErrNotFound, TokenFlowRefresh, dErrors.CodeInvalidGrant, "invalid refresh token")
+	assertTokenError("refresh token expired", sentinel.ErrExpired, TokenFlowRefresh, dErrors.CodeInvalidGrant, "refresh token expired")
+	assertTokenError("refresh token already used", sentinel.ErrAlreadyUsed, TokenFlowRefresh, dErrors.CodeInvalidGrant, "invalid refresh token")
+
+	assertTokenError("session not found - code flow", sentinel.ErrNotFound, TokenFlowCode, dErrors.CodeInvalidGrant, "invalid authorization code")
+	assertTokenError("session not found - refresh flow", sentinel.ErrNotFound, TokenFlowRefresh, dErrors.CodeInvalidGrant, "invalid refresh token")
+	assertTokenError("session revoked", sessionStore.ErrSessionRevoked, TokenFlowCode, dErrors.CodeInvalidGrant, "session has been revoked")
+
+	assertTokenError("bad request passthrough", dErrors.New(dErrors.CodeBadRequest, "redirect_uri mismatch"), TokenFlowCode, dErrors.CodeBadRequest, "redirect_uri mismatch")
+	assertTokenError("unauthorized - invalid session state", dErrors.New(dErrors.CodeUnauthorized, "session expired"), TokenFlowCode, dErrors.CodeUnauthorized, "session expired")
+	assertTokenError("internal error passthrough", dErrors.New(dErrors.CodeInternal, "db connection failed"), TokenFlowCode, dErrors.CodeInternal, "db connection failed")
+
+	assertTokenError("unknown error", errors.New("random error"), TokenFlowCode, dErrors.CodeInternal, "token handling failed")
 }
 
 func (s *ServiceSuite) TestHandleTokenError_AuditAttributes() {
-	s.T().Run("includes record_id when provided", func(t *testing.T) {
+	s.Run("includes record_id when provided", func() {
 		ctx := context.Background()
 		clientID := "client-123"
 		recordID := "record-456"
 		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 		err := s.service.handleTokenError(ctx, sentinel.ErrAlreadyUsed, clientID, &recordID, TokenFlowCode)
-		s.Error(err)
+		s.Require().Error(err)
 	})
 
-	s.T().Run("excludes record_id when nil", func(t *testing.T) {
+	s.Run("excludes record_id when nil", func() {
 		ctx := context.Background()
 		clientID := "client-123"
 		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 		err := s.service.handleTokenError(ctx, sentinel.ErrAlreadyUsed, clientID, nil, TokenFlowCode)
-		s.Error(err)
+		s.Require().Error(err)
 	})
 }

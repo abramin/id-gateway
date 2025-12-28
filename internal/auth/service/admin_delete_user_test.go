@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"testing"
 
 	"credo/internal/auth/models"
 	id "credo/pkg/domain"
@@ -15,60 +14,59 @@ import (
 	"credo/pkg/platform/sentinel"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
-// TestDeleteUser tests the admin user deletion error handling
+// TestAdminUserDeletion_ErrorPropagation tests the admin user deletion error handling
 // NOTE: Happy path and no-sessions-found cases are covered by Cucumber E2E tests
 // in e2e/features/admin_gdpr.feature. These unit tests focus on error propagation.
-func (s *ServiceSuite) TestDeleteUser() {
+func (s *ServiceSuite) TestAdminUserDeletion_ErrorPropagation() {
 	ctx := context.Background()
 	userID := id.UserID(uuid.New())
 	existingUser := &models.User{ID: userID, Email: "user@example.com"}
 
-	s.T().Run("user lookup fails", func(t *testing.T) {
+	s.Run("user lookup fails", func() {
 		s.mockUserStore.EXPECT().FindByID(ctx, userID).Return(nil, errors.New("db down"))
 
 		err := s.service.DeleteUser(ctx, userID)
-		require.Error(t, err)
+		s.Require().Error(err)
 		s.True(dErrors.HasCode(err, dErrors.CodeInternal))
 	})
 
-	s.T().Run("user not found", func(t *testing.T) {
+	s.Run("user not found", func() {
 		s.mockUserStore.EXPECT().FindByID(ctx, userID).Return(nil, sentinel.ErrNotFound)
 
 		err := s.service.DeleteUser(ctx, userID)
-		require.Error(t, err)
+		s.Require().Error(err)
 		s.True(dErrors.HasCode(err, dErrors.CodeNotFound))
 	})
 
-	s.T().Run("session delete fails", func(t *testing.T) {
+	s.Run("session delete fails", func() {
 		s.mockUserStore.EXPECT().FindByID(ctx, userID).Return(existingUser, nil)
 		s.mockSessionStore.EXPECT().DeleteSessionsByUser(ctx, userID).Return(errors.New("redis down"))
 
 		err := s.service.DeleteUser(ctx, userID)
-		require.Error(t, err)
+		s.Require().Error(err)
 		s.True(dErrors.HasCode(err, dErrors.CodeInternal))
 	})
 
-	s.T().Run("user delete fails", func(t *testing.T) {
+	s.Run("user delete fails", func() {
 		s.mockUserStore.EXPECT().FindByID(ctx, userID).Return(existingUser, nil)
 		s.mockSessionStore.EXPECT().DeleteSessionsByUser(ctx, userID).Return(nil)
 		s.mockAuditPublisher.EXPECT().Emit(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		s.mockUserStore.EXPECT().Delete(ctx, userID).Return(errors.New("write fail"))
 
 		err := s.service.DeleteUser(ctx, userID)
-		require.Error(t, err)
+		s.Require().Error(err)
 		s.True(dErrors.HasCode(err, dErrors.CodeInternal))
 	})
 }
 
-func (s *ServiceSuite) TestDeleteUserAuditEnrichment() {
+func (s *ServiceSuite) TestAdminUserDeletion_AuditEnrichment() {
 	userID := id.UserID(uuid.New())
 	existingUser := &models.User{ID: userID, Email: "audit-test@example.com"}
 
-	s.T().Run("sessions_revoked event includes email and request_id", func(t *testing.T) {
+	s.Run("sessions_revoked event includes email and request_id", func() {
 		ctx := contextWithRequestID("req-12345")
 
 		s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(existingUser, nil)
@@ -94,7 +92,7 @@ func (s *ServiceSuite) TestDeleteUserAuditEnrichment() {
 			"sessions_revoked event should include request_id per PRD-001B")
 	})
 
-	s.T().Run("user_deleted event includes email and request_id", func(t *testing.T) {
+	s.Run("user_deleted event includes email and request_id", func() {
 		ctx := contextWithRequestID("req-67890")
 
 		s.mockUserStore.EXPECT().FindByID(gomock.Any(), userID).Return(existingUser, nil)
