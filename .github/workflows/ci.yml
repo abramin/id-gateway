@@ -28,6 +28,9 @@ jobs:
       - name: Run tests
         run: go test ./...
 
+      - name: Run race tests (registry)
+        run: go test -race ./internal/evidence/registry/...
+
   e2e:
     name: E2E Tests
     permissions:

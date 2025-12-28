@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"credo/internal/evidence/registry/metrics"
@@ -113,7 +115,9 @@ func (s *InMemoryCacheSuite) TestSaveCitizen() {
 			}(i)
 		}
 		wg.Wait()
-		// If we get here without race detector firing, test passes
+		citizens, sanctions := cache.Size()
+		s.Equal(26, citizens)
+		s.Equal(0, sanctions)
 	})
 }
 
@@ -144,12 +148,14 @@ func (s *InMemoryCacheSuite) TestFindCitizen() {
 
 	s.Run("returns ErrNotFound when record is expired", func() {
 		// Use a very short TTL cache
-		shortCache := NewInMemoryCache(1 * time.Millisecond)
+		shortCache := NewInMemoryCache(10 * time.Millisecond)
 		record := &models.CitizenRecord{NationalID: "ABC123456", Valid: true, CheckedAt: time.Now()}
+		start := time.Now()
 		_ = shortCache.SaveCitizen(ctx, key, record, false)
 
-		// Wait for expiration
-		time.Sleep(5 * time.Millisecond)
+		s.Require().Eventually(func() bool {
+			return time.Since(start) >= 15*time.Millisecond
+		}, 200*time.Millisecond, 5*time.Millisecond)
 
 		_, err := shortCache.FindCitizen(ctx, key, false)
 		s.ErrorIs(err, ErrNotFound)
@@ -177,6 +183,8 @@ func (s *InMemoryCacheSuite) TestFindCitizen() {
 			}()
 		}
 		wg.Wait()
+		_, err := cache.FindCitizen(ctx, key, false)
+		s.NoError(err)
 	})
 }
 
@@ -237,6 +245,9 @@ func (s *InMemoryCacheSuite) TestSaveSanction() {
 			}(i)
 		}
 		wg.Wait()
+		citizens, sanctions := cache.Size()
+		s.Equal(0, citizens)
+		s.Equal(26, sanctions)
 	})
 }
 
@@ -266,11 +277,14 @@ func (s *InMemoryCacheSuite) TestFindSanction() {
 	})
 
 	s.Run("returns ErrNotFound when record is expired", func() {
-		shortCache := NewInMemoryCache(1 * time.Millisecond)
+		shortCache := NewInMemoryCache(10 * time.Millisecond)
 		record := &models.SanctionsRecord{NationalID: "ABC123456", Listed: true, CheckedAt: time.Now()}
+		start := time.Now()
 		_ = shortCache.SaveSanction(ctx, key, record)
 
-		time.Sleep(5 * time.Millisecond)
+		s.Require().Eventually(func() bool {
+			return time.Since(start) >= 15*time.Millisecond
+		}, 200*time.Millisecond, 5*time.Millisecond)
 
 		_, err := shortCache.FindSanction(ctx, key)
 		s.ErrorIs(err, ErrNotFound)
@@ -290,6 +304,8 @@ func (s *InMemoryCacheSuite) TestFindSanction() {
 			}()
 		}
 		wg.Wait()
+		_, err := cache.FindSanction(ctx, key)
+		s.NoError(err)
 	})
 }
 
@@ -448,7 +464,12 @@ func (s *InMemoryCacheSuite) TestClearAll() {
 			}()
 		}
 		wg.Wait()
-		// If we get here without race detector firing, test passes
+		citizens, sanctions := cache.Size()
+		s.LessOrEqual(citizens, 1)
+		s.Equal(0, sanctions)
+		s.NoError(cache.SaveCitizen(ctx, key, record, false))
+		_, err := cache.FindCitizen(ctx, key, false)
+		s.NoError(err)
 	})
 
 	s.Run("can add entries after clear", func() {
@@ -500,6 +521,10 @@ func TestCacheWithMetrics(t *testing.T) {
 	m := metrics.New()
 
 	t.Run("cache operations with metrics record hits and misses", func(t *testing.T) {
+		hitsBefore := testutil.ToFloat64(m.CacheHitsTotal.WithLabelValues("citizen"))
+		missesBefore := testutil.ToFloat64(m.CacheMissesTotal.WithLabelValues("citizen"))
+		invalidationsBefore := testutil.ToFloat64(m.CacheInvalidationsTotal)
+
 		cache := NewInMemoryCache(5*time.Minute, WithMetrics(m))
 		key := testNationalID("WITHMETRICS")
 		record := &models.CitizenRecord{NationalID: "WITHMETRICS", Valid: true, CheckedAt: time.Now()}
@@ -526,9 +551,26 @@ func TestCacheWithMetrics(t *testing.T) {
 
 		// ClearAll should record invalidation
 		cache.ClearAll()
+
+		hitsAfter := testutil.ToFloat64(m.CacheHitsTotal.WithLabelValues("citizen"))
+		missesAfter := testutil.ToFloat64(m.CacheMissesTotal.WithLabelValues("citizen"))
+		invalidationsAfter := testutil.ToFloat64(m.CacheInvalidationsTotal)
+
+		if hitsAfter != hitsBefore+1 {
+			t.Errorf("expected citizen hits to increase by 1, got %v -> %v", hitsBefore, hitsAfter)
+		}
+		if missesAfter != missesBefore+1 {
+			t.Errorf("expected citizen misses to increase by 1, got %v -> %v", missesBefore, missesAfter)
+		}
+		if invalidationsAfter != invalidationsBefore+1 {
+			t.Errorf("expected invalidations to increase by 1, got %v -> %v", invalidationsBefore, invalidationsAfter)
+		}
 	})
 
 	t.Run("sanctions cache metrics work correctly", func(t *testing.T) {
+		hitsBefore := testutil.ToFloat64(m.CacheHitsTotal.WithLabelValues("sanctions"))
+		missesBefore := testutil.ToFloat64(m.CacheMissesTotal.WithLabelValues("sanctions"))
+
 		cache := NewInMemoryCache(5*time.Minute, WithMetrics(m))
 		key := testNationalID("SANCTIONMET")
 		record := &models.SanctionsRecord{NationalID: "SANCTIONMET", Listed: true, CheckedAt: time.Now()}
@@ -552,24 +594,44 @@ func TestCacheWithMetrics(t *testing.T) {
 		if err != ErrNotFound {
 			t.Errorf("expected ErrNotFound, got %v", err)
 		}
+
+		hitsAfter := testutil.ToFloat64(m.CacheHitsTotal.WithLabelValues("sanctions"))
+		missesAfter := testutil.ToFloat64(m.CacheMissesTotal.WithLabelValues("sanctions"))
+
+		if hitsAfter != hitsBefore+1 {
+			t.Errorf("expected sanctions hits to increase by 1, got %v -> %v", hitsBefore, hitsAfter)
+		}
+		if missesAfter != missesBefore+1 {
+			t.Errorf("expected sanctions misses to increase by 1, got %v -> %v", missesBefore, missesAfter)
+		}
 	})
 
 	t.Run("expired entries record as misses", func(t *testing.T) {
-		cache := NewInMemoryCache(1*time.Millisecond, WithMetrics(m))
+		cache := NewInMemoryCache(10*time.Millisecond, WithMetrics(m))
 		key := testNationalID("EXPIRING1")
 		record := &models.CitizenRecord{NationalID: "EXPIRING1", Valid: true, CheckedAt: time.Now()}
+		start := time.Now()
+		missesBefore := testutil.ToFloat64(m.CacheMissesTotal.WithLabelValues("citizen"))
 
 		_ = cache.SaveCitizen(ctx, key, record, false)
-		time.Sleep(5 * time.Millisecond)
+		require.Eventually(t, func() bool {
+			return time.Since(start) >= 15*time.Millisecond
+		}, 200*time.Millisecond, 5*time.Millisecond)
 
 		// Expired lookup should be a miss
 		_, err := cache.FindCitizen(ctx, key, false)
 		if err != ErrNotFound {
 			t.Errorf("expected ErrNotFound for expired entry, got %v", err)
 		}
+		missesAfter := testutil.ToFloat64(m.CacheMissesTotal.WithLabelValues("citizen"))
+		if missesAfter != missesBefore+1 {
+			t.Errorf("expected citizen misses to increase by 1, got %v -> %v", missesBefore, missesAfter)
+		}
 	})
 
 	t.Run("regulated mode mismatch records as miss", func(t *testing.T) {
+		missesBefore := testutil.ToFloat64(m.CacheMissesTotal.WithLabelValues("citizen"))
+
 		cache := NewInMemoryCache(5*time.Minute, WithMetrics(m))
 		key := testNationalID("REGULATED1")
 		record := &models.CitizenRecord{NationalID: "REGULATED1", Valid: true, CheckedAt: time.Now()}
@@ -581,6 +643,10 @@ func TestCacheWithMetrics(t *testing.T) {
 		_, err := cache.FindCitizen(ctx, key, true)
 		if err != ErrNotFound {
 			t.Errorf("expected ErrNotFound for regulated mode mismatch, got %v", err)
+		}
+		missesAfter := testutil.ToFloat64(m.CacheMissesTotal.WithLabelValues("citizen"))
+		if missesAfter != missesBefore+1 {
+			t.Errorf("expected citizen misses to increase by 1, got %v -> %v", missesBefore, missesAfter)
 		}
 	})
 }

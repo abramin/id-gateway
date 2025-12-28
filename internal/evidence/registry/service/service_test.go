@@ -556,6 +556,31 @@ func (s *ServiceSuite) TestSanctionsAuditFailClosed() {
 	userID := testUserID()
 	now := time.Now()
 
+	s.Run("returns error when cached listed sanctions audit fails", func() {
+		cache := newStubCache()
+		auditPort := &stubAuditPort{
+			emitErr: &auditError{message: "audit system unavailable"},
+		}
+
+		sanctionsRecord := &models.SanctionsRecord{
+			NationalID: "ABC123456",
+			Listed:     true,
+			Source:     "OFAC SDN List",
+			CheckedAt:  now,
+		}
+
+		_ = cache.SaveSanction(ctx, nationalID, sanctionsRecord)
+
+		orch := newTestOrchestrator(nil, nil)
+		svc := New(orch, cache, nil, false, WithAuditor(auditPort))
+
+		result, err := svc.Sanctions(ctx, userID, nationalID)
+		s.Require().Error(err)
+		s.Nil(result)
+		s.Contains(err.Error(), "unable to complete sanctions check")
+		s.Equal(1, auditPort.emitCalls)
+	})
+
 	s.Run("returns error when audit fails for listed sanctions", func() {
 		cache := newStubCache()
 		auditPort := &stubAuditPort{

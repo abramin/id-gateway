@@ -240,17 +240,22 @@ func (s *OrchestratorSuite) TestBackoffBehavior() {
 			},
 		})
 
-		start := time.Now()
 		ctx := context.Background()
 		_, err := orch.Lookup(ctx, LookupRequest{
 			Types:   []providers.ProviderType{providers.ProviderTypeCitizen},
 			Filters: map[string]string{"national_id": "ABC123"},
 		})
-		elapsed := time.Since(start)
 
 		s.Require().NoError(err)
-		// Expected delays: 20ms + 40ms + 80ms = 140ms minimum
-		s.GreaterOrEqual(elapsed, 100*time.Millisecond, "backoff delays should accumulate")
+		s.Require().Len(prov.callTimes, 4, "expected initial call plus 3 retries")
+
+		firstDelay := prov.callTimes[1].Sub(prov.callTimes[0])
+		secondDelay := prov.callTimes[2].Sub(prov.callTimes[1])
+		thirdDelay := prov.callTimes[3].Sub(prov.callTimes[2])
+
+		s.GreaterOrEqual(firstDelay, 15*time.Millisecond, "initial backoff should apply")
+		s.GreaterOrEqual(secondDelay, 30*time.Millisecond, "backoff delay should increase")
+		s.GreaterOrEqual(thirdDelay, 60*time.Millisecond, "backoff delay should keep increasing")
 	})
 }
 
