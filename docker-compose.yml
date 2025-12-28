@@ -74,6 +74,7 @@ services:
       - DEVICE_BINDING_ENABLED=true
       - DISABLE_RATE_LIMITING=${DISABLE_RATE_LIMITING:-false}
       - CONSENT_GRANT_WINDOW=${CONSENT_GRANT_WINDOW:-1s}
+      - CONSENT_REGRANT_COOLDOWN=${CONSENT_REGRANT_COOLDOWN:-1ns}
       - CITIZEN_REGISTRY_URL=http://citizen-registry:8081
       - CITIZEN_REGISTRY_API_KEY=citizen-registry-secret-key
       - SANCTIONS_REGISTRY_URL=http://sanctions-registry:8082

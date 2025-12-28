@@ -398,6 +398,7 @@ func buildConsentModule(infra *infraBundle) *consentModule {
 		infra.Log,
 		consentService.WithConsentTTL(infra.Cfg.Consent.ConsentTTL),
 		consentService.WithGrantWindow(infra.Cfg.Consent.ConsentGrantWindow),
+		consentService.WithReGrantCooldown(infra.Cfg.Consent.ReGrantCooldown),
 		consentService.WithMetrics(infra.ConsentMetrics),
 	)
 

@@ -45,6 +45,7 @@ type AuthConfig struct {
 type ConsentConfig struct {
 	ConsentTTL         time.Duration
 	ConsentGrantWindow time.Duration
+	ReGrantCooldown    time.Duration
 }
 
 // RegistryConfig holds registry integration configuration
@@ -69,6 +70,7 @@ var (
 	DefaultAuthCleanupInterval            = 5 * time.Minute
 	DefaultConsentTTL                     = 365 * 24 * time.Hour
 	DefaultConsentGrantWindow             = 5 * time.Minute
+	DefaultConsentReGrantCooldown         = 5 * time.Minute
 	DefaultRegistryCacheTTL               = 5 * time.Minute
 	DefaultCitizenRegistryURL             = "http://localhost:8082"
 	DefaultCitizenAPIKey                  = "citizen-registry-secret-key"
@@ -134,6 +136,7 @@ func loadConsentConfig() ConsentConfig {
 	return ConsentConfig{
 		ConsentTTL:         parseDuration("CONSENT_TTL", DefaultConsentTTL),
 		ConsentGrantWindow: parseDuration("CONSENT_GRANT_WINDOW", DefaultConsentGrantWindow),
+		ReGrantCooldown:    parseDuration("CONSENT_REGRANT_COOLDOWN", DefaultConsentReGrantCooldown),
 	}
 }
 

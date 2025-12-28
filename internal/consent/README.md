@@ -274,7 +274,7 @@ This prevents abuse patterns:
 - Race condition exploitation in consent-dependent workflows
 - Artificial consent churn for gaming metrics
 
-Configure via `WithReGrantCooldown(duration)` option.
+Configure via `WithReGrantCooldown(duration)` option or `CONSENT_REGRANT_COOLDOWN` environment variable (e.g., `CONSENT_REGRANT_COOLDOWN=5m`).
 
 ---
 
