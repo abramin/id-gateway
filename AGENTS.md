@@ -39,6 +39,7 @@ Use this decision tree to select the right agent:
 | "Where's the I/O hiding?"              | **balance-review** (PASS D) |
 | "Will this scale?"                     | **performance-review**      |
 | "Are the tests right?"                 | **testing-review**          |
+| "Is the API contract complete?"        | **qa**                      |
 
 ## Agent roster
 
@@ -96,6 +97,21 @@ Use this decision tree to select the right agent:
 - Pass D: verify effects visibility (where's the I/O?).
 - Avoids clever indirection; favors concrete types and clear control flow.
 
+### 7) QA Agent
+
+**Scope:** OpenAPI contract completeness (black-box review).
+
+- Treats the service as a black box using only the OpenAPI spec as the contract.
+- Identifies trapdoor states (reachable but inescapable), broken sequences, and unclear contracts.
+- Builds inferred state machines per resource to detect lifecycle gaps.
+- Does NOT suggest endpoints just because they're "standard REST" — PRDs define scope.
+- Does NOT flag idempotency for protocol endpoints (OAuth, OIDC) that follow their own specs.
+- Focuses on actual problems, not theoretical improvements.
+
+**When to use:** Before release or when adding/modifying API endpoints. Pass OpenAPI spec files as arguments.
+
+**Usage:** `/qa docs/openapi/auth.yaml docs/openapi/tenant.yaml`
+
 ## Conflict resolution rules (tie-breakers)
 
 1. **Correctness beats performance.**
@@ -115,6 +131,7 @@ Use this decision tree to select the right agent:
 4. Balance (if abstraction/duplication/cohesion tradeoffs are in play — includes responsibility analysis)
 5. Complexity (if readability or cognitive load is high)
 6. Testing (if changing behavior, contracts, or refactoring internals)
+7. QA (if adding/modifying API endpoints — run against OpenAPI specs before release)
 
 ## Output expectations
 
