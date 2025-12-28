@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"credo/internal/auth/metrics"
 	"credo/internal/auth/models"
 	"credo/internal/auth/ports"
+	"credo/internal/auth/store/idempotency"
 	"credo/internal/platform/config"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
@@ -37,6 +39,7 @@ type Service interface {
 type Handler struct {
 	auth             Service
 	ratelimit        ports.RateLimitPort
+	idempotency      idempotency.Store // optional: if nil, idempotency checking is disabled
 	metrics          *metrics.Metrics
 	logger           *slog.Logger
 	deviceCookieName string
@@ -63,6 +66,13 @@ func New(auth Service, ratelimit ports.RateLimitPort, m *metrics.Metrics, logger
 	}
 }
 
+// WithIdempotencyStore sets the idempotency store for duplicate request detection.
+// If not set, idempotency checking is disabled.
+func (h *Handler) WithIdempotencyStore(store idempotency.Store) *Handler {
+	h.idempotency = store
+	return h
+}
+
 // Register wires public auth routes onto the provided router.
 func (h *Handler) Register(r chi.Router) {
 	r.Post("/auth/authorize", h.HandleAuthorize)
@@ -79,9 +89,15 @@ func (h *Handler) RegisterAdmin(r chi.Router) {
 	r.Delete("/admin/auth/users/{user_id}", h.HandleAdminDeleteUser)
 }
 
+// idempotencyKeyHeader is the HTTP header for idempotency key.
+const idempotencyKeyHeader = "Idempotency-Key"
+
 // HandleAuthorize implements POST /auth/authorize
 // Initiates an authentication session for a user by email.
 // If the user doesn't exist, creates them automatically.
+//
+// Supports optional Idempotency-Key header to prevent duplicate session creation
+// on network retries. If the same key is used within 24 hours, returns cached response.
 //
 // Input: { "email": "user@example.com", "client_id": "demo-client", "scopes": [...], "redirect_uri": "...", "state": "..." }
 // Output: { "code": "authz_...", "redirect_uri": "https://..." }
@@ -89,6 +105,21 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := request.GetRequestID(ctx)
 	clientIP := metadata.GetClientIP(ctx)
+
+	// Check for idempotency key before processing
+	idempotencyKey := r.Header.Get(idempotencyKeyHeader)
+	if idempotencyKey != "" && h.idempotency != nil {
+		if cached, err := h.idempotency.Get(ctx, idempotencyKey); err == nil && cached != nil {
+			h.logger.InfoContext(ctx, "returning cached response for idempotency key",
+				"request_id", requestID,
+				"idempotency_key", idempotencyKey,
+			)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(cached.StatusCode)
+			_, _ = w.Write(cached.Body)
+			return
+		}
+	}
 
 	req, ok := httputil.DecodeJSON[models.AuthorizationRequest](w, r, h.logger, ctx, requestID)
 	if !ok {
@@ -137,6 +168,16 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 			Secure:   isHTTPS(r),
 			SameSite: http.SameSiteStrictMode,
 		})
+	}
+
+	// Cache response for idempotency if key was provided
+	if idempotencyKey != "" && h.idempotency != nil {
+		if body, err := json.Marshal(res); err == nil {
+			_ = h.idempotency.Set(ctx, idempotencyKey, &idempotency.CachedResponse{
+				StatusCode: http.StatusOK,
+				Body:       body,
+			})
+		}
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, res)

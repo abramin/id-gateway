@@ -51,6 +51,7 @@ func (s *Service) ListSessions(ctx context.Context, userID id.UserID, currentSes
 			CreatedAt:    session.CreatedAt,
 			LastActivity: session.LastSeenAt,
 			IsCurrent:    session.ID == currentSessionID,
+			Status:       session.Status.String(),
 		})
 	}
 

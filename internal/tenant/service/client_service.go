@@ -162,7 +162,7 @@ func (s *ClientService) DeactivateClient(ctx context.Context, clientID id.Client
 	}
 
 	if err := s.clients.Update(ctx, client); err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to update client")
+		return nil, wrapClientErr(err, "failed to update client")
 	}
 
 	s.auditEmitter.emitClientDeactivated(ctx, models.ClientDeactivated{
@@ -192,7 +192,7 @@ func (s *ClientService) ReactivateClient(ctx context.Context, clientID id.Client
 	}
 
 	if err := s.clients.Update(ctx, client); err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to update client")
+		return nil, wrapClientErr(err, "failed to update client")
 	}
 
 	s.auditEmitter.emitClientReactivated(ctx, models.ClientReactivated{
@@ -336,7 +336,7 @@ func (s *ClientService) rotateSecret(ctx context.Context, client *models.Client)
 	client.UpdatedAt = requesttime.Now(ctx)
 
 	if err := s.clients.Update(ctx, client); err != nil {
-		return nil, "", dErrors.Wrap(err, dErrors.CodeInternal, "failed to update client")
+		return nil, "", wrapClientErr(err, "failed to update client")
 	}
 
 	s.auditEmitter.emitClientSecretRotated(ctx, models.ClientSecretRotated{
@@ -369,7 +369,7 @@ func (s *ClientService) applyClientUpdate(ctx context.Context, client *models.Cl
 
 	client.UpdatedAt = requesttime.Now(ctx)
 	if err := s.clients.Update(ctx, client); err != nil {
-		return nil, "", dErrors.Wrap(err, dErrors.CodeInternal, "failed to update client")
+		return nil, "", wrapClientErr(err, "failed to update client")
 	}
 
 	if cmd.RotateSecret {

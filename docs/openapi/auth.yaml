@@ -30,6 +30,16 @@ paths:
         the user record is created automatically. Returns an authorization code
         and the redirect URI that should be used by the caller.
 
+        **Rate Limiting:**
+        This endpoint is rate-limited by email + IP to prevent brute force attacks.
+        When rate limited, the response includes a `Retry-After` header indicating
+        when to retry. After repeated failures, the account may be temporarily locked.
+
+        **Idempotency:**
+        Include an `Idempotency-Key` header (UUID recommended) to safely retry requests.
+        If the same key is used within 24 hours, the original response is returned
+        without creating duplicate sessions or authorization codes.
+
         **Error Handling (RFC 6749 §4.1.2.1):**
         Per RFC 6749, if client_id is unknown/invalid or redirect_uri is mismatched,
         the server MUST NOT redirect and should return an error directly:
@@ -37,6 +47,17 @@ paths:
         - Inactive client → 400 `invalid_client`
         - redirect_uri not in registered URIs → 400 `bad_request`
         - Inactive tenant → 400 `access_denied`
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: |
+            Optional idempotency key to ensure safe retries. If the same key is
+            provided within 24 hours, the original response is returned without
+            processing the request again. Recommended: use a UUID.
       requestBody:
         required: true
         content:
@@ -87,6 +108,24 @@ paths:
                   value:
                     error: bad_request
                     error_description: redirect_uri not in client's registered URIs
+        "429":
+          description: |
+            Rate limit exceeded. Check the `Retry-After` header for when to retry.
+          headers:
+            Retry-After:
+              description: Seconds until the rate limit resets
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitErrorResponse"
+              examples:
+                rate_limited:
+                  value:
+                    error: rate_limit_exceeded
+                    message: Too many requests. Please try again later.
+                    retry_after: 60
         "500":
           $ref: "#/components/responses/InternalError"
   /auth/token:
@@ -98,6 +137,11 @@ paths:
         for new tokens. For authorization code exchange, the `redirect_uri`
         and `client_id` must match the authorize request. For refresh grant,
         provide a valid refresh token and the `client_id`.
+
+        **Rate Limiting:**
+        This endpoint is rate-limited by client_id + IP to prevent credential stuffing.
+        When rate limited, the response includes a `Retry-After` header indicating
+        when to retry.
 
         **Error Handling (RFC 6749 §5.2):**
         - Invalid/expired/used authorization code → 400 `invalid_grant`
@@ -162,6 +206,24 @@ paths:
                   value:
                     error: invalid_client
                     error_description: Unknown client_id
+        "429":
+          description: |
+            Rate limit exceeded. Check the `Retry-After` header for when to retry.
+          headers:
+            Retry-After:
+              description: Seconds until the rate limit resets
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitErrorResponse"
+              examples:
+                rate_limited:
+                  value:
+                    error: rate_limit_exceeded
+                    message: Too many requests. Please try again later.
+                    retry_after: 60
         "500":
           $ref: "#/components/responses/InternalError"
   /auth/revoke:
@@ -462,6 +524,14 @@ components:
         is_current:
           type: boolean
           description: True if this is the session making the request
+        status:
+          type: string
+          enum: [active, pending_consent, revoked]
+          description: |
+            Session lifecycle status:
+            - `active`: Session is valid and can be used for token operations
+            - `pending_consent`: Session created but awaiting user consent
+            - `revoked`: Session has been invalidated and cannot be used
     RevokeSessionResponse:
       type: object
       properties:
@@ -534,6 +604,20 @@ components:
         error_description:
           type: string
           description: Human readable explanation of the error
+    RateLimitErrorResponse:
+      type: object
+      required: [error, message, retry_after]
+      properties:
+        error:
+          type: string
+          enum: [rate_limit_exceeded]
+          description: Error code indicating rate limiting
+        message:
+          type: string
+          description: Human-readable error message
+        retry_after:
+          type: integer
+          description: Seconds until the rate limit resets (also in Retry-After header)
   responses:
     BadRequest:
       description: Invalid or malformed request

@@ -111,7 +111,19 @@ paths:
       summary: Deactivate a tenant
       description: |
         Transitions a tenant to inactive status. Deactivated tenants block OAuth
-        flows for all clients under them. Existing tokens remain valid until expiry.
+        flows for all clients under them.
+
+        **Token Behavior:**
+        - **New tokens**: All token requests (`/auth/authorize`, `/auth/token`) will fail
+          with `invalid_client` after deactivation takes effect.
+        - **Existing tokens**: Previously issued access and refresh tokens remain valid
+          until their natural expiry. Token validation (e.g., at resource servers) does
+          not check tenant status.
+
+        **Security Considerations:**
+        If immediate token invalidation is required (e.g., security incident), explicitly
+        revoke tokens via `/auth/revoke` or delete the user account after deactivating
+        the tenant.
       security:
         - bearerAuth: []
       parameters:
