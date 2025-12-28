@@ -165,6 +165,7 @@ Feature: Registry Integration - Citizen and Sanctions Lookup
     Given the system is running in regulated mode
     When I lookup citizen record for national_id "REGULATED123"
     Then the response status should be 200
+    And the response should not contain "national_id"
     And the response should contain "valid"
     And the response should contain "checked_at"
     And the response should not contain "full_name"

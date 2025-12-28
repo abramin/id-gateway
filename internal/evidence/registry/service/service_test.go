@@ -12,6 +12,7 @@ import (
 	"credo/internal/evidence/registry/providers"
 	"credo/internal/evidence/registry/store"
 	id "credo/pkg/domain"
+	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
 )
 
@@ -411,6 +412,54 @@ func (s *ServiceSuite) TestCheckTransactionSemantics() {
 		s.Len(cache.saveCitizenCalls, 0)
 		s.Len(cache.saveSanctionCalls, 0)
 	})
+}
+
+func (s *ServiceSuite) TestSanctionsErrorMapping() {
+	ctx := context.Background()
+	userID := testUserID()
+	nationalID := testNationalID("SANCT123")
+
+	cases := []struct {
+		name     string
+		category providers.ErrorCategory
+		code     dErrors.Code
+	}{
+		{
+			name:     "timeout maps to CodeTimeout",
+			category: providers.ErrorTimeout,
+			code:     dErrors.CodeTimeout,
+		},
+		{
+			name:     "not_found maps to CodeNotFound",
+			category: providers.ErrorNotFound,
+			code:     dErrors.CodeNotFound,
+		},
+		{
+			name:     "provider_outage maps to CodeInternal",
+			category: providers.ErrorProviderOutage,
+			code:     dErrors.CodeInternal,
+		},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			sanctionsProv := &stubProvider{
+				id:       "test-sanctions",
+				provType: providers.ProviderTypeSanctions,
+				lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+					return nil, providers.NewProviderError(tc.category, "test-sanctions", "test error", nil)
+				},
+			}
+
+			orch := newTestOrchestrator(nil, sanctionsProv)
+			svc := New(orch, newStubCache(), nil, false)
+
+			result, err := svc.Sanctions(ctx, userID, nationalID)
+			s.Require().Error(err)
+			s.Nil(result)
+			s.True(dErrors.HasCode(err, tc.code), "expected code %s, got %v", tc.code, err)
+		})
+	}
 }
 
 func (s *ServiceSuite) TestCitizenMinimization() {
