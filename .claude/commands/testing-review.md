@@ -56,6 +56,94 @@ for _, code := range codes {
 // BAD: Multiple varying parameters - use explicit subtests instead
 ```
 
+## Test Naming Philosophy
+
+**Organize tests by capability, not by method.** The top-level test function should describe WHAT the system does, not HOW it does it.
+
+### The Refactoring Test
+
+Ask: "If I renamed or split this method, would I need to rename this test?"
+- If yes: you may be testing implementation.
+- If no: you're testing behavior.
+
+### Naming Patterns by Module Type
+
+**Stores (persistence layer):**
+
+```go
+// AVOID: Method-mirroring (implies 1:1 test-to-method)
+func (s *CacheSuite) TestSaveCitizen() { ... }
+func (s *CacheSuite) TestFindCitizen() { ... }
+
+// BETTER: Capability-focused (what does the cache DO?)
+func (s *CacheSuite) TestCacheHitsAndMisses() {
+    s.Run("returns record when found and not expired", ...)
+    s.Run("returns ErrNotFound when record does not exist", ...)
+    s.Run("returns ErrNotFound when record is expired", ...)
+}
+
+func (s *CacheSuite) TestEvictionPolicy() {
+    s.Run("evicts least-recently-used entry when at capacity", ...)
+    s.Run("accessing entry updates its LRU position", ...)
+}
+
+func (s *CacheSuite) TestConcurrencySafety() {
+    s.Run("handles concurrent reads without race", ...)
+    s.Run("handles concurrent writes without race", ...)
+}
+```
+
+**Services (business logic):**
+
+```go
+// AVOID: Method-mirroring
+func (s *AuthSuite) TestAuthorize() { ... }
+func (s *AuthSuite) TestToken() { ... }
+
+// BETTER: Scenario-focused
+func (s *AuthSuite) TestAuthorizationCodeFlow() {
+    s.Run("creates session and returns code for valid client", ...)
+    s.Run("attaches device metadata when binding enabled", ...)
+    s.Run("rejects invalid redirect URI scheme", ...)
+}
+
+func (s *AuthSuite) TestTokenExchange_Validation() {
+    s.Run("rejects unsupported grant type", ...)
+    s.Run("requires code for authorization_code grant", ...)
+}
+```
+
+**Handlers (HTTP layer):**
+
+```go
+// AVOID: Endpoint-mirroring
+func (s *HandlerSuite) TestHandleGrantConsent() { ... }
+
+// BETTER: Concern-focused
+func (s *HandlerSuite) TestGrantConsent_ErrorMapping() {
+    s.Run("missing user context returns 500", ...)
+    s.Run("service internal error returns 500", ...)
+}
+
+func (s *HandlerSuite) TestGrantConsent_Validation() {
+    s.Run("empty purposes array returns 400", ...)
+    s.Run("invalid purpose value returns 400", ...)
+}
+```
+
+### When Method-Based Naming Is Acceptable
+
+Method-based naming is acceptable when:
+1. **The method IS the contract** - e.g., testing a `Parse*` function's validation rules
+2. **Testing pure functions** - where the function name fully describes the behavior
+3. **Testing interface compliance** - verifying a type implements an interface correctly
+
+```go
+// ACCEPTABLE: ParseNationalID IS the contract - name describes behavior
+func TestParseNationalID_ValidFormat(t *testing.T) { ... }
+func TestParseNationalID_RejectsShortInput(t *testing.T) { ... }
+```
+
 ## What I do
 
 - Propose or refine Gherkin scenarios for externally observable behavior.
@@ -68,7 +156,10 @@ for _, code := range codes {
 
 - Tests asserting internal struct fields, call ordering, or orchestration details.
 - Mock-heavy tests that restate implementation.
-- "One test per method" style coverage.
+- **"One test per method" mirroring** - where test functions map 1:1 to implementation methods.
+  - Anti-pattern: `TestSave`, `TestFind`, `TestDelete` matching `Save()`, `Find()`, `Delete()`.
+  - Why it's bad: Tests become coupled to method names, not behavior. Refactoring methods breaks tests even when behavior is preserved.
+  - Exception: When the method name IS the behavior (e.g., `ParseNationalID`).
 - Table tests with multiple varying parameters or complex per-case assertions.
 - Using `require.NoError(s.T(), err)` instead of `s.Require().NoError(err)` in suites.
 

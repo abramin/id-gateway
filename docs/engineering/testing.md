@@ -79,10 +79,96 @@ Disallowed patterns:
 * Verifying function call order.
 * Mirroring integration or feature tests.
 * Encoding knowledge of internal architecture.
+* Organizing top-level tests by method name (e.g., `TestSave`, `TestFind`, `TestDelete`).
+* Renaming tests when methods are renamed (sign of implementation coupling).
 
 Every unit test must answer:
 
-> “What invariant would break if this test were removed?”
+> "What invariant would break if this test were removed?"
+
+---
+
+## Test Organization Philosophy
+
+### Name Tests for Behavior, Not Implementation
+
+Tests should describe WHAT the system does, not HOW it does it. This makes tests resilient to refactoring and helps reviewers understand intent.
+
+#### The Refactoring Test
+
+Ask: "If I renamed or split this method, would I need to rename this test?"
+- If yes: you may be testing implementation.
+- If no: you're testing behavior.
+
+#### Contrast: Method-Based vs Behavior-Based
+
+**Cache example (store layer):**
+
+```go
+// METHOD-BASED (mirrors implementation)
+// Problem: If we rename SaveCitizen to StoreCitizen, tests break
+func (s *CacheSuite) TestSaveCitizen() {
+    s.Run("saves citizen record successfully", ...)
+    s.Run("overwrites existing record", ...)
+}
+
+func (s *CacheSuite) TestFindCitizen() {
+    s.Run("returns record when found", ...)
+    s.Run("returns ErrNotFound when missing", ...)
+}
+
+// BEHAVIOR-BASED (describes capabilities)
+// Benefit: Renaming methods doesn't break test organization
+func (s *CacheSuite) TestCacheLookups() {
+    s.Run("returns record when found and not expired", ...)
+    s.Run("returns ErrNotFound when record does not exist", ...)
+    s.Run("returns ErrNotFound when record is expired", ...)
+}
+
+func (s *CacheSuite) TestCacheWrites() {
+    s.Run("stores record retrievable by key", ...)
+    s.Run("overwrites record when key exists", ...)
+}
+
+func (s *CacheSuite) TestEvictionPolicy() {
+    s.Run("evicts LRU entry when at capacity", ...)
+    s.Run("access refreshes LRU position", ...)
+}
+```
+
+### Organization by Module Type
+
+Different module types have different natural groupings:
+
+| Module Type | Group Tests By | Example Names |
+|-------------|----------------|---------------|
+| Store | Capability / Concern | `TestCacheHitsAndMisses`, `TestEvictionPolicy`, `TestConcurrencySafety` |
+| Service | Use Case / Scenario | `TestAuthorizationCodeFlow`, `TestTokenExchange_Validation` |
+| Handler | Error Mapping / Validation | `TestGrantConsent_ErrorMapping`, `TestGrantConsent_Validation` |
+| Domain | Invariant / State | `TestSessionStateTransitions`, `TestConsentExpiration` |
+| Pure Function | Input Category | `TestParseNationalID_ValidFormat`, `TestParseNationalID_InvalidLength` |
+
+### When Method-Based Is Acceptable
+
+Method-based naming is appropriate when:
+
+1. **The method name IS the behavior** - `ParseNationalID` describes what happens
+2. **Testing interface compliance** - verifying a type implements Store correctly
+3. **Pure functions with self-documenting names** - `ComputeFingerprint`
+4. **Single-purpose types** - when a type has one method that IS its purpose
+
+```go
+// ACCEPTABLE: The method name describes the behavior completely
+func TestParseNationalID(t *testing.T) {
+    t.Run("accepts valid 9-character ID", ...)
+    t.Run("rejects ID shorter than 6 characters", ...)
+}
+
+// ACCEPTABLE: Testing Store interface compliance
+func TestMemoryStore_ImplementsStore(t *testing.T) {
+    var _ Store = (*MemoryStore)(nil)
+}
+```
 
 ---
 
