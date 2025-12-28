@@ -81,7 +81,7 @@ Each module under `internal/` follows this layout:
 
 - **Handlers** parse HTTP, call services, map responses. No business logic.
 - **Services** own all business logic, depend on interfaces (ports).
-- **Stores** implement persistence behind interfaces. Return domain models, never persistence structs.
+- **Stores** are pure I/O—no business logic, no state transition decisions. See ddd-review for model patterns.
 - **Contracts** (`contracts/registry/`): PII-light DTOs for cross-module boundaries.
 
 ### Data Flow
@@ -98,11 +98,11 @@ HTTP Handler → Service → Store (persistence)
 
 These rules are enforced project-wide:
 
-- No business logic in handlers
+- No business logic in handlers or stores
 - No globals
 - Services own orchestration and domain behavior
-- Domain entities do not contain API input rules
-- Stores return domain models, never persistence structs
+- Domain entities do not contain API input rules or persistence tags (`json:`, `db:`)
+- Stores are pure I/O—never check or mutate domain state directly
 - Internal errors are never exposed to clients
 - All multi-write operations must be atomic
 - Domain state checks must use intent-revealing methods (e.g., `IsPending()`, `CanTransitionTo()`), not direct comparisons

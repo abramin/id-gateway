@@ -14,6 +14,8 @@ See AGENTS.md shared non-negotiables, plus these DDD-specific rules:
 - Stores return domain models as pointers (not persistence structs, not copies).
 - Domain entities do not contain API input/transport rules.
 - **Service/store error boundary**: Stores return sentinel errors only (`ErrNotFound`, etc.); services own domain errors. Use Execute callback pattern for atomic validate-then-mutate to avoid error boomerangs.
+- Stores are pure I/O—no business logic, no state transition decisions.
+- Domain entities do not contain API input/transport rules (no `json:`, `db:` tags).
 - **Domain layer is pure:**
   - No I/O: no database, no HTTP, no filesystem.
   - No `context.Context` in domain function signatures.
@@ -29,6 +31,65 @@ See AGENTS.md shared non-negotiables, plus these DDD-specific rules:
 | **Application** (`internal/service/*`)                       | Use-case orchestration, transaction boundaries, calling repos/clients, sequencing   | Effectful—owns ctx, coordinates I/O |
 | **Infrastructure** (`internal/store/*`, `internal/client/*`) | Persistence, external APIs, adapters                                                | Effectful—does actual I/O           |
 | **Transport** (`internal/handler/*`, `internal/api/*`)       | HTTP/gRPC parsing, response formatting, auth context wiring                         | Effectful—thin, no business logic   |
+
+## Store boundaries
+
+Stores are pure I/O. They fetch and persist—nothing more.
+
+### What stores must NOT do
+
+- Check domain state (`if session.Status == Revoked`)
+- Make state transition decisions (`session.Status = Active`)
+- Enforce business rules or invariants
+- Validate domain logic (beyond data integrity)
+
+### Model organization patterns
+
+Choose based on domain complexity:
+
+**Pattern A: Simple entities (direct domain return)**
+
+When domain models are simple and stores don't need to mutate state:
+
+```go
+// Store returns domain model
+func (s *Store) FindByID(ctx, id) (*models.User, error)
+
+// Service uses it directly
+user, err := s.userStore.FindByID(ctx, userID)
+```
+
+Requirements:
+
+- Domain construction ALWAYS goes through service (which uses constructors)
+- Store never mutates domain state—returns what it reads, persists what it receives
+- Domain models have no persistence tags (`json:`, `db:`)—use struct field mapping in store
+
+**Pattern B: Complex aggregates (persistence structs)**
+
+When domain has private fields, complex invariants, or transformations:
+
+```go
+// Store returns persistence struct
+func (s *Store) FindByID(ctx, id) (*CitizenRow, error)
+
+// Service maps to domain via converter
+row, err := s.store.FindByID(ctx, nationalID)
+domain := converter.RowToCitizenVerification(row)  // Enforces invariants
+```
+
+Use this when:
+
+- Domain has private fields enforced by constructors
+- PII minimization or transformation applies
+- State transitions require domain logic (not store logic)
+- Domain is rehydrated from multiple sources
+
+### The key test
+
+> Can the store be replaced with a different implementation (Postgres, Redis, file) without changing any domain logic?
+
+If the store contains `if/else` on domain state or calls domain methods to make decisions, it's doing too much.
 
 ## The sandwich pattern
 
@@ -139,6 +200,13 @@ if token.IsExpiredAt(s.clock.Now()) { ... }
 - Are state transitions explicit and enforced (methods, closed sets)?
 - Are domain checks expressed as methods (`IsPending`, `CanRotate`)?
 - Are request validation rules mistakenly treated as domain invariants?
+
+### Store boundary verification
+
+- Does the store check domain state (`if entity.Status == ...`)? → Move to service
+- Does the store mutate domain fields directly (`entity.Field = value`)? → Use domain methods
+- Does the store make transition decisions? → Service should call domain method, pass result to store
+- Do domain models have `json:` or `db:` tags? → Move to persistence struct or remove
 
 ### Purity verification
 
