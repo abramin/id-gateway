@@ -108,6 +108,7 @@ func CitizenVerificationToRecord(cv citizen.CitizenVerification) *models.Citizen
 		DateOfBirth: cv.DateOfBirth(),
 		Address:     cv.Address(),
 		Valid:       cv.IsValid(),
+		Source:      cv.ProviderID().String(),
 		CheckedAt:   cv.CheckedAt().Time(),
 	}
 }

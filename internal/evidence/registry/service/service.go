@@ -19,6 +19,8 @@ import (
 	"credo/internal/evidence/registry/store"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
+	"credo/pkg/platform/audit"
+	"credo/pkg/platform/middleware/request"
 )
 
 // Tracer for distributed tracing of registry operations.
@@ -38,12 +40,21 @@ var registryTracer = otel.Tracer("credo/registry")
 // Distributed tracing is supported via OpenTelemetry. The service emits spans for
 // registry.check (parent), registry.citizen, and registry.sanctions operations
 // with cache hit/miss annotations.
+// Audit events are emitted with fail-closed semantics for listed sanctions: the audit MUST
+// succeed before the client learns about a sanctions listing. This ensures compliance
+// auditability is never bypassed.
 type Service struct {
 	orchestrator *orchestrator.Orchestrator
 	cache        CacheStore
 	consentPort  ports.ConsentPort
+	auditor      AuditPublisher
 	regulated    bool
 	logger       *slog.Logger
+}
+
+type AuditPublisher interface {
+	// Emit publishes an audit event. Returns error if the audit system is unavailable.
+	Emit(ctx context.Context, event audit.Event) error
 }
 
 // CacheStore defines the interface for registry caching operations.
@@ -70,6 +81,15 @@ type Option func(*Service)
 func WithLogger(logger *slog.Logger) Option {
 	return func(s *Service) {
 		s.logger = logger
+	}
+}
+
+// Withauditor sets the audit port for the service.
+// When set, sanctions lookups will emit audit events with fail-closed semantics
+// for listed sanctions (audit must succeed before result is returned).
+func WithAuditor(auditor AuditPublisher) Option {
+	return func(s *Service) {
+		s.auditor = auditor
 	}
 }
 
@@ -308,19 +328,15 @@ func (s *Service) Citizen(ctx context.Context, userID id.UserID, nationalID id.N
 	}
 
 	// Check cache
-	cacheHit := false
 	if s.cache != nil {
 		if cached, cacheErr := s.cache.FindCitizen(ctx, nationalID, s.regulated); cacheErr == nil {
-			cacheHit = true
 			span.SetAttributes(attribute.Bool("cache.hit", true))
 			return cached, nil
 		} else if !errors.Is(cacheErr, store.ErrNotFound) {
 			return nil, cacheErr
 		}
 	}
-	if !cacheHit {
-		span.SetAttributes(attribute.Bool("cache.hit", false))
-	}
+	span.SetAttributes(attribute.Bool("cache.hit", false))
 
 	result, err := s.orchestrator.Lookup(ctx, orchestrator.LookupRequest{
 		Types: []providers.ProviderType{providers.ProviderTypeCitizen},
@@ -366,6 +382,10 @@ func (s *Service) Citizen(ctx context.Context, userID id.UserID, nationalID id.N
 // The method first checks consent atomically, then checks the cache; on a miss,
 // it queries the orchestrator using the fallback strategy and caches successful results.
 //
+// After a successful lookup, an audit event is emitted with fail-closed semantics:
+// for listed sanctions, the audit MUST succeed before the result is returned.
+// This ensures compliance auditability is never bypassed for security-critical results.
+//
 // For combined citizen + sanctions lookups, prefer Check() which provides atomic
 // transaction semantics ensuring both records are fetched and cached together.
 //
@@ -390,6 +410,10 @@ func (s *Service) Sanctions(ctx context.Context, userID id.UserID, nationalID id
 		if cached, cacheErr := s.cache.FindSanction(ctx, nationalID); cacheErr == nil {
 			cacheHit = true
 			span.SetAttributes(attribute.Bool("cache.hit", true))
+			// Audit cached result before returning
+			if err := s.auditSanctionsCheck(ctx, userID, cached.Listed); err != nil {
+				return nil, err
+			}
 			return cached, nil
 		} else if !errors.Is(cacheErr, store.ErrNotFound) {
 			return nil, cacheErr
@@ -432,7 +456,60 @@ func (s *Service) Sanctions(ctx context.Context, userID id.UserID, nationalID id
 		_ = s.cache.SaveSanction(ctx, nationalID, record)
 	}
 
+	// Audit before returning - fail-closed for listed sanctions
+	if err := s.auditSanctionsCheck(ctx, userID, record.Listed); err != nil {
+		return nil, err
+	}
+
 	return record, nil
+}
+
+// auditSanctionsCheck emits an audit event for a sanctions check with fail-closed semantics.
+// For listed sanctions, the audit MUST succeed before the result is returned.
+// For non-listed results, audit failures are logged but don't block the result.
+func (s *Service) auditSanctionsCheck(ctx context.Context, userID id.UserID, listed bool) error {
+	if s.auditor == nil {
+		return nil
+	}
+
+	decision := "not_listed"
+	if listed {
+		decision = "listed"
+	}
+
+	event := audit.Event{
+		Action:    "registry_sanctions_checked",
+		Purpose:   "registry_check",
+		UserID:    userID,
+		Decision:  decision,
+		Reason:    "user_initiated",
+		RequestID: request.GetRequestID(ctx),
+	}
+
+	if listed {
+		// Fail-closed: audit MUST succeed for listed sanctions
+		if err := s.auditor.Emit(ctx, event); err != nil {
+			if s.logger != nil {
+				s.logger.ErrorContext(ctx, "CRITICAL: audit failed for listed sanctions - blocking response",
+					"user_id", userID,
+					"error", err,
+				)
+			}
+			return dErrors.New(dErrors.CodeInternal, "unable to complete sanctions check")
+		}
+		return nil
+	}
+
+	// Non-listed: audit failure is logged but doesn't block
+	if err := s.auditor.Emit(ctx, event); err != nil {
+		if s.logger != nil {
+			s.logger.ErrorContext(ctx, "failed to emit audit event for sanctions check",
+				"user_id", userID,
+				"error", err,
+			)
+		}
+	}
+	return nil
 }
 
 // translateOrchestratorError converts orchestrator/provider errors to domain errors.

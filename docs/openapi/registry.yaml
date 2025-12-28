@@ -77,12 +77,14 @@ paths:
                     date_of_birth: "1990-05-15"
                     address: "123 Main Street, Springfield, IL 62701"
                     valid: true
+                    source: "Mock Citizen Registry"
                     checked_at: "2025-12-11T10:00:00Z"
                 regulated_mode:
                   summary: Regulated mode (minimized data)
                   value:
                     national_id: "CITIZEN123456"
                     valid: true
+                    source: "Mock Citizen Registry"
                     checked_at: "2025-12-11T10:00:00Z"
                 invalid_record:
                   summary: Invalid/inactive citizen record
@@ -92,6 +94,17 @@ paths:
                     date_of_birth: "1985-01-01"
                     address: ""
                     valid: false
+                    source: "Mock Citizen Registry"
+                    checked_at: "2025-12-11T10:00:00Z"
+                fallback_provider:
+                  summary: Record from fallback provider
+                  value:
+                    national_id: "FALLBACK123"
+                    full_name: "Jane Smith"
+                    date_of_birth: "1992-03-20"
+                    address: "456 Oak Avenue, Chicago, IL 60601"
+                    valid: true
+                    source: "Fallback Citizen Registry"
                     checked_at: "2025-12-11T10:00:00Z"
 
         "400":
@@ -103,8 +116,14 @@ paths:
         "403":
           $ref: "#/components/responses/MissingConsent"
 
+        "404":
+          $ref: "#/components/responses/NotFound"
+
         "500":
           $ref: "#/components/responses/InternalError"
+
+        "503":
+          $ref: "#/components/responses/RegistryUnavailable"
 
         "504":
           $ref: "#/components/responses/RegistryTimeout"
@@ -171,8 +190,14 @@ paths:
         "403":
           $ref: "#/components/responses/MissingConsent"
 
+        "404":
+          $ref: "#/components/responses/NotFound"
+
         "500":
           $ref: "#/components/responses/InternalError"
+
+        "503":
+          $ref: "#/components/responses/RegistryUnavailable"
 
         "504":
           $ref: "#/components/responses/RegistryTimeout"
@@ -204,7 +229,7 @@ components:
 
     CitizenRecord:
       type: object
-      required: [national_id, valid, checked_at]
+      required: [national_id, valid, source, checked_at]
       properties:
         national_id:
           type: string
@@ -229,6 +254,11 @@ components:
           type: boolean
           description: Whether the citizen record is valid and active
           example: true
+        source:
+          type: string
+          description: Provider/registry that returned this record (useful for fallback scenarios)
+          maxLength: 255
+          example: "Mock Citizen Registry"
         checked_at:
           type: string
           format: date-time
@@ -240,6 +270,7 @@ components:
         date_of_birth: "1990-05-15"
         address: "123 Main Street, Springfield, IL 62701"
         valid: true
+        source: "Mock Citizen Registry"
         checked_at: "2025-12-11T10:00:00Z"
 
     SanctionsCheckRequest:
@@ -301,6 +332,7 @@ components:
             - policy_violation
             - internal_error
             - registry_timeout
+            - registry_unavailable
         error_description:
           type: string
           description: Human-readable error explanation
@@ -387,6 +419,37 @@ components:
                 error: internal_error
                 error_description: "Failed to store registry response in cache"
 
+    NotFound:
+      description: Requested record does not exist in the registry
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            citizen_not_found:
+              summary: Citizen record not found
+              value:
+                error: not_found
+                error_description: "Citizen record not found in registry"
+
+    RegistryUnavailable:
+      description: All registry providers are unavailable
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            all_providers_failed:
+              summary: All registry providers failed
+              value:
+                error: registry_unavailable
+                error_description: "All registry providers are unavailable"
+            primary_and_fallback_failed:
+              summary: Primary and fallback providers failed
+              value:
+                error: registry_unavailable
+                error_description: "Registry service temporarily unavailable"
+
     RegistryTimeout:
       description: External registry did not respond within timeout window
       content:
@@ -419,6 +482,7 @@ components:
         date_of_birth: "1990-05-15"
         address: "123 Main Street, Springfield, IL 62701"
         valid: true
+        source: "Mock Citizen Registry"
         checked_at: "2025-12-11T10:00:00Z"
 
     CitizenLookupRegulated:
@@ -426,6 +490,7 @@ components:
       value:
         national_id: "CITIZEN123456"
         valid: true
+        source: "Mock Citizen Registry"
         checked_at: "2025-12-11T10:00:00Z"
 
     SanctionsNotListed:

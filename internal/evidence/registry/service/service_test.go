@@ -12,6 +12,7 @@ import (
 	"credo/internal/evidence/registry/providers"
 	"credo/internal/evidence/registry/store"
 	id "credo/pkg/domain"
+	"credo/pkg/platform/audit"
 )
 
 // stubCache is a test double for the cache store
@@ -478,4 +479,181 @@ func (s *ServiceSuite) TestCitizenMinimization() {
 		s.Equal("123 Test St", result.Address)
 		s.True(result.Valid)
 	})
+}
+
+func (s *ServiceSuite) TestConsentRequired() {
+	ctx := context.Background()
+	nationalID := testNationalID("ABC123456")
+	userID := testUserID()
+
+	s.Run("returns error when consent is not granted", func() {
+		cache := newStubCache()
+		consentPort := &stubConsentPort{
+			err: &consentError{message: "consent required for purpose: registry_check"},
+		}
+
+		orch := newTestOrchestrator(nil, nil)
+		svc := New(orch, cache, consentPort, false)
+
+		result, err := svc.Citizen(ctx, userID, nationalID)
+		s.Require().Error(err)
+		s.Nil(result)
+		s.Contains(err.Error(), "consent")
+	})
+
+	s.Run("proceeds when consent is granted", func() {
+		cache := newStubCache()
+		consentPort := &stubConsentPort{err: nil} // consent granted
+
+		citizenRecord := &models.CitizenRecord{
+			NationalID: "ABC123456",
+			Valid:      true,
+			CheckedAt:  time.Now(),
+		}
+
+		citizenProv := &stubProvider{
+			id:       "test-citizen",
+			provType: providers.ProviderTypeCitizen,
+			lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				return citizenEvidence(citizenRecord), nil
+			},
+		}
+
+		orch := newTestOrchestrator(citizenProv, nil)
+		svc := New(orch, cache, consentPort, false)
+
+		result, err := svc.Citizen(ctx, userID, nationalID)
+		s.Require().NoError(err)
+		s.NotNil(result)
+	})
+}
+
+// consentError implements error for testing
+type consentError struct {
+	message string
+}
+
+func (e *consentError) Error() string {
+	return e.message
+}
+
+// stubAuditPort is a test double for audit publishing
+type stubAuditPort struct {
+	emitErr    error
+	emitCalls  int
+	lastAction string
+}
+
+func (p *stubAuditPort) Emit(_ context.Context, event audit.Event) error {
+	p.emitCalls++
+	p.lastAction = event.Action
+	return p.emitErr
+}
+
+func (s *ServiceSuite) TestSanctionsAuditFailClosed() {
+	ctx := context.Background()
+	nationalID := testNationalID("ABC123456")
+	userID := testUserID()
+	now := time.Now()
+
+	s.Run("returns error when audit fails for listed sanctions", func() {
+		cache := newStubCache()
+		auditPort := &stubAuditPort{
+			emitErr: &auditError{message: "audit system unavailable"},
+		}
+
+		sanctionsRecord := &models.SanctionsRecord{
+			NationalID: "ABC123456",
+			Listed:     true, // Listed = critical audit required
+			Source:     "OFAC SDN List",
+			CheckedAt:  now,
+		}
+
+		sanctionsProv := &stubProvider{
+			id:       "test-sanctions",
+			provType: providers.ProviderTypeSanctions,
+			lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				return sanctionsEvidence(sanctionsRecord), nil
+			},
+		}
+
+		orch := newTestOrchestrator(nil, sanctionsProv)
+		svc := New(orch, cache, nil, false, WithAuditor(auditPort))
+
+		result, err := svc.Sanctions(ctx, userID, nationalID)
+		s.Require().Error(err)
+		s.Nil(result)
+		s.Contains(err.Error(), "unable to complete sanctions check")
+		s.Equal(1, auditPort.emitCalls)
+	})
+
+	s.Run("returns result when audit succeeds for listed sanctions", func() {
+		cache := newStubCache()
+		auditPort := &stubAuditPort{emitErr: nil}
+
+		sanctionsRecord := &models.SanctionsRecord{
+			NationalID: "ABC123456",
+			Listed:     true,
+			Source:     "OFAC SDN List",
+			CheckedAt:  now,
+		}
+
+		sanctionsProv := &stubProvider{
+			id:       "test-sanctions",
+			provType: providers.ProviderTypeSanctions,
+			lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				return sanctionsEvidence(sanctionsRecord), nil
+			},
+		}
+
+		orch := newTestOrchestrator(nil, sanctionsProv)
+		svc := New(orch, cache, nil, false, WithAuditor(auditPort))
+
+		result, err := svc.Sanctions(ctx, userID, nationalID)
+		s.Require().NoError(err)
+		s.NotNil(result)
+		s.True(result.Listed)
+		s.Equal(1, auditPort.emitCalls)
+		s.Equal("registry_sanctions_checked", auditPort.lastAction)
+	})
+
+	s.Run("returns result when audit fails for non-listed sanctions", func() {
+		cache := newStubCache()
+		auditPort := &stubAuditPort{
+			emitErr: &auditError{message: "audit system unavailable"},
+		}
+
+		sanctionsRecord := &models.SanctionsRecord{
+			NationalID: "ABC123456",
+			Listed:     false, // Not listed = non-critical audit
+			Source:     "Test DB",
+			CheckedAt:  now,
+		}
+
+		sanctionsProv := &stubProvider{
+			id:       "test-sanctions",
+			provType: providers.ProviderTypeSanctions,
+			lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				return sanctionsEvidence(sanctionsRecord), nil
+			},
+		}
+
+		orch := newTestOrchestrator(nil, sanctionsProv)
+		svc := New(orch, cache, nil, false, WithAuditor(auditPort))
+
+		result, err := svc.Sanctions(ctx, userID, nationalID)
+		// Should succeed despite audit failure for non-listed
+		s.Require().NoError(err)
+		s.NotNil(result)
+		s.False(result.Listed)
+	})
+}
+
+// auditError implements error for testing
+type auditError struct {
+	message string
+}
+
+func (e *auditError) Error() string {
+	return e.message
 }

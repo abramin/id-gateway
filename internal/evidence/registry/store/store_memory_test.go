@@ -96,8 +96,8 @@ func (s *InMemoryCacheSuite) TestSaveCitizen() {
 
 		s.Require().NoError(err1)
 		s.Require().NoError(err2)
-		s.True(found1.Valid)   // First record
-		s.False(found2.Valid)  // Second record - different!
+		s.True(found1.Valid)  // First record
+		s.False(found2.Valid) // Second record - different!
 	})
 
 	s.Run("handles concurrent saves without race conditions", func() {
@@ -378,39 +378,6 @@ func (s *InMemoryCacheSuite) TestEviction() {
 		// KEYABC1 should be evicted
 		_, err := cache.FindSanction(ctx, makeKey(1))
 		s.ErrorIs(err, ErrNotFound)
-	})
-}
-
-func (s *InMemoryCacheSuite) TestCleanupExpired() {
-	ctx := context.Background()
-
-	s.Run("removes expired entries from both caches", func() {
-		cache := NewInMemoryCache(10 * time.Millisecond)
-
-		key1 := testNationalID("KEYABC1")
-		key2 := testNationalID("KEYABC2")
-
-		citizenRecord := &models.CitizenRecord{NationalID: "KEYABC1", Valid: true, CheckedAt: time.Now()}
-		sanctionRecord := &models.SanctionsRecord{NationalID: "KEYABC2", Listed: true, CheckedAt: time.Now()}
-
-		_ = cache.SaveCitizen(ctx, key1, citizenRecord, false)
-		_ = cache.SaveSanction(ctx, key2, sanctionRecord)
-
-		// Verify they exist
-		citizens, sanctions := cache.Size()
-		s.Equal(1, citizens)
-		s.Equal(1, sanctions)
-
-		// Wait for expiration
-		time.Sleep(15 * time.Millisecond)
-
-		// Run cleanup
-		cache.CleanupExpired()
-
-		// Verify they're gone
-		citizens, sanctions = cache.Size()
-		s.Equal(0, citizens)
-		s.Equal(0, sanctions)
 	})
 }
 

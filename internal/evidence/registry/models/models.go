@@ -10,6 +10,7 @@ type CitizenRecord struct {
 	DateOfBirth string
 	Address     string
 	Valid       bool
+	Source      string
 	CheckedAt   time.Time
 }
 

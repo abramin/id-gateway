@@ -17,9 +17,11 @@ Feature: Registry Integration - Citizen and Sanctions Lookup
     And the response should contain "date_of_birth"
     And the response should contain "address"
     And the response should contain "valid"
+    And the response should contain "source"
     And the response should contain "checked_at"
     And the response field "national_id" should equal "CITIZEN123456"
     And the response field "valid" should equal true
+    And the response field "source" should not be empty
 
     @registry @citizen @normal
   Scenario: Citizen lookup returns different data for different national IDs
@@ -144,6 +146,20 @@ Feature: Registry Integration - Citizen and Sanctions Lookup
     Then the response status should be 400
     And the response field "error" should equal "bad_request"
 
+    @registry @citizen @not-found
+  Scenario: Citizen lookup for non-existent record returns 404
+    When I lookup citizen record for national_id "NOTFOUND999"
+    Then the response status should be 404
+    And the response field "error" should equal "not_found"
+    And the response field "error_description" should contain "not found"
+
+    @registry @citizen @invalid-record
+  Scenario: Citizen lookup returns valid false for inactive record
+    When I lookup citizen record for national_id "INVALID99999"
+    Then the response status should be 200
+    And the response field "valid" should equal false
+    And the response should contain "checked_at"
+
     @registry @regulated
   Scenario: Citizen lookup in regulated mode returns minimized data
     Given the system is running in regulated mode
@@ -220,7 +236,7 @@ Feature: Registry Integration - Citizen and Sanctions Lookup
     When I lookup citizen record for national_id "FALLBACK123"
     Then the response status should be 200
     And the response field "valid" should equal true
-    And the response should indicate fallback provider was used
+    And the response field "source" should contain "fallback"
 
     @registry @fallback
   Scenario: All providers unavailable returns 503
