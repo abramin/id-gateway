@@ -212,7 +212,7 @@ func (m *MockSessionStore) EXPECT() *MockSessionStoreMockRecorder {
 }
 
 // AdvanceLastRefreshed mocks base method.
-func (m *MockSessionStore) AdvanceLastRefreshed(ctx context.Context, sessionID domain.SessionID, clientID string, at time.Time, accessTokenJTI, deviceID, deviceFingerprintHash string) (*models.Session, error) {
+func (m *MockSessionStore) AdvanceLastRefreshed(ctx context.Context, sessionID domain.SessionID, clientID domain.ClientID, at time.Time, accessTokenJTI, deviceID, deviceFingerprintHash string) (*models.Session, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AdvanceLastRefreshed", ctx, sessionID, clientID, at, accessTokenJTI, deviceID, deviceFingerprintHash)
 	ret0, _ := ret[0].(*models.Session)
@@ -227,7 +227,7 @@ func (mr *MockSessionStoreMockRecorder) AdvanceLastRefreshed(ctx, sessionID, cli
 }
 
 // AdvanceLastSeen mocks base method.
-func (m *MockSessionStore) AdvanceLastSeen(ctx context.Context, sessionID domain.SessionID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID, deviceFingerprintHash string) (*models.Session, error) {
+func (m *MockSessionStore) AdvanceLastSeen(ctx context.Context, sessionID domain.SessionID, clientID domain.ClientID, at time.Time, accessTokenJTI string, activate bool, deviceID, deviceFingerprintHash string) (*models.Session, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AdvanceLastSeen", ctx, sessionID, clientID, at, accessTokenJTI, activate, deviceID, deviceFingerprintHash)
 	ret0, _ := ret[0].(*models.Session)

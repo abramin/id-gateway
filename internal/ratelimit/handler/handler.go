@@ -68,7 +68,7 @@ func (h *Handler) HandleAddAllowlist(w http.ResponseWriter, r *http.Request) {
 	}
 	httputil.WriteJSON(w, http.StatusOK, &models.AllowlistEntryResponse{
 		Allowlisted: true,
-		Identifier:  entry.Identifier,
+		Identifier:  entry.Identifier.String(),
 		ExpiresAt:   entry.ExpiresAt,
 	})
 }

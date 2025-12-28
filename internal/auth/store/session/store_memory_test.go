@@ -152,7 +152,7 @@ func (s *InMemorySessionStoreSuite) TestSessionStore_AdvanceLastSeen() {
 	}
 	s.Require().NoError(s.store.Create(ctx, session))
 
-	updated, err := s.store.AdvanceLastSeen(ctx, session.ID, session.ClientID.String(), now, "jti-1", true, "device-1", "fp-1")
+	updated, err := s.store.AdvanceLastSeen(ctx, session.ID, session.ClientID, now, "jti-1", true, "device-1", "fp-1")
 	s.Require().NoError(err)
 	s.Equal(models.SessionStatusActive, updated.Status)
 	s.Equal("jti-1", updated.LastAccessTokenJTI)
@@ -162,7 +162,7 @@ func (s *InMemorySessionStoreSuite) TestSessionStore_AdvanceLastSeen() {
 
 	// Monotonic update should retain the newer timestamp
 	older := now.Add(-time.Minute)
-	updated, err = s.store.AdvanceLastSeen(ctx, session.ID, session.ClientID.String(), older, "jti-2", false, "", "")
+	updated, err = s.store.AdvanceLastSeen(ctx, session.ID, session.ClientID, older, "jti-2", false, "", "")
 	s.Require().NoError(err)
 	s.Equal(now, updated.LastSeenAt)
 	s.Equal("jti-2", updated.LastAccessTokenJTI)
@@ -182,7 +182,7 @@ func (s *InMemorySessionStoreSuite) TestSessionStore_AdvanceLastSeenRejectsRevok
 	}
 	s.Require().NoError(s.store.Create(ctx, session))
 
-	_, err := s.store.AdvanceLastSeen(ctx, session.ID, session.ClientID.String(), now, "", false, "", "")
+	_, err := s.store.AdvanceLastSeen(ctx, session.ID, session.ClientID, now, "", false, "", "")
 	s.Require().ErrorIs(err, ErrSessionRevoked)
 }
 
@@ -200,7 +200,7 @@ func (s *InMemorySessionStoreSuite) TestSessionStore_AdvanceLastRefreshed() {
 	}
 	s.Require().NoError(s.store.Create(ctx, session))
 
-	updated, err := s.store.AdvanceLastRefreshed(ctx, session.ID, session.ClientID.String(), now, "jti-1", "", "")
+	updated, err := s.store.AdvanceLastRefreshed(ctx, session.ID, session.ClientID, now, "jti-1", "", "")
 	s.Require().NoError(err)
 	s.Require().NotNil(updated.LastRefreshedAt)
 	s.Equal(now, *updated.LastRefreshedAt)
@@ -209,7 +209,7 @@ func (s *InMemorySessionStoreSuite) TestSessionStore_AdvanceLastRefreshed() {
 
 	// Older timestamps should not move the fields backwards
 	past := now.Add(-time.Minute)
-	updated, err = s.store.AdvanceLastRefreshed(ctx, session.ID, session.ClientID.String(), past, "jti-2", "", "")
+	updated, err = s.store.AdvanceLastRefreshed(ctx, session.ID, session.ClientID, past, "jti-2", "", "")
 	s.Require().NoError(err)
 	s.Equal(now, *updated.LastRefreshedAt)
 	s.Equal("jti-2", updated.LastAccessTokenJTI)

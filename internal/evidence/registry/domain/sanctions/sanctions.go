@@ -14,6 +14,8 @@
 package sanctions
 
 import (
+	"errors"
+
 	"credo/internal/evidence/registry/domain/shared"
 	id "credo/pkg/domain"
 )
@@ -107,6 +109,13 @@ type SanctionsCheck struct {
 	confidence shared.Confidence
 }
 
+var (
+	errMissingNationalID = errors.New("national_id is required")
+	errMissingSource     = errors.New("source is required")
+	errMissingCheckedAt  = errors.New("checked_at is required")
+	errMissingProviderID = errors.New("provider_id is required")
+)
+
 // NewSanctionsCheck creates a new sanctions check result for a non-listed subject.
 func NewSanctionsCheck(
 	nationalID id.NationalID,
@@ -114,7 +123,19 @@ func NewSanctionsCheck(
 	checkedAt shared.CheckedAt,
 	providerID shared.ProviderID,
 	confidence shared.Confidence,
-) SanctionsCheck {
+) (SanctionsCheck, error) {
+	if nationalID.IsNil() {
+		return SanctionsCheck{}, errMissingNationalID
+	}
+	if source.IsZero() {
+		return SanctionsCheck{}, errMissingSource
+	}
+	if checkedAt.IsZero() {
+		return SanctionsCheck{}, errMissingCheckedAt
+	}
+	if providerID.IsZero() {
+		return SanctionsCheck{}, errMissingProviderID
+	}
 	return SanctionsCheck{
 		nationalID: nationalID,
 		listed:     false,
@@ -123,7 +144,7 @@ func NewSanctionsCheck(
 		checkedAt:  checkedAt,
 		providerID: providerID,
 		confidence: confidence,
-	}
+	}, nil
 }
 
 // NewListedSanctionsCheck creates a sanctions check result for a listed subject.
@@ -137,7 +158,22 @@ func NewListedSanctionsCheck(
 	checkedAt shared.CheckedAt,
 	providerID shared.ProviderID,
 	confidence shared.Confidence,
-) SanctionsCheck {
+) (SanctionsCheck, error) {
+	if nationalID.IsNil() {
+		return SanctionsCheck{}, errMissingNationalID
+	}
+	if source.IsZero() {
+		return SanctionsCheck{}, errMissingSource
+	}
+	if checkedAt.IsZero() {
+		return SanctionsCheck{}, errMissingCheckedAt
+	}
+	if providerID.IsZero() {
+		return SanctionsCheck{}, errMissingProviderID
+	}
+	if listType != ListTypeNone && !listType.IsValid() {
+		return SanctionsCheck{}, errors.New("invalid list type")
+	}
 	// Enforce invariant: listed subjects must have a list type
 	if listType == ListTypeNone {
 		listType = ListTypeSanctions // Default to sanctions if not specified
@@ -155,7 +191,7 @@ func NewListedSanctionsCheck(
 		checkedAt:  checkedAt,
 		providerID: providerID,
 		confidence: confidence,
-	}
+	}, nil
 }
 
 func (s SanctionsCheck) NationalID() id.NationalID {

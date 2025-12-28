@@ -159,13 +159,13 @@ func (s *ClientModelSuite) TestConfidentiality() {
 		public := s.newClient(ClientStatusActive, "")
 
 		// Confidential clients can use any grant
-		s.True(confidential.CanUseGrant("authorization_code"))
-		s.True(confidential.CanUseGrant("client_credentials"))
-		s.True(confidential.CanUseGrant("refresh_token"))
+		s.True(confidential.CanUseGrant(GrantTypeAuthorizationCode))
+		s.True(confidential.CanUseGrant(GrantTypeClientCredentials))
+		s.True(confidential.CanUseGrant(GrantTypeRefreshToken))
 
 		// Public clients cannot use client_credentials
-		s.True(public.CanUseGrant("authorization_code"))
-		s.False(public.CanUseGrant("client_credentials"))
-		s.True(public.CanUseGrant("refresh_token"))
+		s.True(public.CanUseGrant(GrantTypeAuthorizationCode))
+		s.False(public.CanUseGrant(GrantTypeClientCredentials))
+		s.True(public.CanUseGrant(GrantTypeRefreshToken))
 	})
 }

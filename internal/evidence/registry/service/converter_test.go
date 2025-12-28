@@ -216,7 +216,8 @@ func (s *ConverterSuite) TestSanctionsCheckToRecord() {
 	confidence := shared.Authoritative()
 
 	s.Run("unlisted check", func() {
-		check := sanctions.NewSanctionsCheck(nationalID, source, checkedAt, providerID, confidence)
+		check, err := sanctions.NewSanctionsCheck(nationalID, source, checkedAt, providerID, confidence)
+		s.Require().NoError(err)
 		record := SanctionsCheckToRecord(check)
 
 		s.Require().NotNil(record)
@@ -227,7 +228,7 @@ func (s *ConverterSuite) TestSanctionsCheckToRecord() {
 	})
 
 	s.Run("listed check", func() {
-		check := sanctions.NewListedSanctionsCheck(
+		check, err := sanctions.NewListedSanctionsCheck(
 			nationalID,
 			sanctions.ListTypeSanctions,
 			"terrorism financing",
@@ -237,6 +238,7 @@ func (s *ConverterSuite) TestSanctionsCheckToRecord() {
 			providerID,
 			confidence,
 		)
+		s.Require().NoError(err)
 		record := SanctionsCheckToRecord(check)
 
 		s.Require().NotNil(record)

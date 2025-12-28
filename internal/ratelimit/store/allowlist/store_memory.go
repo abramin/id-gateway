@@ -24,7 +24,7 @@ func New() *InMemoryAllowlistStore {
 func (s *InMemoryAllowlistStore) Add(ctx context.Context, entry *models.AllowlistEntry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	key := buildKey(entry.Type, entry.Identifier)
+	key := buildKey(entry.Type, entry.Identifier.String())
 	s.entries[key] = entry
 	return nil
 }

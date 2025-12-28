@@ -46,7 +46,7 @@ func (s *Service) executeTokenFlowTx(
 	// Advance session state based on flow type
 	var session *models.Session
 	var err error
-	clientID := params.TokenContext.Client.ID.String()
+	clientID := params.TokenContext.Client.ID
 	artifacts := params.Artifacts
 
 	if params.ActivateOnFirstUse {

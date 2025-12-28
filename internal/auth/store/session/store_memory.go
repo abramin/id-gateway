@@ -156,7 +156,7 @@ func translateSessionError(err error) error {
 
 // validateForAdvance calls the domain validation method and translates errors to sentinel errors.
 // allowPending=true permits pending_consent status (for code exchange activation).
-func validateForAdvance(session *models.Session, clientID string, at time.Time, allowPending bool) error {
+func validateForAdvance(session *models.Session, clientID id.ClientID, at time.Time, allowPending bool) error {
 	if err := session.ValidateForAdvance(clientID, at, allowPending); err != nil {
 		return translateSessionError(err)
 	}
@@ -166,7 +166,7 @@ func validateForAdvance(session *models.Session, clientID string, at time.Time, 
 // AdvanceLastSeen updates the session's last seen time and other optional fields.
 // It validates the session using domain logic, then applies updates via domain methods.
 // Errors are returned as sentinel errors per store boundary contract.
-func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID string, deviceFingerprintHash string) (*models.Session, error) {
+func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, sessionID id.SessionID, clientID id.ClientID, at time.Time, accessTokenJTI string, activate bool, deviceID string, deviceFingerprintHash string) (*models.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -194,7 +194,7 @@ func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, sessionID id.S
 
 // AdvanceLastRefreshed updates the session's refresh timestamp and activity time.
 // Errors are returned as sentinel errors per store boundary contract.
-func (s *InMemorySessionStore) AdvanceLastRefreshed(_ context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, deviceID string, deviceFingerprintHash string) (*models.Session, error) {
+func (s *InMemorySessionStore) AdvanceLastRefreshed(_ context.Context, sessionID id.SessionID, clientID id.ClientID, at time.Time, accessTokenJTI string, deviceID string, deviceFingerprintHash string) (*models.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

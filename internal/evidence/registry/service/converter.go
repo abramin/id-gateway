@@ -55,14 +55,18 @@ func EvidenceToCitizenVerification(ev *providers.Evidence) (citizen.CitizenVerif
 		Address:     getString(ev.Data, "address"),
 	}
 
-	return citizen.New(
+	verification, err := citizen.New(
 		nationalID,
 		details,
 		valid,
 		checkedAt,
 		providerID,
 		confidence,
-	), nil
+	)
+	if err != nil {
+		return citizen.CitizenVerification{}, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid citizen verification")
+	}
+	return verification, nil
 }
 
 // EvidenceToSanctionsCheck converts generic Evidence to a domain SanctionsCheck aggregate.
@@ -103,7 +107,7 @@ func EvidenceToSanctionsCheck(ev *providers.Evidence) (sanctions.SanctionsCheck,
 	source := sanctions.NewSource(getString(ev.Data, "source"))
 
 	if listed {
-		return sanctions.NewListedSanctionsCheck(
+		check, err := sanctions.NewListedSanctionsCheck(
 			nationalID,
 			sanctions.ListTypeSanctions,
 			"",
@@ -112,16 +116,24 @@ func EvidenceToSanctionsCheck(ev *providers.Evidence) (sanctions.SanctionsCheck,
 			checkedAt,
 			providerID,
 			confidence,
-		), nil
+		)
+		if err != nil {
+			return sanctions.SanctionsCheck{}, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid sanctions check")
+		}
+		return check, nil
 	}
 
-	return sanctions.NewSanctionsCheck(
+	check, err := sanctions.NewSanctionsCheck(
 		nationalID,
 		source,
 		checkedAt,
 		providerID,
 		confidence,
-	), nil
+	)
+	if err != nil {
+		return sanctions.SanctionsCheck{}, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid sanctions check")
+	}
+	return check, nil
 }
 
 // CitizenVerificationToRecord converts a domain CitizenVerification to an infrastructure CitizenRecord.

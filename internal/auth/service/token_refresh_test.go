@@ -85,9 +85,8 @@ func (s *ServiceSuite) TestTokenRefreshFlow() {
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
 		accessToken, accessTokenJTI, idToken, refreshToken := s.expectTokenGeneration(userID, sessionID, clientUUID, tenantID, sess.RequestedScope)
 		// Inside RunInTx: Advance session, create new token
-		// Note: AdvanceLastRefreshed receives tc.Client.ID.String() (UUID string), not req.ClientID
-		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), sess.ID, clientUUID.String(), gomock.Any(), accessTokenJTI, sess.DeviceID, sess.DeviceFingerprintHash).DoAndReturn(
-			func(ctx context.Context, sessionID id.SessionID, clientID string, ts time.Time, jti string, deviceID string, fingerprint string) (*models.Session, error) {
+		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), sess.ID, clientUUID, gomock.Any(), accessTokenJTI, sess.DeviceID, sess.DeviceFingerprintHash).DoAndReturn(
+			func(ctx context.Context, sessionID id.SessionID, clientID id.ClientID, ts time.Time, jti string, deviceID string, fingerprint string) (*models.Session, error) {
 				s.Require().Equal(sess.ID, sessionID)
 				s.Require().False(ts.IsZero())
 				s.Require().Equal(accessTokenJTI, jti)
@@ -210,7 +209,7 @@ func (s *ServiceSuite) TestTokenRefreshFlow() {
 		s.mockRefreshStore.EXPECT().ConsumeRefreshToken(gomock.Any(), refreshTokenString, gomock.Any()).Return(&refreshRec, nil)
 		s.mockSessionStore.EXPECT().FindByID(gomock.Any(), sessionID).Return(&sess, nil)
 		_, accessTokenJTI, _, _ := s.expectTokenGeneration(userID, sessionID, clientUUID, tenantID, sess.RequestedScope)
-		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), sess.ID, clientUUID.String(), gomock.Any(), accessTokenJTI, sess.DeviceID, sess.DeviceFingerprintHash).
+		s.mockSessionStore.EXPECT().AdvanceLastRefreshed(gomock.Any(), sess.ID, clientUUID, gomock.Any(), accessTokenJTI, sess.DeviceID, sess.DeviceFingerprintHash).
 			DoAndReturn(func(ctx context.Context, sessionID id.SessionID, client string, ts time.Time, jti string, deviceID string, fingerprint string) (*models.Session, error) {
 				s.Require().Equal(sess.DeviceID, deviceID)
 				return &sess, nil

@@ -66,8 +66,8 @@ type SessionStore interface {
 	DeleteSessionsByUser(ctx context.Context, userID id.UserID) error
 	RevokeSession(ctx context.Context, sessionID id.SessionID) error
 	RevokeSessionIfActive(ctx context.Context, sessionID id.SessionID, now time.Time) error
-	AdvanceLastSeen(ctx context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID string, deviceFingerprintHash string) (*models.Session, error)
-	AdvanceLastRefreshed(ctx context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, deviceID string, deviceFingerprintHash string) (*models.Session, error)
+	AdvanceLastSeen(ctx context.Context, sessionID id.SessionID, clientID id.ClientID, at time.Time, accessTokenJTI string, activate bool, deviceID string, deviceFingerprintHash string) (*models.Session, error)
+	AdvanceLastRefreshed(ctx context.Context, sessionID id.SessionID, clientID id.ClientID, at time.Time, accessTokenJTI string, deviceID string, deviceFingerprintHash string) (*models.Session, error)
 }
 
 // AuthCodeStore defines persistence operations for authorization codes and their lifecycle.

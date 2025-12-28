@@ -141,8 +141,8 @@ func (s *Session) ApplyDeviceInfo(deviceID, fingerprintHash string) {
 // It verifies: client ID matches, session is not revoked, status allows advancement, and not expired.
 // allowPending=true permits pending_consent status (for code exchange).
 // Returns nil if valid, or an error describing the validation failure.
-func (s *Session) ValidateForAdvance(clientID string, at time.Time, allowPending bool) error {
-	if s.ClientID.String() != clientID {
+func (s *Session) ValidateForAdvance(clientID id.ClientID, at time.Time, allowPending bool) error {
+	if s.ClientID != clientID {
 		return dErrors.New(dErrors.CodeUnauthorized, "client_id mismatch")
 	}
 	if s.IsRevoked() {

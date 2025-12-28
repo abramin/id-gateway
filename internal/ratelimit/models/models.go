@@ -9,6 +9,7 @@
 package models
 
 import (
+	"net"
 	"time"
 
 	id "credo/pkg/domain"
@@ -71,6 +72,35 @@ func (t AllowlistEntryType) String() string {
 	return string(t)
 }
 
+// AllowlistIdentifier is a validated identifier for allowlist entries.
+// The validation depends on the allowlist entry type.
+type AllowlistIdentifier string
+
+func (i AllowlistIdentifier) String() string {
+	return string(i)
+}
+
+// ParseAllowlistIdentifier validates and converts an identifier for the given entry type.
+func ParseAllowlistIdentifier(entryType AllowlistEntryType, identifier string) (AllowlistIdentifier, error) {
+	if identifier == "" {
+		return "", dErrors.New(dErrors.CodeInvalidInput, "identifier cannot be empty")
+	}
+	if !entryType.IsValid() {
+		return "", dErrors.New(dErrors.CodeInvalidInput, "invalid allowlist entry type")
+	}
+	switch entryType {
+	case AllowlistTypeIP:
+		if net.ParseIP(identifier) == nil {
+			return "", dErrors.New(dErrors.CodeInvalidInput, "identifier must be a valid IP address")
+		}
+	case AllowlistTypeUserID:
+		if _, err := id.ParseUserID(identifier); err != nil {
+			return "", dErrors.New(dErrors.CodeInvalidInput, "identifier must be a valid user_id")
+		}
+	}
+	return AllowlistIdentifier(identifier), nil
+}
+
 // RateLimitResult is the outcome of a rate limit check.
 // Returned by BucketStore.Allow and service Check methods.
 //
@@ -108,7 +138,7 @@ type AuthRateLimitResult struct {
 type AllowlistEntry struct {
 	ID         string             `json:"id"`
 	Type       AllowlistEntryType `json:"type"`
-	Identifier string             `json:"identifier"` // IP address or user_id
+	Identifier AllowlistIdentifier `json:"identifier"` // IP address or user_id
 	Reason     string             `json:"reason"`     // Admin-provided justification
 	ExpiresAt  *time.Time         `json:"expires_at,omitempty"`
 	CreatedAt  time.Time          `json:"created_at"`
@@ -237,17 +267,18 @@ func NewAllowlistEntry(id string, entryType AllowlistEntryType, identifier, reas
 	if !entryType.IsValid() {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "invalid allowlist entry type")
 	}
-	if identifier == "" {
-		return nil, dErrors.New(dErrors.CodeInvariantViolation, "identifier cannot be empty")
-	}
 	if reason == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "reason cannot be empty")
+	}
+	parsedIdentifier, err := ParseAllowlistIdentifier(entryType, identifier)
+	if err != nil {
+		return nil, dErrors.New(dErrors.CodeInvariantViolation, err.Error())
 	}
 
 	return &AllowlistEntry{
 		ID:         id,
 		Type:       entryType,
-		Identifier: identifier,
+		Identifier: parsedIdentifier,
 		Reason:     reason,
 		ExpiresAt:  expiresAt,
 		CreatedAt:  now,
