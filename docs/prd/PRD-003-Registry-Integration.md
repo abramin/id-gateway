@@ -62,12 +62,12 @@ internal/evidence/registry/
 
 Contains domain primitives used across both subdomains:
 
-| Type | Description | Invariants |
-|------|-------------|------------|
-| `NationalID` | Validated lookup key | 6-20 alphanumeric chars (A-Z, 0-9) |
-| `Confidence` | Evidence reliability score | 0.0-1.0 range |
-| `CheckedAt` | Verification timestamp | Supports TTL-based freshness checks |
-| `ProviderID` | Evidence source identifier | Non-empty string |
+| Type         | Description                | Invariants                          |
+| ------------ | -------------------------- | ----------------------------------- |
+| `NationalID` | Validated lookup key       | 6-20 alphanumeric chars (A-Z, 0-9)  |
+| `Confidence` | Evidence reliability score | 0.0-1.0 range                       |
+| `CheckedAt`  | Verification timestamp     | Supports TTL-based freshness checks |
+| `ProviderID` | Evidence source identifier | Non-empty string                    |
 
 ### Citizen Subdomain
 
@@ -75,13 +75,14 @@ Handles identity verification through national population registries.
 
 **Aggregate Root:** `CitizenVerification`
 
-| Component | Description |
-|-----------|-------------|
-| `PersonalDetails` | Value object containing PII (name, DOB, address) |
-| `VerificationStatus` | Value object with Valid flag and CheckedAt |
-| `Minimized()` | Returns GDPR-compliant copy with PII stripped |
+| Component            | Description                                      |
+| -------------------- | ------------------------------------------------ |
+| `PersonalDetails`    | Value object containing PII (name, DOB, address) |
+| `VerificationStatus` | Value object with Valid flag and CheckedAt       |
+| `Minimized()`        | Returns GDPR-compliant copy with PII stripped    |
 
 **Key Invariants:**
+
 - NationalID is always present and valid
 - Minimized records have empty PersonalDetails
 - Minimization is a one-way transformation (cannot "un-minimize")
@@ -92,13 +93,14 @@ Handles compliance screening against sanctions lists and PEP databases.
 
 **Aggregate Root:** `SanctionsCheck`
 
-| Component | Description |
-|-----------|-------------|
-| `ListType` | Enum: sanctions, pep, watchlist |
+| Component        | Description                              |
+| ---------------- | ---------------------------------------- |
+| `ListType`       | Enum: sanctions, pep, watchlist          |
 | `ListingDetails` | Value object with reason and listed date |
-| `Source` | Authoritative source of the check |
+| `Source`         | Authoritative source of the check        |
 
 **Key Invariants:**
+
 - Source is always present
 - If Listed is true, ListType must be set (not empty)
 - If Listed is false, ListingDetails is empty
@@ -106,6 +108,7 @@ Handles compliance screening against sanctions lists and PEP databases.
 ### Domain Purity
 
 All domain packages follow strict purity rules:
+
 - ✓ No I/O (no database, HTTP, filesystem)
 - ✓ No `context.Context` in function signatures
 - ✓ No `time.Now()` or `rand.*` calls—time received as parameters
@@ -530,7 +533,6 @@ The in-memory cache implementation includes additional features beyond the basic
 - **LRU eviction** with configurable max size (10,000 entries default per type)
 - **Separate locks** for citizens/sanctions to reduce lock contention
 - **Regulated mode tracking** prevents serving stale PII when mode changes (cache invalidates on mode mismatch)
-- **CleanupExpired()** for periodic maintenance of expired entries
 - **ClearAll()** with invalidation metrics for cache reset operations
 
 ### TR-6.2: Retry & Resilience (Implemented)
@@ -546,20 +548,21 @@ The orchestrator implements robust retry and resilience patterns:
 
 Registry-specific Prometheus metrics for observability:
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| `credo_registry_cache_hits_total` | Counter | Cache hits by record type |
-| `credo_registry_cache_misses_total` | Counter | Cache misses by record type |
+| Metric                                         | Type      | Description                                |
+| ---------------------------------------------- | --------- | ------------------------------------------ |
+| `credo_registry_cache_hits_total`              | Counter   | Cache hits by record type                  |
+| `credo_registry_cache_misses_total`            | Counter   | Cache misses by record type                |
 | `credo_registry_cache_lookup_duration_seconds` | Histogram | Cache lookup latency (buckets: 0.1ms-50ms) |
-| `credo_registry_cache_entries_citizen` | Gauge | Current citizen cache entries |
-| `credo_registry_cache_entries_sanctions` | Gauge | Current sanctions cache entries |
-| `credo_registry_cache_invalidations_total` | Counter | ClearAll() operations |
+| `credo_registry_cache_entries_citizen`         | Gauge     | Current citizen cache entries              |
+| `credo_registry_cache_entries_sanctions`       | Gauge     | Current sanctions cache entries            |
+| `credo_registry_cache_invalidations_total`     | Counter   | ClearAll() operations                      |
 
 ### TR-7: SQL Indexing for Cache & TTL Management
 
 **Objective:** Demonstrate SQL indexing concepts from "Use The Index, Luke" with production-ready patterns for registry cache management.
 
 **Topics Covered:**
+
 - Partial indexes (non-expired cache entries only)
 - Function-based indexes (TTL calculation)
 - Range queries for freshness checks
@@ -570,13 +573,13 @@ Registry-specific Prometheus metrics for observability:
 
 #### Index Design
 
-| Table | Index | Type | Columns | Purpose |
-|-------|-------|------|---------|---------|
-| `citizen_cache` | `idx_citizen_national_id` | B-Tree | `(national_id)` | Primary lookup |
-| `citizen_cache` | `idx_citizen_fresh` | B-Tree (partial) | `(national_id) WHERE checked_at > NOW() - INTERVAL '5 minutes'` | Fresh entries only |
-| `citizen_cache` | `idx_citizen_expiry` | B-Tree | `(checked_at)` | Cleanup worker |
-| `sanctions_cache` | `idx_sanctions_national_id` | B-Tree | `(national_id)` | Primary lookup |
-| `sanctions_cache` | `idx_sanctions_listed` | B-Tree (partial) | `(national_id) WHERE listed = true` | Listed entities only |
+| Table             | Index                       | Type             | Columns                                                         | Purpose              |
+| ----------------- | --------------------------- | ---------------- | --------------------------------------------------------------- | -------------------- |
+| `citizen_cache`   | `idx_citizen_national_id`   | B-Tree           | `(national_id)`                                                 | Primary lookup       |
+| `citizen_cache`   | `idx_citizen_fresh`         | B-Tree (partial) | `(national_id) WHERE checked_at > NOW() - INTERVAL '5 minutes'` | Fresh entries only   |
+| `citizen_cache`   | `idx_citizen_expiry`        | B-Tree           | `(checked_at)`                                                  | Cleanup worker       |
+| `sanctions_cache` | `idx_sanctions_national_id` | B-Tree           | `(national_id)`                                                 | Primary lookup       |
+| `sanctions_cache` | `idx_sanctions_listed`      | B-Tree (partial) | `(national_id) WHERE listed = true`                             | Listed entities only |
 
 ---
 
@@ -745,6 +748,7 @@ WHERE ctid IN (
 #### Exercises
 
 **Exercise 1: TTL Query Optimization**
+
 ```sql
 -- Create citizen_cache with 100k records, 90% expired
 -- Compare EXPLAIN ANALYZE for:
@@ -763,6 +767,7 @@ SELECT * FROM citizen_cache WHERE national_id = 'TEST123'
 ```
 
 **Exercise 2: Partial Index Size Comparison**
+
 ```sql
 -- Create sanctions_cache with 100k records, 5% listed=true
 INSERT INTO sanctions_cache
@@ -781,6 +786,7 @@ FROM pg_indexes WHERE tablename = 'sanctions_cache';
 ```
 
 **Exercise 3: Cleanup Performance**
+
 ```sql
 -- Without index:
 EXPLAIN ANALYZE DELETE FROM citizen_cache WHERE checked_at < NOW() - INTERVAL '5 minutes';
@@ -1130,10 +1136,12 @@ curl -X POST http://localhost:8080/registry/citizen \
 ## 14. Future Enhancements (Out of Scope)
 
 **Now Implemented (see TR-6.1, TR-6.2):**
+
 - ~~Retry logic with exponential backoff~~ → TR-6.2
 - ~~Multiple registry providers (failover)~~ → Orchestrator with provider chains
 
 **Still Pending:**
+
 - Real external registry integration (SOAP/REST APIs)
 - Batch registry lookups (check multiple IDs)
 - Registry webhooks (real-time updates)
@@ -1218,7 +1226,7 @@ curl -X POST http://localhost:8080/registry/citizen \
 | 1.9     | 2025-12-27 | Engineering      | Simplified tracing: removed wrapper abstraction, using OpenTelemetry directly as vendor-neutral standard                                         |
 | 1.8     | 2025-12-27 | Engineering      | PRD review: marked completed requirements, documented implemented extensions (TR-6.1 cache, TR-6.2 retry, TR-6.3 metrics), noted tracing pending |
 | 1.7     | 2025-12-27 | Engineering      | Added Domain Architecture section with Citizen/Sanctions subdomains and shared kernel; documented domain purity rules                            |
-| 1.6     | 2025-12-27 | Engineering      | Added document verification provider and voting strategy with quorum rules to Future Enhancements                                                 |
+| 1.6     | 2025-12-27 | Engineering      | Added document verification provider and voting strategy with quorum rules to Future Enhancements                                                |
 | 1.5     | 2025-12-21 | Engineering      | Added TR-7: SQL Indexing for Cache & TTL (partial indexes, range queries, NULL handling, covering indexes, cleanup worker) with exercises        |
 | 1.4     | 2025-12-18 | Security Eng     | Added secure-by-design and testing requirements (value objects, default-deny, immutability, typed results)                                       |
 | 1.3     | 2025-12-13 | Engineering Team | Clarify concurrent Check() requirements (errgroup + context cancel), add tracing/metrics expectations, update acceptance criteria                |
