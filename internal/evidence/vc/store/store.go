@@ -1,8 +1,9 @@
-package vc
+package store
 
 import (
 	"context"
 
+	"credo/internal/evidence/vc/models"
 	pkgerrors "credo/pkg/domain-errors"
 )
 
@@ -12,6 +13,6 @@ var (
 )
 
 type Store interface {
-	Save(ctx context.Context, credential IssueResult) error
-	FindByID(ctx context.Context, id string) (IssueResult, error)
+	Save(ctx context.Context, credential models.VerifiableCredential) error
+	FindByID(ctx context.Context, id models.CredentialID) (models.VerifiableCredential, error)
 }
