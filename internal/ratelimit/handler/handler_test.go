@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
@@ -70,7 +69,7 @@ func (s *HandlerSuite) TestAddAllowlist_InvalidJSON() {
 
 	s.router.ServeHTTP(rec, req)
 
-	assert.Equal(s.T(), http.StatusBadRequest, rec.Code,
+	s.Equal(http.StatusBadRequest, rec.Code,
 		"expected 400 for invalid JSON")
 }
 
@@ -82,7 +81,7 @@ func (s *HandlerSuite) TestRemoveAllowlist_InvalidJSON() {
 
 	s.router.ServeHTTP(rec, req)
 
-	assert.Equal(s.T(), http.StatusBadRequest, rec.Code,
+	s.Equal(http.StatusBadRequest, rec.Code,
 		"expected 400 for invalid JSON")
 }
 
@@ -94,7 +93,7 @@ func (s *HandlerSuite) TestResetRateLimit_InvalidJSON() {
 
 	s.router.ServeHTTP(rec, req)
 
-	assert.Equal(s.T(), http.StatusBadRequest, rec.Code,
+	s.Equal(http.StatusBadRequest, rec.Code,
 		"expected 400 for invalid JSON")
 }
 
@@ -120,13 +119,13 @@ func (s *HandlerSuite) TestGetQuotaUsage_ReturnsUsage() {
 
 	s.router.ServeHTTP(rec, req)
 
-	assert.Equal(s.T(), http.StatusOK, rec.Code,
+	s.Equal(http.StatusOK, rec.Code,
 		"GET /admin/rate-limit/quota/:api_key should return 200")
-	assert.Contains(s.T(), rec.Body.String(), "usage",
+	s.Contains(rec.Body.String(), "usage",
 		"response should contain usage field")
-	assert.Contains(s.T(), rec.Body.String(), "limit",
+	s.Contains(rec.Body.String(), "limit",
 		"response should contain limit field")
-	assert.Contains(s.T(), rec.Body.String(), "tier",
+	s.Contains(rec.Body.String(), "tier",
 		"response should contain tier field")
 }
 
@@ -141,7 +140,7 @@ func (s *HandlerSuite) TestGetQuotaUsage_NotFound() {
 
 	s.router.ServeHTTP(rec, req)
 
-	assert.Equal(s.T(), http.StatusNotFound, rec.Code,
+	s.Equal(http.StatusNotFound, rec.Code,
 		"GET /admin/rate-limit/quota/:api_key should return 404 for unknown key")
 }
 
@@ -157,7 +156,7 @@ func (s *HandlerSuite) TestResetQuota_Success() {
 
 	s.router.ServeHTTP(rec, req)
 
-	assert.Equal(s.T(), http.StatusOK, rec.Code,
+	s.Equal(http.StatusOK, rec.Code,
 		"POST /admin/rate-limit/quota/:api_key/reset should return 200")
 }
 
@@ -186,9 +185,9 @@ func (s *HandlerSuite) TestListQuotas_ReturnsList() {
 
 	s.router.ServeHTTP(rec, req)
 
-	assert.Equal(s.T(), http.StatusOK, rec.Code,
+	s.Equal(http.StatusOK, rec.Code,
 		"GET /admin/rate-limit/quotas should return 200")
-	assert.Contains(s.T(), rec.Body.String(), "[",
+	s.Contains(rec.Body.String(), "[",
 		"response should be a JSON array")
 }
 
@@ -204,6 +203,6 @@ func (s *HandlerSuite) TestUpdateQuotaTier_Success() {
 
 	s.router.ServeHTTP(rec, req)
 
-	assert.Equal(s.T(), http.StatusOK, rec.Code,
+	s.Equal(http.StatusOK, rec.Code,
 		"PUT /admin/rate-limit/quota/:api_key/tier should return 200")
 }

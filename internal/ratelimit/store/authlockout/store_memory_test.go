@@ -9,7 +9,6 @@ import (
 	"credo/internal/ratelimit/models"
 	"credo/pkg/platform/middleware/requesttime"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -105,7 +104,7 @@ func (s *InMemoryAuthLockoutStoreSuite) TestIsLocked() {
 
 		locked, _, err := s.store.IsLocked(ctx, identifier)
 		s.NoError(err)
-		assert.False(s.T(), locked)
+		s.False(locked)
 	})
 }
 

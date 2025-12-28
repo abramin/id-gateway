@@ -6,8 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	requesttime "credo/pkg/platform/middleware/requesttime"
@@ -48,22 +46,22 @@ func (s *GlobalThrottleStoreSuite) TestInitialCountIsZero() {
 	ctx := requesttime.WithTime(context.Background(), s.baseTime)
 
 	count, err := s.store.GetGlobalCount(ctx)
-	require.NoError(s.T(), err)
-	assert.Equal(s.T(), 0, count)
+	s.Require().NoError(err)
+	s.Equal(0, count)
 }
 
 func (s *GlobalThrottleStoreSuite) TestIncrementReturnsNewCount() {
 	ctx := requesttime.WithTime(context.Background(), s.baseTime)
 
 	count, blocked, err := s.store.IncrementGlobal(ctx)
-	require.NoError(s.T(), err)
-	assert.False(s.T(), blocked)
-	assert.Equal(s.T(), 1, count)
+	s.Require().NoError(err)
+	s.False(blocked)
+	s.Equal(1, count)
 
 	count, blocked, err = s.store.IncrementGlobal(ctx)
-	require.NoError(s.T(), err)
-	assert.False(s.T(), blocked)
-	assert.Equal(s.T(), 2, count)
+	s.Require().NoError(err)
+	s.False(blocked)
+	s.Equal(2, count)
 }
 
 // =============================================================================
@@ -77,27 +75,27 @@ func (s *GlobalThrottleStoreSuite) TestPerSecondWindowResets() {
 	// Fill up to limit
 	for i := 0; i < 5; i++ {
 		_, blocked, err := s.store.IncrementGlobal(ctx1)
-		require.NoError(s.T(), err)
-		assert.False(s.T(), blocked, "should not block within limit")
+		s.Require().NoError(err)
+		s.False(blocked, "should not block within limit")
 	}
 
 	// Verify at limit
 	count, err := s.store.GetGlobalCount(ctx1)
-	require.NoError(s.T(), err)
-	assert.Equal(s.T(), 5, count)
+	s.Require().NoError(err)
+	s.Equal(5, count)
 
 	// Move to next second - counter should reset
 	ctx2 := requesttime.WithTime(context.Background(), s.baseTime.Add(1*time.Second))
 
 	count, err = s.store.GetGlobalCount(ctx2)
-	require.NoError(s.T(), err)
-	assert.Equal(s.T(), 0, count, "count should reset on new second boundary")
+	s.Require().NoError(err)
+	s.Equal(0, count, "count should reset on new second boundary")
 
 	// New requests should succeed
 	count, blocked, err := s.store.IncrementGlobal(ctx2)
-	require.NoError(s.T(), err)
-	assert.False(s.T(), blocked)
-	assert.Equal(s.T(), 1, count)
+	s.Require().NoError(err)
+	s.False(blocked)
+	s.Equal(1, count)
 }
 
 func (s *GlobalThrottleStoreSuite) TestPerSecondLimitBlocks() {
@@ -106,15 +104,15 @@ func (s *GlobalThrottleStoreSuite) TestPerSecondLimitBlocks() {
 	// Fill up to limit
 	for i := 0; i < 5; i++ {
 		_, blocked, err := s.store.IncrementGlobal(ctx)
-		require.NoError(s.T(), err)
-		assert.False(s.T(), blocked)
+		s.Require().NoError(err)
+		s.False(blocked)
 	}
 
 	// Next request should be blocked
 	count, blocked, err := s.store.IncrementGlobal(ctx)
-	require.NoError(s.T(), err)
-	assert.True(s.T(), blocked, "should block when per-second limit exceeded")
-	assert.Equal(s.T(), 5, count, "count should remain at limit (blocked request not counted)")
+	s.Require().NoError(err)
+	s.True(blocked, "should block when per-second limit exceeded")
+	s.Equal(5, count, "count should remain at limit (blocked request not counted)")
 }
 
 // =============================================================================
@@ -129,22 +127,22 @@ func (s *GlobalThrottleStoreSuite) TestPerHourWindowResets() {
 	for i := 0; i < 5; i++ {
 		ctxSecond := requesttime.WithTime(context.Background(), s.baseTime.Add(time.Duration(i)*time.Second))
 		_, blocked, err := store.IncrementGlobal(ctxSecond)
-		require.NoError(s.T(), err)
-		assert.False(s.T(), blocked)
+		s.Require().NoError(err)
+		s.False(blocked)
 	}
 
 	// Next request in same hour should be blocked
 	ctx2 := requesttime.WithTime(context.Background(), s.baseTime.Add(10*time.Second))
 	_, blocked, err := store.IncrementGlobal(ctx2)
-	require.NoError(s.T(), err)
-	assert.True(s.T(), blocked, "should block when per-hour limit exceeded")
+	s.Require().NoError(err)
+	s.True(blocked, "should block when per-hour limit exceeded")
 
 	// Move to next hour - counter should reset
 	ctx3 := requesttime.WithTime(context.Background(), s.baseTime.Add(1*time.Hour))
 	count, blocked, err := store.IncrementGlobal(ctx3)
-	require.NoError(s.T(), err)
-	assert.False(s.T(), blocked, "should allow after hour boundary")
-	assert.Equal(s.T(), 1, count)
+	s.Require().NoError(err)
+	s.False(blocked, "should allow after hour boundary")
+	s.Equal(1, count)
 }
 
 func (s *GlobalThrottleStoreSuite) TestPerHourLimitBlocksEvenWithSecondReset() {
@@ -154,15 +152,15 @@ func (s *GlobalThrottleStoreSuite) TestPerHourLimitBlocksEvenWithSecondReset() {
 	for i := 0; i < 5; i++ {
 		ctx := requesttime.WithTime(context.Background(), s.baseTime.Add(time.Duration(i)*time.Second))
 		_, blocked, err := store.IncrementGlobal(ctx)
-		require.NoError(s.T(), err)
-		assert.False(s.T(), blocked)
+		s.Require().NoError(err)
+		s.False(blocked)
 	}
 
 	// Even though per-second resets, hour limit should still block
 	ctx := requesttime.WithTime(context.Background(), s.baseTime.Add(30*time.Second))
 	_, blocked, err := store.IncrementGlobal(ctx)
-	require.NoError(s.T(), err)
-	assert.True(s.T(), blocked, "per-hour limit should block even after per-second window reset")
+	s.Require().NoError(err)
+	s.True(blocked, "per-hour limit should block even after per-second window reset")
 }
 
 // =============================================================================
@@ -180,12 +178,12 @@ func (s *GlobalThrottleStoreSuite) TestBlockedRequestNotCounted() {
 
 	// Attempt blocked request
 	count1, blocked, _ := s.store.IncrementGlobal(ctx)
-	assert.True(s.T(), blocked)
+	s.True(blocked)
 
 	// Verify count didn't increase
 	count2, _ := s.store.GetGlobalCount(ctx)
-	assert.Equal(s.T(), count1, count2, "blocked request should not increment count")
-	assert.Equal(s.T(), 5, count2, "count should remain at limit")
+	s.Equal(count1, count2, "blocked request should not increment count")
+	s.Equal(5, count2, "count should remain at limit")
 }
 
 // =============================================================================
@@ -202,10 +200,10 @@ func (s *GlobalThrottleStoreSuite) TestStatsReturnsCurrentState() {
 
 	secCount, hourCount, secBucket, hourBucket := s.store.Stats()
 
-	assert.Equal(s.T(), int64(3), secCount)
-	assert.Equal(s.T(), int64(3), hourCount)
-	assert.Equal(s.T(), s.baseTime.Unix(), secBucket)
-	assert.Equal(s.T(), s.baseTime.Truncate(time.Hour).Unix(), hourBucket)
+	s.Equal(int64(3), secCount)
+	s.Equal(int64(3), hourCount)
+	s.Equal(s.baseTime.Unix(), secBucket)
+	s.Equal(s.baseTime.Truncate(time.Hour).Unix(), hourBucket)
 }
 
 // =============================================================================
@@ -234,8 +232,8 @@ func (s *GlobalThrottleStoreSuite) TestConcurrentAccess() {
 	wg.Wait()
 
 	count, err := store.GetGlobalCount(ctx)
-	require.NoError(s.T(), err)
-	assert.Equal(s.T(), numGoroutines*requestsPerGoroutine, count,
+	s.Require().NoError(err)
+	s.Equal(numGoroutines*requestsPerGoroutine, count,
 		"all requests should be counted under concurrent access")
 }
 
@@ -250,12 +248,12 @@ func (s *GlobalThrottleStoreSuite) TestDefaultLimits() {
 	// Should allow up to 1000 requests per second (default)
 	for i := 0; i < 1000; i++ {
 		_, blocked, err := store.IncrementGlobal(ctx)
-		require.NoError(s.T(), err)
-		assert.False(s.T(), blocked, "should allow up to default per-second limit")
+		s.Require().NoError(err)
+		s.False(blocked, "should allow up to default per-second limit")
 	}
 
 	// 1001st should be blocked
 	_, blocked, err := store.IncrementGlobal(ctx)
-	require.NoError(s.T(), err)
-	assert.True(s.T(), blocked, "should block beyond default per-second limit")
+	s.Require().NoError(err)
+	s.True(blocked, "should block beyond default per-second limit")
 }
