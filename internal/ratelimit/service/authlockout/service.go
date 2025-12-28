@@ -32,7 +32,6 @@ import (
 	"credo/internal/ratelimit/models"
 	"credo/internal/ratelimit/observability"
 	dErrors "credo/pkg/domain-errors"
-	"credo/pkg/platform/audit"
 	requesttime "credo/pkg/platform/middleware/requesttime"
 	"credo/pkg/platform/privacy"
 )
@@ -46,16 +45,11 @@ type Store interface {
 	Update(ctx context.Context, record *models.AuthLockout) error
 }
 
-// AuditPublisher emits audit events for security-relevant operations.
-type AuditPublisher interface {
-	Emit(ctx context.Context, event audit.Event) error
-}
-
 // Service tracks authentication failures and enforces lockout policies.
 // Thread-safe for concurrent use by auth handlers.
 type Service struct {
 	store          Store
-	auditPublisher AuditPublisher
+	auditPublisher observability.AuditPublisher
 	logger         *slog.Logger
 	config         *config.AuthLockoutConfig
 }
@@ -71,7 +65,7 @@ func WithLogger(logger *slog.Logger) Option {
 }
 
 // WithAuditPublisher sets the audit event publisher for security logging.
-func WithAuditPublisher(publisher AuditPublisher) Option {
+func WithAuditPublisher(publisher observability.AuditPublisher) Option {
 	return func(s *Service) {
 		s.auditPublisher = publisher
 	}

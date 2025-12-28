@@ -8,7 +8,6 @@ import (
 	"credo/internal/ratelimit/models"
 	"credo/internal/ratelimit/observability"
 	id "credo/pkg/domain"
-	"credo/pkg/platform/audit"
 	"credo/pkg/platform/middleware/requesttime"
 
 	"github.com/google/uuid"
@@ -27,15 +26,10 @@ type BucketStore interface {
 	GetCurrentCount(ctx context.Context, key string) (int, error)
 }
 
-// AuditPublisher emits audit events for security-relevant operations.
-type AuditPublisher interface {
-	Emit(ctx context.Context, event audit.Event) error
-}
-
 type Service struct {
 	allowlist      AllowlistStore
 	buckets        BucketStore
-	auditPublisher AuditPublisher
+	auditPublisher observability.AuditPublisher
 	logger         *slog.Logger
 }
 
@@ -47,7 +41,7 @@ func WithLogger(logger *slog.Logger) Option {
 	}
 }
 
-func WithAuditPublisher(publisher AuditPublisher) Option {
+func WithAuditPublisher(publisher observability.AuditPublisher) Option {
 	return func(s *Service) {
 		s.auditPublisher = publisher
 	}

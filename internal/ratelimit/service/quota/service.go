@@ -22,7 +22,6 @@ import (
 	"credo/internal/ratelimit/observability"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
-	"credo/pkg/platform/audit"
 )
 
 // Store manages API key usage quotas.
@@ -34,15 +33,10 @@ type Store interface {
 	UpdateTier(ctx context.Context, apiKeyID id.APIKeyID, tier models.QuotaTier) error
 }
 
-// AuditPublisher emits audit events for security-relevant operations.
-type AuditPublisher interface {
-	Emit(ctx context.Context, event audit.Event) error
-}
-
 // Service manages API key quota tracking and enforcement.
 type Service struct {
 	store          Store
-	auditPublisher AuditPublisher
+	auditPublisher observability.AuditPublisher
 	logger         *slog.Logger
 }
 
@@ -57,7 +51,7 @@ func WithLogger(logger *slog.Logger) Option {
 }
 
 // WithAuditPublisher sets the audit event publisher for security logging.
-func WithAuditPublisher(publisher AuditPublisher) Option {
+func WithAuditPublisher(publisher observability.AuditPublisher) Option {
 	return func(s *Service) {
 		s.auditPublisher = publisher
 	}

@@ -27,7 +27,6 @@ import (
 	"credo/internal/ratelimit/models"
 	"credo/internal/ratelimit/observability"
 	dErrors "credo/pkg/domain-errors"
-	"credo/pkg/platform/audit"
 	requesttime "credo/pkg/platform/middleware/requesttime"
 	"credo/pkg/platform/privacy"
 )
@@ -42,17 +41,12 @@ type AllowlistStore interface {
 	IsAllowlisted(ctx context.Context, identifier string) (bool, error)
 }
 
-// AuditPublisher emits audit events for security-relevant operations.
-type AuditPublisher interface {
-	Emit(ctx context.Context, event audit.Event) error
-}
-
 // Service enforces per-IP and per-user rate limits using sliding window counters.
 // Thread-safe for concurrent use by HTTP middleware.
 type Service struct {
 	buckets        BucketStore
 	allowlist      AllowlistStore
-	auditPublisher AuditPublisher
+	auditPublisher observability.AuditPublisher
 	logger         *slog.Logger
 	config         *config.Config
 	metrics        *metrics.Metrics
@@ -69,7 +63,7 @@ func WithLogger(logger *slog.Logger) Option {
 }
 
 // WithAuditPublisher sets the audit event publisher for security logging.
-func WithAuditPublisher(publisher AuditPublisher) Option {
+func WithAuditPublisher(publisher observability.AuditPublisher) Option {
 	return func(s *Service) {
 		s.auditPublisher = publisher
 	}

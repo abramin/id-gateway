@@ -8,13 +8,14 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"credo/internal/ratelimit/models"
+	id "credo/pkg/domain"
 	"credo/pkg/platform/httputil"
 	"credo/pkg/platform/middleware/auth"
 	request "credo/pkg/platform/middleware/request"
 )
 
 type Service interface {
-	AddToAllowlist(ctx context.Context, req *models.AddAllowlistRequest, adminUserID string) (*models.AllowlistEntry, error)
+	AddToAllowlist(ctx context.Context, req *models.AddAllowlistRequest, adminUserID id.UserID) (*models.AllowlistEntry, error)
 	RemoveFromAllowlist(ctx context.Context, req *models.RemoveAllowlistRequest) error
 	ListAllowlist(ctx context.Context) ([]*models.AllowlistEntry, error)
 	ResetRateLimit(ctx context.Context, req *models.ResetRateLimitRequest) error
@@ -55,7 +56,7 @@ func (h *Handler) HandleAddAllowlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	adminUserID := auth.GetUserID(ctx).String()
+	adminUserID := auth.GetUserID(ctx)
 	entry, err := h.service.AddToAllowlist(ctx, req, adminUserID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to add to allowlist",
