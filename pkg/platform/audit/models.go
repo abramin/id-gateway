@@ -6,9 +6,31 @@ import (
 	id "credo/pkg/domain"
 )
 
+// EventCategory classifies audit events by their primary purpose.
+// This enables different retention policies, storage backends, and routing.
+type EventCategory string
+
+const (
+	// CategoryCompliance covers events with legal/regulatory significance.
+	// These require tamper-proof storage and long retention (e.g., 7 years).
+	// Examples: consent changes, user creation/deletion, data subject rights.
+	CategoryCompliance EventCategory = "compliance"
+
+	// CategorySecurity covers events relevant to security monitoring and forensics.
+	// These feed into SIEM systems and alerting pipelines.
+	// Examples: auth failures, lockouts, secret rotations, access violations.
+	CategorySecurity EventCategory = "security"
+
+	// CategoryOperations covers events useful for debugging and operational visibility.
+	// These can be sampled or aggregated with shorter retention.
+	// Examples: token issuance, session creation, routine access patterns.
+	CategoryOperations EventCategory = "operations"
+)
+
 // Event is emitted from domain logic to capture key actions. Keep it
 // transport-agnostic so stores and sinks can fan out.
 type Event struct {
+	Category EventCategory
 	Timestamp       time.Time
 	UserID          id.UserID
 	Subject         string
@@ -63,3 +85,48 @@ const (
 	EventAuthLockoutCleared   AuditEvent = "auth_lockout_cleared"
 	EventAllowlistBypassed    AuditEvent = "allowlist_bypassed"
 )
+
+// eventCategories maps each audit event to its category.
+// Compliance: legal/regulatory significance, long retention required.
+// Security: security monitoring, SIEM integration, alerting.
+// Operations: debugging, operational visibility, can be sampled.
+var eventCategories = map[AuditEvent]EventCategory{
+	// Compliance events - require tamper-proof storage
+	EventUserCreated:    CategoryCompliance,
+	EventUserDeleted:    CategoryCompliance,
+	EventConsentGranted: CategoryCompliance,
+	EventConsentRevoked: CategoryCompliance,
+	EventConsentDeleted: CategoryCompliance,
+
+	// Security events - feed into SIEM and alerting
+	EventAuthFailed:           CategorySecurity,
+	EventSessionRevoked:       CategorySecurity,
+	EventSessionsRevoked:      CategorySecurity,
+	EventClientSecretRotated:  CategorySecurity,
+	EventRateLimitExceeded:    CategorySecurity,
+	EventAuthLockoutTriggered: CategorySecurity,
+	EventAuthLockoutCleared:   CategorySecurity,
+	EventAllowlistBypassed:    CategorySecurity,
+	EventTenantDeactivated:    CategorySecurity,
+	EventClientDeactivated:    CategorySecurity,
+
+	// Operations events - routine activity, can be sampled
+	EventSessionCreated:    CategoryOperations,
+	EventTokenIssued:       CategoryOperations,
+	EventTokenRefreshed:    CategoryOperations,
+	EventUserInfoAccessed:  CategoryOperations,
+	EventConsentChecked:    CategoryOperations,
+	EventTenantCreated:     CategoryOperations,
+	EventTenantReactivated: CategoryOperations,
+	EventClientCreated:     CategoryOperations,
+	EventClientReactivated: CategoryOperations,
+}
+
+// Category returns the EventCategory for this audit event.
+// Unknown events default to CategoryOperations.
+func (e AuditEvent) Category() EventCategory {
+	if cat, ok := eventCategories[e]; ok {
+		return cat
+	}
+	return CategoryOperations
+}
