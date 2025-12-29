@@ -16,6 +16,7 @@ package sanctions
 import (
 	"errors"
 
+	"credo/internal/evidence/registry/domain"
 	"credo/internal/evidence/registry/domain/shared"
 	id "credo/pkg/domain"
 )
@@ -109,13 +110,6 @@ type SanctionsCheck struct {
 	confidence shared.Confidence
 }
 
-var (
-	errMissingNationalID = errors.New("national_id is required")
-	errMissingSource     = errors.New("source is required")
-	errMissingCheckedAt  = errors.New("checked_at is required")
-	errMissingProviderID = errors.New("provider_id is required")
-)
-
 // NewSanctionsCheck creates a new sanctions check result for a non-listed subject.
 func NewSanctionsCheck(
 	nationalID id.NationalID,
@@ -123,20 +117,20 @@ func NewSanctionsCheck(
 	checkedAt shared.CheckedAt,
 	providerID shared.ProviderID,
 	confidence shared.Confidence,
-) (SanctionsCheck, error) {
+) (*SanctionsCheck, error) {
 	if nationalID.IsNil() {
-		return SanctionsCheck{}, errMissingNationalID
+		return nil, domain.ErrMissingNationalID
 	}
 	if source.IsZero() {
-		return SanctionsCheck{}, errMissingSource
+		return nil, domain.ErrMissingSource
 	}
 	if checkedAt.IsZero() {
-		return SanctionsCheck{}, errMissingCheckedAt
+		return nil, domain.ErrMissingCheckedAt
 	}
 	if providerID.IsZero() {
-		return SanctionsCheck{}, errMissingProviderID
+		return nil, domain.ErrMissingProviderID
 	}
-	return SanctionsCheck{
+	return &SanctionsCheck{
 		nationalID: nationalID,
 		listed:     false,
 		details:    ListingDetails{},
@@ -158,28 +152,28 @@ func NewListedSanctionsCheck(
 	checkedAt shared.CheckedAt,
 	providerID shared.ProviderID,
 	confidence shared.Confidence,
-) (SanctionsCheck, error) {
+) (*SanctionsCheck, error) {
 	if nationalID.IsNil() {
-		return SanctionsCheck{}, errMissingNationalID
+		return nil, domain.ErrMissingNationalID
 	}
 	if source.IsZero() {
-		return SanctionsCheck{}, errMissingSource
+		return nil, domain.ErrMissingSource
 	}
 	if checkedAt.IsZero() {
-		return SanctionsCheck{}, errMissingCheckedAt
+		return nil, domain.ErrMissingCheckedAt
 	}
 	if providerID.IsZero() {
-		return SanctionsCheck{}, errMissingProviderID
+		return nil, domain.ErrMissingProviderID
 	}
 	if listType != ListTypeNone && !listType.IsValid() {
-		return SanctionsCheck{}, errors.New("invalid list type")
+		return nil, errors.New("invalid list type")
 	}
 	// Enforce invariant: listed subjects must have a list type
 	if listType == ListTypeNone {
 		listType = ListTypeSanctions // Default to sanctions if not specified
 	}
 
-	return SanctionsCheck{
+	return &SanctionsCheck{
 		nationalID: nationalID,
 		listed:     true,
 		details: ListingDetails{

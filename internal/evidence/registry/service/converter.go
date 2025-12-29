@@ -17,34 +17,34 @@ import (
 // EvidenceToCitizenVerification converts generic Evidence to a domain CitizenVerification aggregate.
 // Returns an error if required fields fail validation.
 // Uses getRequiredString/getRequiredBool for mandatory fields to prevent silent defaults.
-func EvidenceToCitizenVerification(ev *providers.Evidence) (citizen.CitizenVerification, error) {
+func EvidenceToCitizenVerification(ev *providers.Evidence) (*citizen.CitizenVerification, error) {
 	if ev == nil {
-		return citizen.CitizenVerification{}, dErrors.New(dErrors.CodeBadRequest, "evidence is nil")
+		return nil, dErrors.New(dErrors.CodeBadRequest, "evidence is nil")
 	}
 	if ev.ProviderType != providers.ProviderTypeCitizen {
-		return citizen.CitizenVerification{}, dErrors.New(dErrors.CodeBadRequest,
+		return nil, dErrors.New(dErrors.CodeBadRequest,
 			fmt.Sprintf("wrong provider type: expected %s, got %s", providers.ProviderTypeCitizen, ev.ProviderType))
 	}
 
 	// Required field: national_id
 	nationalIDStr, err := getRequiredString(ev.Data, "national_id")
 	if err != nil {
-		return citizen.CitizenVerification{}, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid provider response")
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid provider response")
 	}
 	nationalID, err := id.ParseNationalID(nationalIDStr)
 	if err != nil {
-		return citizen.CitizenVerification{}, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid national_id format")
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid national_id format")
 	}
 
 	confidence, err := shared.New(ev.Confidence)
 	if err != nil {
-		return citizen.CitizenVerification{}, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid confidence value")
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid confidence value")
 	}
 
 	// Required field: valid (boolean)
 	valid, err := getRequiredBool(ev.Data, "valid")
 	if err != nil {
-		return citizen.CitizenVerification{}, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid provider response")
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid provider response")
 	}
 
 	checkedAt := shared.NewCheckedAt(ev.CheckedAt)
@@ -66,7 +66,7 @@ func EvidenceToCitizenVerification(ev *providers.Evidence) (citizen.CitizenVerif
 		confidence,
 	)
 	if err != nil {
-		return citizen.CitizenVerification{}, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid citizen verification")
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid citizen verification")
 	}
 	return verification, nil
 }
@@ -74,34 +74,34 @@ func EvidenceToCitizenVerification(ev *providers.Evidence) (citizen.CitizenVerif
 // EvidenceToSanctionsCheck converts generic Evidence to a domain SanctionsCheck aggregate.
 // Returns an error if required fields fail validation.
 // Uses getRequiredString/getRequiredBool to prevent silent defaults on critical security fields.
-func EvidenceToSanctionsCheck(ev *providers.Evidence) (sanctions.SanctionsCheck, error) {
+func EvidenceToSanctionsCheck(ev *providers.Evidence) (*sanctions.SanctionsCheck, error) {
 	if ev == nil {
-		return sanctions.SanctionsCheck{}, dErrors.New(dErrors.CodeBadRequest, "evidence is nil")
+		return nil, dErrors.New(dErrors.CodeBadRequest, "evidence is nil")
 	}
 	if ev.ProviderType != providers.ProviderTypeSanctions {
-		return sanctions.SanctionsCheck{}, dErrors.New(dErrors.CodeBadRequest,
+		return nil, dErrors.New(dErrors.CodeBadRequest,
 			fmt.Sprintf("wrong provider type: expected %s, got %s", providers.ProviderTypeSanctions, ev.ProviderType))
 	}
 
 	// Required field: national_id
 	nationalIDStr, err := getRequiredString(ev.Data, "national_id")
 	if err != nil {
-		return sanctions.SanctionsCheck{}, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid provider response")
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid provider response")
 	}
 	nationalID, err := id.ParseNationalID(nationalIDStr)
 	if err != nil {
-		return sanctions.SanctionsCheck{}, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid national_id format")
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid national_id format")
 	}
 
 	confidence, err := shared.New(ev.Confidence)
 	if err != nil {
-		return sanctions.SanctionsCheck{}, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid confidence value")
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid confidence value")
 	}
 
 	// Required field: listed (boolean) - critical for security, must not default to false
 	listed, err := getRequiredBool(ev.Data, "listed")
 	if err != nil {
-		return sanctions.SanctionsCheck{}, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid provider response")
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid provider response")
 	}
 
 	checkedAt := shared.NewCheckedAt(ev.CheckedAt)
@@ -120,7 +120,7 @@ func EvidenceToSanctionsCheck(ev *providers.Evidence) (sanctions.SanctionsCheck,
 			confidence,
 		)
 		if err != nil {
-			return sanctions.SanctionsCheck{}, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid sanctions check")
+			return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid sanctions check")
 		}
 		return check, nil
 	}
@@ -133,14 +133,14 @@ func EvidenceToSanctionsCheck(ev *providers.Evidence) (sanctions.SanctionsCheck,
 		confidence,
 	)
 	if err != nil {
-		return sanctions.SanctionsCheck{}, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid sanctions check")
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid sanctions check")
 	}
 	return check, nil
 }
 
 // CitizenVerificationToRecord converts a domain CitizenVerification to an infrastructure CitizenRecord.
 // This is the outbound conversion for persistence and transport.
-func CitizenVerificationToRecord(cv citizen.CitizenVerification) *models.CitizenRecord {
+func CitizenVerificationToRecord(cv *citizen.CitizenVerification) *models.CitizenRecord {
 	return &models.CitizenRecord{
 		NationalID:  cv.NationalID().String(),
 		FullName:    cv.FullName(),
@@ -154,7 +154,7 @@ func CitizenVerificationToRecord(cv citizen.CitizenVerification) *models.Citizen
 
 // SanctionsCheckToRecord converts a domain SanctionsCheck to an infrastructure SanctionsRecord.
 // This is the outbound conversion for persistence and transport.
-func SanctionsCheckToRecord(sc sanctions.SanctionsCheck) *models.SanctionsRecord {
+func SanctionsCheckToRecord(sc *sanctions.SanctionsCheck) *models.SanctionsRecord {
 	return &models.SanctionsRecord{
 		NationalID: sc.NationalID().String(),
 		Listed:     sc.IsListed(),

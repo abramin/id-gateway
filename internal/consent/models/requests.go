@@ -7,13 +7,6 @@ import (
 	"credo/pkg/platform/validation"
 )
 
-// ConsentRequest is the interface for consent request types that can be prepared for processing.
-type ConsentRequest interface {
-	Sanitize()
-	Normalize()
-	Validate() error
-}
-
 // GrantRequest specifies which purposes to grant consent for.
 type GrantRequest struct {
 	Purposes []Purpose `json:"purposes"`

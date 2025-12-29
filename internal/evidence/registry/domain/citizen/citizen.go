@@ -14,8 +14,7 @@
 package citizen
 
 import (
-	"errors"
-
+	"credo/internal/evidence/registry/domain"
 	"credo/internal/evidence/registry/domain/shared"
 	id "credo/pkg/domain"
 )
@@ -69,12 +68,6 @@ type CitizenVerification struct {
 	minimized  bool
 }
 
-var (
-	errMissingNationalID = errors.New("national_id is required")
-	errMissingCheckedAt  = errors.New("checked_at is required")
-	errMissingProviderID = errors.New("provider_id is required")
-)
-
 // New creates a new citizen verification record.
 // This is the only way to construct a valid CitizenVerification.
 func New(
@@ -84,17 +77,17 @@ func New(
 	checkedAt shared.CheckedAt,
 	providerID shared.ProviderID,
 	confidence shared.Confidence,
-) (CitizenVerification, error) {
+) (*CitizenVerification, error) {
 	if nationalID.IsNil() {
-		return CitizenVerification{}, errMissingNationalID
+		return nil, domain.ErrMissingNationalID
 	}
 	if checkedAt.IsZero() {
-		return CitizenVerification{}, errMissingCheckedAt
+		return nil, domain.ErrMissingCheckedAt
 	}
 	if providerID.IsZero() {
-		return CitizenVerification{}, errMissingProviderID
+		return nil, domain.ErrMissingProviderID
 	}
-	return CitizenVerification{
+	return &CitizenVerification{
 		nationalID: nationalID,
 		details:    details,
 		status: VerificationStatus{
@@ -156,8 +149,8 @@ func (c CitizenVerification) IsMinimized() bool {
 //   - Is marked as minimized (IsMinimized returns true)
 //
 // This method is pure - it returns a new value without modifying the original.
-func (c CitizenVerification) Minimized() CitizenVerification {
-	return CitizenVerification{
+func (c *CitizenVerification) Minimized() *CitizenVerification {
+	return &CitizenVerification{
 		nationalID: c.nationalID,
 		details:    PersonalDetails{}, // Empty - PII stripped
 		status:     c.status,
@@ -169,7 +162,7 @@ func (c CitizenVerification) Minimized() CitizenVerification {
 
 // WithoutNationalID returns a minimized version that also clears the national ID.
 // Use this for maximum data minimization where even the lookup key should be hidden.
-func (c CitizenVerification) WithoutNationalID() CitizenVerification {
+func (c *CitizenVerification) WithoutNationalID() *CitizenVerification {
 	minimized := c.Minimized()
 	minimized.nationalID = id.NationalID{} // Zero value
 	return minimized

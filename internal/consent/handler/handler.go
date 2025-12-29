@@ -233,10 +233,10 @@ func toGrantResponse(records []*models.Record, now time.Time) *consentdto.GrantR
 	granted := make([]*consentdto.Grant, 0, len(records))
 	for _, record := range records {
 		granted = append(granted, &consentdto.Grant{
-			Purpose:   record.Purpose.String(),
+			Purpose:   record.Purpose,
 			GrantedAt: record.GrantedAt,
 			ExpiresAt: record.ExpiresAt,
-			Status:    string(record.ComputeStatus(now)),
+			Status:    record.ComputeStatus(now),
 		})
 	}
 	return &consentdto.GrantResponse{
@@ -250,9 +250,9 @@ func toRevokeResponse(records []*models.Record, now time.Time) *consentdto.Revok
 	for _, record := range records {
 		if record.RevokedAt != nil {
 			revoked = append(revoked, &consentdto.Revoked{
-				Purpose:   record.Purpose.String(),
+				Purpose:   record.Purpose,
 				RevokedAt: *record.RevokedAt,
-				Status:    string(record.ComputeStatus(now)),
+				Status:    record.ComputeStatus(now),
 			})
 		}
 	}
@@ -268,12 +268,12 @@ func toListResponse(records []*models.Record, now time.Time) *consentdto.ListRes
 		consents = append(consents, &consentdto.ConsentWithStatus{
 			Consent: consentdto.Consent{
 				ID:        record.ID.String(),
-				Purpose:   record.Purpose.String(),
+				Purpose:   record.Purpose,
 				GrantedAt: record.GrantedAt,
 				ExpiresAt: record.ExpiresAt,
 				RevokedAt: record.RevokedAt,
 			},
-			Status: string(record.ComputeStatus(now)),
+			Status: record.ComputeStatus(now),
 		})
 	}
 	return &consentdto.ListResponse{Consents: consents}
