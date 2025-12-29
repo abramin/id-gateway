@@ -7,7 +7,7 @@ import (
 
 	"credo/internal/auth/models"
 	"credo/pkg/platform/audit"
-	"credo/pkg/platform/middleware/requesttime"
+	"credo/pkg/requestcontext"
 )
 
 func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {
@@ -16,7 +16,7 @@ func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.Token
 		s.observeTokenRefreshDuration(float64(time.Since(start).Milliseconds()))
 	}()
 
-	now := requesttime.Now(ctx)
+	now := requestcontext.Now(ctx)
 	var (
 		refreshRecord *models.RefreshTokenRecord
 		session       *models.Session

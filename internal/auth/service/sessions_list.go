@@ -7,7 +7,7 @@ import (
 	"credo/internal/auth/models"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
-	"credo/pkg/platform/middleware/requesttime"
+	"credo/pkg/requestcontext"
 )
 
 // ListSessions returns active sessions for a user, ordered by recent activity.
@@ -22,7 +22,7 @@ func (s *Service) ListSessions(ctx context.Context, userID id.UserID, currentSes
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to list sessions")
 	}
 
-	now := requesttime.Now(ctx)
+	now := requestcontext.Now(ctx)
 	active := make([]*models.Session, 0, len(sessions))
 	for _, session := range sessions {
 		if session == nil {

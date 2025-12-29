@@ -16,9 +16,7 @@ import (
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/httputil"
-	auth "credo/pkg/platform/middleware/auth"
-	"credo/pkg/platform/middleware/metadata"
-	request "credo/pkg/platform/middleware/request"
+	"credo/pkg/requestcontext"
 )
 
 // Service defines the auth use cases consumed by HTTP handlers.
@@ -87,8 +85,8 @@ func (h *Handler) RegisterAdmin(r chi.Router) {
 // Output: { "code": "authz_...", "redirect_uri": "https://..." }
 func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
-	clientIP := metadata.GetClientIP(ctx)
+	requestID := requestcontext.RequestID(ctx)
+	clientIP := requestcontext.ClientIP(ctx)
 
 	req, ok := httputil.DecodeJSON[models.AuthorizationRequest](w, r, h.logger, ctx, requestID)
 	if !ok {
@@ -147,8 +145,8 @@ func (h *Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 // and returns token response data.
 func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
-	clientIP := metadata.GetClientIP(ctx)
+	requestID := requestcontext.RequestID(ctx)
+	clientIP := requestcontext.ClientIP(ctx)
 
 	req, ok := httputil.DecodeJSON[models.TokenRequest](w, r, h.logger, ctx, requestID)
 	if !ok {
@@ -194,7 +192,7 @@ func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 // It resolves the session from context and returns OIDC user info.
 func (h *Handler) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	sessionID, ok := h.requireSessionIDFromContext(ctx, w, requestID)
 	if !ok {
@@ -223,7 +221,7 @@ func (h *Handler) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
 // HandleListSessions implements GET /auth/sessions for the current user.
 func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	userID, ok := h.requireUserIDFromContext(ctx, w, requestID)
 	if !ok {
@@ -253,7 +251,7 @@ func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 // It verifies session ownership before revocation.
 func (h *Handler) HandleRevokeSession(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	userID, ok := h.requireUserIDFromContext(ctx, w, requestID)
 	if !ok {
@@ -292,7 +290,7 @@ func (h *Handler) HandleRevokeSession(w http.ResponseWriter, r *http.Request) {
 // and each revocation is independently idempotent.
 func (h *Handler) HandleLogoutAll(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	userID, ok := h.requireUserIDFromContext(ctx, w, requestID)
 	if !ok {
@@ -391,7 +389,7 @@ func (h *Handler) writeRateLimitError(w http.ResponseWriter, retryAfter int) {
 // It deletes the user and related sessions as an administrative action.
 func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	userID, ok := h.requireUserIDFromPath(r, w, requestID)
 	if !ok {
@@ -431,7 +429,7 @@ func isHTTPS(r *http.Request) bool {
 // Output: { "revoked": true, "message": "Token revoked successfully" }
 func (h *Handler) HandleRevoke(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	req, ok := httputil.DecodeAndPrepare[models.RevokeTokenRequest](w, r, h.logger, ctx, requestID)
 	if !ok {
@@ -463,7 +461,7 @@ func (h *Handler) HandleRevoke(w http.ResponseWriter, r *http.Request) {
 // Returns false if not set (error response already written).
 // Uses 401 Unauthorized since context IDs come from the JWT token.
 func (h *Handler) requireUserIDFromContext(ctx context.Context, w http.ResponseWriter, requestID string) (id.UserID, bool) {
-	userID := auth.GetUserID(ctx)
+	userID := requestcontext.UserID(ctx)
 	if userID.IsNil() {
 		h.logger.WarnContext(ctx, "user_id missing from auth context",
 			"request_id", requestID,
@@ -478,7 +476,7 @@ func (h *Handler) requireUserIDFromContext(ctx context.Context, w http.ResponseW
 // Returns false if not set (error response already written).
 // Uses 401 Unauthorized since context IDs come from the JWT token.
 func (h *Handler) requireSessionIDFromContext(ctx context.Context, w http.ResponseWriter, requestID string) (id.SessionID, bool) {
-	sessionID := auth.GetSessionID(ctx)
+	sessionID := requestcontext.SessionID(ctx)
 	if sessionID.IsNil() {
 		h.logger.WarnContext(ctx, "session_id missing from auth context",
 			"request_id", requestID,

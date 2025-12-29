@@ -51,7 +51,7 @@ import (
 	id "credo/pkg/domain"
 	auditpublisher "credo/pkg/platform/audit/publisher"
 	auditstore "credo/pkg/platform/audit/store/memory"
-	authmw "credo/pkg/platform/middleware/auth"
+	"credo/pkg/requestcontext"
 )
 
 // consentTestHarness provides common setup for consent integration tests.
@@ -83,9 +83,9 @@ func newConsentTestHarness(userIDStr string) *consentTestHarness {
 	router := chi.NewRouter()
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := context.WithValue(r.Context(), authmw.ContextKeyUserID, parsedUserID)
-			ctx = context.WithValue(ctx, authmw.ContextKeySessionID, parsedSessionID)
-			ctx = context.WithValue(ctx, authmw.ContextKeyClientID, parsedClientID)
+			ctx := requestcontext.WithUserID(r.Context(), parsedUserID)
+			ctx = requestcontext.WithSessionID(ctx, parsedSessionID)
+			ctx = requestcontext.WithClientID(ctx, parsedClientID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})

@@ -10,8 +10,7 @@ import (
 	"credo/internal/ratelimit/models"
 	id "credo/pkg/domain"
 	"credo/pkg/platform/httputil"
-	"credo/pkg/platform/middleware/auth"
-	request "credo/pkg/platform/middleware/request"
+	"credo/pkg/requestcontext"
 )
 
 type Service interface {
@@ -46,7 +45,7 @@ func (h *Handler) RegisterAdmin(r chi.Router) {
 
 func (h *Handler) HandleAddAllowlist(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	// Limit request body size to prevent DoS via large payloads
 	r.Body = http.MaxBytesReader(w, r.Body, 64*1024) // 64KB max
@@ -56,7 +55,7 @@ func (h *Handler) HandleAddAllowlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	adminUserID := auth.GetUserID(ctx)
+	adminUserID := requestcontext.UserID(ctx).String()
 	entry, err := h.service.AddToAllowlist(ctx, req, adminUserID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to add to allowlist",
@@ -82,7 +81,7 @@ func (h *Handler) HandleAddAllowlist(w http.ResponseWriter, r *http.Request) {
 // TODO: Implement this handler
 func (h *Handler) HandleRemoveAllowlist(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	// Limit request body size to prevent DoS via large payloads
 	r.Body = http.MaxBytesReader(w, r.Body, 64*1024) // 64KB max
@@ -111,7 +110,7 @@ func (h *Handler) HandleRemoveAllowlist(w http.ResponseWriter, r *http.Request) 
 // Output: [{ "type": "ip", "identifier": "...", ... }, ...]
 func (h *Handler) HandleListAllowlist(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	entries, err := h.service.ListAllowlist(ctx)
 	if err != nil {
@@ -134,7 +133,7 @@ func (h *Handler) HandleListAllowlist(w http.ResponseWriter, r *http.Request) {
 // Output: 204 No Content
 func (h *Handler) HandleResetRateLimit(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	// Limit request body size to prevent DoS via large payloads
 	r.Body = http.MaxBytesReader(w, r.Body, 64*1024) // 64KB max

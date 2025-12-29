@@ -8,7 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"credo/pkg/platform/httputil"
-	request "credo/pkg/platform/middleware/request"
+	"credo/pkg/requestcontext"
 )
 
 // Handler handles admin monitoring and stats endpoints
@@ -35,7 +35,7 @@ func (h *Handler) Register(r chi.Router) {
 // HandleGetStats returns overall system statistics
 func (h *Handler) HandleGetStats(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	stats, err := h.service.GetStats(ctx)
 	if err != nil {
@@ -57,7 +57,7 @@ func (h *Handler) HandleGetStats(w http.ResponseWriter, r *http.Request) {
 // HandleGetAllUsers returns all users with session information
 func (h *Handler) HandleGetAllUsers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	users, err := h.service.GetAllUsers(ctx)
 	if err != nil {
@@ -80,7 +80,7 @@ func (h *Handler) HandleGetAllUsers(w http.ResponseWriter, r *http.Request) {
 // HandleGetRecentAuditEvents returns recent audit events
 func (h *Handler) HandleGetRecentAuditEvents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	// Parse limit from query parameter, default to 50
 	limit := 50

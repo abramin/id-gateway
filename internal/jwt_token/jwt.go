@@ -11,7 +11,7 @@ import (
 	"time"
 
 	dErrors "credo/pkg/domain-errors"
-	requesttime "credo/pkg/platform/middleware/requesttime"
+	"credo/pkg/requestcontext"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -122,7 +122,7 @@ func (s *JWTService) GenerateAccessToken(
 		return "", err
 	}
 	jti := hex.EncodeToString(b)
-	now := requesttime.Now(ctx)
+	now := requestcontext.Now(ctx)
 
 	newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, AccessTokenClaims{
 		UserID:    userID.String(),
@@ -196,7 +196,7 @@ func (s *JWTService) GenerateIDToken(
 	sessionID uuid.UUID,
 	clientID string,
 	tenantID string) (string, error) {
-	now := requesttime.Now(ctx)
+	now := requestcontext.Now(ctx)
 	newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, IDTokenClaims{
 		SessionID: sessionID.String(),
 		ClientID:  clientID,

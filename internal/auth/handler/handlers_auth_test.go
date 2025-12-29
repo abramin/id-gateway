@@ -21,7 +21,7 @@ import (
 	"credo/internal/auth/models"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
-	authmw "credo/pkg/platform/middleware/auth"
+	"credo/pkg/requestcontext"
 )
 
 //go:generate mockgen -source=handler.go -destination=mocks/auth-mocks.go -package=mocks Service
@@ -288,8 +288,7 @@ func (s *AuthHandlerSuite) doUserInfoRequest(router *chi.Mux, sessionID string) 
 	// Only inject if it parses to a valid typed ID (mirrors real middleware behavior)
 	if sessionID != "" {
 		if parsedSessionID, err := id.ParseSessionID(sessionID); err == nil {
-			ctx := httpReq.Context()
-			ctx = context.WithValue(ctx, authmw.ContextKeySessionID, parsedSessionID)
+			ctx := requestcontext.WithSessionID(httpReq.Context(), parsedSessionID)
 			httpReq = httpReq.WithContext(ctx)
 		}
 	}
@@ -320,12 +319,12 @@ func (s *AuthHandlerSuite) doListSessionsRequest(router *chi.Mux, userID string,
 	ctx := httpReq.Context()
 	if userID != "" {
 		if parsedUserID, err := id.ParseUserID(userID); err == nil {
-			ctx = context.WithValue(ctx, authmw.ContextKeyUserID, parsedUserID)
+			ctx = requestcontext.WithUserID(ctx, parsedUserID)
 		}
 	}
 	if sessionID != "" {
 		if parsedSessionID, err := id.ParseSessionID(sessionID); err == nil {
-			ctx = context.WithValue(ctx, authmw.ContextKeySessionID, parsedSessionID)
+			ctx = requestcontext.WithSessionID(ctx, parsedSessionID)
 		}
 	}
 	httpReq = httpReq.WithContext(ctx)
@@ -356,7 +355,7 @@ func (s *AuthHandlerSuite) doRevokeSessionRequest(router *chi.Mux, path string, 
 	ctx := httpReq.Context()
 	if userID != "" {
 		if parsedUserID, err := id.ParseUserID(userID); err == nil {
-			ctx = context.WithValue(ctx, authmw.ContextKeyUserID, parsedUserID)
+			ctx = requestcontext.WithUserID(ctx, parsedUserID)
 		}
 	}
 	httpReq = httpReq.WithContext(ctx)
@@ -388,12 +387,12 @@ func (s *AuthHandlerSuite) doLogoutAllRequest(router *chi.Mux, userID string, se
 	ctx := httpReq.Context()
 	if userID != "" {
 		if parsedUserID, err := id.ParseUserID(userID); err == nil {
-			ctx = context.WithValue(ctx, authmw.ContextKeyUserID, parsedUserID)
+			ctx = requestcontext.WithUserID(ctx, parsedUserID)
 		}
 	}
 	if sessionID != "" {
 		if parsedSessionID, err := id.ParseSessionID(sessionID); err == nil {
-			ctx = context.WithValue(ctx, authmw.ContextKeySessionID, parsedSessionID)
+			ctx = requestcontext.WithSessionID(ctx, parsedSessionID)
 		}
 	}
 	httpReq = httpReq.WithContext(ctx)

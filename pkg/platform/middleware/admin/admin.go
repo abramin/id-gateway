@@ -2,11 +2,10 @@ package admin
 
 import (
 	"context"
+	"credo/pkg/requestcontext"
 	"crypto/subtle"
 	"log/slog"
 	"net/http"
-
-	request "credo/pkg/platform/middleware/request"
 )
 
 // Context key for storing admin actor identifier.
@@ -31,7 +30,7 @@ func RequireAdminToken(expectedToken string, logger *slog.Logger) func(http.Hand
 			// Use constant-time comparison to prevent timing attacks
 			if subtle.ConstantTimeCompare([]byte(token), []byte(expectedToken)) != 1 {
 				ctx := r.Context()
-				requestID := request.GetRequestID(ctx)
+				requestID := requestcontext.RequestID(ctx)
 				logger.WarnContext(ctx, "admin token mismatch",
 					"request_id", requestID,
 				)

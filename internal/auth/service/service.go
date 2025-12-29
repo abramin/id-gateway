@@ -21,8 +21,8 @@ import (
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
-	"credo/pkg/platform/middleware/requesttime"
 	platformsync "credo/pkg/platform/sync"
+	"credo/pkg/requestcontext"
 )
 
 // Shard contention metrics for monitoring lock behavior
@@ -430,7 +430,7 @@ func (s *Service) generateTokenArtifacts(ctx context.Context, session *models.Se
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to create refresh token")
 	}
 
-	now := requesttime.Now(ctx)
+	now := requestcontext.Now(ctx)
 	tokenRecord, err := models.NewRefreshToken(
 		refreshToken,
 		session.ID,

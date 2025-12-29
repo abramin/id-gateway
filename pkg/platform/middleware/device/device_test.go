@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"credo/pkg/platform/middleware/metadata"
+	"credo/pkg/requestcontext"
 )
 
 func TestDeviceMiddleware(t *testing.T) {
@@ -19,7 +19,7 @@ func TestDeviceMiddleware(t *testing.T) {
 
 		var capturedDeviceID string
 		handler := Device(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			capturedDeviceID = GetDeviceID(r.Context())
+			capturedDeviceID = requestcontext.DeviceID(r.Context())
 			w.WriteHeader(http.StatusOK)
 		}))
 
@@ -38,7 +38,7 @@ func TestDeviceMiddleware(t *testing.T) {
 
 		var capturedDeviceID string
 		handler := Device(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			capturedDeviceID = GetDeviceID(r.Context())
+			capturedDeviceID = requestcontext.DeviceID(r.Context())
 			w.WriteHeader(http.StatusOK)
 		}))
 
@@ -56,7 +56,7 @@ func TestDeviceMiddleware(t *testing.T) {
 
 		var capturedDeviceID string
 		handler := Device(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			capturedDeviceID = GetDeviceID(r.Context())
+			capturedDeviceID = requestcontext.DeviceID(r.Context())
 			w.WriteHeader(http.StatusOK)
 		}))
 
@@ -77,13 +77,13 @@ func TestDeviceMiddleware(t *testing.T) {
 
 		var capturedFingerprint string
 		handler := Device(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			capturedFingerprint = GetDeviceFingerprint(r.Context())
+			capturedFingerprint = requestcontext.DeviceFingerprint(r.Context())
 			w.WriteHeader(http.StatusOK)
 		}))
 
 		// Pre-inject user agent via metadata middleware context
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		ctx := metadata.WithClientMetadata(req.Context(), "127.0.0.1", "Mozilla/5.0")
+		ctx := requestcontext.WithClientMetadata(req.Context(), "127.0.0.1", "Mozilla/5.0")
 		req = req.WithContext(ctx)
 
 		w := httptest.NewRecorder()
@@ -101,13 +101,13 @@ func TestDeviceMiddleware(t *testing.T) {
 
 		var capturedFingerprint string
 		handler := Device(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			capturedFingerprint = GetDeviceFingerprint(r.Context())
+			capturedFingerprint = requestcontext.DeviceFingerprint(r.Context())
 			w.WriteHeader(http.StatusOK)
 		}))
 
 		// Context with empty user agent
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		ctx := metadata.WithClientMetadata(req.Context(), "127.0.0.1", "")
+		ctx := requestcontext.WithClientMetadata(req.Context(), "127.0.0.1", "")
 		req = req.WithContext(ctx)
 
 		w := httptest.NewRecorder()
@@ -123,12 +123,12 @@ func TestDeviceMiddleware(t *testing.T) {
 
 		var capturedFingerprint string
 		handler := Device(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			capturedFingerprint = GetDeviceFingerprint(r.Context())
+			capturedFingerprint = requestcontext.DeviceFingerprint(r.Context())
 			w.WriteHeader(http.StatusOK)
 		}))
 
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		ctx := metadata.WithClientMetadata(req.Context(), "127.0.0.1", "Mozilla/5.0")
+		ctx := requestcontext.WithClientMetadata(req.Context(), "127.0.0.1", "Mozilla/5.0")
 		req = req.WithContext(ctx)
 
 		w := httptest.NewRecorder()
@@ -147,14 +147,14 @@ func TestDeviceMiddleware(t *testing.T) {
 
 		var capturedDeviceID, capturedFingerprint string
 		handler := Device(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			capturedDeviceID = GetDeviceID(r.Context())
-			capturedFingerprint = GetDeviceFingerprint(r.Context())
+			capturedDeviceID = requestcontext.DeviceID(r.Context())
+			capturedFingerprint = requestcontext.DeviceFingerprint(r.Context())
 			w.WriteHeader(http.StatusOK)
 		}))
 
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		req.AddCookie(&http.Cookie{Name: "__Secure-Device-ID", Value: "device-456"})
-		ctx := metadata.WithClientMetadata(req.Context(), "127.0.0.1", "Chrome/120")
+		ctx := requestcontext.WithClientMetadata(req.Context(), "127.0.0.1", "Chrome/120")
 		req = req.WithContext(ctx)
 
 		w := httptest.NewRecorder()
@@ -171,7 +171,7 @@ func TestDeviceMiddleware(t *testing.T) {
 
 		var capturedDeviceID string
 		handler := Device(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			capturedDeviceID = GetDeviceID(r.Context())
+			capturedDeviceID = requestcontext.DeviceID(r.Context())
 			w.WriteHeader(http.StatusOK)
 		}))
 
@@ -185,34 +185,34 @@ func TestDeviceMiddleware(t *testing.T) {
 }
 
 func TestContextHelpers(t *testing.T) {
-	t.Run("GetDeviceID returns empty for fresh context", func(t *testing.T) {
+	t.Run("DeviceID returns empty for fresh context", func(t *testing.T) {
 		ctx := context.Background()
-		assert.Empty(t, GetDeviceID(ctx))
+		assert.Empty(t, requestcontext.DeviceID(ctx))
 	})
 
-	t.Run("WithDeviceID and GetDeviceID roundtrip", func(t *testing.T) {
+	t.Run("WithDeviceID and DeviceID roundtrip", func(t *testing.T) {
 		ctx := context.Background()
-		ctx = WithDeviceID(ctx, "test-device-id")
-		assert.Equal(t, "test-device-id", GetDeviceID(ctx))
+		ctx = requestcontext.WithDeviceID(ctx, "test-device-id")
+		assert.Equal(t, "test-device-id", requestcontext.DeviceID(ctx))
 	})
 
-	t.Run("GetDeviceFingerprint returns empty for fresh context", func(t *testing.T) {
+	t.Run("DeviceFingerprint returns empty for fresh context", func(t *testing.T) {
 		ctx := context.Background()
-		assert.Empty(t, GetDeviceFingerprint(ctx))
+		assert.Empty(t, requestcontext.DeviceFingerprint(ctx))
 	})
 
-	t.Run("WithDeviceFingerprint and GetDeviceFingerprint roundtrip", func(t *testing.T) {
+	t.Run("WithDeviceFingerprint and DeviceFingerprint roundtrip", func(t *testing.T) {
 		ctx := context.Background()
-		ctx = WithDeviceFingerprint(ctx, "test-fingerprint")
-		assert.Equal(t, "test-fingerprint", GetDeviceFingerprint(ctx))
+		ctx = requestcontext.WithDeviceFingerprint(ctx, "test-fingerprint")
+		assert.Equal(t, "test-fingerprint", requestcontext.DeviceFingerprint(ctx))
 	})
 
 	t.Run("device ID and fingerprint are independent", func(t *testing.T) {
 		ctx := context.Background()
-		ctx = WithDeviceID(ctx, "device-123")
-		ctx = WithDeviceFingerprint(ctx, "fingerprint-456")
+		ctx = requestcontext.WithDeviceID(ctx, "device-123")
+		ctx = requestcontext.WithDeviceFingerprint(ctx, "fingerprint-456")
 
-		assert.Equal(t, "device-123", GetDeviceID(ctx))
-		assert.Equal(t, "fingerprint-456", GetDeviceFingerprint(ctx))
+		assert.Equal(t, "device-123", requestcontext.DeviceID(ctx))
+		assert.Equal(t, "fingerprint-456", requestcontext.DeviceFingerprint(ctx))
 	})
 }

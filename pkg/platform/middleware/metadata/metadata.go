@@ -1,7 +1,6 @@
 package metadata
 
 import (
-	"context"
 	"net/http"
 	"net/netip"
 	"strings"
@@ -12,12 +11,6 @@ import (
 // MaxXFFHeaderLength is the maximum allowed length for X-Forwarded-For header
 // to prevent header injection attacks (PRD-017 TR-5).
 const MaxXFFHeaderLength = 500
-
-// Re-export context keys for backward compatibility.
-var (
-	ContextKeyClientIP  = requestcontext.ContextKeyClientIP
-	ContextKeyUserAgent = requestcontext.ContextKeyUserAgent
-)
 
 // Config holds configuration for the metadata middleware.
 type Config struct {
@@ -147,22 +140,4 @@ func parseRemoteAddr(remoteAddr string) string {
 	}
 
 	return remoteAddr
-}
-
-// GetClientIP retrieves the client IP address from the context.
-// Deprecated: Use requestcontext.ClientIP(ctx) instead.
-func GetClientIP(ctx context.Context) string {
-	return requestcontext.ClientIP(ctx)
-}
-
-// GetUserAgent retrieves the User-Agent from the context.
-// Deprecated: Use requestcontext.UserAgent(ctx) instead.
-func GetUserAgent(ctx context.Context) string {
-	return requestcontext.UserAgent(ctx)
-}
-
-// WithClientMetadata injects client IP and User-Agent into a context.
-// Deprecated: Use requestcontext.WithClientMetadata(ctx, clientIP, userAgent) instead.
-func WithClientMetadata(ctx context.Context, clientIP, userAgent string) context.Context {
-	return requestcontext.WithClientMetadata(ctx, clientIP, userAgent)
 }

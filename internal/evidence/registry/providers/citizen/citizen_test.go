@@ -161,7 +161,7 @@ func TestCitizenResponseParser(t *testing.T) {
 		evidence, err := parseCitizenResponse(200, body)
 		require.NoError(t, err)
 		// Parser intentionally leaves CheckedAt zero when parsing fails.
-		// The HTTPAdapter's parseAndEnrich fills it from requesttime.Now(ctx).
+		// The HTTPAdapter's parseAndEnrich fills it from requestcontext.Now(ctx).
 		// This maintains domain purity - no time.Now() calls in the parser.
 		assert.True(t, evidence.CheckedAt.IsZero(), "parser leaves zero for adapter to fill")
 	})

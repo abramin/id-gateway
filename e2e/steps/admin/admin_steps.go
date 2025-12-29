@@ -107,8 +107,8 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc TestContext) {
 }
 
 type adminSteps struct {
-	tc              TestContext
-	exactNameCache  map[string]string // Tracks generated names for exact name testing
+	tc             TestContext
+	exactNameCache map[string]string // Tracks generated names for exact name testing
 }
 
 // Tenant Steps

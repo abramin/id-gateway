@@ -7,12 +7,12 @@ import (
 
 // Metrics holds Prometheus collectors for consent operations.
 type Metrics struct {
-	ConsentsGranted       *prometheus.CounterVec
-	ConsentsRevoked       *prometheus.CounterVec
+	ConsentsGranted     *prometheus.CounterVec
+	ConsentsRevoked     *prometheus.CounterVec
 	ActiveConsentsTotal prometheus.Gauge
-	ConsentCheckPassed    *prometheus.CounterVec
-	ConsentCheckFailed    *prometheus.CounterVec
-	ConsentGrantLatency   prometheus.Histogram
+	ConsentCheckPassed  *prometheus.CounterVec
+	ConsentCheckFailed  *prometheus.CounterVec
+	ConsentGrantLatency prometheus.Histogram
 
 	// Performance metrics
 	StoreOperationLatency *prometheus.HistogramVec

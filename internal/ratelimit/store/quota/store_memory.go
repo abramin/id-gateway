@@ -7,7 +7,7 @@ import (
 	c "credo/internal/ratelimit/config"
 	"credo/internal/ratelimit/models"
 	id "credo/pkg/domain"
-	"credo/pkg/platform/middleware/requesttime"
+	"credo/pkg/requestcontext"
 )
 
 type InMemoryQuotaStore struct {
@@ -39,7 +39,7 @@ func (s *InMemoryQuotaStore) IncrementUsage(ctx context.Context, apiKeyID id.API
 
 	quota, exists := s.quotas[apiKeyID]
 	if !exists {
-		now := requesttime.Now(ctx)
+		now := requestcontext.Now(ctx)
 		limits := s.config.QuotaTiers[models.QuotaTierFree]
 		quota = &models.APIKeyQuota{
 			APIKeyID:       apiKeyID,
@@ -62,7 +62,7 @@ func (s *InMemoryQuotaStore) ResetQuota(ctx context.Context, apiKeyID id.APIKeyI
 	defer s.mu.Unlock()
 
 	if quota, exists := s.quotas[apiKeyID]; exists {
-		now := requesttime.Now(ctx)
+		now := requestcontext.Now(ctx)
 		quota.CurrentUsage = 0
 		quota.PeriodStart = now
 		quota.PeriodEnd = now.AddDate(0, 1, 0)
@@ -90,7 +90,7 @@ func (s *InMemoryQuotaStore) UpdateTier(ctx context.Context, apiKeyID id.APIKeyI
 	quota, exists := s.quotas[apiKeyID]
 	if !exists {
 		// Create new quota with the specified tier
-		now := requesttime.Now(ctx)
+		now := requestcontext.Now(ctx)
 		limits := s.config.QuotaTiers[tier]
 		quota = &models.APIKeyQuota{
 			APIKeyID:       apiKeyID,

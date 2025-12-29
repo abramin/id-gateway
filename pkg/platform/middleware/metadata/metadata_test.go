@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"credo/pkg/requestcontext"
 )
 
 func TestMiddlewareHandler(t *testing.T) {
@@ -87,32 +89,32 @@ func TestMiddlewareHandler(t *testing.T) {
 			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, req)
 
-			assert.Equal(t, tt.expectedIP, GetClientIP(capturedCtx), "IP address mismatch")
-			assert.Equal(t, tt.expectedUA, GetUserAgent(capturedCtx), "User-Agent mismatch")
+			assert.Equal(t, tt.expectedIP, requestcontext.ClientIP(capturedCtx), "IP address mismatch")
+			assert.Equal(t, tt.expectedUA, requestcontext.UserAgent(capturedCtx), "User-Agent mismatch")
 		})
 	}
 }
 
-func TestGetClientIPFromContext(t *testing.T) {
+func TestClientIPFromContext(t *testing.T) {
 	t.Run("returns empty string for context without IP", func(t *testing.T) {
 		ctx := context.Background()
-		assert.Equal(t, "", GetClientIP(ctx))
+		assert.Equal(t, "", requestcontext.ClientIP(ctx))
 	})
 
 	t.Run("returns IP from context", func(t *testing.T) {
-		ctx := WithClientMetadata(context.Background(), "192.168.1.1", "test-agent")
-		assert.Equal(t, "192.168.1.1", GetClientIP(ctx))
+		ctx := requestcontext.WithClientMetadata(context.Background(), "192.168.1.1", "test-agent")
+		assert.Equal(t, "192.168.1.1", requestcontext.ClientIP(ctx))
 	})
 }
 
-func TestGetUserAgentFromContext(t *testing.T) {
+func TestUserAgentFromContext(t *testing.T) {
 	t.Run("returns empty string for context without UA", func(t *testing.T) {
 		ctx := context.Background()
-		assert.Equal(t, "", GetUserAgent(ctx))
+		assert.Equal(t, "", requestcontext.UserAgent(ctx))
 	})
 
 	t.Run("returns UA from context", func(t *testing.T) {
-		ctx := WithClientMetadata(context.Background(), "192.168.1.1", "Mozilla/5.0")
-		assert.Equal(t, "Mozilla/5.0", GetUserAgent(ctx))
+		ctx := requestcontext.WithClientMetadata(context.Background(), "192.168.1.1", "Mozilla/5.0")
+		assert.Equal(t, "Mozilla/5.0", requestcontext.UserAgent(ctx))
 	})
 }

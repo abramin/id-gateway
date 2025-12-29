@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"credo/pkg/platform/audit"
 	"credo/internal/auth/models"
 	id "credo/pkg/domain"
+	"credo/pkg/platform/audit"
 )
 
 // UserStore defines the interface for user storage operations

@@ -12,7 +12,7 @@ import (
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/httputil"
-	request "credo/pkg/platform/middleware/request"
+	"credo/pkg/requestcontext"
 )
 
 // QuotaService defines the quota operations interface (PRD-017 FR-5)
@@ -80,7 +80,7 @@ func toQuotaUsageResponse(quota *models.APIKeyQuota) models.QuotaUsageResponse {
 // Returns the quota usage for a specific API key.
 func (h *QuotaHandler) HandleGetQuota(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	apiKeyStr, apiKeyID, ok := h.requireAPIKeyFromPath(r, w, requestID)
 	if !ok {
@@ -105,7 +105,7 @@ func (h *QuotaHandler) HandleGetQuota(w http.ResponseWriter, r *http.Request) {
 // Resets the quota usage for a specific API key.
 func (h *QuotaHandler) HandleResetQuota(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	apiKeyStr, apiKeyID, ok := h.requireAPIKeyFromPath(r, w, requestID)
 	if !ok {
@@ -141,7 +141,7 @@ func (h *QuotaHandler) HandleResetQuota(w http.ResponseWriter, r *http.Request) 
 // Returns all quota records.
 func (h *QuotaHandler) HandleListQuotas(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	quotas, err := h.service.List(ctx)
 	if err != nil {
@@ -165,7 +165,7 @@ func (h *QuotaHandler) HandleListQuotas(w http.ResponseWriter, r *http.Request) 
 // Updates the quota tier for a specific API key.
 func (h *QuotaHandler) HandleUpdateQuotaTier(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	apiKeyStr, apiKeyID, ok := h.requireAPIKeyFromPath(r, w, requestID)
 	if !ok {

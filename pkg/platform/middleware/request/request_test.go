@@ -7,13 +7,15 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"credo/pkg/requestcontext"
 )
 
 func TestRequestID(t *testing.T) {
 	t.Run("generates UUID when no header provided", func(t *testing.T) {
 		var capturedID string
 		handler := RequestID(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			capturedID = GetRequestID(r.Context())
+			capturedID = requestcontext.RequestID(r.Context())
 			w.WriteHeader(http.StatusOK)
 		}))
 
@@ -29,7 +31,7 @@ func TestRequestID(t *testing.T) {
 	t.Run("accepts valid client-provided ID", func(t *testing.T) {
 		var capturedID string
 		handler := RequestID(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			capturedID = GetRequestID(r.Context())
+			capturedID = requestcontext.RequestID(r.Context())
 			w.WriteHeader(http.StatusOK)
 		}))
 
@@ -151,14 +153,14 @@ func TestIsValidRequestID(t *testing.T) {
 
 	t.Run("invalid IDs", func(t *testing.T) {
 		invalidIDs := []string{
-			"",                                        // empty
+			"", // empty
 			strings.Repeat("x", MaxRequestIDLength+1), // too long
-			"has space",                               // space
-			"has\nnewline",                            // newline
-			"has\ttab",                                // tab
-			"has;semicolon",                           // semicolon
-			"has<bracket>",                            // brackets
-			`has"quote`,                               // quote
+			"has space",     // space
+			"has\nnewline",  // newline
+			"has\ttab",      // tab
+			"has;semicolon", // semicolon
+			"has<bracket>",  // brackets
+			`has"quote`,     // quote
 		}
 
 		for _, id := range invalidIDs {
@@ -167,9 +169,9 @@ func TestIsValidRequestID(t *testing.T) {
 	})
 }
 
-func TestGetRequestID(t *testing.T) {
+func TestRequestIDFromContext(t *testing.T) {
 	t.Run("returns empty string when not set", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		assert.Equal(t, "", GetRequestID(req.Context()))
+		assert.Equal(t, "", requestcontext.RequestID(req.Context()))
 	})
 }

@@ -9,14 +9,14 @@ import (
 // Metrics contains all rate limiting metrics as defined in PRD-017 FR-8.
 type Metrics struct {
 	// Request-level metrics
-	RequestsTotal           *prometheus.CounterVec // All rate limit checks (class, decision)
-	BlocksTotal             *prometheus.CounterVec // Blocked requests by limit type
-	AllowlistBypassesTotal  *prometheus.CounterVec // Requests bypassed via allowlist (type)
-	CheckDurationSeconds    *prometheus.HistogramVec // Rate limit check latency (class)
+	RequestsTotal          *prometheus.CounterVec   // All rate limit checks (class, decision)
+	BlocksTotal            *prometheus.CounterVec   // Blocked requests by limit type
+	AllowlistBypassesTotal *prometheus.CounterVec   // Requests bypassed via allowlist (type)
+	CheckDurationSeconds   *prometheus.HistogramVec // Rate limit check latency (class)
 
 	// Auth lockout metrics
-	RateLimitAuthFailures      prometheus.Counter
-	RateLimitAuthLockoutsTotal *prometheus.CounterVec // (type: soft/hard)
+	RateLimitAuthFailures          prometheus.Counter
+	RateLimitAuthLockoutsTotal     *prometheus.CounterVec // (type: soft/hard)
 	RateLimitAuthLockedIdentifiers prometheus.Gauge
 
 	// Quota metrics
@@ -24,9 +24,9 @@ type Metrics struct {
 	QuotaExceededTotal *prometheus.CounterVec // Quota exceeded events by tier
 
 	// Store-level gauges
-	BucketEntries        prometheus.Gauge
-	AllowlistEntries     *prometheus.GaugeVec // (type: ip/user_id)
-	AuthLockoutRecords   prometheus.Gauge
+	BucketEntries      prometheus.Gauge
+	AllowlistEntries   *prometheus.GaugeVec // (type: ip/user_id)
+	AuthLockoutRecords prometheus.Gauge
 
 	// Cleanup worker metrics
 	RateLimitCleanupFailuresResetTotal      prometheus.Counter

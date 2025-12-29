@@ -7,8 +7,8 @@ import (
 
 	"credo/internal/consent/models"
 	id "credo/pkg/domain"
-	"credo/pkg/platform/middleware/requesttime"
 	"credo/pkg/platform/sentinel"
+	"credo/pkg/requestcontext"
 )
 
 // Error Contract:
@@ -59,7 +59,7 @@ func (s *InMemoryStore) ListByUser(ctx context.Context, userID id.UserID, filter
 	records := s.consents[userID]
 
 	var filtered []*models.Record
-	now := requesttime.Now(ctx)
+	now := requestcontext.Now(ctx)
 
 	for _, record := range records {
 		// Apply filters if specified

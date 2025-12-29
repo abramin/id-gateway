@@ -6,7 +6,7 @@ import (
 
 	id "credo/pkg/domain"
 	"credo/pkg/platform/attrs"
-	request "credo/pkg/platform/middleware/request"
+	"credo/pkg/requestcontext"
 )
 
 // Emitter is the interface for audit event emission.
@@ -39,7 +39,7 @@ func NewLogger(textLogger *slog.Logger, emitter Emitter) *Logger {
 //	logger.Log(ctx, "user_created", "user_id", userID.String(), "email", email)
 func (l *Logger) Log(ctx context.Context, event string, attributes ...any) {
 	// Enrich with request_id from context
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 	if requestID != "" {
 		attributes = append(attributes, "request_id", requestID)
 	}

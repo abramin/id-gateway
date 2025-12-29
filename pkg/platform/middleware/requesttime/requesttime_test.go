@@ -8,12 +8,14 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	"credo/pkg/requestcontext"
 )
 
 func TestMiddleware_SetsTimeInContext(t *testing.T) {
 	var capturedTime time.Time
 	handler := Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedTime = Now(r.Context())
+		capturedTime = requestcontext.Now(r.Context())
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -32,9 +34,9 @@ func TestMiddleware_SetsTimeInContext(t *testing.T) {
 func TestMiddleware_TimeIsConsistentWithinRequest(t *testing.T) {
 	var firstRead, secondRead time.Time
 	handler := Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		firstRead = Now(r.Context())
+		firstRead = requestcontext.Now(r.Context())
 		time.Sleep(10 * time.Millisecond)
-		secondRead = Now(r.Context())
+		secondRead = requestcontext.Now(r.Context())
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -49,7 +51,7 @@ func TestNow_FallbackToRealTime(t *testing.T) {
 	ctx := context.Background() // No middleware
 
 	before := time.Now()
-	result := Now(ctx)
+	result := requestcontext.Now(ctx)
 	after := time.Now()
 
 	assert.True(t, !result.Before(before), "result should be >= before")
@@ -58,17 +60,17 @@ func TestNow_FallbackToRealTime(t *testing.T) {
 
 func TestWithTime_InjectsFixedTime(t *testing.T) {
 	fixedTime := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
-	ctx := WithTime(context.Background(), fixedTime)
+	ctx := requestcontext.WithTime(context.Background(), fixedTime)
 
-	assert.Equal(t, fixedTime, Now(ctx))
+	assert.Equal(t, fixedTime, requestcontext.Now(ctx))
 }
 
 func TestWithTime_OverridesExistingTime(t *testing.T) {
 	originalTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	newTime := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
 
-	ctx := WithTime(context.Background(), originalTime)
-	ctx = WithTime(ctx, newTime)
+	ctx := requestcontext.WithTime(context.Background(), originalTime)
+	ctx = requestcontext.WithTime(ctx, newTime)
 
-	assert.Equal(t, newTime, Now(ctx))
+	assert.Equal(t, newTime, requestcontext.Now(ctx))
 }

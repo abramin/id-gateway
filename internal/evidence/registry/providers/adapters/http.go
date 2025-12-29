@@ -15,7 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"credo/internal/evidence/registry/providers"
-	"credo/pkg/platform/middleware/requesttime"
+	"credo/pkg/requestcontext"
 )
 
 // Tracer for distributed tracing of outbound HTTP calls.
@@ -272,7 +272,7 @@ func (a *HTTPAdapter) parseAndEnrich(ctx context.Context, statusCode int, body [
 	evidence.ProviderID = a.id
 	evidence.ProviderType = a.capabs.Type
 	if evidence.CheckedAt.IsZero() {
-		evidence.CheckedAt = requesttime.Now(ctx)
+		evidence.CheckedAt = requestcontext.Now(ctx)
 	}
 
 	return evidence, nil

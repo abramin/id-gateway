@@ -13,7 +13,7 @@ import (
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/httputil"
-	request "credo/pkg/platform/middleware/request"
+	"credo/pkg/requestcontext"
 )
 
 // Service defines the interface for tenant operations.
@@ -71,7 +71,7 @@ func (h *Handler) Register(r chi.Router) {
 // Returns the created tenant with its generated UUID.
 func (h *Handler) HandleCreateTenant(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	req, ok := httputil.DecodeAndPrepare[CreateTenantRequest](w, r, h.logger, ctx, requestID)
 	if !ok {
@@ -96,7 +96,7 @@ func (h *Handler) HandleCreateTenant(w http.ResponseWriter, r *http.Request) {
 // TODO: When tenant admin auth is implemented, verify caller has access to this tenant.
 func (h *Handler) HandleGetTenant(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 	idStr := chi.URLParam(r, "id")
 	tenantID, err := id.ParseTenantID(idStr)
 	if err != nil {
@@ -118,7 +118,7 @@ func (h *Handler) HandleGetTenant(w http.ResponseWriter, r *http.Request) {
 // PRD-026B FR-1: Deactivated tenants block OAuth flows for all clients under them.
 func (h *Handler) HandleDeactivateTenant(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 	idStr := chi.URLParam(r, "id")
 	tenantID, err := id.ParseTenantID(idStr)
 	if err != nil {
@@ -140,7 +140,7 @@ func (h *Handler) HandleDeactivateTenant(w http.ResponseWriter, r *http.Request)
 // PRD-026B FR-2: Reactivated tenants restore OAuth flows for their clients.
 func (h *Handler) HandleReactivateTenant(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 	idStr := chi.URLParam(r, "id")
 	tenantID, err := id.ParseTenantID(idStr)
 	if err != nil {
@@ -161,7 +161,7 @@ func (h *Handler) HandleReactivateTenant(w http.ResponseWriter, r *http.Request)
 // HandleCreateClient registers a new client under a tenant.
 func (h *Handler) HandleCreateClient(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	req, ok := httputil.DecodeAndPrepare[CreateClientRequest](w, r, h.logger, ctx, requestID)
 	if !ok {
@@ -192,7 +192,7 @@ func (h *Handler) HandleCreateClient(w http.ResponseWriter, r *http.Request) {
 //  3. This enforces tenant isolation at the service layer (per PRD-026A §Tenant Boundary)
 func (h *Handler) HandleGetClient(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	idStr := chi.URLParam(r, "id")
 	clientID, err := id.ParseClientID(idStr)
@@ -221,7 +221,7 @@ func (h *Handler) HandleGetClient(w http.ResponseWriter, r *http.Request) {
 //  3. This enforces tenant isolation at the service layer (per PRD-026A §Tenant Boundary)
 func (h *Handler) HandleUpdateClient(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	idStr := chi.URLParam(r, "id")
 	clientID, err := id.ParseClientID(idStr)
@@ -253,7 +253,7 @@ func (h *Handler) HandleUpdateClient(w http.ResponseWriter, r *http.Request) {
 // PRD-026B FR-3: Deactivated clients block OAuth flows.
 func (h *Handler) HandleDeactivateClient(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	idStr := chi.URLParam(r, "id")
 	clientID, err := id.ParseClientID(idStr)
@@ -276,7 +276,7 @@ func (h *Handler) HandleDeactivateClient(w http.ResponseWriter, r *http.Request)
 // PRD-026B FR-4: Reactivated clients restore OAuth flows.
 func (h *Handler) HandleReactivateClient(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	idStr := chi.URLParam(r, "id")
 	clientID, err := id.ParseClientID(idStr)
@@ -300,7 +300,7 @@ func (h *Handler) HandleReactivateClient(w http.ResponseWriter, r *http.Request)
 // PRD-026A FR-4: Currently uses platform admin auth (X-Admin-Token).
 func (h *Handler) HandleRotateClientSecret(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	idStr := chi.URLParam(r, "id")
 	clientID, err := id.ParseClientID(idStr)

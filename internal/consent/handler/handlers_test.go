@@ -28,7 +28,7 @@ import (
 	consentModel "credo/internal/consent/models"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
-	authmw "credo/pkg/platform/middleware/auth"
+	"credo/pkg/requestcontext"
 )
 
 //go:generate mockgen -source=handler.go -destination=mocks/consent-mocks.go -package=mocks Service
@@ -137,7 +137,7 @@ func (s *ConsentHandlerSuite) TestHandleGetConsents_ErrorMapping() {
 			Return(nil, dErrors.New(dErrors.CodeInternal, "storage system unavailable"))
 
 		req := httptest.NewRequest(http.MethodGet, "/auth/consent", nil)
-		ctx := context.WithValue(req.Context(), authmw.ContextKeyUserID, userID)
+		ctx := requestcontext.WithUserID(req.Context(), userID)
 		req = req.WithContext(ctx)
 		w := httptest.NewRecorder()
 
@@ -151,7 +151,7 @@ func (s *ConsentHandlerSuite) TestHandleGetConsents_ErrorMapping() {
 		handler, _ := newTestHandler(s.T())
 		userID, _ := id.ParseUserID("550e8400-e29b-41d4-a716-446655440000")
 		req := httptest.NewRequest(http.MethodGet, "/auth/consent?status=unknown", nil)
-		ctx := context.WithValue(req.Context(), authmw.ContextKeyUserID, userID)
+		ctx := requestcontext.WithUserID(req.Context(), userID)
 		req = req.WithContext(ctx)
 		w := httptest.NewRecorder()
 
@@ -234,7 +234,7 @@ func newRequestWithBody(method, endpoint string, body interface{}, userID string
 	req := httptest.NewRequest(method, endpoint, bytes.NewReader(bodyBytes))
 	if userID != "" {
 		if parsedUserID, parseErr := id.ParseUserID(userID); parseErr == nil {
-			ctx := context.WithValue(req.Context(), authmw.ContextKeyUserID, parsedUserID)
+			ctx := requestcontext.WithUserID(req.Context(), parsedUserID)
 			req = req.WithContext(ctx)
 		}
 	}

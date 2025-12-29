@@ -7,7 +7,7 @@ import (
 
 	"credo/internal/ratelimit/config"
 	"credo/internal/ratelimit/models"
-	requesttime "credo/pkg/platform/middleware/requesttime"
+	"credo/pkg/requestcontext"
 )
 
 type InMemoryAuthLockoutStore struct {
@@ -50,7 +50,7 @@ func (s *InMemoryAuthLockoutStore) RecordFailure(ctx context.Context, identifier
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := requesttime.Now(ctx)
+	now := requestcontext.Now(ctx)
 	if existing, exists := s.records[identifier]; exists {
 		existing.FailureCount++
 		existing.DailyFailures++
@@ -83,7 +83,7 @@ func (s *InMemoryAuthLockoutStore) IsLocked(ctx context.Context, identifier stri
 	defer s.mu.RUnlock()
 
 	if record, exists := s.records[identifier]; exists {
-		if record.IsLockedAt(requesttime.Now(ctx)) {
+		if record.IsLockedAt(requestcontext.Now(ctx)) {
 			return true, record.LockedUntil, nil
 		}
 	}

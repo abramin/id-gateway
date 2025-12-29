@@ -151,8 +151,8 @@ type RateLimitViolation struct {
 	ID            string        `json:"id"`
 	Identifier    string        `json:"identifier"` // IP or user_id that was limited
 	EndpointClass EndpointClass `json:"endpoint_class"`
-	Endpoint      string        `json:"endpoint"`      // The specific endpoint path
-	Limit         int           `json:"limit"`         // The limit that was exceeded
+	Endpoint      string        `json:"endpoint"`       // The specific endpoint path
+	Limit         int           `json:"limit"`          // The limit that was exceeded
 	WindowSeconds int           `json:"window_seconds"` // The window duration
 	OccurredAt    time.Time     `json:"occurred_at"`
 }
@@ -200,9 +200,9 @@ type APIKeyQuota struct {
 // The Identifier is a composite key of username/email + IP address,
 // preventing cross-IP attacks while allowing legitimate multi-device access.
 type AuthLockout struct {
-	Identifier      string     `json:"identifier"`       // Composite key: "username:IP"
-	FailureCount    int        `json:"failure_count"`    // Failures in current 15-min window
-	DailyFailures   int        `json:"daily_failures"`   // Failures today (for hard lock threshold)
+	Identifier      string     `json:"identifier"`             // Composite key: "username:IP"
+	FailureCount    int        `json:"failure_count"`          // Failures in current 15-min window
+	DailyFailures   int        `json:"daily_failures"`         // Failures today (for hard lock threshold)
 	LockedUntil     *time.Time `json:"locked_until,omitempty"` // Hard lock expiration
 	LastFailureAt   time.Time  `json:"last_failure_at"`
 	RequiresCaptcha bool       `json:"requires_captcha"` // Set after 3 consecutive lockouts

@@ -29,31 +29,6 @@ type JWTClaims struct {
 	JTI       string // JWT ID for revocation tracking
 }
 
-// Re-export context keys for backward compatibility with tests.
-var (
-	ContextKeyUserID    = requestcontext.ContextKeyUserID
-	ContextKeySessionID = requestcontext.ContextKeySessionID
-	ContextKeyClientID  = requestcontext.ContextKeyClientID
-)
-
-// GetUserID retrieves the authenticated user ID from the context as a typed ID.
-// Deprecated: Use requestcontext.UserID(ctx) instead.
-func GetUserID(ctx context.Context) id.UserID {
-	return requestcontext.UserID(ctx)
-}
-
-// GetSessionID retrieves the session ID from the context as a typed ID.
-// Deprecated: Use requestcontext.SessionID(ctx) instead.
-func GetSessionID(ctx context.Context) id.SessionID {
-	return requestcontext.SessionID(ctx)
-}
-
-// GetClientID retrieves the client ID from the context as a typed ID.
-// Deprecated: Use requestcontext.ClientID(ctx) instead.
-func GetClientID(ctx context.Context) id.ClientID {
-	return requestcontext.ClientID(ctx)
-}
-
 // writeJSONError writes a JSON error response with the given status code and error details.
 func writeJSONError(w http.ResponseWriter, status int, errCode, errDesc string) {
 	w.Header().Set("Content-Type", "application/json")
@@ -65,10 +40,10 @@ func writeJSONError(w http.ResponseWriter, status int, errCode, errDesc string) 
 type revocationResult int
 
 const (
-	revocationOK       revocationResult = iota // Token is valid, not revoked
-	revocationMissingJTI                       // Token missing required JTI claim
-	revocationRevoked                          // Token has been revoked
-	revocationError                            // Error checking revocation status
+	revocationOK         revocationResult = iota // Token is valid, not revoked
+	revocationMissingJTI                         // Token missing required JTI claim
+	revocationRevoked                            // Token has been revoked
+	revocationError                              // Error checking revocation status
 )
 
 // checkRevocation verifies that a token has not been revoked.

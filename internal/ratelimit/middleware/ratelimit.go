@@ -31,9 +31,8 @@ import (
 
 	"credo/internal/ratelimit/models"
 	"credo/pkg/platform/httputil"
-	auth "credo/pkg/platform/middleware/auth"
-	metadata "credo/pkg/platform/middleware/metadata"
 	"credo/pkg/platform/privacy"
+	"credo/pkg/requestcontext"
 )
 
 // RateLimiter is the interface consumed by the middleware.
@@ -126,7 +125,7 @@ func (m *Middleware) RateLimit(class models.EndpointClass) func(http.Handler) ht
 			}
 
 			ctx := r.Context()
-			ip := metadata.GetClientIP(ctx)
+			ip := requestcontext.ClientIP(ctx)
 
 			result, degraded, err := m.checkIPRateLimit(ctx, ip, class)
 			if err != nil && !degraded {
@@ -174,8 +173,8 @@ func (m *Middleware) RateLimitAuthenticated(class models.EndpointClass) func(htt
 			}
 
 			ctx := r.Context()
-			ip := metadata.GetClientIP(ctx)
-			userID := auth.GetUserID(ctx).String()
+			ip := requestcontext.ClientIP(ctx)
+			userID := requestcontext.UserID(ctx).String()
 
 			result, degraded, err := m.checkBothLimits(ctx, ip, userID, class)
 			if err != nil && !degraded {

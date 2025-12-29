@@ -14,8 +14,7 @@ import (
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/httputil"
-	request "credo/pkg/platform/middleware/request"
-	"credo/pkg/platform/middleware/requesttime"
+	"credo/pkg/requestcontext"
 )
 
 // Service defines the interface for consent operations.
@@ -55,7 +54,7 @@ func (h *Handler) HandleGrantConsent(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 	userID, err := h.requireUserID(ctx, requestID)
 	if err != nil {
 		httputil.WriteError(w, err)
@@ -82,14 +81,14 @@ func (h *Handler) HandleGrantConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, toGrantResponse(records, requesttime.Now(ctx)))
+	httputil.WriteJSON(w, http.StatusOK, toGrantResponse(records, requestcontext.Now(ctx)))
 }
 
 // HandleRevokeConsent revokes consent for the authenticated user.
 // It validates input, invokes the service, and returns revocation details.
 func (h *Handler) HandleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 	userID, err := h.requireUserID(ctx, requestID)
 	if err != nil {
 		httputil.WriteError(w, err)
@@ -116,7 +115,7 @@ func (h *Handler) HandleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, toRevokeResponse(records, requesttime.Now(ctx)))
+	httputil.WriteJSON(w, http.StatusOK, toRevokeResponse(records, requestcontext.Now(ctx)))
 }
 
 // HandleRevokeAllConsents revokes all consents for the authenticated user.
@@ -148,7 +147,7 @@ func (h *Handler) HandleRevokeAllConsents(w http.ResponseWriter, r *http.Request
 // HandleAdminRevokeAllConsents revokes all consents for a user by admin action.
 func (h *Handler) HandleAdminRevokeAllConsents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 	userIDStr := chi.URLParam(r, "user_id")
 	userID, err := id.ParseUserID(userIDStr)
 	if err != nil {
@@ -176,7 +175,7 @@ func (h *Handler) HandleAdminRevokeAllConsents(w http.ResponseWriter, r *http.Re
 // HandleDeleteAllConsents deletes all consent records for the authenticated user.
 func (h *Handler) HandleDeleteAllConsents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 	userID, err := h.requireUserID(ctx, requestID)
 	if err != nil {
 		httputil.WriteError(w, err)
@@ -200,7 +199,7 @@ func (h *Handler) HandleDeleteAllConsents(w http.ResponseWriter, r *http.Request
 // HandleGetConsents lists consent records for the authenticated user.
 func (h *Handler) HandleGetConsents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 	userID, err := h.requireUserID(ctx, requestID)
 	if err != nil {
 		httputil.WriteError(w, err)
@@ -223,7 +222,7 @@ func (h *Handler) HandleGetConsents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, toListResponse(records, requesttime.Now(ctx)))
+	httputil.WriteJSON(w, http.StatusOK, toListResponse(records, requestcontext.Now(ctx)))
 }
 
 // Response mapping functions - convert domain objects to HTTP DTOs
@@ -291,5 +290,11 @@ func formatActionMessage(template string, count int) string {
 // requireUserID retrieves the typed user ID from auth context.
 // Returns a domain error suitable for HTTP response on failure.
 func (h *Handler) requireUserID(ctx context.Context, requestID string) (id.UserID, error) {
-	return httputil.RequireUserID(ctx, h.logger, requestID)
+	userID := requestcontext.UserID(ctx)
+	if userID.IsNil() {
+		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
+			"request_id", requestID)
+		return id.UserID{}, dErrors.New(dErrors.CodeInternal, "authentication context error")
+	}
+	return userID, nil
 }

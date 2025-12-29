@@ -8,7 +8,7 @@ import (
 	id "credo/pkg/domain"
 	"credo/pkg/platform/attrs"
 	"credo/pkg/platform/audit"
-	request "credo/pkg/platform/middleware/request"
+	"credo/pkg/requestcontext"
 )
 
 // AuditPublisher emits audit events for security-relevant operations.
@@ -19,7 +19,7 @@ type AuditPublisher interface {
 // LogAudit is a shared helper for logging audit events across ratelimit services.
 // It logs to both the structured logger and the audit publisher if available.
 func LogAudit(ctx context.Context, logger *slog.Logger, publisher AuditPublisher, event string, attrList ...any) {
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	// Add request ID for traceability
 	if requestID != "" {

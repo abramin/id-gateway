@@ -105,7 +105,7 @@ func GetCategory(err error) ErrorCategory {
 // These are distinct from ProviderError which wraps individual provider failures.
 // Use errors.Is() to check for these conditions.
 var (
-	ErrProviderNotFound     = errors.New("provider not found")       // Requested provider ID not in registry
+	ErrProviderNotFound     = errors.New("provider not found")                   // Requested provider ID not in registry
 	ErrNoProvidersAvailable = errors.New("no providers available for this type") // No providers registered for requested type
-	ErrAllProvidersFailed   = errors.New("all providers failed")     // All providers in chain failed (after retries)
+	ErrAllProvidersFailed   = errors.New("all providers failed")                 // All providers in chain failed (after retries)
 )

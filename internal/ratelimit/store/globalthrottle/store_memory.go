@@ -2,10 +2,9 @@ package globalthrottle
 
 import (
 	"context"
+	"credo/pkg/requestcontext"
 	"sync/atomic"
 	"time"
-
-	requesttime "credo/pkg/platform/middleware/requesttime"
 )
 
 // InMemoryGlobalThrottleStore implements global rate limiting with atomic counters.
@@ -58,7 +57,7 @@ func New(opts ...Option) *InMemoryGlobalThrottleStore {
 // Uses CAS (Compare-And-Swap) operations to ensure the counter never exceeds the limit,
 // preventing TOCTOU races where multiple goroutines could temporarily exceed the limit.
 func (s *InMemoryGlobalThrottleStore) IncrementGlobal(ctx context.Context) (count int, blocked bool, err error) {
-	now := requesttime.Now(ctx)
+	now := requestcontext.Now(ctx)
 	currentSecond := now.Unix()
 	currentHour := now.Truncate(time.Hour).Unix()
 
@@ -117,7 +116,7 @@ func (s *InMemoryGlobalThrottleStore) tryIncrementWithLimit(counter *atomic.Int6
 
 // GetGlobalCount returns the current count in the per-second window.
 func (s *InMemoryGlobalThrottleStore) GetGlobalCount(ctx context.Context) (count int, err error) {
-	now := requesttime.Now(ctx)
+	now := requestcontext.Now(ctx)
 	currentSecond := now.Unix()
 
 	// If we're in a new second, the effective count is 0

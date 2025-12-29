@@ -7,7 +7,7 @@ import (
 
 	"credo/internal/auth/models"
 	"credo/pkg/platform/audit"
-	"credo/pkg/platform/middleware/requesttime"
+	"credo/pkg/requestcontext"
 )
 
 // exchangeAuthorizationCode handles the token exchange flow for authorization codes.
@@ -19,7 +19,7 @@ func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.Tok
 		s.observeTokenExchangeDuration(float64(time.Since(start).Milliseconds()))
 	}()
 
-	now := requesttime.Now(ctx)
+	now := requestcontext.Now(ctx)
 	var (
 		codeRecord *models.AuthorizationCodeRecord
 		session    *models.Session

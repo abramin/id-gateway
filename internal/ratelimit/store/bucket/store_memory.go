@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"credo/internal/ratelimit/models"
-	requesttime "credo/pkg/platform/middleware/requesttime"
+	"credo/pkg/requestcontext"
 )
 
 const (
@@ -279,7 +279,7 @@ func (s *InMemoryBucketStore) AllowN(ctx context.Context, key string, cost, limi
 		sh.set(key, sw)
 	}
 
-	now := requesttime.Now(ctx)
+	now := requestcontext.Now(ctx)
 	allowed, remaining, resetAt := sw.tryConsume(cost, limit, now)
 
 	return &models.RateLimitResult{
@@ -312,7 +312,7 @@ func (s *InMemoryBucketStore) GetCurrentCount(ctx context.Context, key string) (
 		return 0, nil
 	}
 
-	return elem.Value.(*lruEntry).window.currentCount(requesttime.Now(ctx)), nil
+	return elem.Value.(*lruEntry).window.currentCount(requestcontext.Now(ctx)), nil
 }
 
 // Stats returns store statistics for monitoring.

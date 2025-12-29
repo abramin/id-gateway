@@ -57,8 +57,8 @@ func NewTestContext() *TestContext {
 	}
 
 	return &TestContext{
-		BaseURL:       baseURL,
-		AdminBaseURL:  adminBaseURL,
+		BaseURL:      baseURL,
+		AdminBaseURL: adminBaseURL,
 		HTTPClient: &http.Client{
 			Timeout: 10 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {

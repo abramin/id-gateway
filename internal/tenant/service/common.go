@@ -10,8 +10,8 @@ import (
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/attrs"
 	"credo/pkg/platform/audit"
-	request "credo/pkg/platform/middleware/request"
 	"credo/pkg/platform/sentinel"
+	"credo/pkg/requestcontext"
 )
 
 // Store interfaces define persistence contracts.
@@ -181,7 +181,7 @@ func (e *auditEmitter) emitClientSecretRotated(ctx context.Context, evt models.C
 }
 
 func (e *auditEmitter) enrichAttributes(ctx context.Context, attributes []any) []any {
-	if requestID := request.GetRequestID(ctx); requestID != "" {
+	if requestID := requestcontext.RequestID(ctx); requestID != "" {
 		attributes = append(attributes, "request_id", requestID)
 	}
 	return attributes
@@ -220,7 +220,7 @@ func (e *auditEmitter) emitToAudit(ctx context.Context, event string, attributes
 		subject = userIDStr // Fallback to user_id if no entity ID
 	}
 
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	if err := e.publisher.Emit(ctx, audit.Event{
 		UserID:    userID,

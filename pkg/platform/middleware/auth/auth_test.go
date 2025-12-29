@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	id "credo/pkg/domain"
+	"credo/pkg/requestcontext"
 )
 
 // Test UUIDs for consistent testing
@@ -111,9 +112,9 @@ func (s *AuthMiddlewareTestSuite) TestValidToken() {
 	assert.Equal(s.T(), http.StatusOK, w.Code)
 
 	// Verify context values were set correctly as typed IDs
-	assert.Equal(s.T(), testUserID, GetUserID(s.nextHandler.context).String())
-	assert.Equal(s.T(), testSessionID, GetSessionID(s.nextHandler.context).String())
-	assert.Equal(s.T(), testClientID, GetClientID(s.nextHandler.context).String())
+	assert.Equal(s.T(), testUserID, requestcontext.UserID(s.nextHandler.context).String())
+	assert.Equal(s.T(), testSessionID, requestcontext.SessionID(s.nextHandler.context).String())
+	assert.Equal(s.T(), testClientID, requestcontext.ClientID(s.nextHandler.context).String())
 }
 
 func (s *AuthMiddlewareTestSuite) TestRevokedToken() {
@@ -289,131 +290,57 @@ func TestAuthMiddlewareTestSuite(t *testing.T) {
 	suite.Run(t, new(AuthMiddlewareTestSuite))
 }
 
-// ContextGettersTestSuite tests the context getter functions
+// ContextGettersTestSuite tests the context getter functions via requestcontext
 type ContextGettersTestSuite struct {
 	suite.Suite
 }
 
-func (s *ContextGettersTestSuite) TestGetUserID() {
+func (s *ContextGettersTestSuite) TestUserID() {
 	parsedUserID, _ := id.ParseUserID(testUserID)
 
-	testCases := []struct {
-		name       string
-		ctx        context.Context
-		expectedNil bool
-		expected   string
-	}{
-		{
-			name:       "valid user ID",
-			ctx:        context.WithValue(context.Background(), ContextKeyUserID, parsedUserID),
-			expectedNil: false,
-			expected:   testUserID,
-		},
-		{
-			name:       "missing user ID",
-			ctx:        context.Background(),
-			expectedNil: true,
-		},
-		{
-			name:       "wrong type (string)",
-			ctx:        context.WithValue(context.Background(), ContextKeyUserID, "user-123"),
-			expectedNil: true,
-		},
-		{
-			name:       "wrong type (int)",
-			ctx:        context.WithValue(context.Background(), ContextKeyUserID, 123),
-			expectedNil: true,
-		},
-	}
+	s.Run("valid user ID", func() {
+		ctx := requestcontext.WithUserID(context.Background(), parsedUserID)
+		result := requestcontext.UserID(ctx)
+		assert.Equal(s.T(), testUserID, result.String())
+	})
 
-	for _, tc := range testCases {
-		s.Run(tc.name, func() {
-			result := GetUserID(tc.ctx)
-			if tc.expectedNil {
-				assert.True(s.T(), result.IsNil())
-			} else {
-				assert.Equal(s.T(), tc.expected, result.String())
-			}
-		})
-	}
+	s.Run("missing user ID", func() {
+		ctx := context.Background()
+		result := requestcontext.UserID(ctx)
+		assert.True(s.T(), result.IsNil())
+	})
 }
 
-func (s *ContextGettersTestSuite) TestGetSessionID() {
+func (s *ContextGettersTestSuite) TestSessionID() {
 	parsedSessionID, _ := id.ParseSessionID(testSessionID)
 
-	testCases := []struct {
-		name       string
-		ctx        context.Context
-		expectedNil bool
-		expected   string
-	}{
-		{
-			name:       "valid session ID",
-			ctx:        context.WithValue(context.Background(), ContextKeySessionID, parsedSessionID),
-			expectedNil: false,
-			expected:   testSessionID,
-		},
-		{
-			name:       "missing session ID",
-			ctx:        context.Background(),
-			expectedNil: true,
-		},
-		{
-			name:       "wrong type (string)",
-			ctx:        context.WithValue(context.Background(), ContextKeySessionID, "session-456"),
-			expectedNil: true,
-		},
-	}
+	s.Run("valid session ID", func() {
+		ctx := requestcontext.WithSessionID(context.Background(), parsedSessionID)
+		result := requestcontext.SessionID(ctx)
+		assert.Equal(s.T(), testSessionID, result.String())
+	})
 
-	for _, tc := range testCases {
-		s.Run(tc.name, func() {
-			result := GetSessionID(tc.ctx)
-			if tc.expectedNil {
-				assert.True(s.T(), result.IsNil())
-			} else {
-				assert.Equal(s.T(), tc.expected, result.String())
-			}
-		})
-	}
+	s.Run("missing session ID", func() {
+		ctx := context.Background()
+		result := requestcontext.SessionID(ctx)
+		assert.True(s.T(), result.IsNil())
+	})
 }
 
-func (s *ContextGettersTestSuite) TestGetClientID() {
+func (s *ContextGettersTestSuite) TestClientID() {
 	parsedClientID, _ := id.ParseClientID(testClientID)
 
-	testCases := []struct {
-		name       string
-		ctx        context.Context
-		expectedNil bool
-		expected   string
-	}{
-		{
-			name:       "valid client ID",
-			ctx:        context.WithValue(context.Background(), ContextKeyClientID, parsedClientID),
-			expectedNil: false,
-			expected:   testClientID,
-		},
-		{
-			name:       "missing client ID",
-			ctx:        context.Background(),
-			expectedNil: true,
-		},
-		{
-			name:       "wrong type (string)",
-			ctx:        context.WithValue(context.Background(), ContextKeyClientID, "client-789"),
-			expectedNil: true,
-		},
-	}
+	s.Run("valid client ID", func() {
+		ctx := requestcontext.WithClientID(context.Background(), parsedClientID)
+		result := requestcontext.ClientID(ctx)
+		assert.Equal(s.T(), testClientID, result.String())
+	})
 
-	for _, tc := range testCases {
-		s.Run(tc.name, func() {
-			result := GetClientID(tc.ctx)
-			if tc.expectedNil {
-				assert.True(s.T(), result.IsNil())
-			} else {
-				assert.Equal(s.T(), tc.expected, result.String())
-			}
-		})
-	}
+	s.Run("missing client ID", func() {
+		ctx := context.Background()
+		result := requestcontext.ClientID(ctx)
+		assert.True(s.T(), result.IsNil())
+	})
 }
 
 func TestContextGettersTestSuite(t *testing.T) {

@@ -8,9 +8,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"credo/pkg/platform/audit"
 	"credo/internal/auth/models"
 	id "credo/pkg/domain"
+	"credo/pkg/platform/audit"
 )
 
 // UserStore defines methods for seeding users

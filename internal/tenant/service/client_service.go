@@ -12,7 +12,7 @@ import (
 	"credo/internal/tenant/secrets"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
-	"credo/pkg/platform/middleware/requesttime"
+	"credo/pkg/requestcontext"
 )
 
 // ClientService orchestrates client registration and lifecycle management.
@@ -68,7 +68,7 @@ func (s *ClientService) CreateClient(ctx context.Context, cmd *CreateClientComma
 		cmd.RedirectURIs,
 		cmd.AllowedGrants,
 		cmd.AllowedScopes,
-		requesttime.Now(ctx),
+		requestcontext.Now(ctx),
 	)
 	if err != nil {
 		return nil, "", err
@@ -154,7 +154,7 @@ func (s *ClientService) DeactivateClient(ctx context.Context, clientID id.Client
 		return nil, wrapClientErr(err, "failed to get client")
 	}
 
-	if err := client.Deactivate(requesttime.Now(ctx)); err != nil {
+	if err := client.Deactivate(requestcontext.Now(ctx)); err != nil {
 		if dErrors.HasCode(err, dErrors.CodeInvariantViolation) {
 			return nil, dErrors.New(dErrors.CodeConflict, "client is already inactive")
 		}
@@ -184,7 +184,7 @@ func (s *ClientService) ReactivateClient(ctx context.Context, clientID id.Client
 		return nil, wrapClientErr(err, "failed to get client")
 	}
 
-	if err := client.Reactivate(requesttime.Now(ctx)); err != nil {
+	if err := client.Reactivate(requestcontext.Now(ctx)); err != nil {
 		if dErrors.HasCode(err, dErrors.CodeInvariantViolation) {
 			return nil, dErrors.New(dErrors.CodeConflict, "client is already active")
 		}
@@ -333,7 +333,7 @@ func (s *ClientService) rotateSecret(ctx context.Context, client *models.Client)
 	}
 
 	client.ClientSecretHash = hash
-	client.UpdatedAt = requesttime.Now(ctx)
+	client.UpdatedAt = requestcontext.Now(ctx)
 
 	if err := s.clients.Update(ctx, client); err != nil {
 		return nil, "", wrapClientErr(err, "failed to update client")
@@ -367,7 +367,7 @@ func (s *ClientService) applyClientUpdate(ctx context.Context, client *models.Cl
 
 	applyFieldUpdates(client, cmd)
 
-	client.UpdatedAt = requesttime.Now(ctx)
+	client.UpdatedAt = requestcontext.Now(ctx)
 	if err := s.clients.Update(ctx, client); err != nil {
 		return nil, "", wrapClientErr(err, "failed to update client")
 	}
@@ -457,4 +457,3 @@ func generateSecret(isPublic bool) (secret, hash string, err error) {
 	}
 	return secret, hash, nil
 }
-

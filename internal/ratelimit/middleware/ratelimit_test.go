@@ -14,12 +14,11 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	id "credo/pkg/domain"
 	"credo/internal/ratelimit/config"
 	"credo/internal/ratelimit/models"
 	"credo/internal/ratelimit/store/allowlist"
-	authmw "credo/pkg/platform/middleware/auth"
-	"credo/pkg/platform/middleware/metadata"
+	id "credo/pkg/domain"
+	"credo/pkg/requestcontext"
 )
 
 // Test UUID for user ID in authenticated tests
@@ -58,7 +57,7 @@ func (s *MiddlewareSecuritySuite) SetupTest() {
 }
 
 func withClientMetadata(req *http.Request) *http.Request {
-	ctx := metadata.WithClientMetadata(req.Context(), "192.168.1.1", "test-agent")
+	ctx := requestcontext.WithClientMetadata(req.Context(), "192.168.1.1", "test-agent")
 	return req.WithContext(ctx)
 }
 
@@ -252,7 +251,7 @@ func (s *MiddlewareSecuritySuite) TestNormalOperation() {
 
 		req := withClientMetadata(httptest.NewRequest(http.MethodGet, "/test", nil))
 		parsedUserID, _ := id.ParseUserID(testUserID)
-		ctx := context.WithValue(req.Context(), authmw.ContextKeyUserID, parsedUserID)
+		ctx := requestcontext.WithUserID(req.Context(), parsedUserID)
 		req = req.WithContext(ctx)
 
 		rr := httptest.NewRecorder()

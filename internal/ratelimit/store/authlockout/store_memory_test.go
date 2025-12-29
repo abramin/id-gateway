@@ -7,7 +7,7 @@ import (
 
 	"credo/internal/ratelimit/config"
 	"credo/internal/ratelimit/models"
-	"credo/pkg/platform/middleware/requesttime"
+	"credo/pkg/requestcontext"
 
 	"github.com/stretchr/testify/suite"
 )
@@ -36,7 +36,7 @@ func (s *InMemoryAuthLockoutStoreSuite) TestGet() {
 
 	s.Run("existing record is returned without mutation", func() {
 		fixedTime := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
-		ctx := requesttime.WithTime(context.Background(), fixedTime)
+		ctx := requestcontext.WithTime(context.Background(), fixedTime)
 		identifier := "test-user"
 
 		_, err := s.store.RecordFailure(ctx, identifier)
@@ -143,8 +143,8 @@ func (s *InMemoryAuthLockoutStoreSuite) TestResetFailureCount() {
 	oldTime := time.Now().Add(-30 * time.Minute)
 	recentTime := time.Now().Add(-5 * time.Minute)
 
-	ctxOld := requesttime.WithTime(ctx, oldTime)
-	ctxRecent := requesttime.WithTime(ctx, recentTime)
+	ctxOld := requestcontext.WithTime(ctx, oldTime)
+	ctxRecent := requestcontext.WithTime(ctx, recentTime)
 
 	_, err := s.store.RecordFailure(ctxOld, identifier1)
 	s.NoError(err)
@@ -169,7 +169,7 @@ func (s *InMemoryAuthLockoutStoreSuite) TestResetDailyFailures() {
 
 	oldTime := time.Now().Add(-30 * time.Hour)
 
-	ctxOld := requesttime.WithTime(ctx, oldTime)
+	ctxOld := requestcontext.WithTime(ctx, oldTime)
 
 	_, err := s.store.RecordFailure(ctxOld, identifier1)
 	s.NoError(err)

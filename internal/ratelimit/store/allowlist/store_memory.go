@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"credo/internal/ratelimit/models"
-	requesttime "credo/pkg/platform/middleware/requesttime"
+	"credo/pkg/requestcontext"
 )
 
 type InMemoryAllowlistStore struct {
@@ -45,7 +45,7 @@ func (s *InMemoryAllowlistStore) IsAllowlisted(ctx context.Context, identifier s
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	now := requesttime.Now(ctx)
+	now := requestcontext.Now(ctx)
 	for _, entryType := range []models.AllowlistEntryType{models.AllowlistTypeIP, models.AllowlistTypeUserID} {
 		key := buildKey(entryType, identifier)
 		if entry, exists := s.entries[key]; exists && !entry.IsExpiredAt(now) {
@@ -60,7 +60,7 @@ func (s *InMemoryAllowlistStore) IsAllowlisted(ctx context.Context, identifier s
 func (s *InMemoryAllowlistStore) List(ctx context.Context) ([]*models.AllowlistEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	now := requesttime.Now(ctx)
+	now := requestcontext.Now(ctx)
 	activeEntries := make([]*models.AllowlistEntry, 0)
 	for _, entry := range s.entries {
 		if !entry.IsExpiredAt(now) {

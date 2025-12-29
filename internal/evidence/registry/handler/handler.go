@@ -16,7 +16,7 @@ import (
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
 	"credo/pkg/platform/httputil"
-	"credo/pkg/platform/middleware/request"
+	"credo/pkg/requestcontext"
 )
 
 // Tracer for distributed tracing of handler operations.
@@ -130,7 +130,7 @@ type SanctionsCheckResponse struct {
 // HandleCitizenLookup handles POST /registry/citizen requests.
 func (h *Handler) HandleCitizenLookup(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	// Extract authenticated user ID
 	userID, err := h.requireUserID(ctx, requestID)
@@ -188,7 +188,7 @@ func (h *Handler) HandleCitizenLookup(w http.ResponseWriter, r *http.Request) {
 // HandleSanctionsLookup handles POST /registry/sanctions requests.
 func (h *Handler) HandleSanctionsLookup(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 
 	// Extract authenticated user ID
 	userID, err := h.requireUserID(ctx, requestID)
@@ -233,7 +233,13 @@ func (h *Handler) HandleSanctionsLookup(w http.ResponseWriter, r *http.Request) 
 
 // requireUserID extracts and validates the authenticated user ID from context.
 func (h *Handler) requireUserID(ctx context.Context, requestID string) (id.UserID, error) {
-	return httputil.RequireUserID(ctx, h.logger, requestID)
+	userID := requestcontext.UserID(ctx)
+	if userID.IsNil() {
+		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
+			"request_id", requestID)
+		return id.UserID{}, dErrors.New(dErrors.CodeUnauthorized, "authentication required")
+	}
+	return userID, nil
 }
 
 // emitAudit publishes an audit event. Failures are logged but don't fail the operation.

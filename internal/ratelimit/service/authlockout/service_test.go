@@ -12,7 +12,7 @@ import (
 	"credo/internal/ratelimit/config"
 	"credo/internal/ratelimit/models"
 	rwauthlockoutStore "credo/internal/ratelimit/store/authlockout"
-	"credo/pkg/platform/middleware/requesttime"
+	"credo/pkg/requestcontext"
 )
 
 // =============================================================================
@@ -166,7 +166,7 @@ func (s *AuthLockoutServiceSecuritySuite) TestDailyFailurePersistence() {
 
 		// Record failure 23 hours ago
 		pastTime := time.Now().Add(-23 * time.Hour)
-		ctx = requesttime.WithTime(ctx, pastTime)
+		ctx = requestcontext.WithTime(ctx, pastTime)
 
 		_, err := s.service.RecordFailure(ctx, identifier, ip)
 		s.NoError(err)
@@ -188,7 +188,7 @@ func (s *AuthLockoutServiceSecuritySuite) TestDailyFailurePersistence() {
 
 		// Record failure 25 hours ago
 		pastTime := time.Now().Add(-25 * time.Hour)
-		ctx = requesttime.WithTime(ctx, pastTime)
+		ctx = requestcontext.WithTime(ctx, pastTime)
 
 		_, err := s.service.RecordFailure(ctx, identifier, ip)
 		s.NoError(err)

@@ -11,8 +11,8 @@ import (
 	"credo/internal/tenant/models"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
-	"credo/pkg/platform/middleware/requesttime"
 	"credo/pkg/platform/sentinel"
+	"credo/pkg/requestcontext"
 )
 
 // TenantService orchestrates tenant lifecycle management.
@@ -37,7 +37,7 @@ func NewTenantService(tenants TenantStore, opts ...Option) *TenantService {
 func (s *TenantService) CreateTenant(ctx context.Context, name string) (*models.Tenant, error) {
 	name = strings.TrimSpace(name)
 
-	t, err := models.NewTenant(id.TenantID(uuid.New()), name, requesttime.Now(ctx))
+	t, err := models.NewTenant(id.TenantID(uuid.New()), name, requestcontext.Now(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +76,7 @@ func (s *TenantService) DeactivateTenant(ctx context.Context, tenantID id.Tenant
 		return nil, wrapTenantErr(err, "failed to load tenant")
 	}
 
-	if err := tenant.Deactivate(requesttime.Now(ctx)); err != nil {
+	if err := tenant.Deactivate(requestcontext.Now(ctx)); err != nil {
 		if dErrors.HasCode(err, dErrors.CodeInvariantViolation) {
 			return nil, dErrors.New(dErrors.CodeConflict, "tenant is already inactive")
 		}
@@ -103,7 +103,7 @@ func (s *TenantService) ReactivateTenant(ctx context.Context, tenantID id.Tenant
 		return nil, wrapTenantErr(err, "failed to load tenant")
 	}
 
-	if err := tenant.Reactivate(requesttime.Now(ctx)); err != nil {
+	if err := tenant.Reactivate(requestcontext.Now(ctx)); err != nil {
 		if dErrors.HasCode(err, dErrors.CodeInvariantViolation) {
 			return nil, dErrors.New(dErrors.CodeConflict, "tenant is already active")
 		}

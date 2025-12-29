@@ -11,7 +11,7 @@ import (
 	"credo/internal/ratelimit/models"
 	"credo/internal/ratelimit/observability"
 	dErrors "credo/pkg/domain-errors"
-	"credo/pkg/platform/middleware/requesttime"
+	"credo/pkg/requestcontext"
 )
 
 type BucketStore interface {
@@ -79,7 +79,7 @@ func (s *Service) Check(ctx context.Context, clientID, endpoint string) (*models
 			Allowed:   true,
 			Limit:     0,
 			Remaining: 0,
-			ResetAt:   requesttime.Now(ctx),
+			ResetAt:   requestcontext.Now(ctx),
 		}, nil
 	}
 

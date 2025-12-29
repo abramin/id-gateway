@@ -1,7 +1,6 @@
 package request
 
 import (
-	"context"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -35,7 +34,7 @@ func Recovery(logger *slog.Logger) func(http.Handler) http.Handler {
 						"stack", string(debug.Stack()),
 						"path", r.URL.Path,
 						"method", r.Method,
-						"request_id", GetRequestID(ctx),
+						"request_id", requestcontext.RequestID(ctx),
 					)
 					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				}
@@ -72,12 +71,6 @@ func isValidRequestID(id string) bool {
 	return validRequestID.MatchString(id)
 }
 
-// GetRequestID retrieves the request ID from the context.
-// Deprecated: Use requestcontext.RequestID(ctx) instead.
-func GetRequestID(ctx context.Context) string {
-	return requestcontext.RequestID(ctx)
-}
-
 // Logger logs HTTP requests with method, path, status code, duration, and request ID.
 func Logger(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -89,7 +82,7 @@ func Logger(logger *slog.Logger) func(http.Handler) http.Handler {
 
 			duration := time.Since(start)
 			ctx := r.Context()
-			requestID := GetRequestID(ctx)
+			requestID := requestcontext.RequestID(ctx)
 
 			// Skip noisy health checks unless they fail.
 			if r.URL.Path == "/health" && wrapped.statusCode < http.StatusInternalServerError {

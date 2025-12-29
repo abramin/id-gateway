@@ -32,8 +32,8 @@ import (
 	"credo/internal/ratelimit/models"
 	"credo/internal/ratelimit/observability"
 	dErrors "credo/pkg/domain-errors"
-	requesttime "credo/pkg/platform/middleware/requesttime"
 	"credo/pkg/platform/privacy"
+	"credo/pkg/requestcontext"
 )
 
 // Store is the persistence interface for auth lockout records.
@@ -120,7 +120,7 @@ func (s *Service) Check(ctx context.Context, identifier, ip string) (*models.Aut
 		record = &models.AuthLockout{}
 	}
 
-	now := requesttime.Now(ctx)
+	now := requestcontext.Now(ctx)
 
 	// Check if currently hard-locked (FR-2b: "hard lock for 15 minutes")
 	if record.IsLockedAt(now) {
@@ -190,7 +190,7 @@ func (s *Service) RecordFailure(ctx context.Context, identifier, ip string) (*mo
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to record auth failure")
 	}
 
-	now := requesttime.Now(ctx)
+	now := requestcontext.Now(ctx)
 
 	// Compute state transitions upfront for clarity
 	shouldHardLock := current.ShouldHardLock(s.config.HardLockThreshold)

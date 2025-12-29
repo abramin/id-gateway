@@ -28,7 +28,7 @@ import (
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
-	authmw "credo/pkg/platform/middleware/auth"
+	"credo/pkg/requestcontext"
 )
 
 // =============================================================================
@@ -75,7 +75,6 @@ func (s *stubAuditPublisher) Emit(ctx context.Context, event audit.Event) error 
 	s.events = append(s.events, event)
 	return nil
 }
-
 
 // =============================================================================
 // Sanctions Lookup Tests - Error Mapping
@@ -272,7 +271,6 @@ func newTestRegistryHandler(service RegistryService, auditPort *stubAuditPublish
 	return New(service, auditPort, logger)
 }
 
-
 func validUserID() id.UserID {
 	userID, _ := id.ParseUserID("550e8400-e29b-41d4-a716-446655440000")
 	return userID
@@ -286,7 +284,7 @@ func newSanctionsRequest(t *testing.T, nationalID string, userID id.UserID) *htt
 	req := httptest.NewRequest(http.MethodPost, "/registry/sanctions", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
-	ctx := context.WithValue(req.Context(), authmw.ContextKeyUserID, userID)
+	ctx := requestcontext.WithUserID(req.Context(), userID)
 	return req.WithContext(ctx)
 }
 

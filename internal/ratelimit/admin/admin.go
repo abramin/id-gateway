@@ -8,7 +8,6 @@ import (
 	"credo/internal/ratelimit/models"
 	"credo/internal/ratelimit/observability"
 	id "credo/pkg/domain"
-	"credo/pkg/platform/middleware/requesttime"
 
 	"github.com/google/uuid"
 )
