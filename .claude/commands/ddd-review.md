@@ -11,8 +11,9 @@ Keep the model sharp: clear aggregates, invariants, domain primitives, clean orc
 See AGENTS.md shared non-negotiables, plus these DDD-specific rules:
 
 - Services own orchestration; domain owns rules and decisions.
-- Stores return domain models (not persistence structs).
+- Stores return domain models as pointers (not persistence structs, not copies).
 - Domain entities do not contain API input/transport rules.
+- **Service/store error boundary**: Stores return sentinel errors only (`ErrNotFound`, etc.); services own domain errors. Use Execute callback pattern for atomic validate-then-mutate to avoid error boomerangs.
 - **Domain layer is pure:**
   - No I/O: no database, no HTTP, no filesystem.
   - No `context.Context` in domain function signatures.
@@ -153,6 +154,14 @@ if token.IsExpiredAt(s.clock.Now()) { ... }
 - Is this the simplest solution that works?
 - Does the recommendation leverage existing library types (`uuid.UUID`, stdlib)?
 - Will tests guard the invariant? If yes, prefer tests over defensive code.
+
+### Pointer vs value types
+
+- **Prefer pointer returns** (`*Entity`) from stores and services to avoid struct copying.
+- Use value types only when:
+  - Immutability is required (value objects that should never change after creation)
+  - Mutation of the original would be a bug (e.g., returning a copy to prevent caller modification)
+- Small value objects (IDs, enums, timestamps) are fine as values.
 
 ## Import rule enforcement
 

@@ -106,6 +106,19 @@ These rules are enforced project-wide:
 - Internal errors are never exposed to clients
 - All multi-write operations must be atomic
 - Domain state checks must use intent-revealing methods (e.g., `IsPending()`, `CanTransitionTo()`), not direct comparisons
+- **Prefer pointer returns** for domain models to avoid copying structs; use value types only when immutability is required or mutation risk exists
+
+### Service/Store Boundaries
+
+Services and stores have distinct error handling responsibilities:
+
+- **Stores** return only sentinel errors (`ErrNotFound`, `ErrExpired`, etc.) for infrastructure facts
+- **Services** own domain logic and domain errors—never push domain validation into stores
+- **TOCTOU prevention**: Use the Execute callback pattern for atomic validate-then-mutate operations:
+  - Store provides `Execute(id, validate, mutate)` method that holds the lock
+  - Service defines validation logic in the callback (returns domain errors)
+  - Domain errors pass through unchanged—no sentinel→domain translation (no "error boomerang")
+  - This ensures validation and mutation happen atomically under the same lock
 
 ## Testing Philosophy
 

@@ -33,6 +33,7 @@ See AGENTS.md shared non-negotiables, plus these security-specific rules:
 - Identity/token/session/consent/authorization lifecycles (replay, confusion, bypass risks)
 - Authority propagation across modules/services
 - Error + failure modeling (safe client messages, stable codes, internal detail preserved only in logs)
+- TOCTOU prevention via atomic Execute callback pattern (validate and mutate under same lock)
 - Tests that lock in security behaviors/invariants (not brittle implementation tests)
 
 ## What I do
@@ -57,7 +58,7 @@ See AGENTS.md shared non-negotiables, plus these security-specific rules:
 - Any panic-based factories or MustX in production?
 - Any errors leaking internals or user-provided content?
 - Are auth decisions explicit, centralized, and testable?
-- Any TOCTOU races between check and use (authz, file existence, quota/capacity checks)?
+- Any TOCTOU races between check and use (authz, file existence, quota/capacity checks)? Use Execute callback pattern for atomic validate-then-mutate.
 - Any partial writes without transactions for multi-step invariants?
 - Any lifecycle gaps: replay, double-submit, state confusion, missing revocation/expiry checks?
 - Is the approach idiomatic Go (stdlib errors, `errors.Is/As`, `%w`, leverage uuid/sql/json behavior)?
