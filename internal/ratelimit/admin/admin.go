@@ -8,6 +8,7 @@ import (
 	"credo/internal/ratelimit/models"
 	"credo/internal/ratelimit/observability"
 	id "credo/pkg/domain"
+	"credo/pkg/requestcontext"
 
 	"github.com/google/uuid"
 )
@@ -76,7 +77,7 @@ func (s *Service) AddToAllowlist(ctx context.Context, req *models.AddAllowlistRe
 		return nil, fmt.Errorf("invalid add allowlist request: %w", err)
 	}
 
-	entry, err := models.NewAllowlistEntry(uuid.NewString(), req.Type, req.Identifier, req.Reason, adminUserID, req.ExpiresAt, requesttime.Now(ctx))
+	entry, err := models.NewAllowlistEntry(uuid.NewString(), req.Type, req.Identifier, req.Reason, adminUserID, req.ExpiresAt, requestcontext.Now(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create allowlist entry: %w", err)
 	}

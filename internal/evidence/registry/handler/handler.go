@@ -237,7 +237,9 @@ func (h *Handler) requireUserID(ctx context.Context, requestID string) (id.UserI
 	if userID.IsNil() {
 		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
 			"request_id", requestID)
-		return id.UserID{}, dErrors.New(dErrors.CodeUnauthorized, "authentication required")
+		// This is an internal error: auth middleware should have populated the user ID.
+		// If it's missing, the middleware chain is misconfigured.
+		return id.UserID{}, dErrors.New(dErrors.CodeInternal, "authentication context error")
 	}
 	return userID, nil
 }

@@ -9,7 +9,7 @@ import (
 
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
-	"credo/pkg/platform/middleware/auth"
+	"credo/pkg/requestcontext"
 )
 
 func WriteJSON(w http.ResponseWriter, status int, response any) {
@@ -77,7 +77,7 @@ func DomainCodeToHTTPStatus(code dErrors.Code) int {
 // Returns a domain error suitable for HTTP response on failure.
 // This centralizes auth context extraction for handlers.
 func RequireUserID(ctx context.Context, logger *slog.Logger, requestID string) (id.UserID, error) {
-	userID := auth.GetUserID(ctx)
+	userID := requestcontext.UserID(ctx)
 	if userID.IsNil() {
 		if logger != nil {
 			logger.ErrorContext(ctx, "userID missing from context despite auth middleware",

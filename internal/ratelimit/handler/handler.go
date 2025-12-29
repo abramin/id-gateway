@@ -55,7 +55,7 @@ func (h *Handler) HandleAddAllowlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	adminUserID := requestcontext.UserID(ctx).String()
+	adminUserID := requestcontext.UserID(ctx)
 	entry, err := h.service.AddToAllowlist(ctx, req, adminUserID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to add to allowlist",

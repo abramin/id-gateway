@@ -121,7 +121,7 @@ func (h *Handler) HandleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 // HandleRevokeAllConsents revokes all consents for the authenticated user.
 func (h *Handler) HandleRevokeAllConsents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	requestID := request.GetRequestID(ctx)
+	requestID := requestcontext.RequestID(ctx)
 	userID, err := h.requireUserID(ctx, requestID)
 	if err != nil {
 		httputil.WriteError(w, err)

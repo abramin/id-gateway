@@ -58,7 +58,7 @@ func parseAuthFailureAttrs(ctx context.Context, attributes []any) authFailureAtt
 	userIDStr := attrs.ExtractString(attributes, "user_id")
 	userID, _ := id.ParseUserID(userIDStr)
 	return authFailureAttrs{
-		requestID: request.GetRequestID(ctx),
+		requestID: requestcontext.RequestID(ctx),
 		userIDStr: userIDStr,
 		userID:    userID,
 		email:     attrs.ExtractString(attributes, "email"),
@@ -75,16 +75,11 @@ func (s *Service) authFailure(ctx context.Context, reason string, isError bool, 
 	}
 }
 
-func (s *Service) logAuthFailure(ctx context.Context, reason string, isError bool, attributes ...any) {
-	// Add request_id from context if available
-	if requestID := requestcontext.RequestID(ctx); requestID != "" {
-		attributes = append(attributes, "request_id", requestID)
-	}
-	args := append(attributes, "event", audit.EventAuthFailed, "reason", reason, "log_type", "standard")
+func (s *Service) logAuthFailure(ctx context.Context, reason string, isError bool, parsed authFailureAttrs, attributes []any) {
 	if s.logger == nil {
 		return
 	}
-	// Add request_id from context if available
+	// Add request_id from parsed attrs if available
 	if parsed.requestID != "" {
 		attributes = append(attributes, "request_id", parsed.requestID)
 	}
