@@ -346,7 +346,7 @@ type rateLimitResult struct {
 // checkRateLimit checks if a request is within rate limits.
 // Returns allowed=true on success or if rate limiter is unavailable (fail-open).
 // identifier is typically a user ID or email; clientIP is the request source IP.
-func (h *Handler) checkRateLimit(ctx context.Context, requestID, identifier, clientIP, endpoint string) rateLimitResult {
+func (h *Handler) checkRateLimit(ctx context.Context, requestID string, identifier string, clientIP string, endpoint string) rateLimitResult {
 	if h.ratelimit == nil {
 		return rateLimitResult{Allowed: true}
 	}

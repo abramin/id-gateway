@@ -24,7 +24,6 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
-	consentdto "credo/internal/consent/handler/dto"
 	"credo/internal/consent/handler/mocks"
 	consentModel "credo/internal/consent/models"
 	id "credo/pkg/domain"
@@ -59,7 +58,7 @@ func (s *ConsentHandlerSuite) TestHandleGrantConsent_ErrorMapping() {
 		// Handler extracts user from context; missing = internal error
 		handler, _ := newTestHandler(s.T())
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent",
-			consentdto.GrantRequest{Purposes: []string{consentModel.PurposeLogin.String()}}, "")
+			GrantRequest{Purposes: []string{consentModel.PurposeLogin.String()}}, "")
 		s.Require().NoError(err)
 
 		w := httptest.NewRecorder()
@@ -71,7 +70,7 @@ func (s *ConsentHandlerSuite) TestHandleGrantConsent_ErrorMapping() {
 	s.Run("empty purposes array returns 400", func() {
 		handler, _ := newTestHandler(s.T())
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent",
-			consentdto.GrantRequest{Purposes: []string{}}, "550e8400-e29b-41d4-a716-446655440000")
+			GrantRequest{Purposes: []string{}}, "550e8400-e29b-41d4-a716-446655440000")
 		s.Require().NoError(err)
 
 		w := httptest.NewRecorder()
@@ -83,7 +82,7 @@ func (s *ConsentHandlerSuite) TestHandleGrantConsent_ErrorMapping() {
 	s.Run("invalid purpose value returns 400", func() {
 		handler, _ := newTestHandler(s.T())
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent",
-			consentdto.GrantRequest{Purposes: []string{"invalid_purpose"}}, "550e8400-e29b-41d4-a716-446655440000")
+			GrantRequest{Purposes: []string{"invalid_purpose"}}, "550e8400-e29b-41d4-a716-446655440000")
 		s.Require().NoError(err)
 
 		w := httptest.NewRecorder()
@@ -103,7 +102,7 @@ func (s *ConsentHandlerSuite) TestHandleGrantConsent_ErrorMapping() {
 		).Return(nil, dErrors.New(dErrors.CodeInternal, "storage system unavailable"))
 
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent",
-			consentdto.GrantRequest{Purposes: []string{consentModel.PurposeLogin.String()}},
+			GrantRequest{Purposes: []string{consentModel.PurposeLogin.String()}},
 			testUserIDStr)
 		s.Require().NoError(err)
 
@@ -171,7 +170,7 @@ func (s *ConsentHandlerSuite) TestHandleRevokeConsent_ErrorMapping() {
 	s.Run("missing user context returns 500", func() {
 		handler, _ := newTestHandler(s.T())
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent/revoke",
-			consentdto.RevokeRequest{Purposes: []string{consentModel.PurposeLogin.String()}}, "")
+			RevokeRequest{Purposes: []string{consentModel.PurposeLogin.String()}}, "")
 		s.Require().NoError(err)
 
 		w := httptest.NewRecorder()
@@ -183,7 +182,7 @@ func (s *ConsentHandlerSuite) TestHandleRevokeConsent_ErrorMapping() {
 	s.Run("empty purposes array returns 400", func() {
 		handler, _ := newTestHandler(s.T())
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent/revoke",
-			consentdto.RevokeRequest{Purposes: []string{}}, "550e8400-e29b-41d4-a716-446655440000")
+			RevokeRequest{Purposes: []string{}}, "550e8400-e29b-41d4-a716-446655440000")
 		s.Require().NoError(err)
 
 		w := httptest.NewRecorder()
@@ -200,7 +199,7 @@ func (s *ConsentHandlerSuite) TestHandleRevokeConsent_ErrorMapping() {
 			Return(nil, dErrors.New(dErrors.CodeInternal, "storage system unavailable"))
 
 		req, err := newRequestWithBody(http.MethodPost, "/auth/consent/revoke",
-			consentdto.RevokeRequest{Purposes: []string{consentModel.PurposeLogin.String()}}, testUserIDStr)
+			RevokeRequest{Purposes: []string{consentModel.PurposeLogin.String()}}, testUserIDStr)
 		s.Require().NoError(err)
 
 		w := httptest.NewRecorder()

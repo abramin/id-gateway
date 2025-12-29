@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	consentdto "credo/internal/consent/handler/dto"
 	consentmetrics "credo/internal/consent/metrics"
 	"credo/internal/consent/models"
 	id "credo/pkg/domain"
@@ -63,7 +62,7 @@ func (h *Handler) HandleGrantConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	grantReq, ok := httputil.DecodeAndPrepare[consentdto.GrantRequest](w, r, h.logger, ctx, requestID)
+	grantReq, ok := httputil.DecodeAndPrepare[GrantRequest](w, r, h.logger, ctx, requestID)
 	if !ok {
 		return
 	}
@@ -97,7 +96,7 @@ func (h *Handler) HandleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	revokeReq, ok := httputil.DecodeAndPrepare[consentdto.RevokeRequest](w, r, h.logger, ctx, requestID)
+	revokeReq, ok := httputil.DecodeAndPrepare[RevokeRequest](w, r, h.logger, ctx, requestID)
 	if !ok {
 		return
 	}
@@ -140,7 +139,7 @@ func (h *Handler) HandleRevokeAllConsents(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, &consentdto.RevokeResponse{
+	httputil.WriteJSON(w, http.StatusOK, &RevokeResponse{
 		Revoked: nil,
 		Message: formatActionMessage("Consent revoked for %d purpose", count),
 	})
@@ -168,7 +167,7 @@ func (h *Handler) HandleAdminRevokeAllConsents(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, &consentdto.RevokeResponse{
+	httputil.WriteJSON(w, http.StatusOK, &RevokeResponse{
 		Revoked: nil,
 		Message: formatActionMessage("Consent revoked for %d purpose", count),
 	})
@@ -229,44 +228,44 @@ func (h *Handler) HandleGetConsents(w http.ResponseWriter, r *http.Request) {
 
 // Response mapping functions - convert domain objects to HTTP DTOs
 
-func toGrantResponse(records []*models.Record, now time.Time) *consentdto.GrantResponse {
-	granted := make([]*consentdto.Grant, 0, len(records))
+func toGrantResponse(records []*models.Record, now time.Time) *GrantResponse {
+	granted := make([]*Grant, 0, len(records))
 	for _, record := range records {
-		granted = append(granted, &consentdto.Grant{
+		granted = append(granted, &Grant{
 			Purpose:   record.Purpose,
 			GrantedAt: record.GrantedAt,
 			ExpiresAt: record.ExpiresAt,
 			Status:    record.ComputeStatus(now),
 		})
 	}
-	return &consentdto.GrantResponse{
+	return &GrantResponse{
 		Granted: granted,
 		Message: formatActionMessage("Consent granted for %d purpose", len(records)),
 	}
 }
 
-func toRevokeResponse(records []*models.Record, now time.Time) *consentdto.RevokeResponse {
-	revoked := make([]*consentdto.Revoked, 0, len(records))
+func toRevokeResponse(records []*models.Record, now time.Time) *RevokeResponse {
+	revoked := make([]*Revoked, 0, len(records))
 	for _, record := range records {
 		if record.RevokedAt != nil {
-			revoked = append(revoked, &consentdto.Revoked{
+			revoked = append(revoked, &Revoked{
 				Purpose:   record.Purpose,
 				RevokedAt: *record.RevokedAt,
 				Status:    record.ComputeStatus(now),
 			})
 		}
 	}
-	return &consentdto.RevokeResponse{
+	return &RevokeResponse{
 		Revoked: revoked,
 		Message: formatActionMessage("Consent revoked for %d purpose", len(revoked)),
 	}
 }
 
-func toListResponse(records []*models.Record, now time.Time) *consentdto.ListResponse {
-	consents := make([]*consentdto.ConsentWithStatus, 0, len(records))
+func toListResponse(records []*models.Record, now time.Time) *ListResponse {
+	consents := make([]*ConsentWithStatus, 0, len(records))
 	for _, record := range records {
-		consents = append(consents, &consentdto.ConsentWithStatus{
-			Consent: consentdto.Consent{
+		consents = append(consents, &ConsentWithStatus{
+			Consent: Consent{
 				ID:        record.ID.String(),
 				Purpose:   record.Purpose,
 				GrantedAt: record.GrantedAt,
@@ -276,7 +275,7 @@ func toListResponse(records []*models.Record, now time.Time) *consentdto.ListRes
 			Status: record.ComputeStatus(now),
 		})
 	}
-	return &consentdto.ListResponse{Consents: consents}
+	return &ListResponse{Consents: consents}
 }
 
 // Helper functions
