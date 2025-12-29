@@ -133,7 +133,7 @@ func (h *Handler) HandleCitizenLookup(w http.ResponseWriter, r *http.Request) {
 	requestID := requestcontext.RequestID(ctx)
 
 	// Extract authenticated user ID
-	userID, err := h.requireUserID(ctx, requestID)
+	userID, err := httputil.RequireUserID(ctx, h.logger, requestID)
 	if err != nil {
 		httputil.WriteError(w, err)
 		return
@@ -191,7 +191,7 @@ func (h *Handler) HandleSanctionsLookup(w http.ResponseWriter, r *http.Request) 
 	requestID := requestcontext.RequestID(ctx)
 
 	// Extract authenticated user ID
-	userID, err := h.requireUserID(ctx, requestID)
+	userID, err := httputil.RequireUserID(ctx, h.logger, requestID)
 	if err != nil {
 		httputil.WriteError(w, err)
 		return
@@ -229,19 +229,6 @@ func (h *Handler) HandleSanctionsLookup(w http.ResponseWriter, r *http.Request) 
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, response)
-}
-
-// requireUserID extracts and validates the authenticated user ID from context.
-func (h *Handler) requireUserID(ctx context.Context, requestID string) (id.UserID, error) {
-	userID := requestcontext.UserID(ctx)
-	if userID.IsNil() {
-		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
-			"request_id", requestID)
-		// This is an internal error: auth middleware should have populated the user ID.
-		// If it's missing, the middleware chain is misconfigured.
-		return id.UserID{}, dErrors.New(dErrors.CodeInternal, "authentication context error")
-	}
-	return userID, nil
 }
 
 // emitAudit publishes an audit event. Failures are logged but don't fail the operation.

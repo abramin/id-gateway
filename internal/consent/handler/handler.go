@@ -55,7 +55,7 @@ func (h *Handler) HandleGrantConsent(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	requestID := requestcontext.RequestID(ctx)
-	userID, err := h.requireUserID(ctx, requestID)
+	userID, err := httputil.RequireUserID(ctx, h.logger, requestID)
 	if err != nil {
 		httputil.WriteError(w, err)
 		return
@@ -89,7 +89,7 @@ func (h *Handler) HandleGrantConsent(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := requestcontext.RequestID(ctx)
-	userID, err := h.requireUserID(ctx, requestID)
+	userID, err := httputil.RequireUserID(ctx, h.logger, requestID)
 	if err != nil {
 		httputil.WriteError(w, err)
 		return
@@ -122,7 +122,7 @@ func (h *Handler) HandleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleRevokeAllConsents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := requestcontext.RequestID(ctx)
-	userID, err := h.requireUserID(ctx, requestID)
+	userID, err := httputil.RequireUserID(ctx, h.logger, requestID)
 	if err != nil {
 		httputil.WriteError(w, err)
 		return
@@ -176,7 +176,7 @@ func (h *Handler) HandleAdminRevokeAllConsents(w http.ResponseWriter, r *http.Re
 func (h *Handler) HandleDeleteAllConsents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := requestcontext.RequestID(ctx)
-	userID, err := h.requireUserID(ctx, requestID)
+	userID, err := httputil.RequireUserID(ctx, h.logger, requestID)
 	if err != nil {
 		httputil.WriteError(w, err)
 		return
@@ -200,7 +200,7 @@ func (h *Handler) HandleDeleteAllConsents(w http.ResponseWriter, r *http.Request
 func (h *Handler) HandleGetConsents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := requestcontext.RequestID(ctx)
-	userID, err := h.requireUserID(ctx, requestID)
+	userID, err := httputil.RequireUserID(ctx, h.logger, requestID)
 	if err != nil {
 		httputil.WriteError(w, err)
 		return
@@ -285,16 +285,4 @@ func formatActionMessage(template string, count int) string {
 		suffix = ""
 	}
 	return fmt.Sprintf(template+"%s", count, suffix)
-}
-
-// requireUserID retrieves the typed user ID from auth context.
-// Returns a domain error suitable for HTTP response on failure.
-func (h *Handler) requireUserID(ctx context.Context, requestID string) (id.UserID, error) {
-	userID := requestcontext.UserID(ctx)
-	if userID.IsNil() {
-		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
-			"request_id", requestID)
-		return id.UserID{}, dErrors.New(dErrors.CodeInternal, "authentication context error")
-	}
-	return userID, nil
 }
