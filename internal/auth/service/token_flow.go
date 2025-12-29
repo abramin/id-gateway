@@ -103,7 +103,7 @@ func revokeSessionOnReplay(
 
 	// Replay attack detected: revoke the session created with this token/code
 	if revokeErr := stores.Sessions.RevokeSessionIfActive(ctx, sessionID, now); revokeErr != nil {
-		return dErrors.Wrap(revokeErr, dErrors.CodeInternal, "failed to revoke session on replay attack")
+		return dErrors.Wrap(revokeErr, dErrors.CodeInternal, "failed to revoke session")
 	}
 	return nil
 }

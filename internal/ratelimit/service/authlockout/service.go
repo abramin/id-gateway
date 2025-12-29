@@ -144,7 +144,7 @@ func (s *Service) Check(ctx context.Context, identifier, ip string) (*models.Aut
 	// Check failure count against sliding window (FR-2b: "5 attempts/15 min")
 	if record.IsAttemptLimitReached(s.config.AttemptsPerWindow) {
 		// Block - too many attempts in window
-		resetAt := s.config.ResetTime(record.LastFailureAt)
+		resetAt := s.config.BackoffPolicy().ResetTime(record.LastFailureAt)
 		retryAfter := max(int(resetAt.Sub(now).Seconds()), 0)
 		return &models.AuthRateLimitResult{
 			RateLimitResult: models.RateLimitResult{
