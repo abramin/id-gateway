@@ -14,7 +14,8 @@
 package citizen
 
 import (
-	"credo/internal/evidence/registry/domain"
+	"errors"
+
 	"credo/internal/evidence/registry/domain/shared"
 	id "credo/pkg/domain"
 )
@@ -68,6 +69,12 @@ type CitizenVerification struct {
 	minimized  bool
 }
 
+var (
+	errMissingNationalID = errors.New("national_id is required")
+	errMissingCheckedAt  = errors.New("checked_at is required")
+	errMissingProviderID = errors.New("provider_id is required")
+)
+
 // New creates a new citizen verification record.
 // This is the only way to construct a valid CitizenVerification.
 func New(
@@ -79,13 +86,13 @@ func New(
 	confidence shared.Confidence,
 ) (*CitizenVerification, error) {
 	if nationalID.IsNil() {
-		return nil, domain.ErrMissingNationalID
+		return nil, errMissingNationalID
 	}
 	if checkedAt.IsZero() {
-		return nil, domain.ErrMissingCheckedAt
+		return nil, errMissingCheckedAt
 	}
 	if providerID.IsZero() {
-		return nil, domain.ErrMissingProviderID
+		return nil, errMissingProviderID
 	}
 	return &CitizenVerification{
 		nationalID: nationalID,

@@ -16,7 +16,6 @@ package sanctions
 import (
 	"errors"
 
-	"credo/internal/evidence/registry/domain"
 	"credo/internal/evidence/registry/domain/shared"
 	id "credo/pkg/domain"
 )
@@ -110,6 +109,13 @@ type SanctionsCheck struct {
 	confidence shared.Confidence
 }
 
+var (
+	errMissingNationalID = errors.New("national_id is required")
+	errMissingSource     = errors.New("source is required")
+	errMissingCheckedAt  = errors.New("checked_at is required")
+	errMissingProviderID = errors.New("provider_id is required")
+)
+
 // NewSanctionsCheck creates a new sanctions check result for a non-listed subject.
 func NewSanctionsCheck(
 	nationalID id.NationalID,
@@ -119,16 +125,16 @@ func NewSanctionsCheck(
 	confidence shared.Confidence,
 ) (*SanctionsCheck, error) {
 	if nationalID.IsNil() {
-		return nil, domain.ErrMissingNationalID
+		return nil, errMissingNationalID
 	}
 	if source.IsZero() {
-		return nil, domain.ErrMissingSource
+		return nil, errMissingSource
 	}
 	if checkedAt.IsZero() {
-		return nil, domain.ErrMissingCheckedAt
+		return nil, errMissingCheckedAt
 	}
 	if providerID.IsZero() {
-		return nil, domain.ErrMissingProviderID
+		return nil, errMissingProviderID
 	}
 	return &SanctionsCheck{
 		nationalID: nationalID,
@@ -154,16 +160,16 @@ func NewListedSanctionsCheck(
 	confidence shared.Confidence,
 ) (*SanctionsCheck, error) {
 	if nationalID.IsNil() {
-		return nil, domain.ErrMissingNationalID
+		return nil, errMissingNationalID
 	}
 	if source.IsZero() {
-		return nil, domain.ErrMissingSource
+		return nil, errMissingSource
 	}
 	if checkedAt.IsZero() {
-		return nil, domain.ErrMissingCheckedAt
+		return nil, errMissingCheckedAt
 	}
 	if providerID.IsZero() {
-		return nil, domain.ErrMissingProviderID
+		return nil, errMissingProviderID
 	}
 	if listType != ListTypeNone && !listType.IsValid() {
 		return nil, errors.New("invalid list type")
