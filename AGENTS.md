@@ -23,6 +23,8 @@ All review agents inherit these rules. Individual agents should not repeat them;
 6. **Atomic multi-write operations** — no partial writes; use transactions/RunInTx.
 7. **Prefer type aliases + Parse\* over struct wrappers for IDs** — e.g., `type UserID uuid.UUID`.
 8. **Interfaces at consumer site** — only when 2+ implementations or a hard boundary exists.
+9. **Prefer pointer returns for domain models** — avoid copying structs; use values only when immutability is required or mutation risk exists.
+10. **Service/store error boundary** — stores return sentinel errors only; services own domain errors. Use Execute callback pattern to avoid TOCTOU races and error boomerangs (domain→sentinel→domain translation).
 
 ## When to use which agent
 

@@ -107,10 +107,35 @@ Your goal: a reviewer can answer “where does this happen?” quickly.
 2. No boomerangs (A → B → A)
 
 - Within a single request path, do not bounce across files/packages and then re-enter the original place.
+- **Error boomerangs** are a common violation: service creates domain error → store translates to sentinel → service translates back to domain error. Fix with the Execute callback pattern (see below).
 - If you see A → B → A:
   - inline the helper, OR
   - extract shared logic into a third location both call (same package), OR
-  - fix a layer violation (domain policy leaking into plumbing, or vice versa).
+  - fix a layer violation (domain policy leaking into plumbing, or vice versa), OR
+  - use the Execute callback pattern for validate-then-mutate flows.
+
+**Execute callback pattern** (anti-boomerang for stores):
+```go
+// Store provides atomic execution under lock
+func (s *Store) Execute(ctx context.Context, id ID,
+    validate func(*Entity) error,  // Domain validation - returns domain errors
+    mutate func(*Entity),          // Apply changes after validation
+) (*Entity, error)
+
+// Service defines domain logic in callbacks
+session, err := s.sessionStore.Execute(ctx, sessionID,
+    func(sess *Session) error {
+        if sess.IsRevoked() {
+            return domainerrors.NewUnauthorized("session_revoked", "Session has been revoked")
+        }
+        return nil
+    },
+    func(sess *Session) {
+        sess.AdvanceLastSeen(now)
+    },
+)
+```
+Domain errors pass through unchanged—no translation needed.
 
 3. No pass-through wrappers
 
