@@ -7,7 +7,7 @@ type ClaimSet interface {
 	// Minimized returns a copy with PII/sensitive fields removed for regulated mode.
 	Minimized() ClaimSet
 	// ToMap converts to an untyped map for serialization.
-	ToMap() map[string]interface{}
+	ToMap() map[string]any
 }
 
 // AgeOver18Claims contains the claims for an AgeOver18 credential.
@@ -45,8 +45,8 @@ func (c AgeOver18Claims) Minimized() ClaimSet {
 }
 
 // ToMap converts to an untyped map for serialization.
-func (c AgeOver18Claims) ToMap() map[string]interface{} {
-	m := map[string]interface{}{
+func (c AgeOver18Claims) ToMap() map[string]any {
+	m := map[string]any{
 		"is_over_18": c.isOver18,
 	}
 	if c.verifiedVia != "" {
@@ -57,7 +57,7 @@ func (c AgeOver18Claims) ToMap() map[string]interface{} {
 
 // AgeOver18ClaimsFromMap reconstructs AgeOver18Claims from an untyped map.
 // Used when loading credentials from persistence.
-func AgeOver18ClaimsFromMap(m map[string]interface{}) AgeOver18Claims {
+func AgeOver18ClaimsFromMap(m map[string]any) AgeOver18Claims {
 	isOver18, _ := m["is_over_18"].(bool)
 	verifiedVia, _ := m["verified_via"].(string)
 	return AgeOver18Claims{

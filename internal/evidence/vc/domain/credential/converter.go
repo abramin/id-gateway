@@ -1,9 +1,13 @@
 package credential
 
 import (
+	"errors"
+
 	"credo/internal/evidence/vc/domain/shared"
 	"credo/internal/evidence/vc/models"
 )
+
+var errUnknownCredentialType = errors.New("unknown credential type")
 
 // ToModel converts a domain Credential to an infrastructure VerifiableCredential model.
 // This is used when persisting credentials to the store.
@@ -28,7 +32,10 @@ func FromModel(m models.VerifiableCredential) (*Credential, error) {
 	}
 
 	// Reconstruct typed claims based on credential type
-	claims := claimsFromMap(m.Type, m.Claims)
+	claims, err := claimsFromMap(m.Type, m.Claims)
+	if err != nil {
+		return nil, err
+	}
 
 	return New(
 		m.ID,
@@ -41,12 +48,12 @@ func FromModel(m models.VerifiableCredential) (*Credential, error) {
 }
 
 // claimsFromMap reconstructs typed ClaimSet from untyped map based on credential type.
-func claimsFromMap(credType models.CredentialType, m models.Claims) ClaimSet {
+// Returns an error for unknown credential types to fail fast on data corruption.
+func claimsFromMap(credType models.CredentialType, m models.Claims) (ClaimSet, error) {
 	switch credType {
 	case models.CredentialTypeAgeOver18:
-		return AgeOver18ClaimsFromMap(m)
+		return AgeOver18ClaimsFromMap(m), nil
 	default:
-		// Fallback for unknown types - return AgeOver18 as default
-		return AgeOver18ClaimsFromMap(m)
+		return nil, errUnknownCredentialType
 	}
 }
