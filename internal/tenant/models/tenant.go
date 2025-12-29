@@ -84,4 +84,3 @@ func NewTenant(tenantID id.TenantID, name string, now time.Time) (*Tenant, error
 		UpdatedAt: now,
 	}, nil
 }
-

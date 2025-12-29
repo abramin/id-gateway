@@ -158,4 +158,3 @@ func (s *InMemorySessionStore) Execute(_ context.Context, sessionID id.SessionID
 	s.sessions[sessionID] = session
 	return session, nil
 }
-

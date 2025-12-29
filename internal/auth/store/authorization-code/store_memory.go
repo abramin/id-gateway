@@ -10,7 +10,6 @@ import (
 	"credo/pkg/platform/sentinel"
 )
 
-
 // Error Contract:
 // All store methods follow this error pattern:
 // - Return ErrNotFound when the requested entity does not exist
@@ -57,7 +56,6 @@ func (s *InMemoryAuthorizationCodeStore) MarkUsed(_ context.Context, code string
 	record.MarkUsed()
 	return nil
 }
-
 
 // DeleteExpiredCodes removes all authorization codes that have expired as of the given time.
 // The time parameter is injected for testability (no hidden time.Now() calls).
