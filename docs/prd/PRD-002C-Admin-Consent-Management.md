@@ -22,15 +22,31 @@ The current consent management system provides user-facing endpoints for grant, 
 ### Goals
 
 - Add admin endpoints for viewing, selectively revoking, and deleting user consents
-- Evaluate whether admin-only delete is safer than user self-service delete
+- Clearly separate **security response** admin revocations from **GDPR/legal** admin deletions
+- Ensure audit attribution is mandatory and unambiguous for all admin actions
 - Add user-facing revoke-all endpoint for "pause all" functionality
-- Maintain audit attribution for all admin actions
+- Preserve user self-service delete for GDPR while maintaining permission boundaries
 
 ### Non-Goals
 
 - Consent delegation (admin granting consent on behalf of user)
 - Consent templates or bulk operations across multiple users
 - Admin UI (API-only)
+
+---
+
+## 2.1 Use Case Taxonomy and Permissions
+
+This PRD defines **admin** consent operations and clarifies how they differ
+from user self-service operations in PRD-002.
+
+| Use case | Actor | Endpoint(s) | Permission boundary | Audit reason | Actor ID |
+| --- | --- | --- | --- | --- | --- |
+| Normal user grant/revoke | User | `POST /auth/consent`, `POST /auth/consent/revoke` | User can only act on own consents | `user_initiated` | Not required |
+| User bulk pause | User | `POST /auth/consent/revoke-all` | User can only act on own consents | `user_bulk_revocation` | Not required |
+| User GDPR delete | User | `DELETE /auth/consent` | User can only delete own consents | `gdpr_self_service` | Not required |
+| Security revoke (admin) | Admin | `POST /admin/consent/users/{user_id}/revoke`, `POST /admin/consent/users/{user_id}/revoke-all` | Admin can revoke any user | `security_concern` (required) | Required |
+| GDPR delete (admin) | Admin | `DELETE /admin/consent/users/{user_id}` | Admin can delete any user | `gdpr_erasure_request` (+ reference) | Required |
 
 ---
 
@@ -115,7 +131,7 @@ The current consent management system provides user-facing endpoints for grant, 
 
 **Endpoint:** `POST /admin/consent/users/{user_id}/revoke`
 
-**Description:** Revoke specific purposes for a user. More granular than revoke-all.
+**Description:** Revoke specific purposes for a user for **security response**. More granular than revoke-all.
 
 **Input:**
 
@@ -150,12 +166,13 @@ The current consent management system provides user-facing endpoints for grant, 
 1. Validate admin token
 2. Validate user exists
 3. Validate purposes are valid enum values
-4. For each purpose:
+4. Validate reason is present and allowed (e.g., `security_concern`, `policy_violation`, `fraud_response`)
+5. For each purpose:
    - Find active consent for user+purpose
    - If found and active, set RevokedAt = now
    - Skip if not found, expired, or already revoked (idempotent)
-5. Emit audit event with admin actor ID and reason
-6. Return list of revoked consents
+6. Emit audit event with admin actor ID and reason
+7. Return list of revoked consents
 
 **Error Cases:**
 
@@ -189,7 +206,7 @@ The current consent management system provides user-facing endpoints for grant, 
 
 - Path: `user_id` (required)
 - Header: `X-Admin-Token` (required)
-- Body (optional):
+- Body (required):
 
 ```json
 {
@@ -215,9 +232,11 @@ The current consent management system provides user-facing endpoints for grant, 
 
 1. Validate admin token
 2. Validate user exists (optional - may delete even if user record gone)
-3. Delete all consent records for user from store
-4. Emit audit event with admin actor ID and reference
-5. Return confirmation
+3. Validate reason is `gdpr_erasure_request`
+4. Validate reference is present and non-empty
+5. Delete all consent records for user from store
+6. Emit audit event with admin actor ID and reference
+7. Return confirmation
 
 **Error Cases:**
 
@@ -263,6 +282,47 @@ The current consent management system provides user-facing endpoints for grant, 
 
 ---
 
+### FR-5: Admin Revoke All Consents (Security Response)
+
+**Endpoint:** `POST /admin/consent/users/{user_id}/revoke-all`
+
+**Description:** Revoke all active consents for a user due to a **security response**. This is distinct from user self-service revoke-all and must include an admin reason and actor attribution.
+
+**Input:**
+
+```json
+{
+  "reason": "security_concern"
+}
+```
+
+**Authorization:**
+
+- Requires valid `X-Admin-Token` header
+
+**Business Logic:**
+
+1. Validate admin token
+2. Validate user exists
+3. Validate reason is present and allowed (e.g., `security_concern`, `policy_violation`, `fraud_response`)
+4. Revoke all active consents for user
+5. Emit audit event with admin actor ID and reason
+6. Return count of revoked consents
+
+**Audit Event:**
+
+```json
+{
+  "action": "consent_revoked",
+  "user_id": "user_123",
+  "actor_id": "admin_token_id",
+  "reason": "security_concern",
+  "decision": "revoked"
+}
+```
+
+---
+
 ## 4. Design Decision: User Delete vs Admin-Only Delete
 
 ### Current State
@@ -284,11 +344,13 @@ The current consent management system provides user-facing endpoints for grant, 
    - Keep for GDPR self-service
    - Consider adding confirmation requirement in future (e.g., `?confirm=true`)
    - Rate limit aggressively (ClassSensitive)
+   - Audit reason: `gdpr_self_service`
 
 2. **Admin delete** (`DELETE /admin/consent/users/{user_id}`):
    - Primary path for legal requests
    - Includes reference field for tracking
    - Richer audit attribution
+   - Audit reason: `gdpr_erasure_request` (reference required)
 
 The admin endpoint doesn't replace the user endpoint - they serve different workflows:
 - User delete: Self-service GDPR exercise
@@ -304,6 +366,7 @@ The admin endpoint doesn't replace the user endpoint - they serve different work
 |----------|--------|------|---------|
 | `GET /admin/consent/users/{user_id}` | GET | Admin | View user consents |
 | `POST /admin/consent/users/{user_id}/revoke` | POST | Admin | Revoke specific purposes |
+| `POST /admin/consent/users/{user_id}/revoke-all` | POST | Admin | Revoke all (security response) |
 | `DELETE /admin/consent/users/{user_id}` | DELETE | Admin | Delete all (GDPR) |
 | `POST /auth/consent/revoke-all` | POST | User | Revoke all (existing) |
 | `DELETE /auth/consent` | DELETE | User | Delete all (existing) |
@@ -323,6 +386,7 @@ The admin endpoint doesn't replace the user endpoint - they serve different work
 - All admin actions must include `actor_id` in audit events
 - Admin token identifier (not secret) used as actor_id
 - Reason field required for revoke/delete operations
+- Admin GDPR delete requires `reference` for legal tracking
 
 ### SR-3: Rate Limiting
 
@@ -353,6 +417,7 @@ The admin endpoint doesn't replace the user endpoint - they serve different work
 
 - [ ] Admin can view user consents
 - [ ] Admin can revoke specific purposes for user
+- [ ] Admin can revoke-all with security reason
 - [ ] Admin can delete all consents for user
 - [ ] Admin actions include actor_id in audit
 - [ ] Admin revoke is idempotent
@@ -362,6 +427,8 @@ The admin endpoint doesn't replace the user endpoint - they serve different work
 
 - [ ] Admin token validation for all admin endpoints
 - [ ] 404 when user doesn't exist (for view/revoke)
+- [ ] Admin revoke requires reason (400 when missing or invalid)
+- [ ] Admin delete requires reason + reference (400 when missing)
 - [ ] Audit events include reference field for legal tracking
 
 ---
@@ -370,8 +437,9 @@ The admin endpoint doesn't replace the user endpoint - they serve different work
 
 - [ ] Admins can view any user's consent records
 - [ ] Admins can selectively revoke specific purposes
+- [ ] Admins can revoke-all with security reason
 - [ ] Admins can delete all consents with legal reference tracking
-- [ ] All admin actions attributed in audit log
+- [ ] All admin actions attributed in audit log with reason and actor_id
 - [ ] User self-service delete remains available
 - [ ] User revoke-all provides "pause" functionality
 

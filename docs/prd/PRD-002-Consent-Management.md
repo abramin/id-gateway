@@ -58,6 +58,25 @@ Credo requires a robust consent management system that enforces these requiremen
 
 ---
 
+## 2.1 Use Case Taxonomy, Permissions, and Audit Attribution
+
+This PRD defines **user self-service** consent management. Admin workflows are
+defined in PRD-002C and are referenced here to clarify permissions and audit
+taxonomy.
+
+| Use case | Actor | Endpoint(s) | Permission boundary | Audit reason | Actor ID |
+| --- | --- | --- | --- | --- | --- |
+| Normal grant/revoke | User | `POST /auth/consent`, `POST /auth/consent/revoke` | User can only act on own consents | `user_initiated` | Not required |
+| Bulk pause (revoke-all) | User | `POST /auth/consent/revoke-all` | User can only act on own consents | `user_bulk_revocation` | Not required |
+| GDPR self-service delete | User | `DELETE /auth/consent` | User can only delete own consents | `gdpr_self_service` | Not required |
+| Security revoke (admin) | Admin | `POST /admin/consent/users/{user_id}/revoke`, `POST /admin/consent/users/{user_id}/revoke-all` | Admin can revoke any user | `security_concern` | Required |
+| GDPR delete (admin) | Admin | `DELETE /admin/consent/users/{user_id}` | Admin can delete any user | `gdpr_erasure_request` (+ reference) | Required |
+
+Audit reasons are intentional and distinct so that user actions, security
+responses, and GDPR/legal requests are independently traceable.
+
+---
+
 ## 3. Functional Requirements
 
 ### FR-1: Grant Consent
@@ -207,6 +226,11 @@ The system always reuses existing consent IDs (whether active, expired, or revok
 - Requires valid JWT bearer token in Authorization header
 - Token validated via RequireAuth middleware
 
+**Permissions:**
+
+- User can only revoke their own consents
+- Admin revocations use separate endpoints with distinct audit reasons (see PRD-002C)
+
 **Business Logic:**
 
 1. Extract user_id from JWT claims (populated by RequireAuth middleware in context)
@@ -245,7 +269,7 @@ The system always reuses existing consent IDs (whether active, expired, or revok
 
 **Endpoint:** `POST /auth/consent/revoke-all`
 
-**Description:** Revoke all active consents for the authenticated user. This is a bulk operation intended for cleanup, administrative purposes, and test isolation. Already revoked or expired consents are not affected.
+**Description:** Revoke all active consents for the authenticated user. This is a self-service bulk pause. Admin bulk revocation for security response uses `/admin/consent/...` endpoints (PRD-002C). Already revoked or expired consents are not affected.
 
 **Input:**
 
@@ -288,7 +312,7 @@ The system always reuses existing consent IDs (whether active, expired, or revok
   "action": "consent_revoked",
   "user_id": "user_123",
   "decision": "revoked",
-  "reason": "bulk_revocation"
+  "reason": "user_bulk_revocation"
 }
 ```
 
@@ -304,7 +328,7 @@ The system always reuses existing consent IDs (whether active, expired, or revok
 
 **Endpoint:** `DELETE /auth/consent`
 
-**Description:** Permanently delete all consent records for the authenticated user. This is a destructive operation intended for GDPR "right to erasure" (Article 17) compliance. Unlike revoke-all, this removes records entirely rather than marking them as revoked.
+**Description:** Permanently delete all consent records for the authenticated user. This is a destructive **self-service GDPR** operation (Article 17). Admin-initiated GDPR deletion uses `/admin/consent/...` endpoints with legal reference tracking (PRD-002C). Unlike revoke-all, this removes records entirely rather than marking them as revoked.
 
 **Input:**
 
@@ -343,7 +367,7 @@ The system always reuses existing consent IDs (whether active, expired, or revok
   "action": "consent_deleted",
   "user_id": "user_123",
   "decision": "deleted",
-  "reason": "bulk_deletion"
+  "reason": "gdpr_self_service"
 }
 ```
 
