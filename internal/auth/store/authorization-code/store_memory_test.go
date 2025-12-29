@@ -50,11 +50,11 @@ func TestInMemoryAuthorizationCodeStoreSuite(t *testing.T) {
 	suite.Run(t, new(InMemoryAuthorizationCodeStoreSuite))
 }
 
-func (s *InMemoryAuthorizationCodeStoreSuite) TestAuthorizationCodeStore_Consume() {
+func (s *InMemoryAuthorizationCodeStoreSuite) TestAuthorizationCodeStore_Execute() {
 	ctx := context.Background()
 	now := time.Now()
 	record := &models.AuthorizationCodeRecord{
-		Code:        "authz_consume",
+		Code:        "authz_execute",
 		SessionID:   id.SessionID(uuid.New()),
 		RedirectURI: "https://app/callback",
 		ExpiresAt:   now.Add(time.Minute),
@@ -63,21 +63,45 @@ func (s *InMemoryAuthorizationCodeStoreSuite) TestAuthorizationCodeStore_Consume
 	}
 	s.Require().NoError(s.store.Create(ctx, record))
 
-	consumed, err := s.store.ConsumeAuthCode(ctx, record.Code, record.RedirectURI, now)
+	// Execute with domain validation and mutation
+	consumed, err := s.store.Execute(ctx, record.Code,
+		func(r *models.AuthorizationCodeRecord) error {
+			return r.ValidateForConsume(record.RedirectURI, now)
+		},
+		func(r *models.AuthorizationCodeRecord) {
+			r.MarkUsed()
+		},
+	)
 	s.Require().NoError(err)
 	s.True(consumed.Used)
 
-	_, err = s.store.ConsumeAuthCode(ctx, record.Code, record.RedirectURI, now)
-	s.Require().ErrorIs(err, sentinel.ErrAlreadyUsed)
+	// Already used - validation fails, record returned for replay detection
+	consumed, err = s.store.Execute(ctx, record.Code,
+		func(r *models.AuthorizationCodeRecord) error {
+			return r.ValidateForConsume(record.RedirectURI, now)
+		},
+		func(r *models.AuthorizationCodeRecord) {
+			r.MarkUsed()
+		},
+	)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "already used")
+	s.NotNil(consumed) // Record returned for replay detection
 
-	_, err = s.store.ConsumeAuthCode(ctx, "missing", record.RedirectURI, now)
+	// Not found
+	_, err = s.store.Execute(ctx, "missing",
+		func(r *models.AuthorizationCodeRecord) error { return nil },
+		func(r *models.AuthorizationCodeRecord) {},
+	)
 	s.Require().ErrorIs(err, sentinel.ErrNotFound)
 }
 
-func (s *InMemoryAuthorizationCodeStoreSuite) TestAuthorizationCodeStore_ConsumeRejectsInvalid() {
+func (s *InMemoryAuthorizationCodeStoreSuite) TestAuthorizationCodeStore_ExecuteValidation() {
 	ctx := context.Background()
 	now := time.Now()
-	record := &models.AuthorizationCodeRecord{
+
+	// Expired code
+	expired := &models.AuthorizationCodeRecord{
 		Code:        "authz_expired",
 		SessionID:   id.SessionID(uuid.New()),
 		RedirectURI: "https://app/callback",
@@ -85,18 +109,38 @@ func (s *InMemoryAuthorizationCodeStoreSuite) TestAuthorizationCodeStore_Consume
 		Used:        false,
 		CreatedAt:   now.Add(-2 * time.Minute),
 	}
+	s.Require().NoError(s.store.Create(ctx, expired))
+
+	_, err := s.store.Execute(ctx, expired.Code,
+		func(r *models.AuthorizationCodeRecord) error {
+			return r.ValidateForConsume(expired.RedirectURI, now)
+		},
+		func(r *models.AuthorizationCodeRecord) {
+			r.MarkUsed()
+		},
+	)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "expired")
+
+	// Redirect URI mismatch
+	record := &models.AuthorizationCodeRecord{
+		Code:        "authz_redirect",
+		SessionID:   id.SessionID(uuid.New()),
+		RedirectURI: "https://expected",
+		ExpiresAt:   now.Add(time.Minute),
+		Used:        false,
+		CreatedAt:   now.Add(-time.Minute),
+	}
 	s.Require().NoError(s.store.Create(ctx, record))
 
-	_, err := s.store.ConsumeAuthCode(ctx, record.Code, record.RedirectURI, now)
-	s.Require().ErrorIs(err, sentinel.ErrExpired)
-
-	record2 := *record
-	record2.Code = "authz_redirect"
-	record2.ExpiresAt = now.Add(time.Minute)
-	record2.RedirectURI = "https://expected"
-	s.Require().NoError(s.store.Create(ctx, &record2))
-
-	_, err = s.store.ConsumeAuthCode(ctx, record2.Code, "https://wrong", now)
+	_, err = s.store.Execute(ctx, record.Code,
+		func(r *models.AuthorizationCodeRecord) error {
+			return r.ValidateForConsume("https://wrong", now)
+		},
+		func(r *models.AuthorizationCodeRecord) {
+			r.MarkUsed()
+		},
+	)
 	s.Require().Error(err)
 	s.Contains(err.Error(), "redirect_uri mismatch")
 }

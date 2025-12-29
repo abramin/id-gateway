@@ -82,7 +82,8 @@ func (s *stubAuditPublisher) Emit(ctx context.Context, event audit.Event) error 
 // =============================================================================
 
 func TestHandleSanctionsLookup_MissingUserContext(t *testing.T) {
-	// Handler extracts user from context; missing = unauthorized error
+	// Handler extracts user from context; if auth middleware ran but userID is missing,
+	// this is an internal error (auth middleware malfunction), not an auth failure.
 	handler := newTestRegistryHandler(nil, nil)
 
 	body, _ := json.Marshal(map[string]string{"national_id": "TEST123456"})
@@ -92,8 +93,8 @@ func TestHandleSanctionsLookup_MissingUserContext(t *testing.T) {
 	w := httptest.NewRecorder()
 	handler.HandleSanctionsLookup(w, req)
 
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
-	assertErrorResponse(t, w, string(dErrors.CodeUnauthorized))
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assertErrorResponse(t, w, string(dErrors.CodeInternal))
 }
 
 func TestHandleSanctionsLookup_InvalidNationalIDFormat(t *testing.T) {

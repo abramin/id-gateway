@@ -57,7 +57,10 @@ type UserStore interface {
 }
 
 // SessionStore defines the persistence interface for session data.
-// Error Contract: All Find methods return store.ErrNotFound when the entity doesn't exist.
+// Error Contract:
+//   - All Find methods return sentinel.ErrNotFound when the entity doesn't exist.
+//   - Execute() returns sentinel.ErrNotFound if session doesn't exist, or passes through
+//     any error returned by the validate callback (typically domain errors).
 type SessionStore interface {
 	Create(ctx context.Context, session *models.Session) error
 	FindByID(ctx context.Context, sessionID id.SessionID) (*models.Session, error)
@@ -66,26 +69,48 @@ type SessionStore interface {
 	DeleteSessionsByUser(ctx context.Context, userID id.UserID) error
 	RevokeSession(ctx context.Context, sessionID id.SessionID) error
 	RevokeSessionIfActive(ctx context.Context, sessionID id.SessionID, now time.Time) error
-	AdvanceLastSeen(ctx context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID string, deviceFingerprintHash string) (*models.Session, error)
-	AdvanceLastRefreshed(ctx context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, deviceID string, deviceFingerprintHash string) (*models.Session, error)
+
+	// Execute atomically validates and mutates a session under lock.
+	// The validate callback should return domain errors for validation failures.
+	// The mutate callback applies changes to the session.
+	// Returns the mutated session on success.
+	Execute(ctx context.Context, sessionID id.SessionID, validate func(*models.Session) error, mutate func(*models.Session)) (*models.Session, error)
 }
 
 // AuthCodeStore defines persistence operations for authorization codes and their lifecycle.
+// Error Contract:
+//   - FindByCode returns sentinel.ErrNotFound when code doesn't exist.
+//   - Execute returns sentinel.ErrNotFound if code doesn't exist, or passes through
+//     any error returned by the validate callback (typically domain errors).
+//     On validation failure, the record is still returned (for replay attack detection).
 type AuthCodeStore interface {
 	Create(ctx context.Context, authCode *models.AuthorizationCodeRecord) error
 	FindByCode(ctx context.Context, code string) (*models.AuthorizationCodeRecord, error)
 	MarkUsed(ctx context.Context, code string) error
-	ConsumeAuthCode(ctx context.Context, code string, redirectURI string, now time.Time) (*models.AuthorizationCodeRecord, error)
 	DeleteExpiredCodes(ctx context.Context, now time.Time) (int, error)
+
+	// Execute atomically validates and mutates an auth code under lock.
+	// Returns (record, nil) on success, (record, error) on validation failure,
+	// or (nil, sentinel.ErrNotFound) if code doesn't exist.
+	Execute(ctx context.Context, code string, validate func(*models.AuthorizationCodeRecord) error, mutate func(*models.AuthorizationCodeRecord)) (*models.AuthorizationCodeRecord, error)
 }
 
 // RefreshTokenStore defines persistence operations for refresh tokens, including rotation.
+// Error Contract:
+//   - Find returns sentinel.ErrNotFound when token doesn't exist.
+//   - Execute returns sentinel.ErrNotFound if token doesn't exist, or passes through
+//     any error returned by the validate callback (typically domain errors).
+//     On validation failure, the record is still returned (for replay attack detection).
 type RefreshTokenStore interface {
 	Create(ctx context.Context, token *models.RefreshTokenRecord) error
-	FindBySessionID(ctx context.Context, sessionID id.SessionID) (*models.RefreshTokenRecord, error)
+	FindBySessionID(ctx context.Context, sessionID id.SessionID, now time.Time) (*models.RefreshTokenRecord, error)
 	Find(ctx context.Context, tokenString string) (*models.RefreshTokenRecord, error)
-	ConsumeRefreshToken(ctx context.Context, token string, now time.Time) (*models.RefreshTokenRecord, error)
 	DeleteBySessionID(ctx context.Context, sessionID id.SessionID) error
+
+	// Execute atomically validates and mutates a refresh token under lock.
+	// Returns (record, nil) on success, (record, error) on validation failure,
+	// or (nil, sentinel.ErrNotFound) if token doesn't exist.
+	Execute(ctx context.Context, token string, validate func(*models.RefreshTokenRecord) error, mutate func(*models.RefreshTokenRecord)) (*models.RefreshTokenRecord, error)
 }
 
 // TokenGenerator issues signed access/ID tokens and generates refresh tokens.

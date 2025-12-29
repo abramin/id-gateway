@@ -7,6 +7,32 @@ import (
 	dErrors "credo/pkg/domain-errors"
 )
 
+// Tenant is the aggregate root for a tenant organization.
+//
+// Invariants:
+//   - Name is non-empty and at most 128 characters
+//   - Status is either active or inactive
+//   - Status transitions: active ↔ inactive only (no other states)
+//   - CreatedAt is immutable after construction
+//
+// # Cascade Invariant
+//
+// When a tenant is deactivated, all OAuth flows for its clients MUST fail,
+// even if the client itself has Status=active. This is enforced at the
+// service layer (ResolveClient) rather than by cascading status changes.
+//
+// Security Implications:
+//   - Tenant deactivation is an immediate security boundary enforcement
+//   - Clients do NOT need explicit deactivation when tenant is inactive
+//   - ResolveClient MUST check tenant.IsActive() before returning client
+//   - This prevents suspended organizations from issuing new tokens
+//   - Existing tokens remain valid until expiry (revoke separately if needed)
+//
+// This design choice:
+//   - Avoids expensive cascade updates to all clients on tenant status change
+//   - Provides single point of enforcement (ResolveClient)
+//   - Allows easy reactivation without touching client records
+//   - Maintains audit trail clarity (tenant status is the source of truth)
 type Tenant struct {
 	ID        id.TenantID  `json:"id"`
 	Name      string       `json:"name"`
@@ -59,14 +85,3 @@ func NewTenant(tenantID id.TenantID, name string, now time.Time) (*Tenant, error
 	}, nil
 }
 
-// TenantDetails aggregates tenant metadata with counts for admin dashboards.
-// Internal type - converted to TenantDetailsResponse for HTTP serialization.
-type TenantDetails struct {
-	ID          id.TenantID
-	Name        string
-	Status      TenantStatus
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	UserCount   int
-	ClientCount int
-}

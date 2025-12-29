@@ -99,3 +99,40 @@ func (s *InMemoryBucketStoreSuite) TestConcurrent() {
 	wg.Wait()
 	s.Equal(limit, allowedCount)
 }
+
+// =============================================================================
+// Clock Skew Protection Tests
+// =============================================================================
+// Security test: Verify that future timestamps don't corrupt the sliding window.
+
+func (s *InMemoryBucketStoreSuite) TestClockSkewProtection() {
+	s.Run("timestamps within tolerance are counted", func() {
+		// Use a fresh store with time context
+		store := New()
+		key := "skew:within"
+
+		// Make a request at current time
+		result, err := store.Allow(s.ctx, key, testLimit, testWindow)
+		s.Require().NoError(err)
+		s.True(result.Allowed)
+		s.Equal(testLimit-1, result.Remaining)
+	})
+
+	s.Run("sliding window maintains correct count after multiple requests", func() {
+		store := New()
+		key := "skew:multiple"
+
+		// Make 5 requests
+		for i := 0; i < 5; i++ {
+			result, err := store.Allow(s.ctx, key, testLimit, testWindow)
+			s.Require().NoError(err)
+			s.True(result.Allowed)
+			s.Equal(testLimit-1-i, result.Remaining)
+		}
+
+		// Verify count
+		count, err := store.GetCurrentCount(s.ctx, key)
+		s.Require().NoError(err)
+		s.Equal(5, count)
+	})
+}

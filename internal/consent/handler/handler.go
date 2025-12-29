@@ -14,7 +14,6 @@ import (
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/httputil"
-	auth "credo/pkg/platform/middleware/auth"
 	request "credo/pkg/platform/middleware/request"
 	"credo/pkg/platform/middleware/requesttime"
 )
@@ -63,12 +62,17 @@ func (h *Handler) HandleGrantConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	grantReq, ok := httputil.DecodeAndPrepare[models.GrantRequest](w, r, h.logger, ctx, requestID)
+	grantReq, ok := httputil.DecodeAndPrepare[GrantRequest](w, r, h.logger, ctx, requestID)
 	if !ok {
 		return
 	}
+	purposes, err := grantReq.ToPurposes()
+	if err != nil {
+		httputil.WriteError(w, dErrors.New(dErrors.CodeValidation, err.Error()))
+		return
+	}
 
-	records, err := h.consent.Grant(ctx, userID, grantReq.Purposes)
+	records, err := h.consent.Grant(ctx, userID, purposes)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to grant consent",
 			"request_id", requestID,
@@ -92,12 +96,17 @@ func (h *Handler) HandleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	revokeReq, ok := httputil.DecodeAndPrepare[models.RevokeRequest](w, r, h.logger, ctx, requestID)
+	revokeReq, ok := httputil.DecodeAndPrepare[RevokeRequest](w, r, h.logger, ctx, requestID)
 	if !ok {
 		return
 	}
+	purposes, err := revokeReq.ToPurposes()
+	if err != nil {
+		httputil.WriteError(w, dErrors.New(dErrors.CodeValidation, err.Error()))
+		return
+	}
 
-	records, err := h.consent.Revoke(ctx, userID, revokeReq.Purposes)
+	records, err := h.consent.Revoke(ctx, userID, purposes)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to revoke consent",
 			"request_id", requestID,
@@ -108,6 +117,32 @@ func (h *Handler) HandleRevokeConsent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, toRevokeResponse(records, requesttime.Now(ctx)))
+}
+
+// HandleRevokeAllConsents revokes all consents for the authenticated user.
+func (h *Handler) HandleRevokeAllConsents(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	requestID := request.GetRequestID(ctx)
+	userID, err := h.requireUserID(ctx, requestID)
+	if err != nil {
+		httputil.WriteError(w, err)
+		return
+	}
+
+	count, err := h.consent.RevokeAll(ctx, userID)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "failed to revoke all consents",
+			"request_id", requestID,
+			"error", err,
+		)
+		httputil.WriteError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, &RevokeResponse{
+		Revoked: nil,
+		Message: formatActionMessage("Consent revoked for %d purpose", count),
+	})
 }
 
 // HandleAdminRevokeAllConsents revokes all consents for a user by admin action.
@@ -132,7 +167,7 @@ func (h *Handler) HandleAdminRevokeAllConsents(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, &models.RevokeResponse{
+	httputil.WriteJSON(w, http.StatusOK, &RevokeResponse{
 		Revoked: nil,
 		Message: formatActionMessage("Consent revoked for %d purpose", count),
 	})
@@ -172,10 +207,7 @@ func (h *Handler) HandleGetConsents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filter, err := models.ParseRecordFilter(
-		r.URL.Query().Get("status"),
-		r.URL.Query().Get("purpose"),
-	)
+	filter, err := parseRecordFilter(r.URL.Query().Get("status"), r.URL.Query().Get("purpose"))
 	if err != nil {
 		httputil.WriteError(w, err)
 		return
@@ -196,44 +228,44 @@ func (h *Handler) HandleGetConsents(w http.ResponseWriter, r *http.Request) {
 
 // Response mapping functions - convert domain objects to HTTP DTOs
 
-func toGrantResponse(records []*models.Record, now time.Time) *models.GrantResponse {
-	granted := make([]*models.Grant, 0, len(records))
+func toGrantResponse(records []*models.Record, now time.Time) *GrantResponse {
+	granted := make([]*Grant, 0, len(records))
 	for _, record := range records {
-		granted = append(granted, &models.Grant{
+		granted = append(granted, &Grant{
 			Purpose:   record.Purpose,
 			GrantedAt: record.GrantedAt,
 			ExpiresAt: record.ExpiresAt,
 			Status:    record.ComputeStatus(now),
 		})
 	}
-	return &models.GrantResponse{
+	return &GrantResponse{
 		Granted: granted,
 		Message: formatActionMessage("Consent granted for %d purpose", len(records)),
 	}
 }
 
-func toRevokeResponse(records []*models.Record, now time.Time) *models.RevokeResponse {
-	revoked := make([]*models.Revoked, 0, len(records))
+func toRevokeResponse(records []*models.Record, now time.Time) *RevokeResponse {
+	revoked := make([]*Revoked, 0, len(records))
 	for _, record := range records {
 		if record.RevokedAt != nil {
-			revoked = append(revoked, &models.Revoked{
+			revoked = append(revoked, &Revoked{
 				Purpose:   record.Purpose,
 				RevokedAt: *record.RevokedAt,
 				Status:    record.ComputeStatus(now),
 			})
 		}
 	}
-	return &models.RevokeResponse{
+	return &RevokeResponse{
 		Revoked: revoked,
 		Message: formatActionMessage("Consent revoked for %d purpose", len(revoked)),
 	}
 }
 
-func toListResponse(records []*models.Record, now time.Time) *models.ListResponse {
-	consents := make([]*models.ConsentWithStatus, 0, len(records))
+func toListResponse(records []*models.Record, now time.Time) *ListResponse {
+	consents := make([]*ConsentWithStatus, 0, len(records))
 	for _, record := range records {
-		consents = append(consents, &models.ConsentWithStatus{
-			Consent: models.Consent{
+		consents = append(consents, &ConsentWithStatus{
+			Consent: Consent{
 				ID:        record.ID.String(),
 				Purpose:   record.Purpose,
 				GrantedAt: record.GrantedAt,
@@ -243,7 +275,7 @@ func toListResponse(records []*models.Record, now time.Time) *models.ListRespons
 			Status: record.ComputeStatus(now),
 		})
 	}
-	return &models.ListResponse{Consents: consents}
+	return &ListResponse{Consents: consents}
 }
 
 // Helper functions
@@ -259,11 +291,5 @@ func formatActionMessage(template string, count int) string {
 // requireUserID retrieves the typed user ID from auth context.
 // Returns a domain error suitable for HTTP response on failure.
 func (h *Handler) requireUserID(ctx context.Context, requestID string) (id.UserID, error) {
-	userID := auth.GetUserID(ctx)
-	if userID.IsNil() {
-		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
-			"request_id", requestID)
-		return id.UserID{}, dErrors.New(dErrors.CodeInternal, "authentication context error")
-	}
-	return userID, nil
+	return httputil.RequireUserID(ctx, h.logger, requestID)
 }

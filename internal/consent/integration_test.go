@@ -91,6 +91,7 @@ func newConsentTestHarness(userIDStr string) *consentTestHarness {
 	})
 	router.Post("/auth/consent", h.HandleGrantConsent)
 	router.Post("/auth/consent/revoke", h.HandleRevokeConsent)
+	router.Post("/auth/consent/revoke-all", h.HandleRevokeAllConsents)
 	router.Get("/auth/consent", h.HandleGetConsents)
 	router.Delete("/auth/consent", h.HandleDeleteAllConsents)
 	router.Post("/admin/consent/users/{user_id}/revoke-all", h.HandleAdminRevokeAllConsents)
@@ -108,7 +109,7 @@ func (h *consentTestHarness) Close() {
 	h.server.Close()
 }
 
-func (h *consentTestHarness) grantConsent(t *testing.T, purposes []string) *consentModel.GrantResponse {
+func (h *consentTestHarness) grantConsent(t *testing.T, purposes []string) *handler.GrantResponse {
 	body, _ := json.Marshal(map[string]any{"purposes": purposes})
 	resp, err := http.Post(h.server.URL+"/auth/consent", "application/json", bytes.NewReader(body))
 	require.NoError(t, err)
@@ -116,24 +117,24 @@ func (h *consentTestHarness) grantConsent(t *testing.T, purposes []string) *cons
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	respBody, _ := io.ReadAll(resp.Body)
-	var data consentModel.GrantResponse
+	var data handler.GrantResponse
 	require.NoError(t, json.Unmarshal(respBody, &data))
 	return &data
 }
 
-func (h *consentTestHarness) listConsents(t *testing.T) *consentModel.ListResponse {
+func (h *consentTestHarness) listConsents(t *testing.T) *handler.ListResponse {
 	resp, err := http.Get(h.server.URL + "/auth/consent")
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	body, _ := io.ReadAll(resp.Body)
-	var data consentModel.ListResponse
+	var data handler.ListResponse
 	require.NoError(t, json.Unmarshal(body, &data))
 	return &data
 }
 
-func (h *consentTestHarness) revokeConsent(t *testing.T, purposes []string) *consentModel.RevokeResponse {
+func (h *consentTestHarness) revokeConsent(t *testing.T, purposes []string) *handler.RevokeResponse {
 	body, _ := json.Marshal(map[string]any{"purposes": purposes})
 	resp, err := http.Post(h.server.URL+"/auth/consent/revoke", "application/json", bytes.NewReader(body))
 	require.NoError(t, err)
@@ -141,19 +142,19 @@ func (h *consentTestHarness) revokeConsent(t *testing.T, purposes []string) *con
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	respBody, _ := io.ReadAll(resp.Body)
-	var data consentModel.RevokeResponse
+	var data handler.RevokeResponse
 	require.NoError(t, json.Unmarshal(respBody, &data))
 	return &data
 }
 
-func (h *consentTestHarness) adminRevokeAllConsents(t *testing.T, userID id.UserID) *consentModel.RevokeResponse {
+func (h *consentTestHarness) adminRevokeAllConsents(t *testing.T, userID id.UserID) *handler.RevokeResponse {
 	resp, err := http.Post(h.server.URL+"/admin/consent/users/"+userID.String()+"/revoke-all", "application/json", nil)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	respBody, _ := io.ReadAll(resp.Body)
-	var data consentModel.RevokeResponse
+	var data handler.RevokeResponse
 	require.NoError(t, json.Unmarshal(respBody, &data))
 	return &data
 }
@@ -190,9 +191,9 @@ func TestConsentExpiryAndIDReuse(t *testing.T) {
 	listData := h.listConsents(t)
 	require.Len(t, listData.Consents, 3)
 
-	statusCounts := map[string]int{}
+	statusCounts := map[consentModel.Status]int{}
 	for _, record := range listData.Consents {
-		statusCounts[string(record.Status)]++
+		statusCounts[record.Status]++
 		switch record.Purpose {
 		case consentModel.PurposeLogin:
 			assert.Equal(t, consentModel.StatusActive, record.Status, "login should be active")
@@ -203,9 +204,9 @@ func TestConsentExpiryAndIDReuse(t *testing.T) {
 			assert.True(t, record.ExpiresAt.Before(time.Now()), "vc_issuance expiry should be in past")
 		}
 	}
-	assert.Equal(t, 1, statusCounts[string(consentModel.StatusActive)])
-	assert.Equal(t, 1, statusCounts[string(consentModel.StatusRevoked)])
-	assert.Equal(t, 1, statusCounts[string(consentModel.StatusExpired)])
+	assert.Equal(t, 1, statusCounts[consentModel.StatusActive])
+	assert.Equal(t, 1, statusCounts[consentModel.StatusRevoked])
+	assert.Equal(t, 1, statusCounts[consentModel.StatusExpired])
 
 	t.Log("Step 3: Re-grant the expired consent (distinct from re-granting revoked)")
 	regrantData := h.grantConsent(t, []string{"vc_issuance"})
@@ -220,12 +221,12 @@ func TestConsentExpiryAndIDReuse(t *testing.T) {
 
 	t.Log("Step 5: Verify final state - vc_issuance now active")
 	finalList := h.listConsents(t)
-	finalStatusCounts := map[string]int{}
+	finalStatusCounts := map[consentModel.Status]int{}
 	for _, record := range finalList.Consents {
-		finalStatusCounts[string(record.Status)]++
+		finalStatusCounts[record.Status]++
 	}
-	assert.Equal(t, 2, finalStatusCounts[string(consentModel.StatusActive)], "should have 2 active (login + vc_issuance)")
-	assert.Equal(t, 1, finalStatusCounts[string(consentModel.StatusRevoked)], "should have 1 revoked (registry_check)")
+	assert.Equal(t, 2, finalStatusCounts[consentModel.StatusActive], "should have 2 active (login + vc_issuance)")
+	assert.Equal(t, 1, finalStatusCounts[consentModel.StatusRevoked], "should have 1 revoked (registry_check)")
 
 	t.Log("Step 6: Verify audit trail counts and payload content")
 	auditEvents, err := h.auditStore.ListByUser(context.Background(), h.userID)

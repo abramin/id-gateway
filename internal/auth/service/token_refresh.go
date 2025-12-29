@@ -2,15 +2,12 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
 	"credo/internal/auth/models"
-	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
 	"credo/pkg/platform/middleware/requesttime"
-	"credo/pkg/platform/sentinel"
 )
 
 func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {
@@ -101,12 +98,19 @@ func (s *Service) consumeRefreshTokenWithReplayProtection(
 	token string,
 	now time.Time,
 ) (*models.RefreshTokenRecord, error) {
-	refreshRecord, err := stores.RefreshTokens.ConsumeRefreshToken(ctx, token, now)
+	// Use Execute pattern: domain errors pass through unchanged
+	refreshRecord, err := stores.RefreshTokens.Execute(ctx, token,
+		func(rec *models.RefreshTokenRecord) error {
+			return rec.ValidateForConsume(now)
+		},
+		func(rec *models.RefreshTokenRecord) {
+			rec.MarkUsed(now)
+		},
+	)
 	if err != nil {
-		if errors.Is(err, sentinel.ErrAlreadyUsed) && refreshRecord != nil {
-			// Replay attack detected: revoke the session associated with this token
-			if revokeErr := stores.Sessions.RevokeSessionIfActive(ctx, refreshRecord.SessionID, now); revokeErr != nil {
-				return nil, dErrors.Wrap(revokeErr, dErrors.CodeInternal, "failed to revoke session for used refresh token")
+		if refreshRecord != nil {
+			if revokeErr := revokeSessionOnReplay(ctx, stores, err, refreshRecord.SessionID, now); revokeErr != nil {
+				return nil, revokeErr
 			}
 		}
 		return nil, fmt.Errorf("consume refresh token: %w", err)

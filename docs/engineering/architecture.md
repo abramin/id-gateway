@@ -716,17 +716,46 @@ type DecisionInput struct {
 **Key types**
 
 ```go
+type EventCategory string
+
+const (
+    CategoryCompliance  EventCategory = "compliance"  // Legal/regulatory significance
+    CategorySecurity    EventCategory = "security"    // Security monitoring, SIEM
+    CategoryOperations  EventCategory = "operations"  // Debugging, telemetry
+)
+
 type Event struct {
-    ID        string    // Unique event ID
-    Timestamp time.Time // When event occurred
-    UserID    string    // Subject user ID (combines ActorID/SubjectID)
-    Action    string    // What happened (e.g., "consent_granted")
-    Purpose   string    // Why (e.g., "registry_check")
-    Decision  string    // Outcome (e.g., "granted", "pass", "fail")
-    Reason    string    // Human-readable reason
-    RequestID string    // Correlation ID for tracing
+    Category  EventCategory // Event classification for routing/retention
+    Timestamp time.Time     // When event occurred
+    UserID    string        // Subject user ID
+    Action    string        // What happened (e.g., "consent_granted")
+    Purpose   string        // Why (e.g., "registry_check")
+    Decision  string        // Outcome (e.g., "granted", "pass", "fail")
+    Reason    string        // Human-readable reason
+    RequestID string        // Correlation ID for tracing
+    ActorID   string        // Admin performing action on behalf of user
 }
 ```
+
+**Event Categories**
+
+Events are classified into three categories to enable different retention policies, storage backends, and routing:
+
+| Category | Purpose | Retention | Downstream |
+|----------|---------|-----------|------------|
+| `compliance` | Legal/regulatory significance (GDPR, consent) | 7+ years, tamper-proof | Compliance exports, legal holds |
+| `security` | Security monitoring and forensics | 90 days | SIEM, alerting, threat detection |
+| `operations` | Debugging and operational visibility | 7-30 days | Dashboards, on-call debugging |
+
+**Category Assignments:**
+
+| Category | Events |
+|----------|--------|
+| `compliance` | `user_created`, `user_deleted`, `consent_granted`, `consent_revoked`, `consent_deleted` |
+| `security` | `auth_failed`, `session_revoked`, `sessions_revoked`, `client_secret_rotated`, `rate_limit_exceeded`, `auth_lockout_triggered`, `auth_lockout_cleared`, `allowlist_bypassed`, `tenant_deactivated`, `client_deactivated` |
+| `operations` | `session_created`, `token_issued`, `token_refreshed`, `userinfo_accessed`, `consent_checked`, `tenant_created`, `tenant_reactivated`, `client_created`, `client_reactivated` |
+
+Unknown events default to `operations` category.
 
 **Components**
 
@@ -1178,9 +1207,11 @@ The system exposes two HTTP servers:
 | GET | `/auth/userinfo` | User profile information |
 | GET | `/auth/sessions` | List user's active sessions |
 | DELETE | `/auth/sessions/{session_id}` | Revoke a specific session |
-| POST | `/consent` | Grant consent for purposes |
-| POST | `/consent/revoke` | Revoke consent for purposes |
-| GET | `/consent` | List user's consents |
+| POST | `/auth/consent` | Grant consent for purposes |
+| POST | `/auth/consent/revoke` | Revoke consent for one or more purposes |
+| POST | `/auth/consent/revoke-all` | Revoke all consents (bulk) |
+| GET | `/auth/consent` | List user's consents |
+| DELETE | `/auth/consent` | Delete all consents (GDPR) |
 
 ### Admin API (Port 8081)
 
@@ -1201,6 +1232,12 @@ Requires `X-Admin-Token` header for authentication.
 | POST | `/admin/rate-limit/allowlist` | Add IP/user to allowlist |
 | DELETE | `/admin/rate-limit/allowlist` | Remove from allowlist |
 | POST | `/admin/rate-limit/reset` | Reset rate limit counter |
+
+**Consent Management:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/admin/consent/users/{user_id}/revoke-all` | Revoke all consents for a user (security response) |
 
 **Tenant Management (PRD-026A, PRD-026B):**
 

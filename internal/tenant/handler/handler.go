@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"credo/internal/tenant/models"
+	"credo/internal/tenant/readmodels"
 	"credo/internal/tenant/service"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
@@ -25,7 +26,7 @@ import (
 // - When tenant admin auth is added, handlers must extract tenant context and use scoped methods
 type Service interface {
 	CreateTenant(ctx context.Context, name string) (*models.Tenant, error)
-	GetTenant(ctx context.Context, id id.TenantID) (*models.TenantDetails, error)
+	GetTenant(ctx context.Context, id id.TenantID) (*readmodels.TenantDetails, error)
 	DeactivateTenant(ctx context.Context, id id.TenantID) (*models.Tenant, error)
 	ReactivateTenant(ctx context.Context, id id.TenantID) (*models.Tenant, error)
 	CreateClient(ctx context.Context, cmd *service.CreateClientCommand) (*models.Client, string, error)
@@ -316,43 +317,4 @@ func (h *Handler) HandleRotateClientSecret(w http.ResponseWriter, r *http.Reques
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, toClientResponse(client, secret))
-}
-
-// Response mapping functions - convert domain objects to HTTP DTOs
-
-func toTenantResponse(t *models.Tenant) *TenantResponse {
-	return &TenantResponse{
-		ID:        t.ID.String(),
-		Name:      t.Name,
-		Status:    t.Status,
-		CreatedAt: t.CreatedAt,
-		UpdatedAt: t.UpdatedAt,
-	}
-}
-
-func toTenantDetailsResponse(td *models.TenantDetails) *TenantDetailsResponse {
-	return &TenantDetailsResponse{
-		ID:          td.ID.String(),
-		Name:        td.Name,
-		Status:      td.Status,
-		CreatedAt:   td.CreatedAt,
-		UpdatedAt:   td.UpdatedAt,
-		UserCount:   td.UserCount,
-		ClientCount: td.ClientCount,
-	}
-}
-
-func toClientResponse(client *models.Client, secret string) *ClientResponse {
-	return &ClientResponse{
-		ID:            client.ID.String(),
-		TenantID:      client.TenantID.String(),
-		Name:          client.Name,
-		OAuthClientID: client.OAuthClientID,
-		ClientSecret:  secret, // Empty string omitted due to omitempty tag
-		RedirectURIs:  client.RedirectURIs,
-		AllowedGrants: client.AllowedGrants,
-		AllowedScopes: client.AllowedScopes,
-		Status:        client.Status.String(),
-		PublicClient:  !client.IsConfidential(),
-	}
 }

@@ -16,7 +16,6 @@ import (
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
 	"credo/pkg/platform/httputil"
-	auth "credo/pkg/platform/middleware/auth"
 	"credo/pkg/platform/middleware/request"
 )
 
@@ -234,13 +233,7 @@ func (h *Handler) HandleSanctionsLookup(w http.ResponseWriter, r *http.Request) 
 
 // requireUserID extracts and validates the authenticated user ID from context.
 func (h *Handler) requireUserID(ctx context.Context, requestID string) (id.UserID, error) {
-	userID := auth.GetUserID(ctx)
-	if userID.IsNil() {
-		h.logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
-			"request_id", requestID)
-		return id.UserID{}, dErrors.New(dErrors.CodeUnauthorized, "authentication required")
-	}
-	return userID, nil
+	return httputil.RequireUserID(ctx, h.logger, requestID)
 }
 
 // emitAudit publishes an audit event. Failures are logged but don't fail the operation.
@@ -259,57 +252,6 @@ func (h *Handler) emitAudit(ctx context.Context, event audit.Event) {
 	}
 	// Emit span event for audit trail correlation
 	h.emitAuditSpanEvent(ctx, event.Action)
-}
-
-// emitCriticalAudit publishes an audit event that MUST succeed.
-// Returns an error if the audit fails, allowing callers to fail-close.
-// Use this for security-critical events like sanctions hits.
-// When a tracer is configured, emits an audit.emitted span event after successful publishing.
-func (h *Handler) emitCriticalAudit(ctx context.Context, event audit.Event) error {
-	if h.auditPort == nil {
-		return dErrors.New(dErrors.CodeInternal, "audit system unavailable")
-	}
-	if err := h.auditPort.Emit(ctx, event); err != nil {
-		return err
-	}
-	// Emit span event for audit trail correlation
-	h.emitAuditSpanEvent(ctx, event.Action)
-	return nil
-}
-
-// auditSanctionsCheck emits an audit event for a sanctions check with fail-closed semantics.
-// For listed sanctions, the audit MUST succeed before the response is returned.
-// For non-listed results, audit failures are logged but don't block the response.
-func (h *Handler) auditSanctionsCheck(ctx context.Context, userID id.UserID, nationalID id.NationalID, listed bool, requestID string) error {
-	decision := "not_listed"
-	if listed {
-		decision = "listed"
-	}
-
-	event := audit.Event{
-		Action:    "registry_sanctions_checked",
-		Purpose:   "registry_check",
-		UserID:    userID,
-		Decision:  decision,
-		Reason:    "user_initiated",
-		RequestID: requestID,
-	}
-
-	if listed {
-		if err := h.emitCriticalAudit(ctx, event); err != nil {
-			h.logger.ErrorContext(ctx, "CRITICAL: audit failed for listed sanctions - blocking response",
-				"request_id", requestID,
-				"user_id", userID,
-				"national_id_suffix", redactNationalID(nationalID),
-				"error", err,
-			)
-			return dErrors.New(dErrors.CodeInternal, "unable to complete sanctions check")
-		}
-		return nil
-	}
-
-	h.emitAudit(ctx, event)
-	return nil
 }
 
 // redactNationalID returns a redacted version of the NationalID safe for logging.

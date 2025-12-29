@@ -12,6 +12,7 @@ package mocks
 import (
 	context "context"
 	models "credo/internal/ratelimit/models"
+	id "credo/pkg/domain"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -42,7 +43,7 @@ func (m *MockService) EXPECT() *MockServiceMockRecorder {
 }
 
 // AddToAllowlist mocks base method.
-func (m *MockService) AddToAllowlist(ctx context.Context, req *models.AddAllowlistRequest, adminUserID string) (*models.AllowlistEntry, error) {
+func (m *MockService) AddToAllowlist(ctx context.Context, req *models.AddAllowlistRequest, adminUserID id.UserID) (*models.AllowlistEntry, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AddToAllowlist", ctx, req, adminUserID)
 	ret0, _ := ret[0].(*models.AllowlistEntry)

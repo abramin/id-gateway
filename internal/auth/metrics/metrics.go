@@ -7,14 +7,14 @@ import (
 
 // Metrics holds Prometheus collectors for auth operations.
 type Metrics struct {
-	UsersCreated           prometheus.Counter
-	ActiveSessions         prometheus.Gauge
-	TokenRequests          prometheus.Counter
-	AuthFailures           prometheus.Counter
-	LogoutAllSessions      prometheus.Histogram
-	LogoutAllDurationMs    prometheus.Histogram
-	RateLimitCheckErrors   *prometheus.CounterVec
-	AuthorizeDurationMs    prometheus.Histogram
+	UsersCreated            prometheus.Counter
+	ActiveSessions          prometheus.Gauge
+	TokenRequests           prometheus.Counter
+	AuthFailures            prometheus.Counter
+	LogoutAllSessions       prometheus.Histogram
+	LogoutAllDurationMs     prometheus.Histogram
+	RateLimitCheckErrors    *prometheus.CounterVec
+	AuthorizeDurationMs     prometheus.Histogram
 	TokenExchangeDurationMs prometheus.Histogram
 	TokenRefreshDurationMs  prometheus.Histogram
 }

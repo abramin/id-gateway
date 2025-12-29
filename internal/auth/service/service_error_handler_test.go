@@ -43,7 +43,8 @@ func (s *ServiceSuite) TestHandleTokenError() {
 	assertTokenError("session revoked", sessionStore.ErrSessionRevoked, TokenFlowCode, dErrors.CodeInvalidGrant, "session has been revoked")
 
 	assertTokenError("bad request passthrough", dErrors.New(dErrors.CodeBadRequest, "redirect_uri mismatch"), TokenFlowCode, dErrors.CodeBadRequest, "redirect_uri mismatch")
-	assertTokenError("unauthorized - invalid session state", dErrors.New(dErrors.CodeUnauthorized, "session expired"), TokenFlowCode, dErrors.CodeUnauthorized, "session expired")
+	// Session validation errors (CodeUnauthorized) are mapped to CodeInvalidGrant per OAuth 2.0 spec
+	assertTokenError("session validation failure - maps to invalid_grant", dErrors.New(dErrors.CodeUnauthorized, "session expired"), TokenFlowCode, dErrors.CodeInvalidGrant, "session expired")
 	assertTokenError("internal error passthrough", dErrors.New(dErrors.CodeInternal, "db connection failed"), TokenFlowCode, dErrors.CodeInternal, "db connection failed")
 
 	assertTokenError("unknown error", errors.New("random error"), TokenFlowCode, dErrors.CodeInternal, "token handling failed")

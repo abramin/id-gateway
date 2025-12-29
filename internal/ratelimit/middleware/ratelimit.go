@@ -24,6 +24,7 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -281,6 +282,52 @@ func writeClientRateLimitExceeded(w http.ResponseWriter, result *models.RateLimi
 	})
 }
 
+// errConflictingClientID indicates conflicting client_id values in different request locations.
+var errConflictingClientID = errors.New("conflicting client_id values")
+
+// extractClientID extracts client_id with strict ordering to prevent confusion attacks.
+// Returns an error if both query and form body contain conflicting values.
+func extractClientID(r *http.Request) (string, error) {
+	queryClientID := r.URL.Query().Get("client_id")
+
+	// For non-POST requests, only use query parameter
+	if r.Method != http.MethodPost {
+		return queryClientID, nil
+	}
+
+	// For POST requests, check form body (requires parsing)
+	// Use PostFormValue to get ONLY form body values, not query params
+	if err := r.ParseForm(); err != nil {
+		// If form parsing fails, fall back to query-only
+		return queryClientID, nil
+	}
+
+	formClientID := r.PostFormValue("client_id")
+
+	// Both empty: no client_id
+	if queryClientID == "" && formClientID == "" {
+		return "", nil
+	}
+
+	// Only query has value
+	if formClientID == "" {
+		return queryClientID, nil
+	}
+
+	// Only form has value
+	if queryClientID == "" {
+		return formClientID, nil
+	}
+
+	// Both have values: must match
+	if queryClientID != formClientID {
+		return "", errConflictingClientID
+	}
+
+	// Both match: use query value (arbitrary choice, they're the same)
+	return queryClientID, nil
+}
+
 // ClientMiddleware provides per-OAuth-client rate limiting (PRD-017 FR-2c).
 // Applies different limits for confidential (server-side) vs public (SPA/mobile) clients.
 type ClientMiddleware struct {
@@ -319,6 +366,15 @@ func NewClientMiddleware(limiter ClientRateLimiter, logger *slog.Logger, disable
 
 // RateLimitClient returns middleware that enforces per-client rate limits on OAuth endpoints.
 // It extracts client_id from query parameters (for authorize) or request body (for token).
+//
+// # Client ID Extraction Order
+//
+// The extraction follows a strict order to prevent confusion attacks:
+//  1. Query parameter (for authorize endpoint)
+//  2. Form body (for token endpoint, POST only)
+//
+// If both sources provide conflicting values, the request is rejected to prevent
+// bypass attacks where an attacker might send different client_ids in different locations.
 func (m *ClientMiddleware) RateLimitClient() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -329,13 +385,14 @@ func (m *ClientMiddleware) RateLimitClient() func(http.Handler) http.Handler {
 
 			ctx := r.Context()
 
-			// Extract client_id from query params (authorize) or form data (token)
-			clientID := r.URL.Query().Get("client_id")
-			if clientID == "" {
-				// Try form data for POST requests
-				if r.Method == http.MethodPost {
-					clientID = r.FormValue("client_id")
-				}
+			// Extract client_id with strict ordering: query first, then form body for POST
+			clientID, err := extractClientID(r)
+			if err != nil {
+				httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{
+					"error":             "invalid_request",
+					"error_description": "conflicting client_id values in request",
+				})
+				return
 			}
 
 			if clientID == "" {

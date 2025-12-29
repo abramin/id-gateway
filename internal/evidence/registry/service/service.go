@@ -465,8 +465,12 @@ func (s *Service) Sanctions(ctx context.Context, userID id.UserID, nationalID id
 }
 
 // auditSanctionsCheck emits an audit event for a sanctions check with fail-closed semantics.
-// For listed sanctions, the audit MUST succeed before the result is returned.
-// For non-listed results, audit failures are logged but don't block the result.
+// The audit MUST succeed before the result is returned - this ensures a complete audit trail
+// for all sanctions checks (both listed and non-listed) and prevents audit bypass via cache replay.
+//
+// Security rationale: An attacker could otherwise query once (audit succeeds, result cached),
+// then query again during audit outage (result served from cache, no audit record).
+// Fail-closed semantics ensure every sanctions check is audited.
 func (s *Service) auditSanctionsCheck(ctx context.Context, userID id.UserID, listed bool) error {
 	if s.auditor == nil {
 		return nil
@@ -486,28 +490,20 @@ func (s *Service) auditSanctionsCheck(ctx context.Context, userID id.UserID, lis
 		RequestID: request.GetRequestID(ctx),
 	}
 
-	if listed {
-		// Fail-closed: audit MUST succeed for listed sanctions
-		if err := s.auditor.Emit(ctx, event); err != nil {
-			if s.logger != nil {
-				s.logger.ErrorContext(ctx, "CRITICAL: audit failed for listed sanctions - blocking response",
-					"user_id", userID,
-					"error", err,
-				)
-			}
-			return dErrors.New(dErrors.CodeInternal, "unable to complete sanctions check")
-		}
-		return nil
-	}
-
-	// Non-listed: audit failure is logged but doesn't block
+	// Fail-closed: audit MUST succeed for all sanctions checks
 	if err := s.auditor.Emit(ctx, event); err != nil {
+		severity := "WARNING"
+		if listed {
+			severity = "CRITICAL"
+		}
 		if s.logger != nil {
-			s.logger.ErrorContext(ctx, "failed to emit audit event for sanctions check",
+			s.logger.ErrorContext(ctx, severity+": audit failed for sanctions check - blocking response",
 				"user_id", userID,
+				"listed", listed,
 				"error", err,
 			)
 		}
+		return dErrors.New(dErrors.CodeInternal, "unable to complete sanctions check")
 	}
 	return nil
 }

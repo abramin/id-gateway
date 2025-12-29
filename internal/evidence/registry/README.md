@@ -25,7 +25,7 @@ The Registry bounded context is organized into two first-class **subdomains** wi
 ```
 domain/
 ├── shared/              # Shared Kernel - common domain primitives
-│   └── types.go         # NationalID, Confidence, CheckedAt, ProviderID
+│   └── types.go         # Confidence, CheckedAt, ProviderID
 ├── citizen/             # Citizen Subdomain - identity verification
 │   └── citizen.go       # CitizenVerification aggregate root
 └── sanctions/           # Sanctions Subdomain - compliance screening
@@ -38,7 +38,7 @@ Domain primitives shared between Citizen and Sanctions subdomains:
 
 | Type | Description | Invariants |
 |------|-------------|------------|
-| `NationalID` | Validated lookup key | 6-20 alphanumeric (A-Z, 0-9) |
+| `NationalID` | Validated lookup key (defined in `pkg/domain`) | 6-20 alphanumeric (A-Z, 0-9) |
 | `Confidence` | Evidence reliability score | 0.0-1.0 range |
 | `CheckedAt` | Verification timestamp | TTL-aware freshness checks |
 | `ProviderID` | Evidence source identifier | Non-empty |
@@ -51,7 +51,7 @@ Handles identity verification through national population registries. Contains P
 
 ```go
 type CitizenVerification struct {
-    nationalID  shared.NationalID
+    nationalID  id.NationalID
     details     PersonalDetails    // PII: name, DOB, address
     status      VerificationStatus // Valid flag + CheckedAt
     providerID  shared.ProviderID
@@ -76,7 +76,7 @@ Handles compliance screening against sanctions lists, PEP databases, and watchli
 
 ```go
 type SanctionsCheck struct {
-    nationalID  shared.NationalID
+    nationalID  id.NationalID
     listed      bool
     details     ListingDetails     // Type, reason, date
     source      Source
@@ -114,7 +114,7 @@ All domain packages (`domain/*`) follow strict purity rules:
 | ---------------------- | ------------------------------------------------- |
 | **CitizenVerification** | `domain/citizen.CitizenVerification` (aggregate) |
 | **SanctionsCheck**     | `domain/sanctions.SanctionsCheck` (aggregate)    |
-| **NationalID**         | `domain/shared.NationalID` (value object)        |
+| **NationalID**         | `pkg/domain.NationalID` (value object)           |
 | **Provider**           | `providers.Provider` (interface)                  |
 | **Evidence**           | `providers.Evidence` (generic result from any provider) |
 | **Citizen Record**     | `models.CitizenRecord` (infrastructure model)    |
@@ -142,9 +142,9 @@ This module follows **hexagonal architecture** with an **orchestrator pattern** 
                            ┌────────────────────────────────────────────────────┐
                            │                Domain (Service)                    │
                            │  registry.Service                                  │
-                           │  - Check(ctx, nationalID) → RegistryResult         │
-                           │  - Citizen(ctx, nationalID) → CitizenRecord        │
-                           │  - Sanctions(ctx, nationalID) → SanctionsRecord    │
+                           │  - Check(ctx, userID, nationalID) → RegistryResult │
+                           │  - Citizen(ctx, userID, nationalID) → CitizenRecord │
+                           │  - Sanctions(ctx, userID, nationalID) → SanctionsRecord │
                            └──────────────────────────┬─────────────────────────┘
                                                       │
                       ┌───────────────────────────────┼───────────────────────────┐
@@ -153,8 +153,8 @@ This module follows **hexagonal architecture** with an **orchestrator pattern** 
            ┌──────────────────────┐     ┌─────────────────────────┐   ┌──────────────────────┐
            │ Cache Store          │     │ Orchestrator            │   │ Ports                │
            │ - FindCitizen()      │     │ - Lookup(request)       │   │ - ConsentPort        │
-           │ - SaveCitizen()      │     │ - Strategy selection    │   │ - AuditPort          │
-           │ - FindSanction()     │     │ - Error aggregation     │   │                      │
+           │ - SaveCitizen()      │     │ - Strategy selection    │   │ - AuditPublisher     │
+           │ - FindSanction()     │     │ - Error aggregation     │   │   (service/handler)  │
            │ - SaveSanction()     │     │ - Backoff/retry         │   │                      │
            └──────────────────────┘     └───────────┬─────────────┘   └──────────────────────┘
                                                     │
@@ -174,13 +174,13 @@ This module follows **hexagonal architecture** with an **orchestrator pattern** 
 ```
 internal/evidence/registry/
 ├── domain/             # Pure domain layer (no I/O)
-│   ├── shared/         # Shared kernel (NationalID, Confidence, etc.)
+│   ├── shared/         # Shared kernel (Confidence, CheckedAt, ProviderID)
 │   ├── citizen/        # Citizen subdomain aggregate
 │   └── sanctions/      # Sanctions subdomain aggregate
 ├── adapters/           # Inbound adapters for external dependencies
 │   └── consent_adapter.go
-├── cache/              # Registry cache implementation
 ├── handler/            # HTTP handlers (decode, validate, respond)
+├── metrics/            # Registry cache metrics
 ├── models/             # Infrastructure entities (for persistence/transport)
 ├── orchestrator/       # Multi-provider coordination
 │   └── correlation/    # Evidence correlation rules
@@ -188,7 +188,7 @@ internal/evidence/registry/
 ├── providers/          # Provider abstraction and implementations
 │   ├── adapters/       # HTTP client adapters
 │   ├── citizen/        # Citizen registry provider
-│   ├── contract/       # Cross-module DTOs
+│   ├── providertest/   # Provider contract helpers
 │   └── sanctions/      # Sanctions list provider
 ├── service/            # Application service (orchestration + effects)
 └── store/              # Persistence adapters
@@ -269,6 +269,8 @@ type Provider interface {
 }
 ```
 
+Note: Only the HTTP adapter is implemented today; SOAP/gRPC adapters are planned.
+
 ### Supported Provider Types
 
 | Type         | Description                    | Current Implementations         |
@@ -326,6 +328,11 @@ Combines confidence scores using configurable weights per provider type.
 ## Service Layer
 
 The service coordinates orchestrator lookups with caching and optional minimization:
+
+Implementation notes:
+- Regulated mode strips PII and national_id before caching/returning citizen records.
+- Check() uses the fallback strategy and performs per-type lookups sequentially (parallel fan-out is pending).
+- Sanctions checks emit fail-closed audits in the service layer.
 
 ### Check() - Atomic Transaction Semantics
 
@@ -404,22 +411,14 @@ flowchart LR
 
 ## Regulated Mode (PII Minimization)
 
-When `REGULATED_MODE=true`, the service strips PII from citizen records:
+When `REGULATED_MODE=true`, the service minimizes citizen records via the domain aggregate:
 
 ```go
-func MinimizeCitizenRecord(record CitizenRecord) CitizenRecord {
-    return CitizenRecord{
-        NationalID:  "",
-        FullName:    "",
-        DateOfBirth: "",
-        Address:     "",
-        Valid:       record.Valid,     // Only validity flag retained
-        CheckedAt:   record.CheckedAt,
-    }
-}
+func (c CitizenVerification) Minimized() CitizenVerification
+func (c CitizenVerification) WithoutNationalID() CitizenVerification
 ```
 
-This enables GDPR data minimization while preserving decision-relevant signals.
+The service uses `WithoutNationalID()` before caching/returning, so PII and the lookup key are removed while validity and timestamps are preserved.
 
 ---
 
@@ -434,6 +433,7 @@ type CitizenRecord struct {
     DateOfBirth string    // Stripped in regulated mode
     Address     string    // Stripped in regulated mode
     Valid       bool      // Identity validation result
+    Source      string    // Provider identifier
     CheckedAt   time.Time
 }
 ```
@@ -474,14 +474,14 @@ sequenceDiagram
     participant Service
     participant Orchestrator
     participant Provider
-    participant AuditPort
+    participant AuditPublisher
 
     Client->>Handler: POST /registry/citizen
     Handler->>Handler: Extract UserID from JWT
     Handler->>Handler: Validate national_id format
-    Handler->>ConsentPort: RequireConsent(userID, "registry_check")
-    ConsentPort-->>Handler: OK
-    Handler->>Service: Citizen(ctx, nationalID)
+    Handler->>Service: Citizen(ctx, userID, nationalID)
+    Service->>ConsentPort: RequireConsent(userID, "registry_check")
+    ConsentPort-->>Service: OK
     Service->>Service: Check cache
     Service->>Orchestrator: Lookup(request)
     Orchestrator->>Provider: Lookup(filters)
@@ -491,7 +491,7 @@ sequenceDiagram
     Service->>Service: Apply minimization (if regulated)
     Service->>Service: Cache result
     Service-->>Handler: CitizenRecord
-    Handler->>AuditPort: Emit("registry_citizen_checked")
+    Handler->>AuditPublisher: Emit("registry_citizen_checked")
     Handler-->>Client: 200 OK + response
 ```
 
@@ -507,10 +507,10 @@ type ConsentPort interface {
 }
 ```
 
-### AuditPort
+### AuditPublisher
 
 ```go
-type AuditPort interface {
+type AuditPublisher interface {
     Emit(ctx context.Context, event audit.Event) error
 }
 ```
@@ -519,16 +519,57 @@ type AuditPort interface {
 
 ## Audit Events
 
-| Transition              | Audit Action              |
-| ----------------------- | ------------------------- |
-| Citizen lookup complete | `registry_citizen_checked`|
+| Transition               | Audit Action                 |
+| ------------------------ | ---------------------------- |
+| Citizen lookup complete  | `registry_citizen_checked`   |
+| Sanctions check complete | `registry_sanctions_checked` |
+
+---
+
+## Security Considerations
+
+### Provider Response Validation
+
+All provider responses are validated with fail-fast semantics:
+
+- **Required field extraction** uses `getRequiredString()`/`getRequiredBool()` which return errors on missing or wrong-typed fields (no silent defaults)
+- **Domain error codes** wrap all validation errors for consistent error handling
+- This prevents silent failures that could create invalid domain state
+
+### Response Size Limiting
+
+HTTP provider adapters enforce a maximum response size (10MB) using `io.LimitReader`:
+
+```go
+limitedReader := io.LimitReader(resp.Body, MaxResponseSize+1)
+body, err := io.ReadAll(limitedReader)
+if int64(len(body)) > MaxResponseSize {
+    return providers.NewProviderError(providers.ErrorBadData, ...)
+}
+```
+
+This prevents memory exhaustion attacks from malicious or misconfigured providers.
+
+### Fail-Closed Audit Semantics
+
+Sanctions checks use **fail-closed** audit semantics:
+
+- Audit MUST succeed for both listed and non-listed sanctions results
+- If audit emission fails, the lookup returns an error (blocks response)
+- This ensures complete audit trail for compliance purposes
+- Rationale: Sanctions screening is security-critical; an incomplete audit trail is unacceptable
+
+```go
+// service/service.go
+if err := s.auditor.Emit(ctx, event); err != nil {
+    return dErrors.New(dErrors.CodeInternal, "unable to complete sanctions check")
+}
+```
 
 ---
 
 ## Known Gaps / Follow-ups
 
-- Cache implementation is placeholder (panic stubs)
-- Only citizen endpoint exposed; sanctions endpoint pending
 - Biometric, document, and wallet providers planned
 - Full voting strategy with quorum rules not implemented
 - Provider health checks not wired to readiness probes
@@ -547,9 +588,17 @@ type AuditPort interface {
 
 ## Configuration
 
-| Env Variable      | Default   | Description                                |
-| ----------------- | --------- | ------------------------------------------ |
-| `REGULATED_MODE`  | `false`   | Strip PII from citizen records             |
+| Env Variable              | Default                     | Description                                      |
+| ------------------------- | --------------------------- | ------------------------------------------------ |
+| `CITIZEN_REGISTRY_URL`    | `http://localhost:8082`     | Base URL prefix for providers (adapter appends `/lookup`) |
+| `CITIZEN_REGISTRY_API_KEY`| `citizen-registry-secret-key` | API key for registry providers                   |
+| `REGISTRY_TIMEOUT`        | `5s`                        | Per-request timeout for registry providers       |
+| `REGISTRY_CACHE_TTL`      | `5m`                        | Cache TTL for registry lookups                   |
+| `REGULATED_MODE`          | `false`                     | Strip PII and national_id from citizen records   |
+
+Notes:
+- Sanctions provider currently uses the same URL and API key config as the citizen provider.
+- The HTTP adapter posts to `{baseURL}/lookup`; mock registry base URLs should include the path prefix (e.g., `.../api/v1/citizen`).
 
 ### Orchestrator Defaults
 

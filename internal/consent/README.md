@@ -106,7 +106,7 @@ Audit emissions behave like domain events (emitted on lifecycle transitions):
 | -------------------- | ---------------------- | --------- |
 | Consent granted      | `consent_granted`      | `granted` |
 | Consent revoked      | `consent_revoked`      | `revoked` |
-| Consent deleted      | `consent_deleted`      | `revoked` |
+| Consent deleted      | `consent_deleted`      | `deleted` |
 | Consent check passed | `consent_check_passed` | `granted` |
 | Consent check failed | `consent_check_failed` | `denied`  |
 
@@ -222,10 +222,59 @@ The service maps store errors to domain errors:
 ## HTTP Endpoints
 
 - `POST /auth/consent` - Grant consent for purposes
-- `POST /auth/consent/revoke` - Revoke specific consents
+- `POST /auth/consent/revoke` - Revoke one or more purposes
+- `POST /auth/consent/revoke-all` - Revoke all consents (bulk)
 - `GET /auth/consent` - List user's consents
 - `DELETE /auth/consent` - Delete all consents (GDPR)
 - `POST /admin/consent/users/{user_id}/revoke-all` - Admin revoke-all
+
+---
+
+## Security Considerations
+
+### ConsentID Scoping Invariant
+
+A ConsentID is ALWAYS scoped by (UserID, Purpose). Security implications:
+
+- ConsentID alone is NOT sufficient to authorize access to a record
+- All queries MUST include UserID to prevent cross-user access
+- Never expose ConsentID in URLs/APIs without validating UserID ownership
+- This prevents IDOR vulnerabilities and enumeration attacks
+
+See `models/models.go` for the full invariant documentation.
+
+### Admin Actor Attribution
+
+Admin operations (RevokeAll, DeleteAll) include actor attribution in audit events:
+
+```go
+// Admin actor is extracted from X-Admin-Actor-ID header
+actorID := admin.GetAdminActorID(ctx)
+s.emitAudit(ctx, audit.Event{
+    UserID:  targetUserID,
+    ActorID: actorID,  // Who performed the action
+    Action:  models.AuditActionConsentRevoked,
+    ...
+})
+```
+
+This ensures complete audit trails for compliance and incident investigation.
+
+### Re-Grant Cooldown
+
+The service enforces a cooldown period (default: 5 minutes) after revocation before re-granting:
+
+```go
+// models/models.go
+func (c Record) CanReGrant(now time.Time, cooldown time.Duration) bool
+```
+
+This prevents abuse patterns:
+- Rapid revoke→grant cycles to circumvent audit trail analysis
+- Race condition exploitation in consent-dependent workflows
+- Artificial consent churn for gaming metrics
+
+Configure via `WithReGrantCooldown(duration)` option or `CONSENT_REGRANT_COOLDOWN` environment variable (e.g., `CONSENT_REGRANT_COOLDOWN=5m`).
 
 ---
 

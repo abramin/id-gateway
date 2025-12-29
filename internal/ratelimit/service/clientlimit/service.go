@@ -11,17 +11,11 @@ import (
 	"credo/internal/ratelimit/models"
 	"credo/internal/ratelimit/observability"
 	dErrors "credo/pkg/domain-errors"
-	"credo/pkg/platform/audit"
 	"credo/pkg/platform/middleware/requesttime"
 )
 
 type BucketStore interface {
 	Allow(ctx context.Context, key string, limit int, window time.Duration) (*models.RateLimitResult, error)
-}
-
-// AuditPublisher emits audit events for security-relevant operations.
-type AuditPublisher interface {
-	Emit(ctx context.Context, event audit.Event) error
 }
 
 // ClientLookup provides OAuth client type information.
@@ -32,7 +26,7 @@ type ClientLookup interface {
 type Service struct {
 	buckets        BucketStore
 	clientLookup   ClientLookup
-	auditPublisher AuditPublisher
+	auditPublisher observability.AuditPublisher
 	logger         *slog.Logger
 	config         *config.ClientLimitConfig
 }
@@ -45,7 +39,7 @@ func WithLogger(logger *slog.Logger) Option {
 	}
 }
 
-func WithAuditPublisher(publisher AuditPublisher) Option {
+func WithAuditPublisher(publisher observability.AuditPublisher) Option {
 	return func(s *Service) {
 		s.auditPublisher = publisher
 	}

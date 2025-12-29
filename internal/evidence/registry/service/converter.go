@@ -1,3 +1,5 @@
+// Package service provides business logic for the evidence registry,
+// including conversions between provider formats and domain aggregates.
 package service
 
 import (
@@ -9,76 +11,105 @@ import (
 	"credo/internal/evidence/registry/models"
 	"credo/internal/evidence/registry/providers"
 	id "credo/pkg/domain"
+	dErrors "credo/pkg/domain-errors"
 )
 
 // EvidenceToCitizenVerification converts generic Evidence to a domain CitizenVerification aggregate.
 // Returns an error if required fields fail validation.
-func EvidenceToCitizenVerification(ev *providers.Evidence) (citizen.CitizenVerification, error) {
+// Uses getRequiredString/getRequiredBool for mandatory fields to prevent silent defaults.
+func EvidenceToCitizenVerification(ev *providers.Evidence) (*citizen.CitizenVerification, error) {
 	if ev == nil {
-		return citizen.CitizenVerification{}, fmt.Errorf("evidence is nil")
+		return nil, dErrors.New(dErrors.CodeBadRequest, "evidence is nil")
 	}
 	if ev.ProviderType != providers.ProviderTypeCitizen {
-		return citizen.CitizenVerification{}, fmt.Errorf("wrong provider type: expected %s, got %s", providers.ProviderTypeCitizen, ev.ProviderType)
+		return nil, dErrors.New(dErrors.CodeBadRequest,
+			fmt.Sprintf("wrong provider type: expected %s, got %s", providers.ProviderTypeCitizen, ev.ProviderType))
 	}
 
-	nationalIDStr := getString(ev.Data, "national_id")
+	// Required field: national_id
+	nationalIDStr, err := getRequiredString(ev.Data, "national_id")
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid provider response")
+	}
 	nationalID, err := id.ParseNationalID(nationalIDStr)
 	if err != nil {
-		return citizen.CitizenVerification{}, fmt.Errorf("invalid national_id: %w", err)
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid national_id format")
 	}
 
 	confidence, err := shared.New(ev.Confidence)
 	if err != nil {
-		return citizen.CitizenVerification{}, fmt.Errorf("invalid confidence: %w", err)
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid confidence value")
+	}
+
+	// Required field: valid (boolean)
+	valid, err := getRequiredBool(ev.Data, "valid")
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid provider response")
 	}
 
 	checkedAt := shared.NewCheckedAt(ev.CheckedAt)
 	providerID := shared.NewProviderID(ev.ProviderID)
 
+	// Optional fields: personal details (may be empty in regulated mode)
 	details := citizen.PersonalDetails{
 		FullName:    getString(ev.Data, "full_name"),
 		DateOfBirth: getString(ev.Data, "date_of_birth"),
 		Address:     getString(ev.Data, "address"),
 	}
 
-	return citizen.New(
+	verification, err := citizen.New(
 		nationalID,
 		details,
-		getBool(ev.Data, "valid"),
+		valid,
 		checkedAt,
 		providerID,
 		confidence,
-	), nil
+	)
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid citizen verification")
+	}
+	return verification, nil
 }
 
 // EvidenceToSanctionsCheck converts generic Evidence to a domain SanctionsCheck aggregate.
 // Returns an error if required fields fail validation.
-func EvidenceToSanctionsCheck(ev *providers.Evidence) (sanctions.SanctionsCheck, error) {
+// Uses getRequiredString/getRequiredBool to prevent silent defaults on critical security fields.
+func EvidenceToSanctionsCheck(ev *providers.Evidence) (*sanctions.SanctionsCheck, error) {
 	if ev == nil {
-		return sanctions.SanctionsCheck{}, fmt.Errorf("evidence is nil")
+		return nil, dErrors.New(dErrors.CodeBadRequest, "evidence is nil")
 	}
 	if ev.ProviderType != providers.ProviderTypeSanctions {
-		return sanctions.SanctionsCheck{}, fmt.Errorf("wrong provider type: expected %s, got %s", providers.ProviderTypeSanctions, ev.ProviderType)
+		return nil, dErrors.New(dErrors.CodeBadRequest,
+			fmt.Sprintf("wrong provider type: expected %s, got %s", providers.ProviderTypeSanctions, ev.ProviderType))
 	}
 
-	nationalIDStr := getString(ev.Data, "national_id")
+	// Required field: national_id
+	nationalIDStr, err := getRequiredString(ev.Data, "national_id")
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid provider response")
+	}
 	nationalID, err := id.ParseNationalID(nationalIDStr)
 	if err != nil {
-		return sanctions.SanctionsCheck{}, fmt.Errorf("invalid national_id: %w", err)
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid national_id format")
 	}
 
 	confidence, err := shared.New(ev.Confidence)
 	if err != nil {
-		return sanctions.SanctionsCheck{}, fmt.Errorf("invalid confidence: %w", err)
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid confidence value")
+	}
+
+	// Required field: listed (boolean) - critical for security, must not default to false
+	listed, err := getRequiredBool(ev.Data, "listed")
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid provider response")
 	}
 
 	checkedAt := shared.NewCheckedAt(ev.CheckedAt)
 	providerID := shared.NewProviderID(ev.ProviderID)
 	source := sanctions.NewSource(getString(ev.Data, "source"))
 
-	listed := getBool(ev.Data, "listed")
 	if listed {
-		return sanctions.NewListedSanctionsCheck(
+		check, err := sanctions.NewListedSanctionsCheck(
 			nationalID,
 			sanctions.ListTypeSanctions,
 			"",
@@ -87,21 +118,29 @@ func EvidenceToSanctionsCheck(ev *providers.Evidence) (sanctions.SanctionsCheck,
 			checkedAt,
 			providerID,
 			confidence,
-		), nil
+		)
+		if err != nil {
+			return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid sanctions check")
+		}
+		return check, nil
 	}
 
-	return sanctions.NewSanctionsCheck(
+	check, err := sanctions.NewSanctionsCheck(
 		nationalID,
 		source,
 		checkedAt,
 		providerID,
 		confidence,
-	), nil
+	)
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "invalid sanctions check")
+	}
+	return check, nil
 }
 
 // CitizenVerificationToRecord converts a domain CitizenVerification to an infrastructure CitizenRecord.
 // This is the outbound conversion for persistence and transport.
-func CitizenVerificationToRecord(cv citizen.CitizenVerification) *models.CitizenRecord {
+func CitizenVerificationToRecord(cv *citizen.CitizenVerification) *models.CitizenRecord {
 	return &models.CitizenRecord{
 		NationalID:  cv.NationalID().String(),
 		FullName:    cv.FullName(),
@@ -115,7 +154,7 @@ func CitizenVerificationToRecord(cv citizen.CitizenVerification) *models.Citizen
 
 // SanctionsCheckToRecord converts a domain SanctionsCheck to an infrastructure SanctionsRecord.
 // This is the outbound conversion for persistence and transport.
-func SanctionsCheckToRecord(sc sanctions.SanctionsCheck) *models.SanctionsRecord {
+func SanctionsCheckToRecord(sc *sanctions.SanctionsCheck) *models.SanctionsRecord {
 	return &models.SanctionsRecord{
 		NationalID: sc.NationalID().String(),
 		Listed:     sc.IsListed(),
@@ -146,16 +185,41 @@ func EvidenceToSanctionsRecord(ev *providers.Evidence) (*models.SanctionsRecord,
 	return SanctionsCheckToRecord(check), nil
 }
 
+// getRequiredString extracts a required string field from provider data.
+// Returns an error if the field is missing or has the wrong type.
+// This prevents silent defaults that could create invalid domain state.
+func getRequiredString(data map[string]interface{}, key string) (string, error) {
+	v, ok := data[key]
+	if !ok {
+		return "", dErrors.New(dErrors.CodeBadRequest, fmt.Sprintf("required field missing: %s", key))
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", dErrors.New(dErrors.CodeBadRequest, fmt.Sprintf("field %s has wrong type: expected string, got %T", key, v))
+	}
+	return s, nil
+}
+
+// getRequiredBool extracts a required boolean field from provider data.
+// Returns an error if the field is missing or has the wrong type.
+// This prevents silent defaults that could create false-negative results.
+func getRequiredBool(data map[string]interface{}, key string) (bool, error) {
+	v, ok := data[key]
+	if !ok {
+		return false, dErrors.New(dErrors.CodeBadRequest, fmt.Sprintf("required field missing: %s", key))
+	}
+	b, ok := v.(bool)
+	if !ok {
+		return false, dErrors.New(dErrors.CodeBadRequest, fmt.Sprintf("field %s has wrong type: expected bool, got %T", key, v))
+	}
+	return b, nil
+}
+
+// getString extracts an optional string field from provider data.
+// Returns empty string if missing or wrong type (for optional fields only).
 func getString(data map[string]interface{}, key string) string {
 	if v, ok := data[key].(string); ok {
 		return v
 	}
 	return ""
-}
-
-func getBool(data map[string]interface{}, key string) bool {
-	if v, ok := data[key].(bool); ok {
-		return v
-	}
-	return false
 }

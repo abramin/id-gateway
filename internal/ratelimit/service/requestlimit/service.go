@@ -27,7 +27,6 @@ import (
 	"credo/internal/ratelimit/models"
 	"credo/internal/ratelimit/observability"
 	dErrors "credo/pkg/domain-errors"
-	"credo/pkg/platform/audit"
 	requesttime "credo/pkg/platform/middleware/requesttime"
 	"credo/pkg/platform/privacy"
 )
@@ -42,17 +41,12 @@ type AllowlistStore interface {
 	IsAllowlisted(ctx context.Context, identifier string) (bool, error)
 }
 
-// AuditPublisher emits audit events for security-relevant operations.
-type AuditPublisher interface {
-	Emit(ctx context.Context, event audit.Event) error
-}
-
 // Service enforces per-IP and per-user rate limits using sliding window counters.
 // Thread-safe for concurrent use by HTTP middleware.
 type Service struct {
 	buckets        BucketStore
 	allowlist      AllowlistStore
-	auditPublisher AuditPublisher
+	auditPublisher observability.AuditPublisher
 	logger         *slog.Logger
 	config         *config.Config
 	metrics        *metrics.Metrics
@@ -69,7 +63,7 @@ func WithLogger(logger *slog.Logger) Option {
 }
 
 // WithAuditPublisher sets the audit event publisher for security logging.
-func WithAuditPublisher(publisher AuditPublisher) Option {
+func WithAuditPublisher(publisher observability.AuditPublisher) Option {
 	return func(s *Service) {
 		s.auditPublisher = publisher
 	}
@@ -182,12 +176,24 @@ func (s *Service) checkRateLimit(
 ) (*models.RateLimitResult, error) {
 	now := requesttime.Now(ctx)
 
-	a, err := s.allowlist.IsAllowlisted(ctx, identifier)
-	if err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to check allowlist")
+	// Check allowlist (result used later, not for early return)
+	allowlisted, allowlistErr := s.allowlist.IsAllowlisted(ctx, identifier)
+	if allowlistErr != nil {
+		return nil, dErrors.Wrap(allowlistErr, dErrors.CodeInternal, "failed to check allowlist")
 	}
-	if a {
-		// Record allowlist bypass metrics and audit
+
+	// SECURITY: Always perform bucket check regardless of allowlist status.
+	// This ensures constant-time behavior to prevent timing-based enumeration
+	// of allowlisted IPs/users. An attacker cannot distinguish allowlisted
+	// from non-allowlisted identifiers based on response time.
+	key := models.NewRateLimitKey(keyPrefix, identifier, class)
+	result, err := s.buckets.Allow(ctx, key.String(), requestsPerWindow, window)
+	if err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to check rate limit")
+	}
+
+	// If allowlisted, bypass the rate limit result
+	if allowlisted {
 		bypassType := string(keyPrefix)
 		if s.metrics != nil {
 			s.metrics.RecordAllowlistBypass(bypassType)
@@ -205,12 +211,6 @@ func (s *Service) checkRateLimit(
 			ResetAt:    now.Add(window),
 			RetryAfter: 0,
 		}, nil
-	}
-
-	key := models.NewRateLimitKey(keyPrefix, identifier, class)
-	result, err := s.buckets.Allow(ctx, key.String(), requestsPerWindow, window)
-	if err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to check rate limit")
 	}
 
 	if !result.Allowed {
@@ -248,10 +248,10 @@ func (s *Service) checkSingleLimit(ctx context.Context, p limitParams, class mod
 // Used by middleware.RateLimitAuthenticated for protected endpoints.
 //
 // Behavior:
-//   - Checks allowlist first; if either IP or user is allowlisted, request is bypassed
-//   - Applies IP limit first; if exceeded, returns immediately (fail fast)
-//   - Applies user limit second
-//   - Returns the more restrictive result (lower remaining count wins)
+//   - Gets limits upfront and fails fast if config is missing
+//   - Always performs both bucket checks for constant-time behavior (security)
+//   - Checks allowlist; if either IP or user is allowlisted, returns bypass result
+//   - Otherwise returns the more restrictive result (lower remaining count wins)
 //
 // This is the primary entry point for authenticated request rate limiting.
 func (s *Service) CheckBoth(ctx context.Context, ip, userID string, class models.EndpointClass) (*models.RateLimitResult, error) {
@@ -263,25 +263,30 @@ func (s *Service) CheckBoth(ctx context.Context, ip, userID string, class models
 		return denial, nil
 	}
 
-	// Check allowlist for both identifiers upfront
-	bypassed, result := s.checkAllowlistBypass(ctx, ip, userID, class, ipLimit, userLimit, now)
-	if bypassed {
-		return result, nil
-	}
+	// Check allowlist for both identifiers (results used later, not for early return)
+	ipAllowlisted, userAllowlisted := s.checkAllowlistStatus(ctx, ip, userID)
 
-	// Check IP rate limit first (early return if denied)
+	// SECURITY: Always perform both bucket checks regardless of allowlist status.
+	// This ensures constant-time behavior to prevent timing-based enumeration
+	// of allowlisted IPs/users.
 	ipRes, err := s.checkSingleLimit(ctx, *ipLimit, class)
 	if err != nil {
 		return nil, err
 	}
-	if !ipRes.Allowed {
-		return ipRes, nil
-	}
 
-	// Check user rate limit
 	userRes, err := s.checkSingleLimit(ctx, *userLimit, class)
 	if err != nil {
 		return nil, err
+	}
+
+	// If either is allowlisted, return bypass result
+	if ipAllowlisted || userAllowlisted {
+		return s.buildBypassResult(ctx, ip, userID, class, ipLimit, userLimit, now, ipAllowlisted, userAllowlisted), nil
+	}
+
+	// Both denied → return IP denial (checked first)
+	if !ipRes.Allowed {
+		return ipRes, nil
 	}
 	if !userRes.Allowed {
 		return userRes, nil
@@ -337,21 +342,16 @@ func (s *Service) getBothLimits(ctx context.Context, ip, userID string, class mo
 	return ipParams, userParams, nil
 }
 
-// checkAllowlistBypass checks if either IP or user is allowlisted and returns bypass result.
-func (s *Service) checkAllowlistBypass(ctx context.Context, ip, userID string, class models.EndpointClass, ipLimit, userLimit *limitParams, now time.Time) (bool, *models.RateLimitResult) {
-	ipAllowlisted, err := s.allowlist.IsAllowlisted(ctx, ip)
-	if err != nil {
-		return false, nil
-	}
-	userAllowlisted, err := s.allowlist.IsAllowlisted(ctx, userID)
-	if err != nil {
-		return false, nil
-	}
+// checkAllowlistStatus checks if IP or user is allowlisted.
+// Errors are swallowed and treated as not-allowlisted to maintain constant-time behavior.
+func (s *Service) checkAllowlistStatus(ctx context.Context, ip, userID string) (ipAllowlisted, userAllowlisted bool) {
+	ipAllowlisted, _ = s.allowlist.IsAllowlisted(ctx, ip)
+	userAllowlisted, _ = s.allowlist.IsAllowlisted(ctx, userID)
+	return ipAllowlisted, userAllowlisted
+}
 
-	if !ipAllowlisted && !userAllowlisted {
-		return false, nil
-	}
-
+// buildBypassResult constructs the bypass result for allowlisted requests.
+func (s *Service) buildBypassResult(ctx context.Context, ip, userID string, class models.EndpointClass, ipLimit, userLimit *limitParams, now time.Time, ipAllowlisted, userAllowlisted bool) *models.RateLimitResult {
 	bypassType := "ip"
 	if userAllowlisted {
 		bypassType = "user"
@@ -371,7 +371,7 @@ func (s *Service) checkAllowlistBypass(ctx context.Context, ip, userID string, c
 	if userLimit.limit < ipLimit.limit {
 		limit, window = userLimit.limit, userLimit.window
 	}
-	return true, &models.RateLimitResult{
+	return &models.RateLimitResult{
 		Allowed:    true,
 		Bypassed:   true,
 		Limit:      limit,

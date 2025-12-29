@@ -12,7 +12,6 @@ import (
 	"credo/internal/tenant/secrets"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
-	"credo/pkg/platform/audit"
 	"credo/pkg/platform/middleware/requesttime"
 )
 
@@ -67,7 +66,7 @@ func (s *ClientService) CreateClient(ctx context.Context, cmd *CreateClientComma
 		uuid.NewString(),
 		secretHash,
 		cmd.RedirectURIs,
-		grantTypesToStrings(cmd.AllowedGrants),
+		cmd.AllowedGrants,
 		cmd.AllowedScopes,
 		requesttime.Now(ctx),
 	)
@@ -79,11 +78,11 @@ func (s *ClientService) CreateClient(ctx context.Context, cmd *CreateClientComma
 		return nil, "", dErrors.Wrap(err, dErrors.CodeInternal, "failed to create client")
 	}
 
-	s.auditEmitter.emit(ctx, string(audit.EventClientCreated),
-		"tenant_id", client.TenantID,
-		"client_id", client.ID,
-		"client_name", client.Name,
-	)
+	s.auditEmitter.emitClientCreated(ctx, models.ClientCreated{
+		TenantID:   client.TenantID,
+		ClientID:   client.ID,
+		ClientName: client.Name,
+	})
 
 	return client, secret, nil
 }
@@ -163,12 +162,13 @@ func (s *ClientService) DeactivateClient(ctx context.Context, clientID id.Client
 	}
 
 	if err := s.clients.Update(ctx, client); err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to update client")
+		return nil, wrapClientErr(err, "failed to update client")
 	}
 
-	s.auditEmitter.emit(ctx, string(audit.EventClientDeactivated),
-		"client_id", client.ID,
-		"tenant_id", client.TenantID)
+	s.auditEmitter.emitClientDeactivated(ctx, models.ClientDeactivated{
+		TenantID: client.TenantID,
+		ClientID: client.ID,
+	})
 
 	return client, nil
 }
@@ -192,12 +192,13 @@ func (s *ClientService) ReactivateClient(ctx context.Context, clientID id.Client
 	}
 
 	if err := s.clients.Update(ctx, client); err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to update client")
+		return nil, wrapClientErr(err, "failed to update client")
 	}
 
-	s.auditEmitter.emit(ctx, string(audit.EventClientReactivated),
-		"client_id", client.ID,
-		"tenant_id", client.TenantID)
+	s.auditEmitter.emitClientReactivated(ctx, models.ClientReactivated{
+		TenantID: client.TenantID,
+		ClientID: client.ID,
+	})
 
 	return client, nil
 }
@@ -229,6 +230,66 @@ func (s *ClientService) RotateClientSecretForTenant(ctx context.Context, tenantI
 		return nil, "", wrapClientErr(err, "failed to get client")
 	}
 	return s.rotateSecret(ctx, client)
+}
+
+// VerifyClientSecret verifies a client's credentials for authentication.
+// Returns nil if the secret is valid, or an error if verification fails.
+// This is the explicit entry point for auth module to verify client secrets.
+//
+// Security: Uses bcrypt constant-time comparison via secrets.Verify.
+// Returns a generic "invalid credentials" error to prevent enumeration attacks.
+func (s *ClientService) VerifyClientSecret(ctx context.Context, clientID id.ClientID, providedSecret string) error {
+	if err := requireClientID(clientID); err != nil {
+		return err
+	}
+
+	client, err := s.clients.FindByID(ctx, clientID)
+	if err != nil {
+		// Return generic error to prevent client enumeration
+		return dErrors.New(dErrors.CodeInvalidClient, "invalid client credentials")
+	}
+
+	// Public clients cannot authenticate with a secret
+	if !client.IsConfidential() {
+		return dErrors.New(dErrors.CodeInvalidClient, "public client cannot use secret authentication")
+	}
+
+	// Verify the secret using bcrypt constant-time comparison
+	if err := secrets.Verify(providedSecret, client.ClientSecretHash); err != nil {
+		return dErrors.New(dErrors.CodeInvalidClient, "invalid client credentials")
+	}
+
+	return nil
+}
+
+// VerifyClientSecretByOAuthID verifies a client's credentials using the OAuth client_id string.
+// This is the common entry point used during token endpoint authentication.
+//
+// Security: Uses bcrypt constant-time comparison via secrets.Verify.
+// Returns a generic "invalid credentials" error to prevent enumeration attacks.
+func (s *ClientService) VerifyClientSecretByOAuthID(ctx context.Context, oauthClientID, providedSecret string) error {
+	oauthClientID = strings.TrimSpace(oauthClientID)
+	if oauthClientID == "" {
+		return dErrors.New(dErrors.CodeInvalidClient, "client_id is required")
+	}
+
+	client, err := s.clients.FindByOAuthClientID(ctx, oauthClientID)
+	if err != nil {
+		// Return generic error to prevent client enumeration
+		return dErrors.New(dErrors.CodeInvalidClient, "invalid client credentials")
+	}
+
+	// Public clients cannot authenticate with a secret
+	if !client.IsConfidential() {
+		return dErrors.New(dErrors.CodeInvalidClient, "public client cannot use secret authentication")
+	}
+
+	// Verify the secret using bcrypt constant-time comparison
+	if err := secrets.Verify(providedSecret, client.ClientSecretHash); err != nil {
+		return dErrors.New(dErrors.CodeInvalidClient, "invalid client credentials")
+	}
+
+	return nil
 }
 
 // ResolveClient maps client_id -> client and tenant as a single choke point.
@@ -275,13 +336,13 @@ func (s *ClientService) rotateSecret(ctx context.Context, client *models.Client)
 	client.UpdatedAt = requesttime.Now(ctx)
 
 	if err := s.clients.Update(ctx, client); err != nil {
-		return nil, "", dErrors.Wrap(err, dErrors.CodeInternal, "failed to update client")
+		return nil, "", wrapClientErr(err, "failed to update client")
 	}
 
-	s.auditEmitter.emit(ctx, string(audit.EventClientSecretRotated),
-		"tenant_id", client.TenantID,
-		"client_id", client.ID,
-	)
+	s.auditEmitter.emitClientSecretRotated(ctx, models.ClientSecretRotated{
+		TenantID: client.TenantID,
+		ClientID: client.ID,
+	})
 
 	return client, secret, nil
 }
@@ -308,14 +369,14 @@ func (s *ClientService) applyClientUpdate(ctx context.Context, client *models.Cl
 
 	client.UpdatedAt = requesttime.Now(ctx)
 	if err := s.clients.Update(ctx, client); err != nil {
-		return nil, "", dErrors.Wrap(err, dErrors.CodeInternal, "failed to update client")
+		return nil, "", wrapClientErr(err, "failed to update client")
 	}
 
 	if cmd.RotateSecret {
-		s.auditEmitter.emit(ctx, "client.secret_rotated",
-			"tenant_id", client.TenantID,
-			"client_id", client.ID,
-		)
+		s.auditEmitter.emitClientSecretRotated(ctx, models.ClientSecretRotated{
+			TenantID: client.TenantID,
+			ClientID: client.ID,
+		})
 	}
 
 	return client, rotatedSecret, nil
@@ -345,7 +406,7 @@ func validateGrantChanges(client *models.Client, cmd *UpdateClientCommand) error
 		return nil
 	}
 	for _, grant := range cmd.AllowedGrants {
-		if !client.CanUseGrant(grant.String()) {
+		if !client.CanUseGrant(grant) {
 			return dErrors.New(dErrors.CodeValidation, "client_credentials grant requires a confidential client")
 		}
 	}
@@ -361,7 +422,7 @@ func applyFieldUpdates(client *models.Client, cmd *UpdateClientCommand) {
 		client.RedirectURIs = cmd.RedirectURIs
 	}
 	if cmd.HasAllowedGrants() {
-		client.AllowedGrants = grantTypesToStrings(cmd.AllowedGrants)
+		client.AllowedGrants = cmd.AllowedGrants
 	}
 	if cmd.HasAllowedScopes() {
 		client.AllowedScopes = cmd.AllowedScopes
@@ -397,11 +458,3 @@ func generateSecret(isPublic bool) (secret, hash string, err error) {
 	return secret, hash, nil
 }
 
-// grantTypesToStrings converts typed grant types to strings for storage.
-func grantTypesToStrings(grants []models.GrantType) []string {
-	result := make([]string, len(grants))
-	for i, g := range grants {
-		result[i] = g.String()
-	}
-	return result
-}

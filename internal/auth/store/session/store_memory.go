@@ -89,8 +89,8 @@ func (s *InMemorySessionStore) DeleteSessionsByUser(_ context.Context, userID id
 	return nil
 }
 
-func (s *InMemorySessionStore) RevokeSession(_ context.Context, sessionID id.SessionID) error {
-	return s.RevokeSessionIfActive(context.Background(), sessionID, time.Now())
+func (s *InMemorySessionStore) RevokeSession(ctx context.Context, sessionID id.SessionID) error {
+	return s.RevokeSessionIfActive(ctx, sessionID, time.Now())
 }
 
 func (s *InMemorySessionStore) RevokeSessionIfActive(_ context.Context, sessionID id.SessionID, now time.Time) error {
@@ -101,14 +101,11 @@ func (s *InMemorySessionStore) RevokeSessionIfActive(_ context.Context, sessionI
 	if !ok {
 		return sentinel.ErrNotFound
 	}
-	if session.Status == models.SessionStatusRevoked {
+
+	if !session.Revoke(now) {
 		return ErrSessionRevoked
 	}
 
-	session.Status = models.SessionStatusRevoked
-	if session.RevokedAt == nil || now.After(*session.RevokedAt) {
-		session.RevokedAt = &now
-	}
 	s.sessions[sessionID] = session
 	return nil
 }
@@ -139,83 +136,26 @@ func (s *InMemorySessionStore) ListAll(_ context.Context) (map[id.SessionID]*mod
 	return result, nil
 }
 
-// validateForAdvance checks session client matches, status is valid, and not expired.
-// allowPending=true permits pending_consent status (for code exchange activation).
-func (s *InMemorySessionStore) validateForAdvance(session *models.Session, clientID string, at time.Time, allowPending bool) error {
-	if session.ClientID.String() != clientID {
-		return fmt.Errorf("client_id mismatch: %w", sentinel.ErrInvalidState)
-	}
-	if session.IsRevoked() {
-		return ErrSessionRevoked
-	}
-	if !session.CanAdvance(allowPending) {
-		return fmt.Errorf("session in invalid state: %w", sentinel.ErrInvalidState)
-	}
-	if at.After(session.ExpiresAt) {
-		return fmt.Errorf("session expired: %w", sentinel.ErrExpired)
-	}
-	return nil
-}
-
-// applyDeviceFields updates device-related fields if non-empty.
-func applyDeviceFields(session *models.Session, accessTokenJTI, deviceID, deviceFingerprintHash string) {
-	if accessTokenJTI != "" {
-		session.LastAccessTokenJTI = accessTokenJTI
-	}
-	if deviceID != "" {
-		session.DeviceID = deviceID
-	}
-	if deviceFingerprintHash != "" {
-		session.DeviceFingerprintHash = deviceFingerprintHash
-	}
-}
-
-// AdvanceLastSeen updates the session's last seen time and other optional fields.
-// It validates the session's existence, client ID, status, and expiry before updating.
-func (s *InMemorySessionStore) AdvanceLastSeen(_ context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, activate bool, deviceID string, deviceFingerprintHash string) (*models.Session, error) {
+// Execute atomically validates and mutates a session under lock.
+// The validate callback runs first; if it returns an error (typically a domain error),
+// that error is returned as-is without translation.
+// The mutate callback applies changes to the session after validation passes.
+// Returns sentinel.ErrNotFound if the session doesn't exist.
+func (s *InMemorySessionStore) Execute(_ context.Context, sessionID id.SessionID, validate func(*models.Session) error, mutate func(*models.Session)) (*models.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	session, ok := s.sessions[sessionID]
 	if !ok {
-		return nil, fmt.Errorf("session not found: %w", sentinel.ErrNotFound)
-	}
-	if err := s.validateForAdvance(session, clientID, at, true); err != nil {
-		return nil, err
+		return nil, sentinel.ErrNotFound
 	}
 
-	if at.After(session.LastSeenAt) {
-		session.LastSeenAt = at
+	if err := validate(session); err != nil {
+		return nil, err // Domain error from callback - passed through unchanged
 	}
-	if activate && session.Status == models.SessionStatusPendingConsent {
-		session.Status = models.SessionStatusActive
-	}
-	applyDeviceFields(session, accessTokenJTI, deviceID, deviceFingerprintHash)
 
+	mutate(session)
 	s.sessions[sessionID] = session
 	return session, nil
 }
 
-func (s *InMemorySessionStore) AdvanceLastRefreshed(_ context.Context, sessionID id.SessionID, clientID string, at time.Time, accessTokenJTI string, deviceID string, deviceFingerprintHash string) (*models.Session, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	session, ok := s.sessions[sessionID]
-	if !ok {
-		return nil, fmt.Errorf("session not found: %w", sentinel.ErrNotFound)
-	}
-	if err := s.validateForAdvance(session, clientID, at, false); err != nil {
-		return nil, err
-	}
-
-	if session.LastRefreshedAt == nil || at.After(*session.LastRefreshedAt) {
-		session.LastRefreshedAt = &at
-	}
-	if at.After(session.LastSeenAt) {
-		session.LastSeenAt = at
-	}
-	applyDeviceFields(session, accessTokenJTI, deviceID, deviceFingerprintHash)
-
-	s.sessions[sessionID] = session
-	return session, nil
-}

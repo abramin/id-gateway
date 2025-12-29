@@ -43,23 +43,47 @@ func (s *Service) logAudit(ctx context.Context, event string, attributes ...any)
 	}
 }
 
+// authFailureAttrs holds parsed attributes for auth failure events.
+// Extracted once and reused for both logging and audit emission.
+type authFailureAttrs struct {
+	requestID string
+	userIDStr string
+	userID    id.UserID
+	email     string
+	clientID  string
+}
+
+// parseAuthFailureAttrs extracts common attributes from the variadic list.
+func parseAuthFailureAttrs(ctx context.Context, attributes []any) authFailureAttrs {
+	userIDStr := attrs.ExtractString(attributes, "user_id")
+	userID, _ := id.ParseUserID(userIDStr)
+	return authFailureAttrs{
+		requestID: request.GetRequestID(ctx),
+		userIDStr: userIDStr,
+		userID:    userID,
+		email:     attrs.ExtractString(attributes, "email"),
+		clientID:  attrs.ExtractString(attributes, "client_id"),
+	}
+}
+
 func (s *Service) authFailure(ctx context.Context, reason string, isError bool, attributes ...any) {
-	s.logAuthFailure(ctx, reason, isError, attributes...)
-	s.emitAuthFailure(ctx, reason, attributes...)
+	parsed := parseAuthFailureAttrs(ctx, attributes)
+	s.logAuthFailure(ctx, reason, isError, parsed, attributes)
+	s.emitAuthFailure(ctx, reason, parsed)
 	if s.metrics != nil {
 		s.metrics.IncrementAuthFailures()
 	}
 }
 
-func (s *Service) logAuthFailure(ctx context.Context, reason string, isError bool, attributes ...any) {
-	// Add request_id from context if available
-	if requestID := request.GetRequestID(ctx); requestID != "" {
-		attributes = append(attributes, "request_id", requestID)
-	}
-	args := append(attributes, "event", audit.EventAuthFailed, "reason", reason, "log_type", "standard")
+func (s *Service) logAuthFailure(ctx context.Context, reason string, isError bool, parsed authFailureAttrs, attributes []any) {
 	if s.logger == nil {
 		return
 	}
+	// Add request_id from context if available
+	if parsed.requestID != "" {
+		attributes = append(attributes, "request_id", parsed.requestID)
+	}
+	args := append(attributes, "event", audit.EventAuthFailed, "reason", reason, "log_type", "standard")
 	if isError {
 		s.logger.ErrorContext(ctx, string(audit.EventAuthFailed), args...)
 		return
@@ -68,26 +92,20 @@ func (s *Service) logAuthFailure(ctx context.Context, reason string, isError boo
 }
 
 // emitAuthFailure emits auth failure events to the audit store for compliance tracking.
-func (s *Service) emitAuthFailure(ctx context.Context, reason string, attributes ...any) {
+func (s *Service) emitAuthFailure(ctx context.Context, reason string, parsed authFailureAttrs) {
 	if s.auditPublisher == nil {
 		return
 	}
 
-	requestID := request.GetRequestID(ctx)
-	userIDStr := attrs.ExtractString(attributes, "user_id")
-	userID, _ := id.ParseUserID(userIDStr)
-	email := attrs.ExtractString(attributes, "email")
-	clientID := attrs.ExtractString(attributes, "client_id")
-
 	if err := s.auditPublisher.Emit(ctx, audit.Event{
-		UserID:          userID,
-		Subject:         userIDStr,
+		UserID:          parsed.userID,
+		Subject:         parsed.userIDStr,
 		Action:          string(audit.EventAuthFailed),
 		Reason:          reason,
 		Decision:        "denied",
-		RequestingParty: clientID,
-		Email:           email,
-		RequestID:       requestID,
+		RequestingParty: parsed.clientID,
+		Email:           parsed.email,
+		RequestID:       parsed.requestID,
 	}); err != nil && s.logger != nil {
 		s.logger.ErrorContext(ctx, "failed to emit auth failure audit event", "error", err)
 	}

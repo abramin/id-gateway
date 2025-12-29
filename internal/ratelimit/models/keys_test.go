@@ -27,41 +27,57 @@ func TestKeySecuritySuite(t *testing.T) {
 // to verify no bucket crossover occurs.
 
 func (s *KeySecuritySuite) TestKeyCollisionAttack() {
-	s.Run("colon in identifier is sanitized to prevent bucket crossover", func() {
+	s.Run("colon in identifier is escaped to prevent bucket crossover", func() {
 		// Attack scenario: An attacker provides identifier "user:admin" hoping
 		// to affect the rate limit bucket for a different user or key type
 		maliciousIdentifier := "user:admin"
 
 		key := NewRateLimitKey(KeyPrefixIP, maliciousIdentifier, ClassAuth)
 
-		// The colon should be replaced with underscore
-		s.Contains(key.String(), "user_admin")
+		// The colon should be escaped with _c
+		s.Contains(key.String(), "user_cadmin")
 		s.NotContains(key.String(), "user:admin")
 	})
 
-	s.Run("multiple colons are all sanitized", func() {
+	s.Run("underscore and colon are escaped differently to prevent collision", func() {
+		// SECURITY: "user:admin" and "user_admin" must produce DIFFERENT keys
+		// to prevent collision attacks
+		colonIdentifier := "user:admin"
+		underscoreIdentifier := "user_admin"
+
+		colonKey := NewRateLimitKey(KeyPrefixIP, colonIdentifier, ClassAuth)
+		underscoreKey := NewRateLimitKey(KeyPrefixIP, underscoreIdentifier, ClassAuth)
+
+		// Keys must be distinct
+		s.NotEqual(colonKey.String(), underscoreKey.String())
+		// Verify specific escape sequences
+		s.Contains(colonKey.String(), "user_cadmin")      // : → _c
+		s.Contains(underscoreKey.String(), "user__admin") // _ → __
+	})
+
+	s.Run("multiple colons are all escaped", func() {
 		maliciousIdentifier := "ip:192:168:1:1"
 
 		key := NewRateLimitKey(KeyPrefixIP, maliciousIdentifier, ClassRead)
 
-		// All colons in the identifier segment should be replaced
+		// All colons in the identifier segment should be escaped with _c
 		keyStr := key.String()
-		s.Contains(keyStr, "ip_192_168_1_1")
+		s.Contains(keyStr, "ip_c192_c168_c1_c1")
 	})
 
-	s.Run("auth lockout key sanitizes both identifier and IP", func() {
+	s.Run("auth lockout key escapes both identifier and IP", func() {
 		maliciousIdentifier := "admin:user"
 		maliciousIP := "192.168.1.1:8080" // IP with port (contains colon)
 
 		key := NewAuthLockoutKey(maliciousIdentifier, maliciousIP)
 
 		keyStr := key.String()
-		// Both segments should be sanitized
+		// Both segments should be escaped
 		s.NotContains(keyStr, "admin:user")
 		s.NotContains(keyStr, "192.168.1.1:8080")
-		// Verify proper format after sanitization
-		s.Contains(keyStr, "admin_user")
-		s.Contains(keyStr, "192.168.1.1_8080")
+		// Verify proper format after escaping
+		s.Contains(keyStr, "admin_cuser")
+		s.Contains(keyStr, "192.168.1.1_c8080")
 	})
 
 	s.Run("legitimate keys are unaffected", func() {

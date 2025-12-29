@@ -93,7 +93,8 @@ func (s *SanctionsDomainSuite) TestNewSanctionsCheck() {
 	providerID := shared.NewProviderID("test-provider")
 	confidence := shared.Authoritative()
 
-	check := NewSanctionsCheck(nationalID, source, checkedAt, providerID, confidence)
+	check, err := NewSanctionsCheck(nationalID, source, checkedAt, providerID, confidence)
+	s.Require().NoError(err)
 
 	s.False(check.IsListed(), "unlisted check must have listed=false")
 	s.True(check.ListingDetails().IsEmpty(), "unlisted check must have empty details")
@@ -112,35 +113,39 @@ func (s *SanctionsDomainSuite) TestNewListedSanctionsCheck() {
 	confidence := shared.Authoritative()
 
 	s.Run("defaults ListTypeNone to ListTypeSanctions", func() {
-		check := NewListedSanctionsCheck(
+		check, err := NewListedSanctionsCheck(
 			nationalID, ListTypeNone, "test reason", "2024-01-01",
 			source, checkedAt, providerID, confidence,
 		)
+		s.Require().NoError(err)
 		s.True(check.IsListed())
 		s.Equal(ListTypeSanctions, check.ListType())
 	})
 
 	s.Run("preserves ListTypeSanctions", func() {
-		check := NewListedSanctionsCheck(
+		check, err := NewListedSanctionsCheck(
 			nationalID, ListTypeSanctions, "", "",
 			source, checkedAt, providerID, confidence,
 		)
+		s.Require().NoError(err)
 		s.Equal(ListTypeSanctions, check.ListType())
 	})
 
 	s.Run("preserves ListTypePEP", func() {
-		check := NewListedSanctionsCheck(
+		check, err := NewListedSanctionsCheck(
 			nationalID, ListTypePEP, "", "",
 			source, checkedAt, providerID, confidence,
 		)
+		s.Require().NoError(err)
 		s.Equal(ListTypePEP, check.ListType())
 	})
 
 	s.Run("preserves ListTypeWatchlist", func() {
-		check := NewListedSanctionsCheck(
+		check, err := NewListedSanctionsCheck(
 			nationalID, ListTypeWatchlist, "", "",
 			source, checkedAt, providerID, confidence,
 		)
+		s.Require().NoError(err)
 		s.Equal(ListTypeWatchlist, check.ListType())
 	})
 }
@@ -155,7 +160,8 @@ func (s *SanctionsDomainSuite) TestSanctionsCheck_QueryMethods() {
 	confidence := shared.Authoritative()
 
 	s.Run("unlisted subject returns false for all queries", func() {
-		check := NewSanctionsCheck(nationalID, source, checkedAt, providerID, confidence)
+		check, err := NewSanctionsCheck(nationalID, source, checkedAt, providerID, confidence)
+		s.Require().NoError(err)
 		s.False(check.IsListed())
 		s.False(check.IsSanctioned())
 		s.False(check.IsPEP())
@@ -163,7 +169,8 @@ func (s *SanctionsDomainSuite) TestSanctionsCheck_QueryMethods() {
 	})
 
 	s.Run("sanctions list returns true only for IsSanctioned", func() {
-		check := NewListedSanctionsCheck(nationalID, ListTypeSanctions, "", "", source, checkedAt, providerID, confidence)
+		check, err := NewListedSanctionsCheck(nationalID, ListTypeSanctions, "", "", source, checkedAt, providerID, confidence)
+		s.Require().NoError(err)
 		s.True(check.IsListed())
 		s.True(check.IsSanctioned())
 		s.False(check.IsPEP())
@@ -171,7 +178,8 @@ func (s *SanctionsDomainSuite) TestSanctionsCheck_QueryMethods() {
 	})
 
 	s.Run("PEP list returns true only for IsPEP", func() {
-		check := NewListedSanctionsCheck(nationalID, ListTypePEP, "", "", source, checkedAt, providerID, confidence)
+		check, err := NewListedSanctionsCheck(nationalID, ListTypePEP, "", "", source, checkedAt, providerID, confidence)
+		s.Require().NoError(err)
 		s.True(check.IsListed())
 		s.False(check.IsSanctioned())
 		s.True(check.IsPEP())
@@ -179,7 +187,8 @@ func (s *SanctionsDomainSuite) TestSanctionsCheck_QueryMethods() {
 	})
 
 	s.Run("watchlist returns true only for IsOnWatchlist", func() {
-		check := NewListedSanctionsCheck(nationalID, ListTypeWatchlist, "", "", source, checkedAt, providerID, confidence)
+		check, err := NewListedSanctionsCheck(nationalID, ListTypeWatchlist, "", "", source, checkedAt, providerID, confidence)
+		s.Require().NoError(err)
 		s.True(check.IsListed())
 		s.False(check.IsSanctioned())
 		s.False(check.IsPEP())
@@ -197,22 +206,26 @@ func (s *SanctionsDomainSuite) TestSanctionsCheck_RequiresEnhancedDueDiligence()
 	confidence := shared.Authoritative()
 
 	s.Run("unlisted does not require EDD", func() {
-		check := NewSanctionsCheck(nationalID, source, checkedAt, providerID, confidence)
+		check, err := NewSanctionsCheck(nationalID, source, checkedAt, providerID, confidence)
+		s.Require().NoError(err)
 		s.False(check.RequiresEnhancedDueDiligence())
 	})
 
 	s.Run("sanctions list requires EDD", func() {
-		check := NewListedSanctionsCheck(nationalID, ListTypeSanctions, "", "", source, checkedAt, providerID, confidence)
+		check, err := NewListedSanctionsCheck(nationalID, ListTypeSanctions, "", "", source, checkedAt, providerID, confidence)
+		s.Require().NoError(err)
 		s.True(check.RequiresEnhancedDueDiligence())
 	})
 
 	s.Run("PEP requires EDD", func() {
-		check := NewListedSanctionsCheck(nationalID, ListTypePEP, "", "", source, checkedAt, providerID, confidence)
+		check, err := NewListedSanctionsCheck(nationalID, ListTypePEP, "", "", source, checkedAt, providerID, confidence)
+		s.Require().NoError(err)
 		s.True(check.RequiresEnhancedDueDiligence())
 	})
 
 	s.Run("watchlist requires EDD", func() {
-		check := NewListedSanctionsCheck(nationalID, ListTypeWatchlist, "", "", source, checkedAt, providerID, confidence)
+		check, err := NewListedSanctionsCheck(nationalID, ListTypeWatchlist, "", "", source, checkedAt, providerID, confidence)
+		s.Require().NoError(err)
 		s.True(check.RequiresEnhancedDueDiligence())
 	})
 }

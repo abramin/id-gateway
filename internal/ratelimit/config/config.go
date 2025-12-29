@@ -6,6 +6,8 @@ import (
 	"credo/internal/ratelimit/models"
 )
 
+// Note: models import is used for BackoffPolicy value object
+
 type Config struct {
 	IPLimits     map[models.EndpointClass]Limit
 	UserLimits   map[models.EndpointClass]Limit
@@ -42,27 +44,21 @@ type AuthLockoutConfig struct {
 	SupportURL             string        // URL for user support (included in lockout response)
 }
 
-// CalculateBackoff returns the progressive backoff delay for the given failure count.
-// Implements exponential backoff: 250ms → 500ms → 1s (capped).
-func (c *AuthLockoutConfig) CalculateBackoff(failureCount int) time.Duration {
-	if failureCount <= 0 {
-		return 0
-	}
+// BackoffPolicy returns the BackoffPolicy value object for this config.
+// Prefer using this method to access backoff calculations as pure domain logic.
+func (c *AuthLockoutConfig) BackoffPolicy() models.BackoffPolicy {
 	base := c.ProgressiveBackoffBase
 	if base == 0 {
 		base = 250 * time.Millisecond
 	}
-	// Exponential backoff with cap at 1 second
-	delay := base * time.Duration(1<<(failureCount-1))
-	if delay > time.Second {
-		return time.Second
-	}
-	return delay
+	return models.NewBackoffPolicy(base, time.Second, c.WindowDuration)
 }
 
-// ResetTime returns when the lockout window will reset based on last failure time.
-func (c *AuthLockoutConfig) ResetTime(lastFailureAt time.Time) time.Time {
-	return lastFailureAt.Add(c.WindowDuration)
+// CalculateBackoff returns the progressive backoff delay for the given failure count.
+// Implements exponential backoff: 250ms → 500ms → 1s (capped).
+// Deprecated: Use BackoffPolicy().CalculateBackoff() for pure domain logic.
+func (c *AuthLockoutConfig) CalculateBackoff(failureCount int) time.Duration {
+	return c.BackoffPolicy().CalculateBackoff(failureCount)
 }
 
 type QuotaLimit struct {

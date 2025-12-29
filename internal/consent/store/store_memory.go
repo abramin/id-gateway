@@ -20,18 +20,24 @@ import (
 // InMemoryStore stores consent records in memory for tests/dev.
 type InMemoryStore struct {
 	mu       sync.RWMutex
-	consents map[id.UserID][]*models.Record
+	consents map[id.UserID]map[models.Purpose]*models.Record
 }
 
 // New constructs an empty in-memory consent store.
 func New() *InMemoryStore {
-	return &InMemoryStore{consents: make(map[id.UserID][]*models.Record)}
+	return &InMemoryStore{consents: make(map[id.UserID]map[models.Purpose]*models.Record)}
 }
 
 func (s *InMemoryStore) Save(_ context.Context, consent *models.Record) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.consents[consent.UserID] = append(s.consents[consent.UserID], consent)
+	records, ok := s.consents[consent.UserID]
+	if !ok {
+		records = make(map[models.Purpose]*models.Record)
+		s.consents[consent.UserID] = records
+	}
+	copyRecord := *consent
+	records[consent.Purpose] = &copyRecord
 	return nil
 }
 
@@ -39,13 +45,12 @@ func (s *InMemoryStore) FindByUserAndPurpose(_ context.Context, userID id.UserID
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	records := s.consents[userID]
-	for i := len(records) - 1; i >= 0; i-- {
-		if records[i].Purpose == purpose {
-			copyRecord := *records[i]
-			return &copyRecord, nil
-		}
+	record, ok := records[purpose]
+	if !ok {
+		return nil, sentinel.ErrNotFound
 	}
-	return nil, sentinel.ErrNotFound
+	copyRecord := *record
+	return &copyRecord, nil
 }
 
 func (s *InMemoryStore) ListByUser(ctx context.Context, userID id.UserID, filter *models.RecordFilter) ([]*models.Record, error) {
@@ -59,12 +64,12 @@ func (s *InMemoryStore) ListByUser(ctx context.Context, userID id.UserID, filter
 	for _, record := range records {
 		// Apply filters if specified
 		if filter != nil {
-			if filter.Purpose != "" && string(record.Purpose) != filter.Purpose {
+			if filter.Purpose != nil && record.Purpose != *filter.Purpose {
 				continue
 			}
-			if filter.Status != "" {
+			if filter.Status != nil {
 				status := record.ComputeStatus(now)
-				if string(status) != filter.Status {
+				if status != *filter.Status {
 					continue
 				}
 			}
@@ -82,14 +87,17 @@ func (s *InMemoryStore) Update(_ context.Context, consent *models.Record) error 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	records := s.consents[consent.UserID]
-	for i := range records {
-		if records[i].ID == consent.ID {
-			records[i] = consent
-			s.consents[consent.UserID] = records
-			return nil
-		}
+	record, ok := records[consent.Purpose]
+	if !ok {
+		return sentinel.ErrNotFound
 	}
-	return sentinel.ErrNotFound
+	if record.ID != consent.ID {
+		return sentinel.ErrNotFound
+	}
+	copyRecord := *consent
+	records[consent.Purpose] = &copyRecord
+	s.consents[consent.UserID] = records
+	return nil
 }
 
 // RevokeByUserAndPurpose sets the RevokedAt timestamp for the latest active consent of the given purpose.
@@ -98,14 +106,14 @@ func (s *InMemoryStore) RevokeByUserAndPurpose(_ context.Context, userID id.User
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	records := s.consents[userID]
-	for i := range records {
-		if records[i].Purpose == purpose && records[i].RevokedAt == nil {
-			records[i].RevokedAt = &revokedAt
-			s.consents[userID] = records
-			return records[i], nil
-		}
+	record, ok := records[purpose]
+	if !ok || record.RevokedAt != nil {
+		return nil, sentinel.ErrNotFound
 	}
-	return nil, sentinel.ErrNotFound
+	record.RevokedAt = &revokedAt
+	s.consents[userID] = records
+	copyRecord := *record
+	return &copyRecord, nil
 }
 
 func (s *InMemoryStore) DeleteByUser(_ context.Context, userID id.UserID) error {
@@ -122,9 +130,9 @@ func (s *InMemoryStore) RevokeAllByUser(_ context.Context, userID id.UserID, rev
 	defer s.mu.Unlock()
 	records := s.consents[userID]
 	count := 0
-	for i := range records {
-		if records[i].RevokedAt == nil {
-			records[i].RevokedAt = &revokedAt
+	for _, record := range records {
+		if record.RevokedAt == nil {
+			record.RevokedAt = &revokedAt
 			count++
 		}
 	}

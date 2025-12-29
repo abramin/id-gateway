@@ -73,10 +73,16 @@ The **Session** is the primary aggregate root, owning:
 **Expiration model:** Sessions are time-bound via `ExpiresAt` and rejected by store checks when expired. Expiration is not a status value; the cleanup worker deletes expired sessions.
 
 **Intent-revealing methods:**
-- `IsActive()`, `IsPendingConsent()`, `IsRevoked()`
+- `IsActive()`, `IsPendingConsent()`, `IsRevoked()` - status predicates
 - `Activate()` - transitions from pending_consent to active
 - `CanAdvance(allowPending)` - checks state for token operations
-- `GetDeviceBinding()`, `SetDeviceBinding()`
+- `Revoke(at)` - transitions to revoked state, returns false if already revoked
+- `RecordActivity(at)` - updates LastSeenAt if time is after current value
+- `RecordRefresh(at)` - updates LastRefreshedAt and calls RecordActivity
+- `ApplyTokenJTI(jti)` - records the latest access token JTI
+- `ApplyDeviceInfo(deviceID, fingerprintHash)` - updates device binding fields
+- `ValidateForAdvance(clientID, at, allowPending)` - validates session state for token operations
+- `GetDeviceBinding()`, `SetDeviceBinding()` - device binding accessors
 
 **Constructor:** `NewSession()` enforces:
 - Scopes cannot be empty
@@ -101,6 +107,8 @@ The **Session** is the primary aggregate root, owning:
 **Intent-revealing methods:**
 - `IsValid(now)` - not used AND not expired
 - `IsExpired(now)` - past expiry time
+- `MarkUsed()` - marks as used for replay prevention, returns false if already used
+- `ValidateForConsume(redirectURI, now)` - validates code can be consumed (redirect match, not expired, not used)
 
 ### Refresh Token (Child Entity)
 
@@ -116,6 +124,8 @@ The **Session** is the primary aggregate root, owning:
 **Intent-revealing methods:**
 - `IsValid(now)` - not used AND not expired
 - `IsExpired(now)` - past expiry time
+- `MarkUsed(at)` - marks as used for rotation tracking, records LastRefreshedAt
+- `ValidateForConsume(now)` - validates token can be consumed (not expired, not used)
 
 ### User Entity
 
@@ -137,8 +147,36 @@ The **Session** is the primary aggregate root, owning:
   - Fingerprints are hashed; no IP is stored.
 - **Revocation List** via `store/revocation/revocation.go` (in-memory by default)
   - `TRLFailureMode` controls whether TRL write failures warn or fail.
+  - Clock injection via `WithClock(func() time.Time)` option for testability
+- **Replay Protection** via `service/token_flow.go#revokeSessionOnReplay`
+  - Shared helper for replay attack handling in both code exchange and token refresh flows
+  - Revokes associated session when `ErrAlreadyUsed` is detected
 
 These express domain behavior that doesn't naturally live on a single entity.
+
+---
+
+## Store Boundary Pattern
+
+Stores delegate validation to domain entity methods rather than implementing validation inline:
+
+```go
+// Store calls domain validation method
+func (s *Store) ConsumeAuthCode(ctx, code, redirectURI, now) (*AuthorizationCodeRecord, error) {
+    record := s.findByCode(code)
+    if err := record.ValidateForConsume(redirectURI, now); err != nil {
+        return record, translateToDomainError(err)
+    }
+    record.MarkUsed()
+    return record, nil
+}
+```
+
+**Benefits:**
+- Domain invariants live in domain entities, not scattered across stores
+- Single source of truth for validation logic
+- Easier to test domain rules in isolation
+- Stores remain thin persistence adapters
 
 ---
 

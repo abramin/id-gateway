@@ -106,7 +106,7 @@ func newAllowlistEntry(t *testing.T, entryType models.AllowlistEntryType, identi
 	entry := &models.AllowlistEntry{
 		ID:         identifier,
 		Type:       entryType,
-		Identifier: identifier,
+		Identifier: models.AllowlistIdentifier(identifier),
 		Reason:     "test",
 		CreatedAt:  time.Now(),
 		CreatedBy:  id.UserID(uuid.New()),

@@ -2,7 +2,7 @@
 
 **Credo Implementation Specifications**
 **Version:** 2.6
-**Last Updated:** 2025-12-24
+**Last Updated:** 2025-12-28
 
 This directory contains technical product requirements for implementing Credo system. Each PRD is written for developers and provides detailed specifications, API contracts, data models, and acceptance criteria.
 
@@ -49,7 +49,7 @@ Credo is a **regulated identity and authorization system** that:
 
 | PRD                                            | Feature                     | Status         | Est. Time | Dependencies |
 | ---------------------------------------------- | --------------------------- | -------------- | --------- | ------------ |
-| [PRD-003](./PRD-003-Registry-Integration.md)   | Registry Integration        | 🔵 Not Started | 11-18h    | PRD-001, 002 |
+| [PRD-003](./PRD-003-Registry-Integration.md)   | Registry Integration        | 🟡 In Progress | 11-18h    | PRD-001, 002 |
 | [PRD-004](./PRD-004-Verifiable-Credentials.md) | Verifiable Credentials      | 🔵 Not Started | 9-16h     | PRD-001, 003 |
 | [PRD-005](./PRD-005-Decision-Engine.md)        | Decision Engine             | 🔵 Not Started | 8-14h     | PRD-001-004  |
 | [PRD-006](./PRD-006-Audit-Compliance.md)       | Audit & Compliance Baseline | 🔵 Not Started | 12-20h    | PRD-001-005  |

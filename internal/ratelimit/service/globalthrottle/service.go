@@ -8,7 +8,6 @@ import (
 	"credo/internal/ratelimit/config"
 	"credo/internal/ratelimit/observability"
 	dErrors "credo/pkg/domain-errors"
-	"credo/pkg/platform/audit"
 )
 
 // Store manages global request throttling counters.
@@ -17,14 +16,9 @@ type Store interface {
 	GetGlobalCount(ctx context.Context) (count int, err error)
 }
 
-// AuditPublisher emits audit events for security-relevant operations.
-type AuditPublisher interface {
-	Emit(ctx context.Context, event audit.Event) error
-}
-
 type Service struct {
 	store          Store
-	auditPublisher AuditPublisher
+	auditPublisher observability.AuditPublisher
 	logger         *slog.Logger
 	config         *config.GlobalLimit
 }
@@ -37,7 +31,7 @@ func WithLogger(logger *slog.Logger) Option {
 	}
 }
 
-func WithAuditPublisher(publisher AuditPublisher) Option {
+func WithAuditPublisher(publisher observability.AuditPublisher) Option {
 	return func(s *Service) {
 		s.auditPublisher = publisher
 	}

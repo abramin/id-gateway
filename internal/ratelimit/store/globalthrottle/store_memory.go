@@ -55,7 +55,8 @@ func New(opts ...Option) *InMemoryGlobalThrottleStore {
 
 // IncrementGlobal increments the global counter and checks if the request is blocked.
 // Returns blocked=true if either per-second or per-hour limit is exceeded.
-// Uses atomic operations for lock-free concurrency.
+// Uses CAS (Compare-And-Swap) operations to ensure the counter never exceeds the limit,
+// preventing TOCTOU races where multiple goroutines could temporarily exceed the limit.
 func (s *InMemoryGlobalThrottleStore) IncrementGlobal(ctx context.Context) (count int, blocked bool, err error) {
 	now := requesttime.Now(ctx)
 	currentSecond := now.Unix()
@@ -79,24 +80,39 @@ func (s *InMemoryGlobalThrottleStore) IncrementGlobal(ctx context.Context) (coun
 		}
 	}
 
-	// Increment and check per-second limit
-	secCount := s.secondCount.Add(1)
-	if secCount > int64(s.perSecondLimit) {
-		// Over limit - decrement to avoid counting this request
-		s.secondCount.Add(-1)
-		return int(secCount - 1), true, nil
+	// SECURITY: Use CAS to atomically check-and-increment per-second counter.
+	// This prevents the counter from ever exceeding the limit, even momentarily,
+	// avoiding TOCTOU races where Add(1) followed by comparison could overshoot.
+	secCount, secBlocked := s.tryIncrementWithLimit(&s.secondCount, int64(s.perSecondLimit))
+	if secBlocked {
+		return int(secCount), true, nil
 	}
 
-	// Increment and check per-hour limit
-	hourCount := s.hourCount.Add(1)
-	if hourCount > int64(s.perHourLimit) {
-		// Over limit - decrement both counters
+	// CAS-based increment for per-hour counter
+	hourCount, hourBlocked := s.tryIncrementWithLimit(&s.hourCount, int64(s.perHourLimit))
+	if hourBlocked {
+		// Roll back the second counter since we're not allowing this request
 		s.secondCount.Add(-1)
-		s.hourCount.Add(-1)
-		return int(hourCount - 1), true, nil
+		return int(hourCount), true, nil
 	}
 
 	return int(secCount), false, nil
+}
+
+// tryIncrementWithLimit atomically increments a counter only if it won't exceed the limit.
+// Uses CAS loop to ensure the counter never exceeds the limit, even under contention.
+// Returns the current count and whether the request was blocked.
+func (s *InMemoryGlobalThrottleStore) tryIncrementWithLimit(counter *atomic.Int64, limit int64) (count int64, blocked bool) {
+	for {
+		current := counter.Load()
+		if current >= limit {
+			return current, true
+		}
+		if counter.CompareAndSwap(current, current+1) {
+			return current + 1, false
+		}
+		// CAS failed due to contention, retry
+	}
 }
 
 // GetGlobalCount returns the current count in the per-second window.

@@ -33,6 +33,8 @@ var tokenErrorMappings = []tokenErrorMapping{
 
 // handleTokenError translates dependency errors into domain errors.
 // Uses tokenErrorMappings to determine error code and user-facing message based on flow type.
+// Domain errors from session validation (CodeUnauthorized) are mapped to CodeInvalidGrant
+// for OAuth 2.0 compliance.
 func (s *Service) handleTokenError(ctx context.Context, err error, clientID string, recordID *string, flow TokenFlow) error {
 	if err == nil {
 		return nil
@@ -43,14 +45,32 @@ func (s *Service) handleTokenError(ctx context.Context, err error, clientID stri
 		attrs = append(attrs, "record_id", *recordID)
 	}
 
-	// Pass through existing domain errors
+	// Handle domain errors from session validation
+	// OAuth 2.0 requires "invalid_grant" for session/token validation failures
 	var de *dErrors.Error
 	if errors.As(err, &de) {
+		if de.Code == dErrors.CodeUnauthorized {
+			// Map session validation failures to OAuth invalid_grant
+			s.authFailure(ctx, "session_validation_failed", false, attrs...)
+			return dErrors.New(dErrors.CodeInvalidGrant, de.Message)
+		}
+		// Other domain errors pass through unchanged
 		s.authFailure(ctx, string(de.Code), false, attrs...)
 		return err
 	}
 
-	// Check mappings in order
+	// Handle sentinel.ErrNotFound for session/code lookup failures
+	if errors.Is(err, sentinel.ErrNotFound) {
+		msg := "invalid authorization code"
+		logReason := "not_found"
+		if flow == TokenFlowRefresh {
+			msg = "invalid refresh token"
+		}
+		s.authFailure(ctx, logReason, false, attrs...)
+		return dErrors.New(dErrors.CodeInvalidGrant, msg)
+	}
+
+	// Check remaining mappings in order
 	for _, m := range tokenErrorMappings {
 		if errors.Is(err, m.sentinel) {
 			msg := m.codeMsg

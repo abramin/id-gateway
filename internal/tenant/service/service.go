@@ -7,7 +7,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"credo/internal/tenant/models"
+	"credo/internal/tenant/readmodels"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
@@ -41,7 +41,7 @@ func New(tenants TenantStore, clients ClientStore, users UserCounter, opts ...Op
 
 // GetTenant returns tenant details with user and client counts.
 // This method composes data from multiple stores.
-func (s *Service) GetTenant(ctx context.Context, tenantID id.TenantID) (*models.TenantDetails, error) {
+func (s *Service) GetTenant(ctx context.Context, tenantID id.TenantID) (*readmodels.TenantDetails, error) {
 	start := time.Now()
 	defer s.observeGetTenant(start)
 
@@ -81,7 +81,7 @@ func (s *Service) GetTenant(ctx context.Context, tenantID id.TenantID) (*models.
 		return nil, err
 	}
 
-	return &models.TenantDetails{
+	return &readmodels.TenantDetails{
 		ID:          tenant.ID,
 		Name:        tenant.Name,
 		Status:      tenant.Status,

@@ -1,11 +1,15 @@
 package httputil
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
+	"credo/pkg/platform/middleware/auth"
 )
 
 func WriteJSON(w http.ResponseWriter, status int, response any) {
@@ -67,6 +71,21 @@ func DomainCodeToHTTPStatus(code dErrors.Code) int {
 	default:
 		return http.StatusInternalServerError
 	}
+}
+
+// RequireUserID extracts the authenticated user ID from context.
+// Returns a domain error suitable for HTTP response on failure.
+// This centralizes auth context extraction for handlers.
+func RequireUserID(ctx context.Context, logger *slog.Logger, requestID string) (id.UserID, error) {
+	userID := auth.GetUserID(ctx)
+	if userID.IsNil() {
+		if logger != nil {
+			logger.ErrorContext(ctx, "userID missing from context despite auth middleware",
+				"request_id", requestID)
+		}
+		return id.UserID{}, dErrors.New(dErrors.CodeInternal, "authentication context error")
+	}
+	return userID, nil
 }
 
 // DomainCodeToHTTPCode translates domain error codes to HTTP error codes (for JSON response).

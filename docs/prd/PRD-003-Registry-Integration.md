@@ -1,10 +1,10 @@
 # PRD-003: Registry Integration (Citizen & Sanctions)
 
-**Status:** In Progress
+**Status:** Partially Implemented
 **Priority:** P0 (Critical)
 **Owner:** Engineering Team
-**Last Updated:** 2025-12-27
-**Version:** 1.9
+**Last Updated:** 2025-12-28
+**Version:** 1.10
 
 ---
 
@@ -62,12 +62,12 @@ internal/evidence/registry/
 
 Contains domain primitives used across both subdomains:
 
-| Type | Description | Invariants |
-|------|-------------|------------|
-| `NationalID` | Validated lookup key | 6-20 alphanumeric chars (A-Z, 0-9) |
-| `Confidence` | Evidence reliability score | 0.0-1.0 range |
-| `CheckedAt` | Verification timestamp | Supports TTL-based freshness checks |
-| `ProviderID` | Evidence source identifier | Non-empty string |
+| Type         | Description                                     | Invariants                          |
+| ------------ | ----------------------------------------------- | ----------------------------------- |
+| `NationalID` | Validated lookup key (defined in `pkg/domain`)  | 6-20 alphanumeric chars (A-Z, 0-9)  |
+| `Confidence` | Evidence reliability score                      | 0.0-1.0 range                       |
+| `CheckedAt`  | Verification timestamp                          | Supports TTL-based freshness checks |
+| `ProviderID` | Evidence source identifier                      | Non-empty string                    |
 
 ### Citizen Subdomain
 
@@ -75,13 +75,14 @@ Handles identity verification through national population registries.
 
 **Aggregate Root:** `CitizenVerification`
 
-| Component | Description |
-|-----------|-------------|
-| `PersonalDetails` | Value object containing PII (name, DOB, address) |
-| `VerificationStatus` | Value object with Valid flag and CheckedAt |
-| `Minimized()` | Returns GDPR-compliant copy with PII stripped |
+| Component            | Description                                      |
+| -------------------- | ------------------------------------------------ |
+| `PersonalDetails`    | Value object containing PII (name, DOB, address) |
+| `VerificationStatus` | Value object with Valid flag and CheckedAt       |
+| `Minimized()`        | Returns GDPR-compliant copy with PII stripped    |
 
 **Key Invariants:**
+
 - NationalID is always present and valid
 - Minimized records have empty PersonalDetails
 - Minimization is a one-way transformation (cannot "un-minimize")
@@ -92,13 +93,14 @@ Handles compliance screening against sanctions lists and PEP databases.
 
 **Aggregate Root:** `SanctionsCheck`
 
-| Component | Description |
-|-----------|-------------|
-| `ListType` | Enum: sanctions, pep, watchlist |
+| Component        | Description                              |
+| ---------------- | ---------------------------------------- |
+| `ListType`       | Enum: sanctions, pep, watchlist          |
 | `ListingDetails` | Value object with reason and listed date |
-| `Source` | Authoritative source of the check |
+| `Source`         | Authoritative source of the check        |
 
 **Key Invariants:**
+
 - Source is always present
 - If Listed is true, ListType must be set (not empty)
 - If Listed is false, ListingDetails is empty
@@ -106,6 +108,7 @@ Handles compliance screening against sanctions lists and PEP databases.
 ### Domain Purity
 
 All domain packages follow strict purity rules:
+
 - ✓ No I/O (no database, HTTP, filesystem)
 - ✓ No `context.Context` in function signatures
 - ✓ No `time.Now()` or `rand.*` calls—time received as parameters
@@ -158,6 +161,7 @@ All domain packages follow strict purity rules:
   "date_of_birth": "1990-05-15",
   "address": "123 Main Street, Springfield, IL 62701",
   "valid": true,
+  "source": "citizen-registry",
   "checked_at": "2025-12-03T10:00:00Z"
 }
 ```
@@ -166,8 +170,8 @@ All domain packages follow strict purity rules:
 
 ```json
 {
-  "national_id": "123456789",
   "valid": true,
+  "source": "citizen-registry",
   "checked_at": "2025-12-03T10:00:00Z"
 }
 ```
@@ -179,10 +183,10 @@ All domain packages follow strict purity rules:
 3. Validate national_id format (non-empty, alphanumeric)
 4. Check cache for recent citizen record (<5 min old)
 5. If cache miss:
-   - Call MockCitizenClient.Check(nationalID)
+   - Call orchestrator using HTTP citizen provider(s) (mock registry server in `mocks/` for local dev)
    - Store result in cache with TTL
 6. If regulated mode:
-   - Call MinimizeCitizenRecord() to strip PII
+   - Strip PII and national_id using domain aggregate minimization before returning/caching
 7. Emit audit event
 8. Return record
 
@@ -256,7 +260,7 @@ All domain packages follow strict purity rules:
 3. Validate national_id format
 4. Check cache for recent sanctions record (<5 min old)
 5. If cache miss:
-   - Call MockSanctionsClient.Check(nationalID)
+   - Call orchestrator using HTTP sanctions provider(s) (mock registry server in `mocks/` for local dev)
    - Store result in cache with TTL
 6. Emit audit event (always log sanctions checks)
 7. Return record
@@ -309,9 +313,9 @@ if err != nil {
 
 **Business Logic:**
 
-1. Call `Citizen()` and `Sanctions()` concurrently using a shared `context.Context` (errgroup preferred) with early cancel on first failure or timeout (5s max).
-2. Capture per-call latency and cache hit/miss metadata for traces/metrics.
-3. If either fails, return error; otherwise return both records as a single evidence bundle.
+1. Call orchestrator `Lookup()` with both `citizen` and `sanctions` types using a shared timeout (default 5s).
+2. Current implementation performs per-type lookups sequentially under the fallback strategy; parallel fan-out across types is pending.
+3. If either fails or evidence is incomplete, return error; otherwise return both records as a single evidence bundle (cache only when both succeed).
 
 ### Identity Evidence Orchestration
 
@@ -319,7 +323,7 @@ if err != nil {
 - The orchestration layer selects lookup paths per configuration/consent and is extendable to additional registry families (civil registry, driver license APIs, digital ID wallets, biometric matches) without changing callers.
 - Multi-source correlation rules (e.g., reconcile conflicting name/address, merge confidence scores) are implemented so combined evidence can be weighted per provider and regulatory regime.
 
-**Implementation Status:** The provider abstraction architecture has been implemented with the following components:
+**Implementation Status:** Partially implemented with the following components:
 
 - **Provider Interface**: Universal contract for all evidence sources with capability negotiation
 - **Protocol Adapters**: Pluggable support for HTTP, SOAP, and gRPC protocols via adapter pattern
@@ -334,7 +338,7 @@ if err != nil {
 
 ### TR-1: Data Models
 
-**CitizenRecord** (Location: `internal/evidence/registry/models.go`)
+**CitizenRecord** (Location: `internal/evidence/registry/models/models.go`)
 
 ```go
 type CitizenRecord struct {
@@ -343,11 +347,12 @@ type CitizenRecord struct {
     DateOfBirth string    // Format: YYYY-MM-DD
     Address     string    // Full address (street, city, postal, country)
     Valid       bool      // Whether record is valid/active
+    Source      string    // Provider identifier
     CheckedAt   time.Time // When this record was fetched
 }
 ```
 
-**SanctionsRecord** (Location: `internal/evidence/registry/models.go`)
+**SanctionsRecord** (Location: `internal/evidence/registry/models/models.go`)
 
 ```go
 type SanctionsRecord struct {
@@ -358,62 +363,33 @@ type SanctionsRecord struct {
 }
 ```
 
-### TR-2: Registry Clients (Mocks)
+### TR-2: Registry Providers (HTTP Adapters)
 
-**CitizenRegistryClient Interface** (Location: `internal/evidence/registry/client_citizen.go`)
+**Citizen Provider** (Location: `internal/evidence/registry/providers/citizen/citizen.go`)
 
-```go
-type CitizenClient interface {
-    Check(ctx context.Context, nationalID string) (*CitizenRecord, error)
-}
+- HTTP adapter posts to `{baseURL}/lookup` and parses JSON into Evidence.
+- Provider ID is used as the `source` field in citizen records.
 
-type MockCitizenClient struct {
-    latency      time.Duration // Simulated network latency
-    regulated    bool          // Whether to minimize data
-}
+**Sanctions Provider** (Location: `internal/evidence/registry/providers/sanctions/sanctions.go`)
 
-func (c *MockCitizenClient) Check(ctx context.Context, nationalID string) (*CitizenRecord, error) {
-    // 1. Sleep for latency (simulate network call)
-    // 2. Generate deterministic test data based on nationalID hash
-    // 3. Return CitizenRecord
-}
-```
+- HTTP adapter posts to `{baseURL}/lookup` and parses JSON into Evidence.
+- Provider ID is used as the `source` field in sanctions records.
 
-**SanctionsRegistryClient Interface** (Location: `internal/evidence/registry/client_sanctions.go`)
+**Mock Registry Servers** (Location: `mocks/citizen-registry/`, `mocks/sanctions-registry/`)
 
-```go
-type SanctionsClient interface {
-    Check(ctx context.Context, nationalID string) (*SanctionsRecord, error)
-}
-
-type MockSanctionsClient struct {
-    latency time.Duration // Simulated network latency
-    listed  bool          // Whether to return listed=true (for testing)
-}
-
-func (c *MockSanctionsClient) Check(ctx context.Context, nationalID string) (*SanctionsRecord, error) {
-    // 1. Sleep for latency
-    // 2. Return SanctionsRecord with configurable listed flag
-}
-```
-
-**Mock Data Generation:**
-
-- Use hash of nationalID to deterministically generate data
-- Example: Hash(nationalID) % 100 determines age
-- Example: Hash(nationalID) % 10 determines if PEP
+- Used for local development and E2E scenarios to simulate registry behavior.
+- Mock client structs described in earlier drafts are not implemented.
 
 ### TR-3: Cache Store
 
-**RegistryCacheStore Interface** (Location: `internal/evidence/registry/store.go`)
+**CacheStore Interface** (Location: `internal/evidence/registry/service/service.go`)
 
 ```go
-type RegistryCacheStore interface {
-    SaveCitizen(ctx context.Context, record *CitizenRecord) error
-    FindCitizen(ctx context.Context, nationalID string) (*CitizenRecord, error)
-    SaveSanction(ctx context.Context, record *SanctionsRecord) error
-    FindSanction(ctx context.Context, nationalID string) (*SanctionsRecord, error)
-    ClearAll(ctx context.Context) error
+type CacheStore interface {
+    FindCitizen(ctx context.Context, nationalID id.NationalID, regulated bool) (*models.CitizenRecord, error)
+    SaveCitizen(ctx context.Context, key id.NationalID, record *models.CitizenRecord, regulated bool) error
+    FindSanction(ctx context.Context, nationalID id.NationalID) (*models.SanctionsRecord, error)
+    SaveSanction(ctx context.Context, key id.NationalID, record *models.SanctionsRecord) error
 }
 ```
 
@@ -421,15 +397,15 @@ type RegistryCacheStore interface {
 
 ```go
 type InMemoryCache struct {
-    mu        sync.RWMutex
-    citizens  map[string]*CitizenRecord
-    sanctions map[string]*SanctionsRecord
-    ttl       time.Duration // From config.RegistryCacheTTL
+    citizenLRU *list.List
+    sanctionLRU *list.List
+    cacheTTL   time.Duration // From config.RegistryCacheTTL
+    // tracks regulated mode per citizen entry to avoid serving stale PII
 }
 
-func (c *InMemoryCache) FindCitizen(ctx context.Context, nationalID string) (*CitizenRecord, error) {
+func (c *InMemoryCache) FindCitizen(ctx context.Context, nationalID id.NationalID, regulated bool) (*models.CitizenRecord, error) {
     // 1. Check if record exists
-    // 2. Check if time.Since(record.CheckedAt) < c.ttl
+    // 2. Check if time.Since(record.CheckedAt) < c.cacheTTL
     // 3. If expired, return ErrNotFound
     // 4. Otherwise return record
 }
@@ -439,48 +415,38 @@ func (c *InMemoryCache) FindCitizen(ctx context.Context, nationalID string) (*Ci
 
 ### TR-4: Service Layer
 
-**RegistryService** (Location: `internal/evidence/registry/service.go`)
+**RegistryService** (Location: `internal/evidence/registry/service/service.go`)
 
 ```go
 type Service struct {
-    citizenClient   CitizenClient
-    sanctionsClient SanctionsClient
-    cache           RegistryCacheStore
-    auditor         audit.Publisher
-    regulatedMode   bool
-    now             func() time.Time
+    orchestrator *orchestrator.Orchestrator
+    cache        CacheStore
+    consentPort  ports.ConsentPort
+    auditor      AuditPublisher
+    regulated    bool
 }
 
-func (s *Service) Check(ctx context.Context, nationalID string) (*CitizenRecord, *SanctionsRecord, error)
-func (s *Service) Citizen(ctx context.Context, nationalID string) (*CitizenRecord, error)
-func (s *Service) Sanctions(ctx context.Context, nationalID string) (*SanctionsRecord, error)
-// Check MUST execute citizen + sanctions lookups in parallel (errgroup or equivalent), propagate context cancellation, and annotate spans/metrics with cache outcomes and per-call latency.
+func (s *Service) Check(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*models.RegistryResult, error)
+func (s *Service) Citizen(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*models.CitizenRecord, error)
+func (s *Service) Sanctions(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*models.SanctionsRecord, error)
 ```
+
+**Status:** Check uses orchestrator fallback with a shared timeout; parallel per-type fan-out and per-call latency metrics are pending.
 
 ### TR-5: Data Minimization
 
-**MinimizeCitizenRecord Function** (Location: `internal/evidence/registry/models.go`)
+**Domain Minimization** (Location: `internal/evidence/registry/domain/citizen/citizen.go`)
 
 ```go
-func MinimizeCitizenRecord(record *CitizenRecord, regulatedMode bool) *CitizenRecord {
-    if !regulatedMode {
-        return record // Return full record
-    }
-    // In regulated mode, keep only non-PII fields
-    return &CitizenRecord{
-        NationalID: record.NationalID,
-        Valid:      record.Valid,
-        CheckedAt:  record.CheckedAt,
-        // FullName, DateOfBirth, Address are cleared
-    }
-}
+func (c CitizenVerification) Minimized() CitizenVerification
+func (c CitizenVerification) WithoutNationalID() CitizenVerification
 ```
 
 **When to Apply:**
 
-- After fetching from registry client
-- Before returning in HTTP response
-- Before storing in cache (store full, minimize on read)
+- After converting provider evidence to the domain aggregate
+- In regulated mode, use `WithoutNationalID()` to strip PII and the lookup key
+- Cache stores minimized records in regulated mode (no full-PII cache)
 
 ### TR-6: Partner Registry Integration Model
 
@@ -496,7 +462,7 @@ The registry module implements a provider abstraction layer that enables pluggab
 
 - **Error Taxonomy**: All provider errors are normalized into eight categories with explicit retry semantics. Timeout, provider outage, and rate-limited errors are automatically retryable, while authentication, bad data, and contract mismatch errors are not.
 
-- **Protocol Adapters**: HTTP, SOAP, and gRPC adapters handle protocol-specific concerns (serialization, authentication, transport) while presenting a uniform Provider interface to callers. Custom response parsers convert provider-specific formats into normalized Evidence structures.
+- **Protocol Adapters**: HTTP adapter implemented (`internal/evidence/registry/providers/adapters/http.go`). SOAP/gRPC adapters are planned but not yet implemented.
 
 - **Evidence Structure**: All providers return a generic Evidence container with provider metadata, confidence scores, structured data map, timestamps, and trace information. This allows heterogeneous evidence from different sources to be handled uniformly.
 
@@ -512,14 +478,11 @@ The orchestrator coordinates multi-source evidence gathering with:
 
 - **Correlation Rules**: Pluggable rules merge conflicting evidence from multiple sources, reconcile field discrepancies, and compute weighted confidence scores
 
-**Contract Testing Framework** (Implemented in `internal/evidence/registry/providers/contract/`)
+**Contract Testing Framework** (Implemented in `internal/evidence/registry/providers/providertest/`)
 
 Maintains provider compatibility through:
 
-- **Contract Suites**: Validate provider outputs against expected schema and behavior
-- **Capability Tests**: Verify declared capabilities match actual provider behavior
-- **Error Contract Tests**: Ensure errors follow the normalized taxonomy
-- **Snapshot Tests**: Detect unintended API changes through regression testing
+- **Contract Suites**: Basic contract helpers exist; full capability/error/snapshot coverage is pending.
 
 This architecture satisfies all TR-6 requirements while providing a foundation for future registry integrations.
 
@@ -530,7 +493,6 @@ The in-memory cache implementation includes additional features beyond the basic
 - **LRU eviction** with configurable max size (10,000 entries default per type)
 - **Separate locks** for citizens/sanctions to reduce lock contention
 - **Regulated mode tracking** prevents serving stale PII when mode changes (cache invalidates on mode mismatch)
-- **CleanupExpired()** for periodic maintenance of expired entries
 - **ClearAll()** with invalidation metrics for cache reset operations
 
 ### TR-6.2: Retry & Resilience (Implemented)
@@ -546,20 +508,23 @@ The orchestrator implements robust retry and resilience patterns:
 
 Registry-specific Prometheus metrics for observability:
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| `credo_registry_cache_hits_total` | Counter | Cache hits by record type |
-| `credo_registry_cache_misses_total` | Counter | Cache misses by record type |
+| Metric                                         | Type      | Description                                |
+| ---------------------------------------------- | --------- | ------------------------------------------ |
+| `credo_registry_cache_hits_total`              | Counter   | Cache hits by record type                  |
+| `credo_registry_cache_misses_total`            | Counter   | Cache misses by record type                |
 | `credo_registry_cache_lookup_duration_seconds` | Histogram | Cache lookup latency (buckets: 0.1ms-50ms) |
-| `credo_registry_cache_entries_citizen` | Gauge | Current citizen cache entries |
-| `credo_registry_cache_entries_sanctions` | Gauge | Current sanctions cache entries |
-| `credo_registry_cache_invalidations_total` | Counter | ClearAll() operations |
+| `credo_registry_cache_entries_citizen`         | Gauge     | Current citizen cache entries              |
+| `credo_registry_cache_entries_sanctions`       | Gauge     | Current sanctions cache entries            |
+| `credo_registry_cache_invalidations_total`     | Counter   | ClearAll() operations                      |
 
 ### TR-7: SQL Indexing for Cache & TTL Management
+
+**Status:** Not implemented (registry cache is in-memory; no SQL cache store yet).
 
 **Objective:** Demonstrate SQL indexing concepts from "Use The Index, Luke" with production-ready patterns for registry cache management.
 
 **Topics Covered:**
+
 - Partial indexes (non-expired cache entries only)
 - Function-based indexes (TTL calculation)
 - Range queries for freshness checks
@@ -570,13 +535,13 @@ Registry-specific Prometheus metrics for observability:
 
 #### Index Design
 
-| Table | Index | Type | Columns | Purpose |
-|-------|-------|------|---------|---------|
-| `citizen_cache` | `idx_citizen_national_id` | B-Tree | `(national_id)` | Primary lookup |
-| `citizen_cache` | `idx_citizen_fresh` | B-Tree (partial) | `(national_id) WHERE checked_at > NOW() - INTERVAL '5 minutes'` | Fresh entries only |
-| `citizen_cache` | `idx_citizen_expiry` | B-Tree | `(checked_at)` | Cleanup worker |
-| `sanctions_cache` | `idx_sanctions_national_id` | B-Tree | `(national_id)` | Primary lookup |
-| `sanctions_cache` | `idx_sanctions_listed` | B-Tree (partial) | `(national_id) WHERE listed = true` | Listed entities only |
+| Table             | Index                       | Type             | Columns                                                         | Purpose              |
+| ----------------- | --------------------------- | ---------------- | --------------------------------------------------------------- | -------------------- |
+| `citizen_cache`   | `idx_citizen_national_id`   | B-Tree           | `(national_id)`                                                 | Primary lookup       |
+| `citizen_cache`   | `idx_citizen_fresh`         | B-Tree (partial) | `(national_id) WHERE checked_at > NOW() - INTERVAL '5 minutes'` | Fresh entries only   |
+| `citizen_cache`   | `idx_citizen_expiry`        | B-Tree           | `(checked_at)`                                                  | Cleanup worker       |
+| `sanctions_cache` | `idx_sanctions_national_id` | B-Tree           | `(national_id)`                                                 | Primary lookup       |
+| `sanctions_cache` | `idx_sanctions_listed`      | B-Tree (partial) | `(national_id) WHERE listed = true`                             | Listed entities only |
 
 ---
 
@@ -745,6 +710,7 @@ WHERE ctid IN (
 #### Exercises
 
 **Exercise 1: TTL Query Optimization**
+
 ```sql
 -- Create citizen_cache with 100k records, 90% expired
 -- Compare EXPLAIN ANALYZE for:
@@ -763,6 +729,7 @@ SELECT * FROM citizen_cache WHERE national_id = 'TEST123'
 ```
 
 **Exercise 2: Partial Index Size Comparison**
+
 ```sql
 -- Create sanctions_cache with 100k records, 5% listed=true
 INSERT INTO sanctions_cache
@@ -781,6 +748,7 @@ FROM pg_indexes WHERE tablename = 'sanctions_cache';
 ```
 
 **Exercise 3: Cleanup Performance**
+
 ```sql
 -- Without index:
 EXPLAIN ANALYZE DELETE FROM citizen_cache WHERE checked_at < NOW() - INTERVAL '5 minutes';
@@ -816,15 +784,23 @@ EXPLAIN ANALYZE DELETE FROM citizen_cache WHERE checked_at < NOW() - INTERVAL '5
 | `/registry/citizen`   | POST   | Yes           | `registry_check` | Citizen lookup      |
 | `/registry/sanctions` | POST   | Yes           | `registry_check` | Sanctions screening |
 
-### Mock Client Configuration
+### Provider Configuration
 
-**Environment Variables:**
+**Backend Environment Variables:**
 
 ```bash
-CITIZEN_REGISTRY_LATENCY=100ms   # Simulated latency
-SANCTIONS_REGISTRY_LATENCY=50ms  # Simulated latency
-REGULATED_MODE=true              # Enable data minimization
+CITIZEN_REGISTRY_URL=http://localhost:8081/api/v1/citizen
+CITIZEN_REGISTRY_API_KEY=citizen-registry-secret-key
+REGISTRY_TIMEOUT=5s
+REGISTRY_CACHE_TTL=5m
+REGULATED_MODE=true
 ```
+
+**Notes:**
+
+- Sanctions provider currently uses the same URL and API key configuration as the citizen provider (TODO: add sanctions-specific config).
+- HTTP adapter posts to `{baseURL}/lookup`, so set `CITIZEN_REGISTRY_URL` to the path prefix (e.g., `http://localhost:8081/api/v1/citizen`).
+- Mock registry services use `LATENCY_MS` for simulated latency (see `mocks/REGISTRY_QUICKSTART.md`). The sanctions mock currently exposes `/api/v1/sanctions/check`, which does not match the `/lookup` path expected by the adapter (pending alignment).
 
 ### Cache Behavior
 
@@ -852,7 +828,8 @@ REGULATED_MODE=true              # Enable data minimization
 In regulated mode:
 
 - Strip FullName, DateOfBirth, Address from citizen records
-- Keep only Valid flag and NationalID
+- Strip NationalID in regulated mode
+- Keep only Valid flag, CheckedAt, and Source
 - Apply minimization before storing in logs
 - Apply minimization before returning to client
 
@@ -884,7 +861,7 @@ In regulated mode:
 
 - Cache hit: <5ms p99
 - Cache miss (mock client): <250ms p99
-- Combined check (parallel): <300ms p99
+- Combined check (parallel): <300ms p99 (pending; current implementation is sequential fallback)
 
 ### PR-2: Cache Hit Rate
 
@@ -919,6 +896,8 @@ In regulated mode:
 - Citizen checked (audit)
 - Sanctions checked (audit)
 
+**Implementation Status:** Partial (error/audit logs exist; cache hit/miss and per-call latency logs are not wired).
+
 ### Metrics
 
 - Registry calls total (counter, labeled by type: citizen/sanctions)
@@ -926,6 +905,8 @@ In regulated mode:
 - Registry latency (histogram, labeled by type)
 - Registry timeouts (counter, labeled by type)
 - Registry errors (counter, labeled by type)
+
+**Implementation Status:** Partial (cache metrics implemented; registry call counters/latency/error metrics pending).
 
 ### Dashboards and Failure Taxonomy
 
@@ -938,10 +919,11 @@ In regulated mode:
 
 **Implementation Status:** ✅ Implemented using OpenTelemetry directly.
 
-- [x] All registry flows emit distributed traces using OpenTelemetry directly (no wrapper abstraction). OTel is effectively a vendor-neutral standard, making a custom interface unnecessary overhead.
-- [x] `Service.Check` starts a parent span named `registry.check` with attributes for `national_id` (SHA-256 hashed for privacy) and `regulated_mode`. Child spans wrap `Citizen` and `Sanctions` calls (`registry.citizen` and `registry.sanctions`) and annotate cache hits/misses via span attributes (`cache.hit`, `cache.citizen.hit`, `cache.sanctions.hit`).
+- [x] Citizen and sanctions service methods emit spans using OpenTelemetry directly (no wrapper abstraction). OTel is effectively a vendor-neutral standard, making a custom interface unnecessary overhead.
+- [x] `Service.Check` starts a parent span named `registry.check` with attributes for `national_id` (SHA-256 hashed for privacy) and `regulated_mode`.
+- [ ] `Service.Check` does not currently create per-type child spans; `Citizen` and `Sanctions` spans are emitted only when those methods are called directly.
 - [x] HTTP adapters start spans for outbound calls (`registry.citizen.call`, `registry.sanctions.call`) with provider metadata attributes.
-- [x] Emit a span event named `audit.emitted` after audit publishing to show ordering of compliance logging versus registry calls.
+- [ ] Emit a span event named `audit.emitted` after audit publishing to show ordering of compliance logging versus registry calls (currently only emitted in the citizen handler).
 - [x] No-op behavior in tests: when no OTel exporter is configured, OTel SDK provides a no-op tracer automatically.
 - [ ] Sampling rules (100% retention for failures, downsample success with p99 exemplars) - delegated to OpenTelemetry SDK configuration at deployment time.
 
@@ -951,27 +933,26 @@ In regulated mode:
 
 ### Unit Tests
 
-- [ ] Test MinimizeCitizenRecord in regulated mode
-- [ ] Test MinimizeCitizenRecord in non-regulated mode
-- [ ] Test cache hit (recent record)
-- [ ] Test cache miss (no record)
-- [ ] Test cache expiry (old record)
-- [ ] Test mock client data generation (deterministic)
+- [x] Service minimizes citizen record in regulated mode
+- [x] Service returns full citizen record in non-regulated mode
+- [x] Cache hit, miss, and expiry behavior
+- [x] Provider error translation to domain errors
+- [ ] Mock client data generation (no mock clients implemented)
 
 ### Integration Tests
 
-- [ ] Test citizen lookup with cache miss
-- [ ] Test citizen lookup with cache hit
-- [ ] Test sanctions lookup with cache
-- [ ] Test combined Check() in parallel
-- [ ] Test regulated mode minimization end-to-end
-- [ ] Test consent enforcement (403 without consent)
+- [x] Citizen lookup with cache miss/hit (E2E registry flow)
+- [x] Sanctions lookup with cache (E2E registry flow)
+- [x] Regulated mode minimization end-to-end (E2E registry flow)
+- [x] Consent enforcement (E2E registry flow + handler tests)
+- [ ] Combined Check() in parallel (not implemented)
+- [ ] Timeout handling end-to-end (steps exist but are stubs)
 
 ### Performance Tests
 
-- [ ] Test cache hit latency (<5ms)
-- [ ] Test mock client latency (~100ms)
-- [ ] Test parallel Check() latency (<300ms)
+- [ ] Test cache hit latency (<5ms) (no latency measurement wired)
+- [ ] Test mock client latency (~100ms) (no mock client)
+- [ ] Test parallel Check() latency (<300ms) (parallel Check() not implemented)
 
 ### Manual Testing
 
@@ -1039,50 +1020,45 @@ curl -X POST http://localhost:8080/registry/citizen \
 
 ## 10. Implementation Steps
 
-### Phase 1: Service Layer Enhancement (1-2 hours)
+### Phase 1: Service Layer Enhancement (implemented)
 
-1. Update `RegistryService` in `internal/evidence/registry/service.go`
+1. Update `RegistryService` in `internal/evidence/registry/service/service.go`
 2. Implement `Citizen()`:
    - Check cache first
-   - Call client on miss
+   - Call orchestrator on miss
    - Store in cache
    - Apply minimization if regulated mode
    - Return record
 3. Implement `Sanctions()`:
    - Similar logic to Citizen()
 4. Implement `Check()`:
-   - Call Citizen() and Sanctions() in parallel
-   - Use goroutines + channels or errgroup
-   - Return both records
+   - Call orchestrator with both types
+   - Cache only when both records are present
+   - Parallel per-type fan-out is pending
 
-### Phase 2: HTTP Handlers (1-2 hours)
+### Phase 2: HTTP Handlers (implemented)
 
-1. Implement `handleRegistryCitizen`:
+1. Implement `HandleCitizenLookup`:
    - Extract user from token
-   - Require consent
    - Parse national_id from body
    - Call service.Citizen()
    - Emit audit event
    - Return JSON
-2. Implement `handleRegistrySanctions`:
-   - Similar to handleRegistryCitizen
+2. Implement `HandleSanctionsLookup`:
+   - Similar to HandleCitizenLookup
    - Call service.Sanctions()
 
-### Phase 3: Mock Clients Enhancement (30 min)
+### Phase 3: Mock Registry Servers (implemented)
 
-1. Update `MockCitizenClient.Check()`:
-   - Add configurable latency (sleep)
-   - Generate deterministic test data
-2. Update `MockSanctionsClient.Check()`:
-   - Add configurable latency
-   - Support configurable listed flag
+1. Mock citizen registry (`mocks/citizen-registry/`) with deterministic data and latency
+2. Mock sanctions registry (`mocks/sanctions-registry/`) with deterministic data and latency
 
-### Phase 4: Testing (1-2 hours)
+### Phase 4: Testing (partial)
 
-1. Unit tests for service methods
-2. Integration tests for cache behavior
+1. Unit tests for service and conversion methods
+2. Integration tests for cache behavior via E2E features
 3. Manual testing with curl
-4. Performance testing (cache hit latency)
+4. Performance testing (cache hit latency) pending
 
 ---
 
@@ -1098,16 +1074,16 @@ curl -X POST http://localhost:8080/registry/citizen \
 ## 12. Acceptance Criteria
 
 - [x] Citizen lookup returns full data in non-regulated mode
-- [x] Citizen lookup returns minimized data in regulated mode
+- [x] Citizen lookup returns minimized data in regulated mode (PII + national_id stripped)
 - [x] Sanctions lookup returns listed status
 - [x] Cache reduces latency on repeated lookups
-- [x] Cache expires after 5 minutes
-- [x] Combined Check() runs citizen + sanctions in parallel with shared context cancellation and traces/metrics for each call
+- [x] Cache expires after 5 minutes (default config; adjustable via REGISTRY_CACHE_TTL)
+- [ ] Combined Check() runs citizen + sanctions in parallel with shared context cancellation and traces/metrics for each call (current: sequential fallback)
 - [x] Operations require consent (403 without)
-- [x] All lookups emit audit events
-- [x] Mock clients simulate realistic latency
+- [ ] All lookups emit audit events (Check() does not emit audit; citizen/sanctions do)
+- [ ] Mock clients simulate realistic latency (HTTP providers + mock registry servers used instead)
 - [x] Registry timeouts return 504
-- [x] Code passes `make test` and `make lint`
+- [ ] Code passes `make test` and `make lint` (not re-verified in this update)
 
 ---
 
@@ -1117,9 +1093,9 @@ curl -X POST http://localhost:8080/registry/citizen \
 
 - PRD-001: Authentication & Session Management (for user extraction)
 - PRD-002: Consent Management (for consent checks)
-- `internal/evidence/registry/store_memory.go` - ✅ Implemented
-- `internal/evidence/registry/models.go` - ✅ Implemented
-- `pkg/errors` - ✅ Implemented
+- `internal/evidence/registry/store/store_memory.go` - ✅ Implemented
+- `internal/evidence/registry/models/models.go` - ✅ Implemented
+- `pkg/domain-errors` - ✅ Implemented
 
 ### Potential Blockers
 
@@ -1130,10 +1106,12 @@ curl -X POST http://localhost:8080/registry/citizen \
 ## 14. Future Enhancements (Out of Scope)
 
 **Now Implemented (see TR-6.1, TR-6.2):**
+
 - ~~Retry logic with exponential backoff~~ → TR-6.2
 - ~~Multiple registry providers (failover)~~ → Orchestrator with provider chains
 
 **Still Pending:**
+
 - Real external registry integration (SOAP/REST APIs)
 - Batch registry lookups (check multiple IDs)
 - Registry webhooks (real-time updates)
@@ -1163,15 +1141,15 @@ curl -X POST http://localhost:8080/registry/citizen \
 ### GDPR Compliance (Article 5: Data Minimization)
 
 - ✅ Collect only necessary data (national ID for lookup)
-- ✅ Retain full data only in cache (5 min TTL)
+- ✅ Retain full data only in cache (5 min TTL) in non-regulated mode; regulated mode caches minimized records
 - ✅ Return minimized data in regulated mode
-- ✅ Clear cache on user data deletion
+- ⚠️ Clear cache on user data deletion (pending integration with deletion flow)
 
 ### KYC/AML Compliance
 
 - ✅ Verify identity against authoritative source
 - ✅ Screen against sanctions/PEP lists
-- ✅ Audit all checks for compliance evidence
+- ⚠️ Audit all checks for compliance evidence (Check() audit pending)
 - ✅ Cache to reduce costs while maintaining freshness
 
 ### Regulatory Adaptability and Privacy Constraints
@@ -1215,10 +1193,11 @@ curl -X POST http://localhost:8080/registry/citizen \
 
 | Version | Date       | Author           | Changes                                                                                                                                          |
 | ------- | ---------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1.10    | 2025-12-28 | Engineering      | Aligned PRD with current registry implementation; marked completed vs pending items; updated regulated-mode behavior and testing/observability status |
 | 1.9     | 2025-12-27 | Engineering      | Simplified tracing: removed wrapper abstraction, using OpenTelemetry directly as vendor-neutral standard                                         |
 | 1.8     | 2025-12-27 | Engineering      | PRD review: marked completed requirements, documented implemented extensions (TR-6.1 cache, TR-6.2 retry, TR-6.3 metrics), noted tracing pending |
 | 1.7     | 2025-12-27 | Engineering      | Added Domain Architecture section with Citizen/Sanctions subdomains and shared kernel; documented domain purity rules                            |
-| 1.6     | 2025-12-27 | Engineering      | Added document verification provider and voting strategy with quorum rules to Future Enhancements                                                 |
+| 1.6     | 2025-12-27 | Engineering      | Added document verification provider and voting strategy with quorum rules to Future Enhancements                                                |
 | 1.5     | 2025-12-21 | Engineering      | Added TR-7: SQL Indexing for Cache & TTL (partial indexes, range queries, NULL handling, covering indexes, cleanup worker) with exercises        |
 | 1.4     | 2025-12-18 | Security Eng     | Added secure-by-design and testing requirements (value objects, default-deny, immutability, typed results)                                       |
 | 1.3     | 2025-12-13 | Engineering Team | Clarify concurrent Check() requirements (errgroup + context cancel), add tracing/metrics expectations, update acceptance criteria                |

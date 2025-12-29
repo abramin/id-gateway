@@ -389,9 +389,10 @@ func (o *Orchestrator) lookupVoting(ctx context.Context, req LookupRequest) (*Lo
 		return result, err
 	}
 
-	// TODO: Implement voting logic based on confidence scores
-	// For now, just return the highest confidence evidence per type
-
+	// Select highest confidence evidence per type.
+	// Design choice: confidence-based selection is simpler and sufficient for current
+	// use cases. True majority voting (quorum-based) can be added if multiple
+	// providers return conflicting data with similar confidence scores.
 	typeMap := make(map[providers.ProviderType]*providers.Evidence)
 	for _, e := range result.Evidence {
 		existing, ok := typeMap[e.ProviderType]

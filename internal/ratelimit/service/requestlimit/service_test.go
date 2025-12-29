@@ -155,7 +155,7 @@ func (s *RequestLimitServiceSuite) TestAllowlistBypass() {
 		// Add IP to allowlist
 		err := s.allowlistStore.Add(ctx, &models.AllowlistEntry{
 			Type:       models.AllowlistTypeIP,
-			Identifier: "10.0.0.1",
+			Identifier: models.AllowlistIdentifier("10.0.0.1"),
 		})
 		s.Require().NoError(err)
 

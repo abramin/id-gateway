@@ -54,10 +54,22 @@ func (k RateLimitKey) String() string {
 // to prevent key collision attacks where user-controlled identifiers containing
 // ':' could manipulate adjacent rate limit buckets.
 //
-// Example: An identifier "user:admin" would become "user_admin", preventing
-// it from being interpreted as a separate key segment.
+// Escape rules (order matters):
+//  1. Escape '_' to '__' (escape the escape character first)
+//  2. Escape ':' to '_c' (escape the delimiter)
+//
+// Examples:
+//   - "user:admin"  → "user_cadmin"  (colon escaped)
+//   - "user_admin"  → "user__admin"  (underscore escaped)
+//   - "user_:admin" → "user___cadmin" (both escaped, no collision)
+//
+// This ensures no two distinct inputs produce the same sanitized output,
+// preventing key collision attacks.
 func sanitizeKeySegment(s string) string {
-	return strings.ReplaceAll(s, ":", "_")
+	// Order matters: escape the escape character first
+	s = strings.ReplaceAll(s, "_", "__")
+	s = strings.ReplaceAll(s, ":", "_c")
+	return s
 }
 
 // NewClientRateLimitKey creates a key for per-client endpoint limits.

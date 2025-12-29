@@ -1,5 +1,7 @@
 package models
 
+import domain "credo/pkg/domain"
+
 // SessionStatus represents the lifecycle state of an auth session.
 type SessionStatus string
 
@@ -36,11 +38,11 @@ func (s SessionStatus) CanTransitionTo(target SessionStatus) bool {
 }
 
 // Grant represents supported OAuth grant types.
-type Grant string
+type Grant = domain.GrantType
 
 const (
-	GrantAuthorizationCode Grant = "authorization_code"
-	GrantRefreshToken      Grant = "refresh_token"
+	GrantAuthorizationCode = domain.GrantTypeAuthorizationCode
+	GrantRefreshToken      = domain.GrantTypeRefreshToken
 )
 
 // Scope represents a valid OAuth 2.0 / OIDC scope.
@@ -71,22 +73,6 @@ type UserStatus string
 const (
 	UserStatusActive   UserStatus = "active"
 	UserStatusInactive UserStatus = "inactive"
-)
-
-// ClientStatus represents whether a client is active or inactive.
-type ClientStatus string
-
-const (
-	ClientStatusActive   ClientStatus = "active"
-	ClientStatusInactive ClientStatus = "inactive"
-)
-
-// TenantStatus represents whether a tenant is active or inactive.
-type TenantStatus string
-
-const (
-	TenantStatusActive   TenantStatus = "active"
-	TenantStatusInactive TenantStatus = "inactive"
 )
 
 // DeviceBinding consolidates device-related session data.

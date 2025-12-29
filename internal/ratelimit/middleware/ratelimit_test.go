@@ -597,6 +597,61 @@ func (s *MiddlewareSecuritySuite) TestClientRateLimitMiddleware() {
 		s.Equal("/oauth/token", limiter.lastEndpoint)
 	})
 
+	s.Run("conflicting client_id in query and form rejects request", func() {
+		// SECURITY: Prevents confusion attacks where attacker sends different
+		// client_ids in query and form body hoping one bypasses validation
+		limiter := &mockClientLimiter{
+			result: &models.RateLimitResult{Allowed: true, Limit: 10, Remaining: 9},
+		}
+		middleware := NewClientMiddleware(limiter, s.logger, false)
+
+		nextCalled := false
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			nextCalled = true
+			w.WriteHeader(http.StatusOK)
+		})
+
+		// Send different client_id in query and form body
+		req := httptest.NewRequest(http.MethodPost, "/oauth/token?client_id=query-client", strings.NewReader("client_id=form-client"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		handler := middleware.RateLimitClient()(next)
+		handler.ServeHTTP(rr, req)
+
+		// Request should be rejected, next handler not called
+		s.False(nextCalled)
+		s.Equal(http.StatusBadRequest, rr.Code)
+		s.Contains(rr.Body.String(), "conflicting client_id")
+		s.Equal(0, limiter.called) // Rate limiter should not be invoked
+	})
+
+	s.Run("matching client_id in query and form is allowed", func() {
+		limiter := &mockClientLimiter{
+			result: &models.RateLimitResult{Allowed: true, Limit: 10, Remaining: 9},
+		}
+		middleware := NewClientMiddleware(limiter, s.logger, false)
+
+		nextCalled := false
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			nextCalled = true
+			w.WriteHeader(http.StatusOK)
+		})
+
+		// Send same client_id in both query and form body
+		req := httptest.NewRequest(http.MethodPost, "/oauth/token?client_id=same-client", strings.NewReader("client_id=same-client"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		handler := middleware.RateLimitClient()(next)
+		handler.ServeHTTP(rr, req)
+
+		// Request should proceed
+		s.True(nextCalled)
+		s.Equal(http.StatusOK, rr.Code)
+		s.Equal("same-client", limiter.lastClientID)
+	})
+
 	s.Run("blocked client returns 429 payload", func() {
 		limiter := &mockClientLimiter{
 			result: &models.RateLimitResult{

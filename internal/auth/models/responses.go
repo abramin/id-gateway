@@ -32,7 +32,7 @@ type UserInfoResult struct {
 	Name          string `json:"name"`           // End-User's full name.
 }
 
-// SessionSummary represents a summary of an active session for display to the user.
+// SessionSummary represents a summary of a session for display to the user.
 type SessionSummary struct {
 	SessionID    string    `json:"session_id"`
 	Device       string    `json:"device"`
@@ -40,6 +40,7 @@ type SessionSummary struct {
 	CreatedAt    time.Time `json:"created_at"`
 	LastActivity time.Time `json:"last_activity"`
 	IsCurrent    bool      `json:"is_current"`
+	Status       string    `json:"status"` // Session status: active, pending_consent, or revoked
 }
 
 // SessionsResult represents the response to a list sessions request,

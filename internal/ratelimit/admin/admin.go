@@ -8,8 +8,9 @@ import (
 	"credo/internal/ratelimit/models"
 	"credo/internal/ratelimit/observability"
 	id "credo/pkg/domain"
-	"credo/pkg/platform/audit"
 	"credo/pkg/platform/middleware/requesttime"
+
+	"github.com/google/uuid"
 )
 
 // AllowlistStore is the subset of ports.AllowlistStore needed by admin (excludes IsAllowlisted).
@@ -25,15 +26,10 @@ type BucketStore interface {
 	GetCurrentCount(ctx context.Context, key string) (int, error)
 }
 
-// AuditPublisher emits audit events for security-relevant operations.
-type AuditPublisher interface {
-	Emit(ctx context.Context, event audit.Event) error
-}
-
 type Service struct {
 	allowlist      AllowlistStore
 	buckets        BucketStore
-	auditPublisher AuditPublisher
+	auditPublisher observability.AuditPublisher
 	logger         *slog.Logger
 }
 
@@ -45,7 +41,7 @@ func WithLogger(logger *slog.Logger) Option {
 	}
 }
 
-func WithAuditPublisher(publisher AuditPublisher) Option {
+func WithAuditPublisher(publisher observability.AuditPublisher) Option {
 	return func(s *Service) {
 		s.auditPublisher = publisher
 	}
@@ -81,7 +77,7 @@ func (s *Service) AddToAllowlist(ctx context.Context, req *models.AddAllowlistRe
 		return nil, fmt.Errorf("invalid add allowlist request: %w", err)
 	}
 
-	entry, err := models.NewAllowlistEntry(req.Type, req.Identifier, req.Reason, adminUserID, req.ExpiresAt, requesttime.Now(ctx))
+	entry, err := models.NewAllowlistEntry(uuid.NewString(), req.Type, req.Identifier, req.Reason, adminUserID, req.ExpiresAt, requesttime.Now(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create allowlist entry: %w", err)
 	}

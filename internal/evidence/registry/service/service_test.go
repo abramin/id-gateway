@@ -12,6 +12,7 @@ import (
 	"credo/internal/evidence/registry/providers"
 	"credo/internal/evidence/registry/store"
 	id "credo/pkg/domain"
+	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
 )
 
@@ -413,6 +414,54 @@ func (s *ServiceSuite) TestCheckTransactionSemantics() {
 	})
 }
 
+func (s *ServiceSuite) TestSanctionsErrorMapping() {
+	ctx := context.Background()
+	userID := testUserID()
+	nationalID := testNationalID("SANCT123")
+
+	cases := []struct {
+		name     string
+		category providers.ErrorCategory
+		code     dErrors.Code
+	}{
+		{
+			name:     "timeout maps to CodeTimeout",
+			category: providers.ErrorTimeout,
+			code:     dErrors.CodeTimeout,
+		},
+		{
+			name:     "not_found maps to CodeNotFound",
+			category: providers.ErrorNotFound,
+			code:     dErrors.CodeNotFound,
+		},
+		{
+			name:     "provider_outage maps to CodeInternal",
+			category: providers.ErrorProviderOutage,
+			code:     dErrors.CodeInternal,
+		},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			sanctionsProv := &stubProvider{
+				id:       "test-sanctions",
+				provType: providers.ProviderTypeSanctions,
+				lookupFn: func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+					return nil, providers.NewProviderError(tc.category, "test-sanctions", "test error", nil)
+				},
+			}
+
+			orch := newTestOrchestrator(nil, sanctionsProv)
+			svc := New(orch, newStubCache(), nil, false)
+
+			result, err := svc.Sanctions(ctx, userID, nationalID)
+			s.Require().Error(err)
+			s.Nil(result)
+			s.True(dErrors.HasCode(err, tc.code), "expected code %s, got %v", tc.code, err)
+		})
+	}
+}
+
 func (s *ServiceSuite) TestCitizenMinimization() {
 	ctx := context.Background()
 	nationalIDStr := "ABC123456"
@@ -642,7 +691,7 @@ func (s *ServiceSuite) TestSanctionsAuditFailClosed() {
 		s.Equal("registry_sanctions_checked", auditPort.lastAction)
 	})
 
-	s.Run("returns result when audit fails for non-listed sanctions", func() {
+	s.Run("fails when audit fails for non-listed sanctions (fail-closed)", func() {
 		cache := newStubCache()
 		auditPort := &stubAuditPort{
 			emitErr: &auditError{message: "audit system unavailable"},
@@ -650,7 +699,7 @@ func (s *ServiceSuite) TestSanctionsAuditFailClosed() {
 
 		sanctionsRecord := &models.SanctionsRecord{
 			NationalID: "ABC123456",
-			Listed:     false, // Not listed = non-critical audit
+			Listed:     false, // Not listed, but audit is still fail-closed
 			Source:     "Test DB",
 			CheckedAt:  now,
 		}
@@ -667,10 +716,10 @@ func (s *ServiceSuite) TestSanctionsAuditFailClosed() {
 		svc := New(orch, cache, nil, false, WithAuditor(auditPort))
 
 		result, err := svc.Sanctions(ctx, userID, nationalID)
-		// Should succeed despite audit failure for non-listed
-		s.Require().NoError(err)
-		s.NotNil(result)
-		s.False(result.Listed)
+		// All sanctions audits are now fail-closed for complete audit trail
+		s.Require().Error(err)
+		s.Nil(result)
+		s.Contains(err.Error(), "unable to complete sanctions check")
 	})
 }
 

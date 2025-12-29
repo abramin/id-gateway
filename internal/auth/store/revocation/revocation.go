@@ -9,6 +9,9 @@ import (
 // DefaultMaxSize is the default maximum number of entries in the TRL.
 const DefaultMaxSize = 10000
 
+// Clock provides the current time. Used for testability.
+type Clock func() time.Time
+
 // InMemoryTRL is an in-memory implementation of TokenRevocationList for MVP/testing.
 // For production, use RedisTRL for distributed token revocation.
 type InMemoryTRL struct {
@@ -18,6 +21,7 @@ type InMemoryTRL struct {
 	maxSize         int                  // max entries before eviction (0 = unlimited)
 	cleanupInterval time.Duration
 	stopCh          chan struct{}
+	clock           Clock // injected clock for testability (defaults to time.Now)
 }
 
 // InMemoryTRLOption configures an InMemoryTRL instance.
@@ -42,6 +46,16 @@ func WithMaxSize(maxSize int) InMemoryTRLOption {
 	}
 }
 
+// WithClock sets the clock function for testability.
+// The clock is used to determine current time for expiry calculations.
+func WithClock(clock Clock) InMemoryTRLOption {
+	return func(trl *InMemoryTRL) {
+		if clock != nil {
+			trl.clock = clock
+		}
+	}
+}
+
 // NewInMemoryTRL constructs an in-memory token revocation list.
 func NewInMemoryTRL(opts ...InMemoryTRLOption) *InMemoryTRL {
 	trl := &InMemoryTRL{
@@ -50,6 +64,7 @@ func NewInMemoryTRL(opts ...InMemoryTRLOption) *InMemoryTRL {
 		maxSize:         DefaultMaxSize,
 		cleanupInterval: 1 * time.Minute,
 		stopCh:          make(chan struct{}),
+		clock:           time.Now, // default to real time
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -70,16 +85,18 @@ func (t *InMemoryTRL) RevokeToken(ctx context.Context, jti string, ttl time.Dura
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	now := t.clock()
+
 	// Check if already revoked (update expiry, don't add to order again)
 	if _, exists := t.revoked[jti]; exists {
-		t.revoked[jti] = time.Now().Add(ttl)
+		t.revoked[jti] = now.Add(ttl)
 		return nil
 	}
 
 	// Evict oldest entries if at capacity
 	t.evictIfNeeded(1)
 
-	t.revoked[jti] = time.Now().Add(ttl)
+	t.revoked[jti] = now.Add(ttl)
 	t.order = append(t.order, jti)
 	return nil
 }
@@ -108,7 +125,7 @@ func (t *InMemoryTRL) IsRevoked(ctx context.Context, jti string) (bool, error) {
 	}
 
 	// Check if the revocation has expired (token would have expired anyway)
-	if time.Now().After(expiry) {
+	if t.clock().After(expiry) {
 		return false, nil
 	}
 
@@ -122,7 +139,7 @@ func (t *InMemoryTRL) RevokeSessionTokens(ctx context.Context, sessionID string,
 	defer t.mu.Unlock()
 
 	// Identify truly new JTIs and update existing ones
-	expiry := time.Now().Add(ttl)
+	expiry := t.clock().Add(ttl)
 	newJTIs := make([]string, 0, len(jtis))
 	for _, jti := range jtis {
 		if _, exists := t.revoked[jti]; !exists {
@@ -155,7 +172,7 @@ func (t *InMemoryTRL) cleanup() {
 			return
 		case <-ticker.C:
 			t.mu.Lock()
-			now := time.Now()
+			now := t.clock()
 			for jti, expiry := range t.revoked {
 				if now.After(expiry) {
 					delete(t.revoked, jti)

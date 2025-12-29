@@ -15,6 +15,11 @@ const (
 	defaultShardCount  = 32
 	defaultMaxBuckets  = 100000 // Max buckets per shard before LRU eviction
 	circularBufferSize = 256    // Fixed size for circular buffer (covers most limits)
+
+	// maxClockSkewTolerance is the maximum amount of time a timestamp can be
+	// in the future before it's rejected. This prevents clock skew attacks
+	// where malicious clients could corrupt sliding window state.
+	maxClockSkewTolerance = 5 * time.Second
 )
 
 // ---------------------------------------------------------------------------
@@ -71,7 +76,7 @@ func (sw *slidingWindow) tryConsume(cost int, limit int, now time.Time) (allowed
 	}
 
 	// Record the new request timestamps
-	sw.recordRequests(cost, nowNano)
+	sw.recordRequests(cost, nowNano, nowNano)
 
 	remaining = limit - (requestsInWindow + cost)
 	resetAt = now.Add(sw.windowSize)
@@ -79,14 +84,18 @@ func (sw *slidingWindow) tryConsume(cost int, limit int, now time.Time) (allowed
 }
 
 // countRequestsInWindow counts valid requests and finds the oldest timestamp.
+// Timestamps more than maxClockSkewTolerance in the future are ignored to prevent
+// clock skew attacks from corrupting the sliding window state.
 func (sw *slidingWindow) countRequestsInWindow(windowStart, nowNano int64) (count int, oldestTimestamp int64) {
 	oldestTimestamp = nowNano // Default to now if no valid requests
+	maxValidTimestamp := nowNano + maxClockSkewTolerance.Nanoseconds()
 
 	for i := 0; i < sw.size; i++ {
 		idx := sw.bufferIndex(i)
 		ts := sw.timestamps[idx]
 
-		if ts > windowStart {
+		// Skip timestamps outside the window or too far in the future (clock skew protection)
+		if ts > windowStart && ts <= maxValidTimestamp {
 			count++
 			if ts < oldestTimestamp {
 				oldestTimestamp = ts
@@ -103,7 +112,15 @@ func (sw *slidingWindow) bufferIndex(position int) int {
 }
 
 // recordRequests writes 'count' request timestamps to the buffer.
-func (sw *slidingWindow) recordRequests(count int, timestamp int64) {
+// Timestamps are clamped to at most maxClockSkewTolerance in the future
+// to prevent clock skew attacks from corrupting the sliding window.
+func (sw *slidingWindow) recordRequests(count int, timestamp int64, nowNano int64) {
+	// Clamp timestamp to prevent clock skew attacks
+	maxValidTimestamp := nowNano + maxClockSkewTolerance.Nanoseconds()
+	if timestamp > maxValidTimestamp {
+		timestamp = maxValidTimestamp
+	}
+
 	for range count {
 		sw.timestamps[sw.writePos] = timestamp
 		sw.writePos = (sw.writePos + 1) % circularBufferSize

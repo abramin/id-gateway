@@ -138,8 +138,11 @@ This repo uses focused review agents for code review. Each has a narrow scope:
 4. **Secure-by-Design Agent**: Trust boundaries, validation ordering, auth decisions, failure modes (threat surface)
 5. **Complexity Agent**: Readability and cognitive load
 6. **Balance Agent**: Abstraction/duplication balance, hop budget, effects visibility, mixed responsibilities
+7. **QA Agent**: OpenAPI contract completeness, trapdoor states, lifecycle gaps (black-box review)
 
 See `AGENTS.md` for the decision tree on when to use which agent, shared non-negotiables, and conflict resolution rules.
+
+**QA Agent usage:** `/qa docs/openapi/auth.yaml docs/openapi/tenant.yaml` — run before release or when modifying API endpoints.
 
 **Conflict resolution (tie-breakers)**:
 

@@ -214,7 +214,7 @@ func NewClientBuilder() *ClientBuilder {
 			Name:          "Test Client",
 			OAuthClientID: "test-client-id",
 			RedirectURIs:  []string{"https://example.com/callback"},
-			AllowedGrants: []string{"authorization_code"},
+			AllowedGrants: []tenantmodels.GrantType{tenantmodels.GrantTypeAuthorizationCode},
 			AllowedScopes: []string{"openid", "profile"},
 			Status:        tenantmodels.ClientStatusActive,
 			CreatedAt:     now,
@@ -253,7 +253,7 @@ func (b *ClientBuilder) WithRedirectURIs(uris ...string) *ClientBuilder {
 	return b
 }
 
-func (b *ClientBuilder) WithGrants(grants ...string) *ClientBuilder {
+func (b *ClientBuilder) WithGrants(grants ...tenantmodels.GrantType) *ClientBuilder {
 	b.client.AllowedGrants = grants
 	return b
 }

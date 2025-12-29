@@ -613,9 +613,10 @@ func (s *adminSteps) authenticationShouldFail(ctx context.Context) error {
 // Name length boundary tests
 
 func (s *adminSteps) createTenantWithExactLength(ctx context.Context, length int) error {
-	// Generate a name of exactly the specified length
-	// Use a base prefix and pad with 'x' characters
-	name := generateStringOfLength("TenantLen", length)
+	// Generate a unique name of exactly the specified length
+	// Use a timestamp-based prefix and pad with 'x' characters
+	uniquePrefix := fmt.Sprintf("T%d", time.Now().UnixNano())
+	name := generateStringOfLength(uniquePrefix, length)
 	body := map[string]interface{}{
 		"name": name,
 	}
@@ -629,8 +630,9 @@ func (s *adminSteps) createClientWithExactLength(ctx context.Context, length int
 	if tenantID == "" {
 		return fmt.Errorf("tenant ID not set")
 	}
-	// Generate a client name of exactly the specified length
-	name := generateStringOfLength("ClientLen", length)
+	// Generate a unique client name of exactly the specified length
+	uniquePrefix := fmt.Sprintf("C%d", time.Now().UnixNano())
+	name := generateStringOfLength(uniquePrefix, length)
 	body := map[string]interface{}{
 		"tenant_id":      tenantID,
 		"name":           name,

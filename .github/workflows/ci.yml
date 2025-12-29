@@ -72,6 +72,7 @@ jobs:
           CREDO_ENV: demo
           PORT: 8080
           CONSENT_GRANT_WINDOW: 1s
+          CONSENT_REGRANT_COOLDOWN: 1ns
 
       - name: Wait for server to be ready
         run: |
