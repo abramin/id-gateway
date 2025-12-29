@@ -123,20 +123,20 @@ func NewSanctionsCheck(
 	checkedAt shared.CheckedAt,
 	providerID shared.ProviderID,
 	confidence shared.Confidence,
-) (SanctionsCheck, error) {
+) (*SanctionsCheck, error) {
 	if nationalID.IsNil() {
-		return SanctionsCheck{}, errMissingNationalID
+		return nil, errMissingNationalID
 	}
 	if source.IsZero() {
-		return SanctionsCheck{}, errMissingSource
+		return nil, errMissingSource
 	}
 	if checkedAt.IsZero() {
-		return SanctionsCheck{}, errMissingCheckedAt
+		return nil, errMissingCheckedAt
 	}
 	if providerID.IsZero() {
-		return SanctionsCheck{}, errMissingProviderID
+		return nil, errMissingProviderID
 	}
-	return SanctionsCheck{
+	return &SanctionsCheck{
 		nationalID: nationalID,
 		listed:     false,
 		details:    ListingDetails{},
@@ -158,28 +158,28 @@ func NewListedSanctionsCheck(
 	checkedAt shared.CheckedAt,
 	providerID shared.ProviderID,
 	confidence shared.Confidence,
-) (SanctionsCheck, error) {
+) (*SanctionsCheck, error) {
 	if nationalID.IsNil() {
-		return SanctionsCheck{}, errMissingNationalID
+		return nil, errMissingNationalID
 	}
 	if source.IsZero() {
-		return SanctionsCheck{}, errMissingSource
+		return nil, errMissingSource
 	}
 	if checkedAt.IsZero() {
-		return SanctionsCheck{}, errMissingCheckedAt
+		return nil, errMissingCheckedAt
 	}
 	if providerID.IsZero() {
-		return SanctionsCheck{}, errMissingProviderID
+		return nil, errMissingProviderID
 	}
 	if listType != ListTypeNone && !listType.IsValid() {
-		return SanctionsCheck{}, errors.New("invalid list type")
+		return nil, errors.New("invalid list type")
 	}
 	// Enforce invariant: listed subjects must have a list type
 	if listType == ListTypeNone {
 		listType = ListTypeSanctions // Default to sanctions if not specified
 	}
 
-	return SanctionsCheck{
+	return &SanctionsCheck{
 		nationalID: nationalID,
 		listed:     true,
 		details: ListingDetails{

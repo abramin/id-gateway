@@ -84,17 +84,17 @@ func New(
 	checkedAt shared.CheckedAt,
 	providerID shared.ProviderID,
 	confidence shared.Confidence,
-) (CitizenVerification, error) {
+) (*CitizenVerification, error) {
 	if nationalID.IsNil() {
-		return CitizenVerification{}, errMissingNationalID
+		return nil, errMissingNationalID
 	}
 	if checkedAt.IsZero() {
-		return CitizenVerification{}, errMissingCheckedAt
+		return nil, errMissingCheckedAt
 	}
 	if providerID.IsZero() {
-		return CitizenVerification{}, errMissingProviderID
+		return nil, errMissingProviderID
 	}
-	return CitizenVerification{
+	return &CitizenVerification{
 		nationalID: nationalID,
 		details:    details,
 		status: VerificationStatus{
@@ -156,8 +156,8 @@ func (c CitizenVerification) IsMinimized() bool {
 //   - Is marked as minimized (IsMinimized returns true)
 //
 // This method is pure - it returns a new value without modifying the original.
-func (c CitizenVerification) Minimized() CitizenVerification {
-	return CitizenVerification{
+func (c *CitizenVerification) Minimized() *CitizenVerification {
+	return &CitizenVerification{
 		nationalID: c.nationalID,
 		details:    PersonalDetails{}, // Empty - PII stripped
 		status:     c.status,
@@ -169,7 +169,7 @@ func (c CitizenVerification) Minimized() CitizenVerification {
 
 // WithoutNationalID returns a minimized version that also clears the national ID.
 // Use this for maximum data minimization where even the lookup key should be hidden.
-func (c CitizenVerification) WithoutNationalID() CitizenVerification {
+func (c *CitizenVerification) WithoutNationalID() *CitizenVerification {
 	minimized := c.Minimized()
 	minimized.nationalID = id.NationalID{} // Zero value
 	return minimized

@@ -508,15 +508,15 @@ func (s *Service) logConsentCheck(ctx context.Context, level slog.Level, msg str
 // Invariant: passed=true requires decision=AuditDecisionGranted; passed=false requires decision=AuditDecisionDenied
 type consentCheckOutcome struct {
 	passed   bool
-	state    string // "missing", "revoked", "expired", "active"
+	state    models.ConsentCheckState
 	decision string // models.AuditDecisionGranted or models.AuditDecisionDenied
 }
 
 var (
-	outcomeMissing = consentCheckOutcome{passed: false, state: "missing", decision: models.AuditDecisionDenied}
-	outcomeRevoked = consentCheckOutcome{passed: false, state: "revoked", decision: models.AuditDecisionDenied}
-	outcomeExpired = consentCheckOutcome{passed: false, state: "expired", decision: models.AuditDecisionDenied}
-	outcomePassed  = consentCheckOutcome{passed: true, state: "active", decision: models.AuditDecisionGranted}
+	outcomeMissing = consentCheckOutcome{passed: false, state: models.ConsentCheckStateMissing, decision: models.AuditDecisionDenied}
+	outcomeRevoked = consentCheckOutcome{passed: false, state: models.ConsentCheckStateRevoked, decision: models.AuditDecisionDenied}
+	outcomeExpired = consentCheckOutcome{passed: false, state: models.ConsentCheckStateExpired, decision: models.AuditDecisionDenied}
+	outcomePassed  = consentCheckOutcome{passed: true, state: models.ConsentCheckStateActive, decision: models.AuditDecisionGranted}
 )
 
 // recordConsentCheckOutcome emits audit event, logs, and updates metrics for a consent check.
@@ -539,7 +539,7 @@ func (s *Service) recordConsentCheckOutcome(ctx context.Context, userID id.UserI
 		Reason:    models.AuditReasonUserInitiated,
 		Timestamp: now,
 	})
-	s.logConsentCheck(ctx, logLevel, logMsg, userID, purpose, outcome.state)
+	s.logConsentCheck(ctx, logLevel, logMsg, userID, purpose, outcome.state.String())
 	if outcome.passed {
 		s.incrementConsentCheckPassed(purpose)
 	} else {

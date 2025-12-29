@@ -76,3 +76,19 @@ func ParseStatus(s string) (Status, error) {
 func (s Status) IsValid() bool {
 	return s == StatusActive || s == StatusExpired || s == StatusRevoked
 }
+
+// ConsentCheckState represents the outcome state of a consent check operation.
+// This differs from Status in that it includes "missing" for when no consent exists.
+type ConsentCheckState string
+
+const (
+	ConsentCheckStateMissing ConsentCheckState = "missing"
+	ConsentCheckStateRevoked ConsentCheckState = "revoked"
+	ConsentCheckStateExpired ConsentCheckState = "expired"
+	ConsentCheckStateActive  ConsentCheckState = "active"
+)
+
+// String returns the string representation of the consent check state.
+func (c ConsentCheckState) String() string {
+	return string(c)
+}
