@@ -304,7 +304,7 @@ func (h *Handler) HandleLogoutAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	exceptCurrent := parseExceptCurrentFlag(r)
+	exceptCurrent := r.URL.Query().Get("except_current") != "false"
 
 	res, err := h.auth.LogoutAll(ctx, userID, currentSessionID, exceptCurrent)
 	if err != nil {
@@ -335,15 +335,11 @@ func (h *Handler) HandleLogoutAll(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// parseExceptCurrentFlag parses the except_current query parameter.
-// Returns true (exclude current session) unless explicitly set to "false".
-func parseExceptCurrentFlag(r *http.Request) bool {
-	return r.URL.Query().Get("except_current") != "false"
-}
-
 // rateLimitResult holds the outcome of a rate limit check.
 type rateLimitResult struct {
-	Allowed    bool
+	// Allowed indicates whether the request is permitted (true) or rate-limited (false).
+	Allowed bool
+	// RetryAfter is the number of seconds to wait before retrying (0 if Allowed is true).
 	RetryAfter int
 }
 

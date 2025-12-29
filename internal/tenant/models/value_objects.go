@@ -43,12 +43,6 @@ func (s TenantStatus) CanTransitionTo(target TenantStatus) bool {
 
 // ClientStatus represents the lifecycle state of an OAuth client.
 // Clients can be active (operational) or inactive (blocked from OAuth flows).
-//
-// State machine:
-//
-//	active ↔ inactive
-//
-// Invariant: Only these two states are valid; no terminal states exist.
 type ClientStatus string
 
 const (

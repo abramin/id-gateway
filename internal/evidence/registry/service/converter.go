@@ -1,3 +1,5 @@
+// Package service provides business logic for the evidence registry,
+// including conversions between provider formats and domain aggregates.
 package service
 
 import (

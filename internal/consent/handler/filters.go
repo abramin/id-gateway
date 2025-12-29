@@ -7,6 +7,9 @@ import (
 	dErrors "credo/pkg/domain-errors"
 )
 
+// parseRecordFilter converts query parameters into a domain RecordFilter.
+// Returns nil if no filters are specified.
+// Returns validation error if status or purpose values are invalid.
 func parseRecordFilter(status, purpose string) (*models.RecordFilter, error) {
 	status = strings.TrimSpace(status)
 	purpose = strings.TrimSpace(purpose)

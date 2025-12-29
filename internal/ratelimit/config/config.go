@@ -61,12 +61,6 @@ func (c *AuthLockoutConfig) CalculateBackoff(failureCount int) time.Duration {
 	return c.BackoffPolicy().CalculateBackoff(failureCount)
 }
 
-// ResetTime returns when the lockout window will reset based on last failure time.
-// Deprecated: Use BackoffPolicy().ResetTime() for pure domain logic.
-func (c *AuthLockoutConfig) ResetTime(lastFailureAt time.Time) time.Time {
-	return c.BackoffPolicy().ResetTime(lastFailureAt)
-}
-
 type QuotaLimit struct {
 	MonthlyRequests int
 	OverageAllowed  bool
