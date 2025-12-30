@@ -64,6 +64,27 @@ jobs:
       - name: Build Go application
         run: go build -o bin/credo ./cmd/server/main.go
 
+      - name: Build and start mock citizen-registry
+        run: |
+          cd mocks/citizen-registry
+          go build -o citizen-registry .
+          PORT=8082 API_KEY=test-api-key LATENCY_MS=10 ./citizen-registry &
+          echo $! > ../../citizen-registry.pid
+          cd ../..
+
+      - name: Build and start mock sanctions-registry
+        run: |
+          cd mocks/sanctions-registry
+          go build -o sanctions-registry .
+          PORT=8083 API_KEY=test-api-key LATENCY_MS=10 ./sanctions-registry &
+          echo $! > ../../sanctions-registry.pid
+          cd ../..
+
+      - name: Wait for mock registries to be ready
+        run: |
+          timeout 10 bash -c 'until curl -f http://localhost:8082/health 2>/dev/null; do sleep 1; done' || true
+          timeout 10 bash -c 'until curl -f http://localhost:8083/health 2>/dev/null; do sleep 1; done' || true
+
       - name: Start backend server
         run: |
           ./bin/credo &
@@ -73,6 +94,10 @@ jobs:
           PORT: 8080
           CONSENT_GRANT_WINDOW: 1s
           CONSENT_REGRANT_COOLDOWN: 1ns
+          CITIZEN_REGISTRY_URL: http://localhost:8082
+          CITIZEN_REGISTRY_API_KEY: test-api-key
+          SANCTIONS_REGISTRY_URL: http://localhost:8083
+          SANCTIONS_REGISTRY_API_KEY: test-api-key
 
       - name: Wait for server to be ready
         run: |
@@ -108,6 +133,18 @@ jobs:
             rm server.pid
           fi
 
+      - name: Stop mock registries
+        if: always()
+        run: |
+          if [ -f citizen-registry.pid ]; then
+            kill $(cat citizen-registry.pid) || true
+            rm citizen-registry.pid
+          fi
+          if [ -f sanctions-registry.pid ]; then
+            kill $(cat sanctions-registry.pid) || true
+            rm sanctions-registry.pid
+          fi
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -136,6 +173,27 @@ jobs:
       - name: Build Go application
         run: go build -o bin/credo ./cmd/server/main.go
 
+      - name: Build and start mock citizen-registry
+        run: |
+          cd mocks/citizen-registry
+          go build -o citizen-registry .
+          PORT=8082 API_KEY=test-api-key LATENCY_MS=10 ./citizen-registry &
+          echo $! > ../../citizen-registry.pid
+          cd ../..
+
+      - name: Build and start mock sanctions-registry
+        run: |
+          cd mocks/sanctions-registry
+          go build -o sanctions-registry .
+          PORT=8083 API_KEY=test-api-key LATENCY_MS=10 ./sanctions-registry &
+          echo $! > ../../sanctions-registry.pid
+          cd ../..
+
+      - name: Wait for mock registries to be ready
+        run: |
+          timeout 10 bash -c 'until curl -f http://localhost:8082/health 2>/dev/null; do sleep 1; done' || true
+          timeout 10 bash -c 'until curl -f http://localhost:8083/health 2>/dev/null; do sleep 1; done' || true
+
       - name: Start backend server (unregulated mode)
         run: |
           ./bin/credo &
@@ -146,6 +204,10 @@ jobs:
           REGULATED_MODE: "false"
           CONSENT_GRANT_WINDOW: 1s
           CONSENT_REGRANT_COOLDOWN: 1ns
+          CITIZEN_REGISTRY_URL: http://localhost:8082
+          CITIZEN_REGISTRY_API_KEY: test-api-key
+          SANCTIONS_REGISTRY_URL: http://localhost:8083
+          SANCTIONS_REGISTRY_API_KEY: test-api-key
 
       - name: Wait for server to be ready
         run: |
@@ -167,6 +229,18 @@ jobs:
           if [ -f server.pid ]; then
             kill $(cat server.pid) || true
             rm server.pid
+          fi
+
+      - name: Stop mock registries
+        if: always()
+        run: |
+          if [ -f citizen-registry.pid ]; then
+            kill $(cat citizen-registry.pid) || true
+            rm citizen-registry.pid
+          fi
+          if [ -f sanctions-registry.pid ]; then
+            kill $(cat sanctions-registry.pid) || true
+            rm sanctions-registry.pid
           fi
 
       - name: Upload test results
