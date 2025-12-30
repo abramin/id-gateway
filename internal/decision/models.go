@@ -5,7 +5,7 @@ import (
 
 	registrycontracts "credo/contracts/registry"
 	authModel "credo/internal/auth/models"
-	"credo/internal/evidence/vc"
+	vcmodels "credo/internal/evidence/vc/models"
 	id "credo/pkg/domain"
 )
 
@@ -31,7 +31,7 @@ type DerivedIdentity struct {
 type DecisionInput struct {
 	Identity   DerivedIdentity
 	Sanctions  registrycontracts.SanctionsRecord
-	Credential vc.Claims
+	Credential vcmodels.Claims
 }
 
 // DerivedIdentityFromCitizen strips PII while producing attributes required for

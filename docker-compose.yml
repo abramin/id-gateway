@@ -69,7 +69,7 @@ services:
     environment:
       - CREDO_ENV=${CREDO_ENV:-local}
       - ADDR=:8080
-      - REGULATED_MODE=true
+      - REGULATED_MODE=${REGULATED_MODE:-true}
       - LOG_LEVEL=info
       - DEVICE_BINDING_ENABLED=true
       - DISABLE_RATE_LIMITING=${DISABLE_RATE_LIMITING:-false}

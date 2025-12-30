@@ -9,6 +9,7 @@ import (
 	"credo/e2e/steps/consent"
 	"credo/e2e/steps/ratelimit"
 	"credo/e2e/steps/registry"
+	"credo/e2e/steps/vc"
 )
 
 // RegisterSteps registers all step definitions from modular packages
@@ -30,4 +31,7 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 
 	// Register registry steps (PRD-003 citizen/sanctions lookups)
 	registry.RegisterSteps(ctx, tc)
+
+	// Register VC steps (PRD-004 credential issuance)
+	vc.RegisterSteps(ctx, tc)
 }

@@ -64,6 +64,27 @@ jobs:
       - name: Build Go application
         run: go build -o bin/credo ./cmd/server/main.go
 
+      - name: Build and start mock citizen-registry
+        run: |
+          cd mocks/citizen-registry
+          go build -o citizen-registry .
+          PORT=8082 API_KEY=test-api-key LATENCY_MS=10 ./citizen-registry &
+          echo $! > ../../citizen-registry.pid
+          cd ../..
+
+      - name: Build and start mock sanctions-registry
+        run: |
+          cd mocks/sanctions-registry
+          go build -o sanctions-registry .
+          PORT=8083 API_KEY=test-api-key LATENCY_MS=10 ./sanctions-registry &
+          echo $! > ../../sanctions-registry.pid
+          cd ../..
+
+      - name: Wait for mock registries to be ready
+        run: |
+          timeout 10 bash -c 'until curl -f http://localhost:8082/health 2>/dev/null; do sleep 1; done' || true
+          timeout 10 bash -c 'until curl -f http://localhost:8083/health 2>/dev/null; do sleep 1; done' || true
+
       - name: Start backend server
         run: |
           ./bin/credo &
@@ -71,8 +92,13 @@ jobs:
         env:
           CREDO_ENV: demo
           PORT: 8080
+          REGULATED_MODE: "true"
           CONSENT_GRANT_WINDOW: 1s
           CONSENT_REGRANT_COOLDOWN: 1ns
+          CITIZEN_REGISTRY_URL: http://localhost:8082
+          CITIZEN_REGISTRY_API_KEY: test-api-key
+          SANCTIONS_REGISTRY_URL: http://localhost:8083
+          SANCTIONS_REGISTRY_API_KEY: test-api-key
 
       - name: Wait for server to be ready
         run: |
@@ -83,7 +109,7 @@ jobs:
         working-directory: e2e
         run: |
           mkdir -p reports
-          go test -v -- -godog.format=cucumber:$(pwd)/reports/cucumber.json
+          GODOG_TAGS="~@simulation && ~@unregulated && ~@pending" go test -v -- -godog.format=cucumber:$(pwd)/reports/cucumber.json
         env:
           BASE_URL: http://localhost:8080
           DISABLE_RATE_LIMITING: "true"
@@ -108,6 +134,18 @@ jobs:
             rm server.pid
           fi
 
+      - name: Stop mock registries
+        if: always()
+        run: |
+          if [ -f citizen-registry.pid ]; then
+            kill $(cat citizen-registry.pid) || true
+            rm citizen-registry.pid
+          fi
+          if [ -f sanctions-registry.pid ]; then
+            kill $(cat sanctions-registry.pid) || true
+            rm sanctions-registry.pid
+          fi
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -116,6 +154,103 @@ jobs:
           path: |
             e2e/reports/cucumber.json
             e2e/reports/index.html
+          retention-days: 7
+
+  e2e-unregulated:
+    name: E2E Tests (Unregulated Mode)
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build Go application
+        run: go build -o bin/credo ./cmd/server/main.go
+
+      - name: Build and start mock citizen-registry
+        run: |
+          cd mocks/citizen-registry
+          go build -o citizen-registry .
+          PORT=8082 API_KEY=test-api-key LATENCY_MS=10 ./citizen-registry &
+          echo $! > ../../citizen-registry.pid
+          cd ../..
+
+      - name: Build and start mock sanctions-registry
+        run: |
+          cd mocks/sanctions-registry
+          go build -o sanctions-registry .
+          PORT=8083 API_KEY=test-api-key LATENCY_MS=10 ./sanctions-registry &
+          echo $! > ../../sanctions-registry.pid
+          cd ../..
+
+      - name: Wait for mock registries to be ready
+        run: |
+          timeout 10 bash -c 'until curl -f http://localhost:8082/health 2>/dev/null; do sleep 1; done' || true
+          timeout 10 bash -c 'until curl -f http://localhost:8083/health 2>/dev/null; do sleep 1; done' || true
+
+      - name: Start backend server (unregulated mode)
+        run: |
+          ./bin/credo &
+          echo $! > server.pid
+        env:
+          CREDO_ENV: demo
+          PORT: 8080
+          REGULATED_MODE: "false"
+          CONSENT_GRANT_WINDOW: 1s
+          CONSENT_REGRANT_COOLDOWN: 1ns
+          CITIZEN_REGISTRY_URL: http://localhost:8082
+          CITIZEN_REGISTRY_API_KEY: test-api-key
+          SANCTIONS_REGISTRY_URL: http://localhost:8083
+          SANCTIONS_REGISTRY_API_KEY: test-api-key
+
+      - name: Wait for server to be ready
+        run: |
+          timeout 30 bash -c 'until curl -f http://localhost:8080/health 2>/dev/null; do sleep 1; done' || true
+          sleep 2
+
+      - name: Run E2E tests (unregulated scenarios)
+        working-directory: e2e
+        run: |
+          mkdir -p reports
+          GODOG_TAGS="@unregulated" go test -v -- -godog.format=cucumber:$(pwd)/reports/cucumber.json
+        env:
+          BASE_URL: http://localhost:8080
+          DISABLE_RATE_LIMITING: "true"
+
+      - name: Stop backend server
+        if: always()
+        run: |
+          if [ -f server.pid ]; then
+            kill $(cat server.pid) || true
+            rm server.pid
+          fi
+
+      - name: Stop mock registries
+        if: always()
+        run: |
+          if [ -f citizen-registry.pid ]; then
+            kill $(cat citizen-registry.pid) || true
+            rm citizen-registry.pid
+          fi
+          if [ -f sanctions-registry.pid ]; then
+            kill $(cat sanctions-registry.pid) || true
+            rm sanctions-registry.pid
+          fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-unregulated-test-results
+          path: |
+            e2e/reports/cucumber.json
           retention-days: 7
 
   openapi-docs:

@@ -136,13 +136,13 @@ type AuthRateLimitResult struct {
 // Created by admins via the admin API, with optional expiration.
 // Checked by services before applying rate limits.
 type AllowlistEntry struct {
-	ID         string             `json:"id"`
-	Type       AllowlistEntryType `json:"type"`
+	ID         string              `json:"id"`
+	Type       AllowlistEntryType  `json:"type"`
 	Identifier AllowlistIdentifier `json:"identifier"` // IP address or user_id
-	Reason     string             `json:"reason"`     // Admin-provided justification
-	ExpiresAt  *time.Time         `json:"expires_at,omitempty"`
-	CreatedAt  time.Time          `json:"created_at"`
-	CreatedBy  id.UserID          `json:"created_by"` // Admin who created the entry
+	Reason     string              `json:"reason"`     // Admin-provided justification
+	ExpiresAt  *time.Time          `json:"expires_at,omitempty"`
+	CreatedAt  time.Time           `json:"created_at"`
+	CreatedBy  id.UserID           `json:"created_by"` // Admin who created the entry
 }
 
 // RateLimitViolation is an audit record created when a request is rate limited.

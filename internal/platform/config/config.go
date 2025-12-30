@@ -150,8 +150,12 @@ func loadRegistryConfig() RegistryConfig {
 }
 
 func loadSecurityConfig(env string, demoMode bool) SecurityConfig {
-	regulated := os.Getenv("REGULATED_MODE") == "true"
-	if demoMode {
+	// REGULATED_MODE env var takes precedence; if unset, demo mode defaults to unregulated
+	regulatedEnv := os.Getenv("REGULATED_MODE")
+	var regulated bool
+	if regulatedEnv != "" {
+		regulated = regulatedEnv == "true"
+	} else if demoMode {
 		regulated = false
 	}
 

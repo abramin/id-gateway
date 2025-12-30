@@ -47,6 +47,7 @@ func main() {
 
 	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/api/v1/citizen/lookup", handleCitizenLookup)
+	http.HandleFunc("/lookup", handleCitizenLookup) // Simplified path for adapter
 
 	log.Printf("🏛️  Mock Citizen Registry API starting on port %s", port)
 	log.Printf("📝 API Key: %s", apiKey)
@@ -65,6 +66,115 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 		"service": "citizen-registry",
 		"version": "1.0.0",
 	})
+}
+
+// testCitizens contains predefined test data for specific national IDs.
+// These "magic" IDs allow e2e tests to control the mock's behavior.
+var testCitizens = map[string]func() *CitizenResponse{
+	// Adults - valid citizens over 18
+	"ADULT123456": func() *CitizenResponse {
+		return &CitizenResponse{
+			NationalID:  "ADULT123456",
+			FullName:    "John Adult Smith",
+			DateOfBirth: "1990-01-01",
+			Address:     "123 Main St, Springfield, CA 90210",
+			Valid:       true,
+			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
+		}
+	},
+	"FMTCHECK123": func() *CitizenResponse {
+		return &CitizenResponse{
+			NationalID:  "FMTCHECK123",
+			FullName:    "Format Check User",
+			DateOfBirth: "1985-06-15",
+			Address:     "456 Oak Ave, Riverside, TX 75001",
+			Valid:       true,
+			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
+		}
+	},
+	"REGULATED123": func() *CitizenResponse {
+		return &CitizenResponse{
+			NationalID:  "REGULATED123",
+			FullName:    "Regulated Mode User",
+			DateOfBirth: "1980-03-15",
+			Address:     "789 Pine Dr, Fairview, NY 10001",
+			Valid:       true,
+			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
+		}
+	},
+	"FULLDATA123": func() *CitizenResponse {
+		return &CitizenResponse{
+			NationalID:  "FULLDATA123",
+			FullName:    "Full Data User",
+			DateOfBirth: "1975-12-25",
+			Address:     "321 Elm St, Clinton, FL 33101",
+			Valid:       true,
+			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
+		}
+	},
+	"AUDIT123456": func() *CitizenResponse {
+		return &CitizenResponse{
+			NationalID:  "AUDIT123456",
+			FullName:    "Audit Trail User",
+			DateOfBirth: "1988-07-20",
+			Address:     "654 Cedar Ln, Georgetown, IL 60601",
+			Valid:       true,
+			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
+		}
+	},
+	"MULTI123456": func() *CitizenResponse {
+		return &CitizenResponse{
+			NationalID:  "MULTI123456",
+			FullName:    "Multi Request User",
+			DateOfBirth: "1992-04-10",
+			Address:     "987 Birch Way, Franklin, PA 19101",
+			Valid:       true,
+			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
+		}
+	},
+	// Underage users - for age verification tests
+	"MINOR17": func() *CitizenResponse {
+		// Calculate birth date to be exactly 17 years old (plus a bit to ensure under 18)
+		birthDate := time.Now().AddDate(-17, 0, 1).Format("2006-01-02")
+		return &CitizenResponse{
+			NationalID:  "MINOR17",
+			FullName:    "Minor Seventeen User",
+			DateOfBirth: birthDate,
+			Address:     "111 Youth St, Fairview, CA 90001",
+			Valid:       true,
+			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
+		}
+	},
+	"JUSTTURNED18": func() *CitizenResponse {
+		// Calculate birth date to be exactly 18 years old today
+		birthDate := time.Now().AddDate(-18, 0, 0).Format("2006-01-02")
+		return &CitizenResponse{
+			NationalID:  "JUSTTURNED18",
+			FullName:    "Just Turned Eighteen",
+			DateOfBirth: birthDate,
+			Address:     "222 Birthday Ln, Madison, TX 75002",
+			Valid:       true,
+			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
+		}
+	},
+	// Invalid citizen record
+	"INVALID12345": func() *CitizenResponse {
+		return &CitizenResponse{
+			NationalID:  "INVALID12345",
+			FullName:    "Invalid Record User",
+			DateOfBirth: "1980-01-01",
+			Address:     "333 Invalid Ave, Salem, OH 44001",
+			Valid:       false, // Invalid citizen
+			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
+		}
+	},
+}
+
+// notFoundCitizens contains national IDs that should return 404
+var notFoundCitizens = map[string]bool{
+	"UNKNOWN999":   true,
+	"NOCONSENT123": true, // Used for consent tests - no citizen data needed
+	"REVOKED123":   true, // Used for consent revocation tests
 }
 
 func handleCitizenLookup(w http.ResponseWriter, r *http.Request) {
@@ -104,15 +214,29 @@ func handleCitizenLookup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate deterministic citizen data based on national ID
-	citizen := generateCitizen(req.NationalID)
+	// Check for test "not found" IDs
+	if notFoundCitizens[req.NationalID] {
+		sendError(w, "Citizen not found", http.StatusNotFound)
+		log.Printf("🔍 Citizen not found (test ID): %s", req.NationalID)
+		return
+	}
+
+	// Check for predefined test citizens
+	var citizen CitizenResponse
+	if testFn, ok := testCitizens[req.NationalID]; ok {
+		citizen = *testFn()
+		log.Printf("🧪 Using test citizen data for: %s", req.NationalID)
+	} else {
+		// Generate deterministic citizen data based on national ID
+		citizen = generateCitizen(req.NationalID)
+	}
 
 	// Send response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(citizen)
 
-	log.Printf("✅ Citizen lookup successful: %s -> %s", req.NationalID, citizen.FullName)
+	log.Printf("✅ Citizen lookup successful: %s -> %s (valid=%v)", req.NationalID, citizen.FullName, citizen.Valid)
 }
 
 func generateCitizen(nationalID string) CitizenResponse {

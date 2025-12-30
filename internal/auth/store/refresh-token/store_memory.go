@@ -11,7 +11,6 @@ import (
 	"credo/pkg/platform/sentinel"
 )
 
-
 // Error Contract:
 // All store methods follow this error pattern:
 // - Return ErrNotFound when the requested entity does not exist
@@ -84,7 +83,6 @@ func (s *InMemoryRefreshTokenStore) DeleteBySessionID(_ context.Context, session
 	}
 	return nil
 }
-
 
 // DeleteExpiredTokens removes all refresh tokens that have expired as of the given time.
 // The time parameter is injected for testability (no hidden time.Now() calls).

@@ -36,6 +36,10 @@ import (
 	sanctionsProvider "credo/internal/evidence/registry/providers/sanctions"
 	registryService "credo/internal/evidence/registry/service"
 	registryStore "credo/internal/evidence/registry/store"
+	vcAdapters "credo/internal/evidence/vc/adapters"
+	vcHandler "credo/internal/evidence/vc/handler"
+	vcService "credo/internal/evidence/vc/service"
+	vcStore "credo/internal/evidence/vc/store"
 	jwttoken "credo/internal/jwt_token"
 	"credo/internal/platform/config"
 	"credo/internal/platform/httpserver"
@@ -115,6 +119,11 @@ type registryModule struct {
 	Handler *registryHandler.Handler
 }
 
+type vcModule struct {
+	Service *vcService.Service
+	Handler *vcHandler.Handler
+}
+
 type tenantClientLookup struct {
 	tenantSvc *tenantService.Service
 }
@@ -161,6 +170,7 @@ func main() {
 	}
 	consentMod := buildConsentModule(infra)
 	registryMod := buildRegistryModule(infra, consentMod.Service)
+	vcMod := buildVCModule(infra, consentMod.Service, registryMod.Service)
 
 	startCleanupWorker(appCtx, infra.Log, authMod.Cleanup)
 	go func() {
@@ -170,7 +180,7 @@ func main() {
 	}()
 
 	r := setupRouter(infra)
-	registerRoutes(r, infra, authMod, consentMod, tenantMod, registryMod, rateLimitMiddleware, clientRateLimitMiddleware)
+	registerRoutes(r, infra, authMod, consentMod, tenantMod, registryMod, vcMod, rateLimitMiddleware, clientRateLimitMiddleware)
 
 	mainSrv := httpserver.New(infra.Cfg.Addr, r)
 	startServer(mainSrv, infra.Log, "main API")
@@ -497,6 +507,33 @@ func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service)
 	}
 }
 
+func buildVCModule(infra *infraBundle, consentSvc *consentService.Service, registrySvc *registryService.Service) *vcModule {
+	store := vcStore.NewInMemoryStore()
+	consentAdapter := vcAdapters.NewConsentAdapter(consentSvc)
+	registryAdapter := vcAdapters.NewRegistryAdapter(registrySvc)
+
+	auditPort := auditpublisher.NewPublisher(
+		auditstore.NewInMemoryStore(),
+		auditpublisher.WithAsyncBuffer(1000),
+		auditpublisher.WithMetrics(infra.AuditMetrics),
+		auditpublisher.WithPublisherLogger(infra.Log),
+	)
+
+	svc := vcService.NewService(
+		store,
+		registryAdapter,
+		consentAdapter,
+		infra.Cfg.Security.RegulatedMode,
+		vcService.WithAuditor(auditPort),
+		vcService.WithLogger(infra.Log),
+	)
+
+	return &vcModule{
+		Service: svc,
+		Handler: vcHandler.New(svc, infra.Log),
+	}
+}
+
 func startCleanupWorker(ctx context.Context, log *slog.Logger, cleanupSvc *cleanupWorker.CleanupService) {
 	go func() {
 		if err := cleanupSvc.Start(ctx); err != nil && err != context.Canceled {
@@ -550,7 +587,7 @@ func setupRouter(infra *infraBundle) *chi.Mux {
 }
 
 // registerRoutes wires HTTP handlers to the shared router
-func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consentMod *consentModule, tenantMod *tenantModule, registryMod *registryModule, rateLimitMiddleware *rateLimitMW.Middleware, clientRateLimitMiddleware *rateLimitMW.ClientMiddleware) {
+func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consentMod *consentModule, tenantMod *tenantModule, registryMod *registryModule, vcMod *vcModule, rateLimitMiddleware *rateLimitMW.Middleware, clientRateLimitMiddleware *rateLimitMW.ClientMiddleware) {
 	if infra.Cfg.DemoMode {
 		r.Get("/demo/info", func(w http.ResponseWriter, _ *http.Request) {
 			resp := map[string]any{
@@ -596,6 +633,8 @@ func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consent
 		r.Delete("/auth/consent", consentMod.Handler.HandleDeleteAllConsents)
 		// Registry endpoints
 		registryMod.Handler.Register(r)
+		// Verifiable credential endpoints
+		vcMod.Handler.Register(r)
 	})
 
 	// Admin endpoints - ClassWrite (50 req/min)

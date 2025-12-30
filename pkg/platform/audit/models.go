@@ -30,7 +30,7 @@ const (
 // Event is emitted from domain logic to capture key actions. Keep it
 // transport-agnostic so stores and sinks can fan out.
 type Event struct {
-	Category EventCategory
+	Category        EventCategory
 	Timestamp       time.Time
 	UserID          id.UserID
 	Subject         string

@@ -377,6 +377,67 @@ func (s *Service) Citizen(ctx context.Context, userID id.UserID, nationalID id.N
 	return record, nil
 }
 
+// CitizenWithDetails performs a citizen lookup returning full PII for internal use.
+//
+// Unlike Citizen(), this method does NOT apply regulated mode minimization. It is intended
+// for internal service-to-service calls where the caller needs to compute derived attributes
+// from PII (e.g., VC issuance computing is_over_18 from date_of_birth) before the caller
+// applies its own minimization to the final output.
+//
+// IMPORTANT: This method must only be called by internal services that will minimize their
+// own output. External-facing APIs should use Citizen() which enforces regulated mode.
+//
+// The returned data is NOT cached to prevent stale unminimized PII in shared caches.
+func (s *Service) CitizenWithDetails(ctx context.Context, userID id.UserID, nationalID id.NationalID) (record *models.CitizenRecord, err error) {
+	// Start span for distributed tracing
+	ctx, span := registryTracer.Start(ctx, "registry.citizen.internal",
+		trace.WithAttributes(
+			attribute.String("national_id", hashNationalID(nationalID.String())),
+			attribute.Bool("internal_call", true),
+		),
+	)
+	defer func() { endSpan(span, err) }()
+
+	// Atomic consent check - must succeed before any lookup
+	if err = s.requireConsent(ctx, userID); err != nil {
+		return nil, err
+	}
+
+	// No cache for internal calls - prevents unminimized PII in shared cache
+
+	result, err := s.orchestrator.Lookup(ctx, orchestrator.LookupRequest{
+		Types: []providers.ProviderType{providers.ProviderTypeCitizen},
+		Filters: map[string]string{
+			"national_id": nationalID.String(),
+		},
+		Strategy: orchestrator.StrategyFallback,
+	})
+	if err != nil {
+		return nil, s.translateOrchestratorError(err, result)
+	}
+
+	// Find citizen evidence and convert via domain aggregate - NO minimization
+	for _, ev := range result.Evidence {
+		if ev.ProviderType == providers.ProviderTypeCitizen {
+			verification, convErr := EvidenceToCitizenVerification(ev)
+			if convErr != nil {
+				err = dErrors.Wrap(convErr, dErrors.CodeInternal, "failed to convert citizen evidence")
+				return nil, err
+			}
+			// Intentionally skip minimization - caller will minimize their own output
+			record = CitizenVerificationToRecord(verification)
+			break
+		}
+	}
+
+	if record == nil {
+		err = s.translateOrchestratorError(providers.ErrAllProvidersFailed, result)
+		return nil, err
+	}
+
+	return record, nil
+}
+
 // Sanctions performs a single sanctions lookup with cache-through semantics.
 //
 // The method first checks consent atomically, then checks the cache; on a miss,
