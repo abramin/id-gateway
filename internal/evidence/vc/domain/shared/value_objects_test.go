@@ -44,22 +44,6 @@ func (s *ValueObjectsSuite) TestIssuedAtConstruction() {
 	}
 }
 
-func (s *ValueObjectsSuite) TestIssuedAtMust() {
-	s.Run("panics on zero time", func() {
-		s.Panics(func() {
-			shared.MustIssuedAt(time.Time{})
-		})
-	})
-
-	s.Run("returns value on valid time", func() {
-		now := time.Now()
-		s.NotPanics(func() {
-			issuedAt := shared.MustIssuedAt(now)
-			s.Equal(now, issuedAt.Time())
-		})
-	})
-}
-
 func (s *ValueObjectsSuite) TestIssuedAtIsZero() {
 	s.Run("zero value IssuedAt is zero", func() {
 		var issuedAt shared.IssuedAt
@@ -67,7 +51,7 @@ func (s *ValueObjectsSuite) TestIssuedAtIsZero() {
 	})
 
 	s.Run("valid IssuedAt is not zero", func() {
-		issuedAt := shared.MustIssuedAt(time.Now())
+		issuedAt := mustIssuedAt(time.Now())
 		s.False(issuedAt.IsZero())
 	})
 }
@@ -89,7 +73,7 @@ func (s *ValueObjectsSuite) TestExpiresAtConstruction() {
 
 func (s *ValueObjectsSuite) TestExpiresAtAfterConstruction() {
 	now := time.Now()
-	issuedAt := shared.MustIssuedAt(now)
+	issuedAt := mustIssuedAt(now)
 
 	cases := []struct {
 		name         string
@@ -169,4 +153,12 @@ func (s *ValueObjectsSuite) TestExpiresAtIsExpiredAt() {
 func mustExpiresAt(t time.Time) shared.ExpiresAt {
 	exp, _ := shared.NewExpiresAt(t)
 	return exp
+}
+
+func mustIssuedAt(t time.Time) shared.IssuedAt {
+	issuedAt, err := shared.NewIssuedAt(t)
+	if err != nil {
+		panic(err)
+	}
+	return issuedAt
 }

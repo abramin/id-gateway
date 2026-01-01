@@ -36,6 +36,10 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc TestContext) {
 	ctx.Step(`^I request a credential with invalid type "([^"]*)" and national_id "([^"]*)"$`, steps.requestCredentialWithInvalidType)
 	ctx.Step(`^I POST to "/vc/issue" with empty national_id$`, steps.postWithEmptyNationalID)
 	ctx.Step(`^I POST to "/vc/issue" with missing type$`, steps.postWithMissingType)
+	ctx.Step(`^I verify a credential with id "([^"]*)"$`, steps.verifyCredential)
+	ctx.Step(`^I verify a credential with id "([^"]*)" without authentication$`, steps.verifyCredentialWithoutAuth)
+	ctx.Step(`^I POST to "/vc/verify" with empty credential_id$`, steps.postVerifyWithEmptyCredentialID)
+	ctx.Step(`^I verify the saved credential_id "([^"]*)"$`, steps.verifySavedCredential)
 
 	// Response assertion steps
 	ctx.Step(`^the response field "([^"]*)" should start with "([^"]*)"$`, steps.fieldShouldStartWith)
@@ -120,6 +124,39 @@ func (s *vcSteps) postWithMissingType(ctx context.Context) error {
 	return s.tc.POSTWithHeaders("/vc/issue", body, map[string]string{
 		"Authorization": "Bearer " + s.tc.GetAccessToken(),
 	})
+}
+
+func (s *vcSteps) verifyCredential(ctx context.Context, credentialID string) error {
+	body := map[string]interface{}{
+		"credential_id": credentialID,
+	}
+	return s.tc.POSTWithHeaders("/vc/verify", body, map[string]string{
+		"Authorization": "Bearer " + s.tc.GetAccessToken(),
+	})
+}
+
+func (s *vcSteps) verifyCredentialWithoutAuth(ctx context.Context, credentialID string) error {
+	body := map[string]interface{}{
+		"credential_id": credentialID,
+	}
+	return s.tc.POST("/vc/verify", body)
+}
+
+func (s *vcSteps) postVerifyWithEmptyCredentialID(ctx context.Context) error {
+	body := map[string]interface{}{
+		"credential_id": "",
+	}
+	return s.tc.POSTWithHeaders("/vc/verify", body, map[string]string{
+		"Authorization": "Bearer " + s.tc.GetAccessToken(),
+	})
+}
+
+func (s *vcSteps) verifySavedCredential(ctx context.Context, key string) error {
+	credentialID, ok := s.savedFields[key]
+	if !ok {
+		return fmt.Errorf("saved field %q not found", key)
+	}
+	return s.verifyCredential(ctx, credentialID)
 }
 
 func (s *vcSteps) fieldShouldStartWith(ctx context.Context, field, prefix string) error {

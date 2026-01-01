@@ -90,7 +90,7 @@ func (s *Service) Issue(ctx context.Context, req models.IssueRequest) (*models.C
 
 	record, err := s.registry.Citizen(ctx, req.UserID, req.NationalID)
 	if err != nil {
-		return nil, err
+		return nil, sanitizeExternalError(err, "registry lookup failed")
 	}
 	if record == nil || !record.Valid {
 		return nil, dErrors.New(dErrors.CodeBadRequest, "invalid citizen record")
@@ -159,17 +159,24 @@ func (s *Service) Verify(ctx context.Context, credentialID models.CredentialID) 
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to retrieve credential")
 	}
 
-	return &models.VerifyResult{
+	result := &models.VerifyResult{
 		Valid:      true,
 		Credential: &cred,
-	}, nil
+	}
+
+	s.emitVerifyAudit(ctx, cred)
+
+	return result, nil
 }
 
 func (s *Service) requireVCIssuanceConsent(ctx context.Context, userID id.UserID) error {
 	if s.consentPort == nil {
-		return nil
+		return dErrors.New(dErrors.CodeInternal, "consent service unavailable")
 	}
-	return s.consentPort.RequireVCIssuance(ctx, userID)
+	if err := s.consentPort.RequireVCIssuance(ctx, userID); err != nil {
+		return sanitizeExternalError(err, "consent check failed")
+	}
+	return nil
 }
 
 func (s *Service) emitAudit(ctx context.Context, credential models.CredentialRecord) {
@@ -195,7 +202,47 @@ func (s *Service) emitAudit(ctx context.Context, credential models.CredentialRec
 	}
 }
 
+func (s *Service) emitVerifyAudit(ctx context.Context, credential models.CredentialRecord) {
+	// TODO: this should probably error if auditor is nil?
+	if s.auditor == nil {
+		return
+	}
+
+	event := audit.Event{
+		Action:    "vc_verified",
+		Purpose:   "vc_verification",
+		UserID:    credential.Subject,
+		Subject:   credential.ID.String(),
+		Decision:  "verified",
+		Reason:    "user_initiated",
+		RequestID: requestcontext.RequestID(ctx),
+	}
+
+	if err := s.auditor.Emit(ctx, event); err != nil && s.logger != nil {
+		s.logger.ErrorContext(ctx, "failed to emit vc_verified audit event",
+			"error", err,
+			"user_id", credential.Subject,
+		)
+	}
+}
+
 func isOver18(birthDate, now time.Time) bool {
 	adultAt := birthDate.UTC().AddDate(18, 0, 0)
 	return !now.UTC().Before(adultAt)
+}
+
+func sanitizeExternalError(err error, msg string) error {
+	if err == nil {
+		return nil
+	}
+
+	var domainErr *dErrors.Error
+	if errors.As(err, &domainErr) {
+		if domainErr.Code == dErrors.CodeInternal {
+			return dErrors.New(dErrors.CodeInternal, msg)
+		}
+		return err
+	}
+
+	return dErrors.Wrap(err, dErrors.CodeInternal, msg)
 }

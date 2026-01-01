@@ -32,7 +32,7 @@ func (s *CredentialSuite) SetupTest() {
 	s.validType = models.CredentialTypeAgeOver18
 	s.validSubject = id.UserID(uuid.New())
 	s.validIssuer = "credo"
-	s.validIssuedAt = shared.MustIssuedAt(time.Now())
+	s.validIssuedAt = mustIssuedAt(time.Now())
 	s.validClaims = credential.NewAgeOver18Claims(true, "national_registry")
 }
 
@@ -152,4 +152,12 @@ func (s *CredentialSuite) TestMinimization() {
 		s.Contains(minimizedMap, "is_over_18")
 		s.Equal(true, minimizedMap["is_over_18"])
 	})
+}
+
+func mustIssuedAt(t time.Time) shared.IssuedAt {
+	issuedAt, err := shared.NewIssuedAt(t)
+	if err != nil {
+		panic(err)
+	}
+	return issuedAt
 }

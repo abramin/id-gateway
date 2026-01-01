@@ -31,16 +31,6 @@ func NewIssuedAt(t time.Time) (IssuedAt, error) {
 	return IssuedAt{value: t}, nil
 }
 
-// MustIssuedAt creates an IssuedAt, panicking if the time is zero.
-// Use only when the time is known to be valid.
-func MustIssuedAt(t time.Time) IssuedAt {
-	ia, err := NewIssuedAt(t)
-	if err != nil {
-		panic(err)
-	}
-	return ia
-}
-
 // Time returns the underlying time value.
 func (i IssuedAt) Time() time.Time {
 	return i.value

@@ -19,6 +19,7 @@ import (
 // Service defines the VC issuance operations used by the handler.
 type Service interface {
 	Issue(ctx context.Context, req models.IssueRequest) (*models.CredentialRecord, error)
+	Verify(ctx context.Context, credentialID models.CredentialID) (*models.VerifyResult, error)
 }
 
 // Handler wires VC endpoints to the VC service.
@@ -35,6 +36,7 @@ func New(service Service, logger *slog.Logger) *Handler {
 // Register mounts VC endpoints on the router.
 func (h *Handler) Register(r chi.Router) {
 	r.Post("/vc/issue", h.HandleIssue)
+	r.Post("/vc/verify", h.HandleVerify)
 }
 
 // IssueRequest is the request body for credential issuance.
@@ -100,6 +102,55 @@ type IssueResponse struct {
 	Claims       models.Claims `json:"claims"`
 }
 
+// VerifyRequest is the request body for credential verification.
+type VerifyRequest struct {
+	CredentialID string `json:"credential_id"`
+
+	parsedCredentialID models.CredentialID
+}
+
+// Validate validates and parses the verification request.
+func (r *VerifyRequest) Validate() error {
+	if r == nil {
+		return dErrors.New(dErrors.CodeBadRequest, "request is required")
+	}
+
+	// Phase 1: Size validation (fail fast on oversized input)
+	if len(r.CredentialID) > 64 {
+		return dErrors.New(dErrors.CodeValidation, "credential_id is too long")
+	}
+
+	// Phase 2: Required fields
+	if r.CredentialID == "" {
+		return dErrors.New(dErrors.CodeValidation, "credential_id is required")
+	}
+
+	// Phase 3: Syntax and lexical validation
+	parsedID, err := models.ParseCredentialID(r.CredentialID)
+	if err != nil {
+		return dErrors.New(dErrors.CodeBadRequest, err.Error())
+	}
+
+	r.parsedCredentialID = parsedID
+	return nil
+}
+
+// ParsedCredentialID returns the validated credential ID.
+func (r *VerifyRequest) ParsedCredentialID() models.CredentialID {
+	return r.parsedCredentialID
+}
+
+// VerifyResponse is the response body for credential verification.
+type VerifyResponse struct {
+	Valid        bool          `json:"valid"`
+	CredentialID string        `json:"credential_id,omitempty"`
+	Type         string        `json:"type,omitempty"`
+	Subject      string        `json:"subject,omitempty"`
+	IssuedAt     time.Time     `json:"issued_at,omitempty"`
+	Claims       models.Claims `json:"claims,omitempty"`
+	Reason       string        `json:"reason,omitempty"`
+}
+
 // HandleIssue handles POST /vc/issue requests.
 func (h *Handler) HandleIssue(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -138,6 +189,54 @@ func (h *Handler) HandleIssue(w http.ResponseWriter, r *http.Request) {
 		Issuer:       credential.Issuer,
 		IssuedAt:     credential.IssuedAt.UTC(),
 		Claims:       credential.Claims,
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, response)
+}
+
+// HandleVerify handles POST /vc/verify requests.
+func (h *Handler) HandleVerify(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	requestID := requestcontext.RequestID(ctx)
+
+	userID := requestcontext.UserID(ctx)
+	if userID.IsNil() {
+		httputil.WriteError(w, dErrors.New(dErrors.CodeUnauthorized, "authentication required"))
+		return
+	}
+
+	req, ok := httputil.DecodeAndPrepare[VerifyRequest](w, r, h.logger, ctx, requestID)
+	if !ok {
+		return
+	}
+
+	result, err := h.service.Verify(ctx, req.ParsedCredentialID())
+	if err != nil {
+		if dErrors.HasCode(err, dErrors.CodeNotFound) {
+			httputil.WriteJSON(w, http.StatusNotFound, VerifyResponse{
+				Valid:  false,
+				Reason: "credential_not_found",
+			})
+			return
+		}
+
+		h.logger.ErrorContext(ctx, "failed to verify credential",
+			"request_id", requestID,
+			"user_id", userID,
+			"credential_id", req.CredentialID,
+			"error", err,
+		)
+		httputil.WriteError(w, err)
+		return
+	}
+
+	response := VerifyResponse{
+		Valid:        result.Valid,
+		CredentialID: result.Credential.ID.String(),
+		Type:         string(result.Credential.Type),
+		Subject:      result.Credential.Subject.String(),
+		IssuedAt:     result.Credential.IssuedAt.UTC(),
+		Claims:       result.Credential.Claims,
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, response)

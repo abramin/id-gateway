@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"credo/internal/evidence/vc/domain/credential"
-	"credo/internal/evidence/vc/domain/shared"
 	"credo/internal/evidence/vc/models"
 	id "credo/pkg/domain"
 )
@@ -25,7 +24,7 @@ func (s *ConverterSuite) TestToModelConversion() {
 	s.Run("converts domain credential to infrastructure model", func() {
 		credID := models.NewCredentialID()
 		userID := id.UserID(uuid.New())
-		issuedAt := shared.MustIssuedAt(time.Date(2024, 6, 15, 10, 30, 0, 0, time.UTC))
+		issuedAt := mustIssuedAt(time.Date(2024, 6, 15, 10, 30, 0, 0, time.UTC))
 		claims := credential.NewAgeOver18Claims(true, "national_registry")
 
 		cred, err := credential.New(
@@ -118,7 +117,7 @@ func (s *ConverterSuite) TestRoundtrip() {
 		// Create original domain credential
 		credID := models.NewCredentialID()
 		userID := id.UserID(uuid.New())
-		issuedAt := shared.MustIssuedAt(time.Date(2024, 8, 1, 9, 0, 0, 0, time.UTC))
+		issuedAt := mustIssuedAt(time.Date(2024, 8, 1, 9, 0, 0, 0, time.UTC))
 		claims := credential.NewAgeOver18Claims(true, "national_registry")
 
 		original, err := credential.New(
@@ -155,7 +154,7 @@ func (s *ConverterSuite) TestRoundtrip() {
 	s.Run("minimized credential survives roundtrip", func() {
 		credID := models.NewCredentialID()
 		userID := id.UserID(uuid.New())
-		issuedAt := shared.MustIssuedAt(time.Now())
+		issuedAt := mustIssuedAt(time.Now())
 		claims := credential.NewAgeOver18Claims(true, "national_registry")
 
 		original, err := credential.New(
