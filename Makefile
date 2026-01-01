@@ -165,6 +165,55 @@ openapi-build:
 		exit 1; \
 	fi
 
+# === DATABASE MIGRATIONS ===
+MIGRATE_VERSION := v4.19.1
+DATABASE_URL ?= postgres://credo:credo_dev_password@localhost:5432/credo?sslmode=disable
+MIGRATIONS_DIR := migrations
+
+.PHONY: migrate-install migrate-up migrate-down migrate-down-all migrate-create migrate-status migrate-force migrate-validate
+
+migrate-install:
+	@echo "Installing golang-migrate..."
+	@go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@$(MIGRATE_VERSION)
+
+migrate-up:
+	@echo "Running migrations..."
+	@migrate -path $(MIGRATIONS_DIR) -database "$(DATABASE_URL)" up
+
+migrate-down:
+	@echo "Rolling back last migration..."
+	@migrate -path $(MIGRATIONS_DIR) -database "$(DATABASE_URL)" down 1
+
+migrate-down-all:
+	@echo "Rolling back all migrations..."
+	@migrate -path $(MIGRATIONS_DIR) -database "$(DATABASE_URL)" down -all
+
+migrate-create:
+	@if [ -z "$(name)" ]; then \
+		echo "Usage: make migrate-create name=migration_name"; \
+		exit 1; \
+	fi
+	@echo "Creating migration: $(name)"
+	@migrate create -ext sql -dir $(MIGRATIONS_DIR) -seq $(name)
+
+migrate-status:
+	@echo "Current migration version:"
+	@migrate -path $(MIGRATIONS_DIR) -database "$(DATABASE_URL)" version
+
+migrate-force:
+	@if [ -z "$(v)" ]; then \
+		echo "Usage: make migrate-force v=VERSION"; \
+		exit 1; \
+	fi
+	@echo "Forcing version to: $(v)"
+	@migrate -path $(MIGRATIONS_DIR) -database "$(DATABASE_URL)" force $(v)
+
+migrate-validate:
+	@echo "Validating migration state..."
+	@migrate -path $(MIGRATIONS_DIR) -database "$(DATABASE_URL)" version 2>&1 | grep -q "dirty" && \
+		echo "ERROR: Database is in dirty state. Run migrate-force to fix." && exit 1 || \
+		echo "Migration state is clean."
+
 # === HELP ===
 help:
 	@echo "Available targets:"
@@ -191,4 +240,15 @@ help:
 	@echo "  imports        Fix import ordering (goimports)"
 	@echo "  clean          Remove build artifacts"
 	@echo "  docker-clean   Stop containers and remove images/volumes for this app"
+	@echo ""
+	@echo "Database migrations:"
+	@echo "  migrate-install   Install golang-migrate CLI"
+	@echo "  migrate-up        Run all pending migrations"
+	@echo "  migrate-down      Rollback the last migration"
+	@echo "  migrate-down-all  Rollback all migrations"
+	@echo "  migrate-create    Create new migration (name=<name>)"
+	@echo "  migrate-status    Show current migration version"
+	@echo "  migrate-force     Force set version (v=<version>)"
+	@echo "  migrate-validate  Validate migration state is clean"
+	@echo ""
 	@echo "  help           Show this help"
