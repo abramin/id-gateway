@@ -1,4 +1,94 @@
 services:
+  # PostgreSQL - Primary database
+  postgres:
+    image: postgres:18-alpine
+    container_name: credo-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: credo
+      POSTGRES_PASSWORD: credo_dev_password
+      POSTGRES_DB: credo
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - credo-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U credo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # pgAdmin - PostgreSQL Web Console
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: credo-pgadmin
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    networks:
+      - credo-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Redis - Sessions and rate limiting
+  redis:
+    image: redis:7-alpine
+    container_name: credo-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - credo-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redpanda - Kafka-compatible broker
+  redpanda:
+    image: redpandadata/redpanda:latest
+    container_name: credo-redpanda
+    command:
+      - redpanda start
+      - --smp 1
+      - --memory 1G
+      - --overprovisioned
+      - --node-id 0
+      - --kafka-addr PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr PLAINTEXT://redpanda:9092
+    ports:
+      - "9092:9092"
+    networks:
+      - credo-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redpanda Console - Kafka Web UI
+  redpanda-console:
+    image: redpandadata/console:latest
+    container_name: credo-redpanda-console
+    ports:
+      - "8085:8080"
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    networks:
+      - credo-network
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    restart: unless-stopped
+
   # Mock Citizen Registry (simulates 3rd party API)
   citizen-registry:
     build:
@@ -79,11 +169,20 @@ services:
       - CITIZEN_REGISTRY_API_KEY=citizen-registry-secret-key
       - SANCTIONS_REGISTRY_URL=http://sanctions-registry:8082
       - SANCTIONS_REGISTRY_API_KEY=sanctions-registry-secret-key
+      - DATABASE_URL=postgres://credo:credo_dev_password@postgres:5432/credo?sslmode=disable
+      - REDIS_URL=redis://redis:6379
+      - KAFKA_BROKERS=redpanda:9092
     networks:
       - credo-network
     depends_on:
-      - citizen-registry
-      - sanctions-registry
+      citizen-registry:
+        condition: service_healthy
+      sanctions-registry:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test:
@@ -133,4 +232,6 @@ networks:
 
 volumes:
   backend-data:
+    driver: local
+  postgres-data:
     driver: local
