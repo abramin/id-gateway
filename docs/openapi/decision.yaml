@@ -139,7 +139,19 @@ components:
             - fail
         reason:
           type: string
-          description: Decision reason code
+          description: |
+            Decision reason code. Reasons are purpose-specific:
+
+            **age_verification purpose:**
+            - `all_checks_passed`: Full pass (citizen valid, not sanctioned, over 18, has VC)
+            - `pass_with_conditions` + `missing_credential`: Over 18 but no VC issued yet
+            - `sanctioned`: Subject is on sanctions list (Rule 1 - checked first)
+            - `invalid_citizen`: Citizen record is invalid (Rule 2)
+            - `underage`: Subject is under 18 years old (Rule 3)
+
+            **sanctions_screening purpose:**
+            - `not_sanctioned`: Subject is not on any sanctions list (pass)
+            - `sanctioned`: Subject is on a sanctions list (fail)
           enum:
             - all_checks_passed
             - sanctioned

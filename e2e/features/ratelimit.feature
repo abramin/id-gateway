@@ -12,7 +12,7 @@ Feature: Rate Limiting & Abuse Prevention
   # ============================================================
 
   @ratelimit @ip @simulation
-  Scenario: IP rate limit headers present in response
+  Scenario: IP rate limit headers present in response (simulation)
     When I make a request to "/auth/userinfo" with valid token
     Then the response should contain header "X-RateLimit-Limit"
     And the response should contain header "X-RateLimit-Remaining"

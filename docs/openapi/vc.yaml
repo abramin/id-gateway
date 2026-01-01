@@ -8,6 +8,16 @@ info:
     The VC API issues AgeOver18 credentials after registry verification and consent.
     Issued credentials can be verified by ID without re-checking registries.
 
+    ## Credential Lifecycle (MVP)
+    Issued credentials are **permanent and immutable** in the current implementation:
+    - No expiration: Credentials remain valid indefinitely
+    - No revocation: Once issued, credentials cannot be revoked
+
+    **Future enhancements** (see PRD-004 Section 7):
+    - Credential expiry and renewal
+    - Revocation registry for invalidating credentials
+    - Real cryptographic signatures (JWT/BBS+)
+
     ## Security
     - All endpoints require valid bearer token (JWT)
     - Consent required: `vc_issuance`

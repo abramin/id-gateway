@@ -1,8 +1,8 @@
 # Product Requirements Documents (PRDs)
 
 **Credo Implementation Specifications**
-**Version:** 2.6
-**Last Updated:** 2025-12-28
+**Version:** 2.7
+**Last Updated:** 2026-01-01
 
 This directory contains technical product requirements for implementing Credo system. Each PRD is written for developers and provides detailed specifications, API contracts, data models, and acceptance criteria.
 
@@ -47,14 +47,16 @@ Credo is a **regulated identity and authorization system** that:
 
 ### Phase 1: Core Identity Plane (MVP Core) - P0 Critical
 
-| PRD                                            | Feature                     | Status         | Est. Time | Dependencies |
-| ---------------------------------------------- | --------------------------- | -------------- | --------- | ------------ |
-| [PRD-003](./PRD-003-Registry-Integration.md)   | Registry Integration        | 🟡 In Progress | 11-18h    | PRD-001, 002 |
-| [PRD-004](./PRD-004-Verifiable-Credentials.md) | Verifiable Credentials      | 🔵 Not Started | 9-16h     | PRD-001, 003 |
-| [PRD-005](./PRD-005-Decision-Engine.md)        | Decision Engine             | 🔵 Not Started | 8-14h     | PRD-001-004  |
-| [PRD-006](./PRD-006-Audit-Compliance.md)       | Audit & Compliance Baseline (FR-1/FR-2; audit search in Phase 6 w/ Kafka/ES) | 🔵 Not Started | 12-20h    | PRD-001-005  |
+| PRD                                            | Feature                     | Status    | Est. Time | Dependencies |
+| ---------------------------------------------- | --------------------------- | --------- | --------- | ------------ |
+| [PRD-003](./PRD-003-Registry-Integration.md)   | Registry Integration        | 🟢 Done   | 11-18h    | PRD-001, 002 |
+| [PRD-004](./PRD-004-Verifiable-Credentials.md) | Verifiable Credentials      | 🟢 Done   | 9-16h     | PRD-001, 003 |
+| [PRD-005](./PRD-005-Decision-Engine.md)        | Decision Engine             | 🟢 Done   | 8-14h     | PRD-001-004  |
+| [PRD-006](./PRD-006-Audit-Compliance.md)       | Audit & Compliance Baseline (FR-1/FR-2; audit search in Phase 6 w/ Kafka/ES) | 🟢 Done   | 12-20h    | PRD-001-005  |
 
 **Phase 1 Total:** ~40-68 hours effort (14-23 days calendar)
+
+**Phase 1 Complete:** All core identity plane features implemented including registry lookups (citizen/sanctions), VC issuance/verification, decision evaluation with purpose-based rules, and async audit event publishing.
 
 ---
 
@@ -529,6 +531,7 @@ Run with: `make test-e2e`
 
 | Version | Date       | Changes                                                                                   |
 | ------- | ---------- | ----------------------------------------------------------------------------------------- |
+| 2.7     | 2026-01-01 | Phase 1 complete: PRD-003, PRD-004, PRD-005, PRD-006 all marked Done                      |
 | 2.6     | 2025-12-24 | PRD status review: PRD-016, PRD-026B marked Done; PRD-017 marked Done (MVP)               |
 | 2.5     | 2025-12-23 | Added PRD-026B (Tenant & Client Lifecycle) to Phase 0                                     |
 | 2.4     | 2025-12-21 | Added Storage Evolution Philosophy section (in-memory first, transition triggers)         |

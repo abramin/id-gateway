@@ -1,9 +1,10 @@
 # PRD-004: Verifiable Credentials
 
-**Status:** Implementation Required
+**Status:** ✅ Complete
 **Priority:** P0 (Critical)
 **Owner:** Engineering Team
-**Last Updated:** 2025-12-18
+**Last Updated:** 2026-01-01
+**Version:** 1.2
 
 ---
 
@@ -275,13 +276,14 @@ func (h *Handler) handleVCVerify(w http.ResponseWriter, r *http.Request)
 
 ## 5. Acceptance Criteria
 
-- [ ] Users can issue AgeOver18 VC after registry verification
-- [ ] Issuance fails if user under 18
-- [ ] Issuance requires consent for vc_issuance
-- [ ] Credentials can be verified by ID
-- [ ] Regulated mode minimizes claims (no PII)
-- [ ] All operations emit audit events
-- [ ] Code passes tests and lint
+- [x] Users can issue AgeOver18 VC after registry verification
+- [x] Issuance fails if user under 18
+- [x] Issuance requires consent for vc_issuance
+- [x] Credentials can be verified by ID
+- [x] Regulated mode minimizes claims (no PII)
+- [x] All operations emit audit events (vc_issued, vc_verified)
+- [x] Code passes tests and lint
+- [x] E2E test coverage via `e2e/features/vc_issuance.feature` and `e2e/features/vc_verification.feature`
 
 ---
 
@@ -340,5 +342,6 @@ curl -X POST http://localhost:8080/vc/verify \
 
 | Version | Date       | Author         | Changes                                                           |
 | ------- | ---------- | -------------- | ----------------------------------------------------------------- |
+| 1.2     | 2026-01-01 | Engineering    | PRD marked complete; all acceptance criteria verified             |
 | 1.1     | 2025-12-18 | Security Eng   | Added secure-by-design requirements and security-focused testing  |
 | 1.0     | 2025-12-03 | Product Team   | Initial PRD                                                       |
