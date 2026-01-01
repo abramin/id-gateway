@@ -99,6 +99,7 @@ Users cannot recover locked/lost accounts, leading to poor retention and support
 - Consent grant (PRD-002)
 - Evidence retrieval (PRD-003)
 - Credential changes (password reset/change)
+- Authorization code issuance and token exchange (OAuth login)
 
 **Unverified Account Behavior:**
 - Allow login and basic profile access

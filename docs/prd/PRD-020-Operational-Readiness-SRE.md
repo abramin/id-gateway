@@ -31,6 +31,7 @@ The system cannot be deployed to production without operational tooling:
 - On-call playbooks
 - Capacity planning guidelines
 - Performance SLAs
+- Metrics and alerting baseline for auth, revocation, audit, rate limits, and consent enforcement
 
 ### Non-Goals
 
@@ -102,6 +103,22 @@ PRD-020 marks the transition point. The health checks (`/health/ready`) defined 
 ---
 
 ## 2. Functional Requirements
+
+### FR-0: Metrics and Alerting Baseline
+
+**Required metrics:**
+- Auth SLIs: p95/p99 latency and error rate for `/auth/authorize`, `/auth/token`, `/auth/revoke`, split by tenant and client.
+- Revocation health: TRL write failures, revocation lag, and revoked-token check failures.
+- Audit durability: enqueue depth, drop count, persist failures, and time-to-persist.
+- Abuse signals: refresh token reuse detections, auth lockouts, and rate-limit denials by IP and client.
+- Consent enforcement: consent gating failures and regulated-mode PII minimization violations.
+
+**Required alerts:**
+- Sustained auth SLI violations by tenant or client.
+- TRL write or check failure spikes; revocation lag above threshold.
+- Audit event drops or persist failures above threshold.
+- Refresh token reuse spike or auth lockout surge.
+- Consent gating failures above baseline.
 
 ### FR-1: Health Check Endpoints
 

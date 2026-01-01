@@ -162,11 +162,16 @@ Trust boundary functions (ID parsing, request decoding) must be fuzz tested to v
 - [ ] Services deny requests lacking consent/evidence/config, with audit + alert.
 - [ ] Ports split for least privilege; tenant/client operations require TenantID in signatures.
 - [ ] Admin auth uses expiring tokens + revocation; key rotation/versioning documented and enforced in code.
+- [ ] In non-demo environments, startup fails if admin auth configuration is missing or empty (no silent allow).
 - [ ] Audit events emitted for all admin/privileged actions with correlation IDs.
 - [ ] Validation order documented and enforced in command DTOs; malformed inputs rejected before semantics.
 - [ ] Entities expose immutable identity fields; state transitions use validated methods/builders.
 - [ ] Secrets handled via read-once wrappers; user input is not echoed in errors/logs.
 - [ ] Result types cover expected deny paths; no reliance on stringly-typed errors.
+- [ ] Confidential client token exchanges require client_secret validation; public clients cannot use confidential-only grants.
+- [ ] Auth middleware verifies audience/client binding on every request (per-tenant audience allowlist).
+- [ ] Token revocation is fail-closed in non-demo when TRL writes/checks fail.
+- [ ] Session revocation adds all outstanding access-token JTIs to the revocation list (not just last-issued).
 - [ ] Consent/data rights persistence uses RLS + partial indexes with EXPLAIN evidence; append-only event log with hash chaining and GDPR redaction enforced.
 - [ ] Tenant-scoped repository interfaces require TenantID before any operation.
 - [ ] Central Authorizer enforces cross-cutting rules (admin scope, tenant boundary).
