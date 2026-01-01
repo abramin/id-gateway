@@ -78,6 +78,7 @@ Use this decision tree to select the right agent:
 - Domain primitives, constructors/factories, immutability, safe failure modeling.
 - AuthN/AuthZ checks, secret handling, logging safety.
 - Lifecycle safety (identity, tokens/sessions, consents/permissions).
+- TOCTOU and atomicity: short transactions only, no external I/O; use outbox for events; protect idempotency and read-modify-write with atomic set-if-absent or transactional writes.
 - Threat-focused review of endpoints, queues, caches, webhooks, uploads.
 - Rejects patches that do not change unsafe structure; prefers design-level refactors.
 

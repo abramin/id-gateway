@@ -20,13 +20,17 @@ const (
 	consentPurpose = "decision_evaluation"
 )
 
+type AuditPublisher interface {
+	Emit(ctx context.Context, event audit.Event) error
+}
+
 // Service evaluates identity, registry outputs, and VC claims to produce a
 // final decision. The goal is to keep the rules centralized and testable.
 type Service struct {
 	registry ports.RegistryPort
 	vc       ports.VCPort
 	consent  ports.ConsentPort
-	auditor  ports.AuditPort
+	auditor  AuditPublisher
 	metrics  *metrics.Metrics
 	logger   *slog.Logger
 }
@@ -54,7 +58,7 @@ func New(
 	registry ports.RegistryPort,
 	vc ports.VCPort,
 	consent ports.ConsentPort,
-	auditor ports.AuditPort,
+	auditor AuditPublisher,
 	opts ...Option,
 ) *Service {
 	if registry == nil {
