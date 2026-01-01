@@ -168,6 +168,81 @@ var testCitizens = map[string]func() *CitizenResponse{
 			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
 		}
 	},
+	// Decision test citizens
+	"NOCRED123456": func() *CitizenResponse {
+		return &CitizenResponse{
+			NationalID:  "NOCRED123456",
+			FullName:    "No Credential User",
+			DateOfBirth: "1990-01-15",
+			Address:     "444 Nocred St, Springfield, CA 90211",
+			Valid:       true,
+			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
+		}
+	},
+	"SANCTIONED123": func() *CitizenResponse {
+		return &CitizenResponse{
+			NationalID:  "SANCTIONED123",
+			FullName:    "Sanctioned User",
+			DateOfBirth: "1990-01-15",
+			Address:     "555 Sanctions Ave, Restricted, NY 10002",
+			Valid:       true,
+			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
+		}
+	},
+	"INVALID123456": func() *CitizenResponse {
+		return &CitizenResponse{
+			NationalID:  "INVALID123456",
+			FullName:    "Invalid Citizen User",
+			DateOfBirth: "1990-01-15",
+			Address:     "666 Invalid Rd, Nowhere, TX 75003",
+			Valid:       false, // Invalid citizen
+			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
+		}
+	},
+	"MINOR123456": func() *CitizenResponse {
+		// 16 years old
+		birthDate := time.Now().AddDate(-16, 0, 0).Format("2006-01-02")
+		return &CitizenResponse{
+			NationalID:  "MINOR123456",
+			FullName:    "Minor Sixteen User",
+			DateOfBirth: birthDate,
+			Address:     "777 Youth Ln, Kidsville, FL 33102",
+			Valid:       true,
+			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
+		}
+	},
+	"EXACT18": func() *CitizenResponse {
+		// Exactly 18 years old today
+		birthDate := time.Now().AddDate(-18, 0, 0).Format("2006-01-02")
+		return &CitizenResponse{
+			NationalID:  "EXACT18",
+			FullName:    "Exactly Eighteen User",
+			DateOfBirth: birthDate,
+			Address:     "888 Birthday Blvd, Adulthood, GA 30301",
+			Valid:       true,
+			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
+		}
+	},
+	"CLEAN123456": func() *CitizenResponse {
+		return &CitizenResponse{
+			NationalID:  "CLEAN123456",
+			FullName:    "Clean Record User",
+			DateOfBirth: "1990-01-15",
+			Address:     "999 Clean St, Clearville, WA 98001",
+			Valid:       true,
+			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
+		}
+	},
+	"SANCTIONED999": func() *CitizenResponse {
+		return &CitizenResponse{
+			NationalID:  "SANCTIONED999",
+			FullName:    "Sanctions Test User",
+			DateOfBirth: "1985-05-20",
+			Address:     "101 Restricted Dr, Blocked, AZ 85001",
+			Valid:       true,
+			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
+		}
+	},
 }
 
 // notFoundCitizens contains national IDs that should return 404

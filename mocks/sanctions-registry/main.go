@@ -42,11 +42,34 @@ var (
 	latencyMs = getEnvInt("LATENCY_MS", defaultLatencyMs)
 )
 
+// listedSanctions contains predefined test national IDs that should be marked as listed.
+// These "magic" IDs allow e2e tests to control the mock's behavior.
+var listedSanctions = map[string]bool{
+	"SANCTIONED123":  true, // Used for decision rule chain tests
+	"SANCTIONED999":  true, // Used for sanctions screening tests
+	"SANCTIONED_PEP": true, // Politically exposed person
+	"WATCHLIST001":   true, // Watchlist entry
+}
+
+// notListedSanctions contains national IDs that should always be NOT listed (override hash behavior).
+var notListedSanctions = map[string]bool{
+	"ADULT123456":   true, // Adult user - should not be sanctioned
+	"NOCRED123456":  true, // No credential user - should not be sanctioned
+	"CLEAN123456":   true, // Clean user for sanctions screening
+	"MINOR123456":   true, // Minor user - not sanctioned
+	"INVALID12345":  true, // Invalid citizen - not sanctioned
+	"INVALID123456": true, // Invalid citizen (alternate) - not sanctioned
+	"EXACT18":       true, // Exactly 18 years old - not sanctioned
+	"JUSTTURNED18":  true, // Just turned 18 - not sanctioned
+	"MINOR17":       true, // Minor - not sanctioned
+}
+
 func main() {
 	port := getEnv("PORT", defaultPort)
 
 	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/api/v1/sanctions/check", handleSanctionsCheck)
+	http.HandleFunc("/lookup", handleSanctionsCheck) // Simplified path for adapter
 
 	log.Printf("⚖️  Mock Sanctions Registry API starting on port %s", port)
 	log.Printf("📝 API Key: %s", apiKey)
@@ -120,6 +143,29 @@ func handleSanctionsCheck(w http.ResponseWriter, r *http.Request) {
 }
 
 func generateSanctions(nationalID string) SanctionsResponse {
+	// Check for predefined test IDs first
+	if listedSanctions[nationalID] {
+		log.Printf("🧪 Using predefined LISTED sanctions data for: %s", nationalID)
+		return SanctionsResponse{
+			NationalID: nationalID,
+			Listed:     true,
+			Source:     "Mock International Sanctions Database",
+			ListType:   "sanctions",
+			Reason:     "OFAC SDN List - Test Entry",
+			ListedDate: time.Now().AddDate(-2, 0, 0).Format("2006-01-02"),
+			CheckedAt:  time.Now().UTC().Format(time.RFC3339),
+		}
+	}
+	if notListedSanctions[nationalID] {
+		log.Printf("🧪 Using predefined NOT LISTED sanctions data for: %s", nationalID)
+		return SanctionsResponse{
+			NationalID: nationalID,
+			Listed:     false,
+			Source:     "Mock International Sanctions Database",
+			CheckedAt:  time.Now().UTC().Format(time.RFC3339),
+		}
+	}
+
 	// Use hash to generate deterministic but pseudo-random data
 	hash := sha256.Sum256([]byte(nationalID))
 	hashStr := hex.EncodeToString(hash[:])

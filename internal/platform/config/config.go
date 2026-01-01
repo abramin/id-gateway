@@ -50,10 +50,12 @@ type ConsentConfig struct {
 
 // RegistryConfig holds registry integration configuration
 type RegistryConfig struct {
-	CacheTTL           time.Duration
-	CitizenRegistryURL string
-	CitizenAPIKey      string
-	RegistryTimeout    time.Duration
+	CacheTTL             time.Duration
+	CitizenRegistryURL   string
+	CitizenAPIKey        string
+	SanctionsRegistryURL string
+	SanctionsAPIKey      string
+	RegistryTimeout      time.Duration
 }
 
 // SecurityConfig holds security and compliance settings
@@ -72,8 +74,10 @@ var (
 	DefaultConsentGrantWindow             = 5 * time.Minute
 	DefaultConsentReGrantCooldown         = 5 * time.Minute
 	DefaultRegistryCacheTTL               = 5 * time.Minute
-	DefaultCitizenRegistryURL             = "http://localhost:8082"
+	DefaultCitizenRegistryURL             = "http://localhost:8081"
 	DefaultCitizenAPIKey                  = "citizen-registry-secret-key"
+	DefaultSanctionsRegistryURL           = "http://localhost:8082"
+	DefaultSanctionsAPIKey                = "sanctions-registry-secret-key"
 	DefaultRegistryTimeout                = 5 * time.Second
 	DefaultDeviceCookieName               = "__Secure-Device-ID"
 	DefaultDeviceCookieMaxAge             = 31536000 // 1 year
@@ -142,10 +146,12 @@ func loadConsentConfig() ConsentConfig {
 
 func loadRegistryConfig() RegistryConfig {
 	return RegistryConfig{
-		CacheTTL:           parseDuration("REGISTRY_CACHE_TTL", DefaultRegistryCacheTTL),
-		CitizenRegistryURL: getEnv("CITIZEN_REGISTRY_URL", DefaultCitizenRegistryURL),
-		CitizenAPIKey:      getEnv("CITIZEN_REGISTRY_API_KEY", DefaultCitizenAPIKey),
-		RegistryTimeout:    parseDuration("REGISTRY_TIMEOUT", DefaultRegistryTimeout),
+		CacheTTL:             parseDuration("REGISTRY_CACHE_TTL", DefaultRegistryCacheTTL),
+		CitizenRegistryURL:   getEnv("CITIZEN_REGISTRY_URL", DefaultCitizenRegistryURL),
+		CitizenAPIKey:        getEnv("CITIZEN_REGISTRY_API_KEY", DefaultCitizenAPIKey),
+		SanctionsRegistryURL: getEnv("SANCTIONS_REGISTRY_URL", DefaultSanctionsRegistryURL),
+		SanctionsAPIKey:      getEnv("SANCTIONS_REGISTRY_API_KEY", DefaultSanctionsAPIKey),
+		RegistryTimeout:      parseDuration("REGISTRY_TIMEOUT", DefaultRegistryTimeout),
 	}
 }
 

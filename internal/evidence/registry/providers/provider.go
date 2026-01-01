@@ -88,6 +88,7 @@ type ProviderRegistry struct {
 	providers map[string]Provider
 }
 
+// NewProviderRegistry constructs an empty provider registry for startup wiring.
 func NewProviderRegistry() *ProviderRegistry {
 	return &ProviderRegistry{
 		providers: make(map[string]Provider),

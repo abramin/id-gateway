@@ -19,11 +19,12 @@ type citizenHTTPResponse struct {
 	CheckedAt   string `json:"checked_at"`
 }
 
+// New constructs a citizen registry provider backed by the default HTTP adapter.
 func New(id, baseURL, apiKey string, timeout time.Duration) providers.Provider {
 	return NewWithClient(id, baseURL, apiKey, timeout, nil)
 }
 
-// NewWithClient allows injecting a custom HTTP client (for testing).
+// NewWithClient constructs a citizen registry provider with an optional HTTP client override.
 func NewWithClient(
 	id, baseURL, apiKey string,
 	timeout time.Duration,

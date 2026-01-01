@@ -84,6 +84,9 @@ const (
 	EventAuthLockoutTriggered AuditEvent = "auth_lockout_triggered"
 	EventAuthLockoutCleared   AuditEvent = "auth_lockout_cleared"
 	EventAllowlistBypassed    AuditEvent = "allowlist_bypassed"
+
+	// Decision events
+	EventDecisionMade AuditEvent = "decision_made"
 )
 
 // eventCategories maps each audit event to its category.
@@ -120,6 +123,9 @@ var eventCategories = map[AuditEvent]EventCategory{
 	EventTenantReactivated: CategoryOperations,
 	EventClientCreated:     CategoryOperations,
 	EventClientReactivated: CategoryOperations,
+
+	// Decision events - compliance category for regulatory requirements
+	EventDecisionMade: CategoryCompliance,
 }
 
 // Category returns the EventCategory for this audit event.

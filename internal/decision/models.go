@@ -5,7 +5,6 @@ import (
 
 	registrycontracts "credo/contracts/registry"
 	authModel "credo/internal/auth/models"
-	"credo/internal/decision/ports"
 	vcmodels "credo/internal/evidence/vc/models"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
@@ -36,10 +35,19 @@ type DecisionInput struct {
 	Credential vcmodels.Claims
 }
 
+// IsSanctioned returns true if the subject is on a sanctions list.
+func (di DecisionInput) IsSanctioned() bool { return di.Sanctions.Listed }
+
+// IsCitizenValid returns true if the citizen verification passed.
+func (di DecisionInput) IsCitizenValid() bool { return di.Identity.CitizenValid }
+
+// IsOfLegalAge returns true if the subject is 18 or older.
+func (di DecisionInput) IsOfLegalAge() bool { return di.Identity.IsOver18 }
+
 // DerivedIdentityFromCitizen strips PII while producing attributes required for
-// decisions in regulated mode.
-func DerivedIdentityFromCitizen(user authModel.User, citizen registrycontracts.CitizenRecord) DerivedIdentity {
-	isOver18 := deriveIsOver18(citizen.DateOfBirth)
+// decisions in regulated mode. Time is injected for deterministic testing.
+func DerivedIdentityFromCitizen(user authModel.User, citizen registrycontracts.CitizenRecord, now time.Time) DerivedIdentity {
+	isOver18 := deriveIsOver18(citizen.DateOfBirth, now)
 	return DerivedIdentity{
 		PseudonymousID: user.ID, // treat as pseudonymous identifier; avoid emails/names.
 		IsOver18:       isOver18,
@@ -47,16 +55,15 @@ func DerivedIdentityFromCitizen(user authModel.User, citizen registrycontracts.C
 	}
 }
 
-func deriveIsOver18(dob string) bool {
+func deriveIsOver18(dob string, now time.Time) bool {
 	if dob == "" {
 		return false
 	}
-	t, err := time.Parse("2006-01-02", dob)
+	birthDate, err := time.Parse("2006-01-02", dob)
 	if err != nil {
 		return false
 	}
-	years := time.Since(t).Hours() / 24 / 365.25
-	return years >= 18
+	return id.IsOver18(birthDate, now)
 }
 
 // Purpose defines supported decision purposes.
@@ -115,9 +122,10 @@ type EvidenceSummary struct {
 
 // GatheredEvidence holds raw evidence before rule evaluation.
 // Internal use only - not exposed in API responses.
+// Uses contract types for cross-module boundary safety.
 type GatheredEvidence struct {
-	Citizen    *ports.CitizenRecord
-	Sanctions  *ports.SanctionsRecord
+	Citizen    *registrycontracts.CitizenRecord
+	Sanctions  *registrycontracts.SanctionsRecord
 	Credential *vcmodels.CredentialRecord
 	FetchedAt  time.Time
 	Latencies  EvidenceLatencies

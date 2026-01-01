@@ -1,0 +1,267 @@
+openapi: 3.0.3
+info:
+  title: ID Gateway Audit API
+  version: 0.1.0
+  description: |
+    OpenAPI specification for audit export and search endpoints.
+
+    The Audit API provides:
+    - User data export for GDPR access requests
+    - Compliance search across audit events (admin-only)
+
+    ## Security
+    - All endpoints require valid bearer token (JWT)
+    - `/audit/search` requires admin/compliance role
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+paths:
+  /me/data-export:
+    get:
+      summary: Export audit events for the authenticated user
+      description: |
+        Exports all audit events for the authenticated user with optional
+        filtering by action and time range.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: from
+          description: Start timestamp (inclusive) in ISO 8601 format
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to
+          description: End timestamp (inclusive) in ISO 8601 format
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: action
+          description: Filter by action type
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audit export generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataExportResponse"
+              examples:
+                default:
+                  value:
+                    user_id: "user_123"
+                    export_date: "2025-12-03T10:00:00Z"
+                    events:
+                      - id: "evt_abc123"
+                        timestamp: "2025-12-03T09:00:00Z"
+                        action: "auth_started"
+                        purpose: "login"
+                        decision: "granted"
+                        reason: "user_initiated"
+                    total: 1
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /audit/search:
+    get:
+      summary: Search audit events across users (admin-only)
+      description: |
+        Searches audit events with optional filters for compliance and
+        investigation workflows. Requires admin/compliance authorization.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: user_id
+          description: Filter by user ID
+          schema:
+            type: string
+        - in: query
+          name: action
+          description: Filter by action type (repeat for multiple values)
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+        - in: query
+          name: purpose
+          description: Filter by purpose
+          schema:
+            type: string
+        - in: query
+          name: decision
+          description: Filter by decision outcome
+          schema:
+            type: string
+        - in: query
+          name: from
+          description: Start timestamp (inclusive) in ISO 8601 format
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to
+          description: End timestamp (inclusive) in ISO 8601 format
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditSearchResponse"
+              examples:
+                default:
+                  value:
+                    results:
+                      - id: "evt_def456"
+                        timestamp: "2025-12-03T09:05:00Z"
+                        user_id: "user_123"
+                        action: "consent_granted"
+                        purpose: "registry_check"
+                        decision: "granted"
+                        reason: "user_initiated"
+                    total: 1
+                    took_ms: 12
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT access token obtained from `/auth/token` endpoint.
+        Include in Authorization header as: `Bearer <token>`
+
+  schemas:
+    AuditEvent:
+      type: object
+      required: [id, timestamp, action, purpose, decision, reason]
+      properties:
+        id:
+          type: string
+          description: Unique audit event ID
+        timestamp:
+          type: string
+          format: date-time
+          description: When the event occurred
+        user_id:
+          type: string
+          description: Subject user ID
+        action:
+          type: string
+          description: Action that occurred
+        purpose:
+          type: string
+          description: Purpose for the action
+        decision:
+          type: string
+          description: Outcome of the action
+        reason:
+          type: string
+          description: Human-readable reason
+
+    DataExportResponse:
+      type: object
+      required: [user_id, export_date, events, total]
+      properties:
+        user_id:
+          type: string
+          description: Subject user ID
+        export_date:
+          type: string
+          format: date-time
+          description: Export generation timestamp
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditEvent"
+        total:
+          type: integer
+          description: Total number of events returned
+
+    AuditSearchResponse:
+      type: object
+      required: [results, total, took_ms]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditEvent"
+        total:
+          type: integer
+          description: Total number of matching events
+        took_ms:
+          type: integer
+          description: Server-side query latency in milliseconds
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code
+          enum:
+            - bad_request
+            - unauthorized
+            - forbidden
+            - internal_error
+        error_description:
+          type: string
+          description: Human-readable error explanation
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid authentication credentials
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            invalid_token:
+              value:
+                error: unauthorized
+                error_description: "Invalid or expired bearer token"
+
+    Forbidden:
+      description: Authenticated but not authorized for this action
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            not_allowed:
+              value:
+                error: forbidden
+                error_description: "insufficient permissions"
+
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            store_failure:
+              value:
+                error: internal_error
+                error_description: "audit store failure"

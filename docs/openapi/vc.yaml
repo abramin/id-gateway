@@ -1,0 +1,332 @@
+openapi: 3.0.3
+info:
+  title: ID Gateway Verifiable Credentials API
+  version: 0.1.0
+  description: |
+    OpenAPI specification for issuing and verifying verifiable credentials (VCs).
+
+    The VC API issues AgeOver18 credentials after registry verification and consent.
+    Issued credentials can be verified by ID without re-checking registries.
+
+    ## Security
+    - All endpoints require valid bearer token (JWT)
+    - Consent required: `vc_issuance`
+    - TLS-only transport in production
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+paths:
+  /vc/issue:
+    post:
+      summary: Issue an AgeOver18 verifiable credential
+      description: |
+        Issues an AgeOver18 credential after verifying the user's date of birth
+        via the citizen registry. In regulated mode, PII is stripped from claims.
+
+        **Audit:** Emits `vc_issued` event on success.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueRequest"
+            examples:
+              default:
+                summary: Issue AgeOver18 credential
+                value:
+                  type: "AgeOver18"
+                  national_id: "123456789"
+      responses:
+        "200":
+          description: Credential issued successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialRecord"
+              examples:
+                non_regulated:
+                  summary: Non-regulated mode (full claims)
+                  value:
+                    credential_id: "vc_abc123xyz"
+                    type: "AgeOver18"
+                    subject: "user_def456"
+                    issuer: "credo"
+                    issued_at: "2025-12-03T10:00:00Z"
+                    claims:
+                      is_over_18: true
+                      verified_via: "national_registry"
+                regulated:
+                  summary: Regulated mode (minimized claims)
+                  value:
+                    credential_id: "vc_abc123xyz"
+                    type: "AgeOver18"
+                    issued_at: "2025-12-03T10:00:00Z"
+                    claims:
+                      is_over_18: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/MissingConsent"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "504":
+          $ref: "#/components/responses/RegistryTimeout"
+
+  /vc/verify:
+    post:
+      summary: Verify a previously issued credential
+      description: |
+        Verifies an issued credential by ID and returns its stored content.
+
+        **Audit:** Emits `vc_verified` event on success.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyRequest"
+            examples:
+              default:
+                value:
+                  credential_id: "vc_abc123xyz"
+      responses:
+        "200":
+          description: Credential found and verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyResponse"
+              examples:
+                valid:
+                  value:
+                    valid: true
+                    credential_id: "vc_abc123xyz"
+                    type: "AgeOver18"
+                    subject: "user_def456"
+                    issued_at: "2025-12-03T10:00:00Z"
+                    claims:
+                      is_over_18: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/CredentialNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT access token obtained from `/auth/token` endpoint.
+        Include in Authorization header as: `Bearer <token>`
+
+  schemas:
+    IssueRequest:
+      type: object
+      required: [type, national_id]
+      properties:
+        type:
+          type: string
+          description: Credential type to issue
+          enum: ["AgeOver18"]
+        national_id:
+          type: string
+          description: National identifier to verify
+          pattern: "^[A-Z0-9]{6,20}$"
+          minLength: 6
+          maxLength: 20
+      example:
+        type: "AgeOver18"
+        national_id: "123456789"
+
+    VerifyRequest:
+      type: object
+      required: [credential_id]
+      properties:
+        credential_id:
+          type: string
+          description: Credential identifier
+          pattern: "^vc_"
+          maxLength: 64
+      example:
+        credential_id: "vc_abc123xyz"
+
+    CredentialRecord:
+      type: object
+      required: [credential_id, type, issued_at, claims]
+      properties:
+        credential_id:
+          type: string
+          description: Issued credential identifier
+        type:
+          type: string
+          description: Credential type
+          example: "AgeOver18"
+        subject:
+          type: string
+          description: Subject user ID (may be omitted in regulated mode)
+        issuer:
+          type: string
+          description: Credential issuer (may be omitted in regulated mode)
+          example: "credo"
+        issued_at:
+          type: string
+          format: date-time
+          description: Issuance timestamp (RFC3339)
+        claims:
+          type: object
+          description: Credential claims
+          additionalProperties: true
+      example:
+        credential_id: "vc_abc123xyz"
+        type: "AgeOver18"
+        subject: "user_def456"
+        issuer: "credo"
+        issued_at: "2025-12-03T10:00:00Z"
+        claims:
+          is_over_18: true
+          verified_via: "national_registry"
+
+    VerifyResponse:
+      type: object
+      required: [valid]
+      properties:
+        valid:
+          type: boolean
+          description: Whether the credential is valid
+        credential_id:
+          type: string
+          description: Credential identifier
+        type:
+          type: string
+          description: Credential type
+        subject:
+          type: string
+          description: Subject user ID
+        issued_at:
+          type: string
+          format: date-time
+          description: Issuance timestamp (RFC3339)
+        claims:
+          type: object
+          description: Credential claims
+          additionalProperties: true
+        reason:
+          type: string
+          description: Reason for invalid or missing credential
+      example:
+        valid: true
+        credential_id: "vc_abc123xyz"
+        type: "AgeOver18"
+        subject: "user_def456"
+        issued_at: "2025-12-03T10:00:00Z"
+        claims:
+          is_over_18: true
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code
+          enum:
+            - bad_request
+            - unauthorized
+            - missing_consent
+            - not_found
+            - internal_error
+            - registry_timeout
+        error_description:
+          type: string
+          description: Human-readable error explanation
+
+  responses:
+    BadRequest:
+      description: Invalid or malformed request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            invalid_type:
+              value:
+                error: bad_request
+                error_description: "invalid credential type"
+            missing_national_id:
+              value:
+                error: bad_request
+                error_description: "national_id is required"
+
+    Unauthorized:
+      description: Missing or invalid authentication credentials
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            invalid_token:
+              value:
+                error: unauthorized
+                error_description: "Invalid or expired bearer token"
+
+    MissingConsent:
+      description: User has not granted required consent
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            no_consent:
+              value:
+                error: missing_consent
+                error_description: "Consent required for purpose: vc_issuance"
+
+    CredentialNotFound:
+      description: Credential not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/VerifyResponse"
+          examples:
+            not_found:
+              value:
+                valid: false
+                reason: "credential_not_found"
+
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            store_failure:
+              value:
+                error: internal_error
+                error_description: "failed to store credential"
+
+    RegistryTimeout:
+      description: External registry did not respond within timeout window
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            timeout:
+              value:
+                error: registry_timeout
+                error_description: "Citizen registry did not respond within 5 seconds"

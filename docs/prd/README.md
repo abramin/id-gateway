@@ -52,7 +52,7 @@ Credo is a **regulated identity and authorization system** that:
 | [PRD-003](./PRD-003-Registry-Integration.md)   | Registry Integration        | 🟡 In Progress | 11-18h    | PRD-001, 002 |
 | [PRD-004](./PRD-004-Verifiable-Credentials.md) | Verifiable Credentials      | 🔵 Not Started | 9-16h     | PRD-001, 003 |
 | [PRD-005](./PRD-005-Decision-Engine.md)        | Decision Engine             | 🔵 Not Started | 8-14h     | PRD-001-004  |
-| [PRD-006](./PRD-006-Audit-Compliance.md)       | Audit & Compliance Baseline | 🔵 Not Started | 12-20h    | PRD-001-005  |
+| [PRD-006](./PRD-006-Audit-Compliance.md)       | Audit & Compliance Baseline (FR-1/FR-2; audit search in Phase 6 w/ Kafka/ES) | 🔵 Not Started | 12-20h    | PRD-001-005  |
 
 **Phase 1 Total:** ~40-68 hours effort (14-23 days calendar)
 
@@ -131,6 +131,7 @@ Credo is a **regulated identity and authorization system** that:
 | -------------------------------------------------------------------------- | ---------------------------------- | -------------- | --------- | ----------------------- |
 | [PRD-011](./PRD-011-Internal-TCP-Event-Ingester.md)                        | Internal TCP Event Ingester        | 🔵 Not Started | 12-24h    | PRD-006                 |
 | [PRD-012](./PRD-012-Cloud-Connectors-Credo-Audit-Identity-Event-Export.md) | Cloud Connectors & Webhooks        | 🔵 Not Started | 15-28h    | PRD-006, 011            |
+| [PRD-006](./PRD-006-Audit-Compliance.md) (FR-3)                            | Audit Search & Indexing (Kafka/ES) | 🔵 Not Started | 8-16h     | PRD-006, 011            |
 | [PRD-014](./PRD-014-Client-SDKs-Platform-Integration.md)                   | Client SDKs & Platform Integration | 🔵 Not Started | 15-28h    | PRD-001-005             |
 | [PRD-042](./PRD-042-Enterprise-SSO-Federation.md) 🆕                       | Enterprise SSO & Federation        | 🔵 Not Started | 18-32h    | PRD-001, 026A, 041, 014 |
 | [PRD-025](./PRD-025-Developer-Sandbox-Testing.md) 🆕                       | Developer Sandbox & Testing        | 🔵 Not Started | 9-16h     | PRD-001-005             |
@@ -210,7 +211,7 @@ Build identity issuance and decision capabilities:
 - PRD-003: Citizen + sanctions registry integration
 - PRD-004: Verifiable credential issuance (standard VCs)
 - PRD-005: Evidence-based decision engine with Redis caching
-- PRD-006: Audit logging with event streaming (outbox pattern)
+- PRD-006: Audit logging with outbox pattern (audit search + Kafka/ES indexing in Phase 6)
 
 **Phase 2: Operational Baseline (14-27 days)**
 Production operational requirements and performance hardening:
@@ -417,10 +418,10 @@ Implement all phases:
 - **PRD-015:** Rego policy language (OPA), internal PDP evaluation, policy versioning
 - **PRD-005B:** Cerbos external PDP integration, gRPC client, policy bundles
 
-### Consent & Audit (Phase 0-1)
+### Consent & Audit (Phase 0-1, 6)
 
 - **PRD-002:** CQRS read models (consent projections), event sourcing, PostgreSQL write/read stores
-- **PRD-006:** Event streaming (Kafka/NATS), outbox pattern, 4-tier storage (Write/Hot/Warm/Cold)
+- **PRD-006:** Audit logging baseline in Phase 1; Kafka/NATS streaming + search indexing in Phase 6
 
 ### Infrastructure & Operations (Phase 0-3)
 

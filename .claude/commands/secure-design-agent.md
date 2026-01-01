@@ -18,6 +18,7 @@ See AGENTS.md shared non-negotiables, plus these security-specific rules:
 - Expected business failures modeled as typed outcomes/results, not exceptions.
 - Service APIs expose domain operations (avoid CRUD that leaks storage shape).
 - Continuous change posture: Rotate, Repave, Repair (credentials, hosts, configs, dependencies).
+- Transactions guard multi-step correctness only; keep them short, exclude external I/O, and use an outbox when emitting events.
 
 ## Core principles
 
@@ -34,6 +35,7 @@ See AGENTS.md shared non-negotiables, plus these security-specific rules:
 - Authority propagation across modules/services
 - Error + failure modeling (safe client messages, stable codes, internal detail preserved only in logs)
 - TOCTOU prevention via atomic Execute callback pattern (validate and mutate under same lock)
+- Transaction scope and atomicity (multi-write invariants, read-modify-write, idempotency, outbox usage)
 - Tests that lock in security behaviors/invariants (not brittle implementation tests)
 
 ## What I do
@@ -60,6 +62,9 @@ See AGENTS.md shared non-negotiables, plus these security-specific rules:
 - Are auth decisions explicit, centralized, and testable?
 - Any TOCTOU races between check and use (authz, file existence, quota/capacity checks)? Use Execute callback pattern for atomic validate-then-mutate.
 - Any partial writes without transactions for multi-step invariants?
+- Any read-modify-write or idempotency-key checks without atomic set-if-absent or transactional guard?
+- Any event publication without an outbox in the same transaction?
+- Any transactions that include network calls or other slow external I/O?
 - Any lifecycle gaps: replay, double-submit, state confusion, missing revocation/expiry checks?
 - Is the approach idiomatic Go (stdlib errors, `errors.Is/As`, `%w`, leverage uuid/sql/json behavior)?
 

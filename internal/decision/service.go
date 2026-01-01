@@ -8,6 +8,7 @@ import (
 	registrycontracts "credo/contracts/registry"
 	"credo/internal/decision/metrics"
 	"credo/internal/decision/ports"
+	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
 	"credo/pkg/requestcontext"
 )
@@ -20,13 +21,17 @@ const (
 	consentPurpose = "decision_evaluation"
 )
 
+type AuditPublisher interface {
+	Emit(ctx context.Context, event audit.Event) error
+}
+
 // Service evaluates identity, registry outputs, and VC claims to produce a
 // final decision. The goal is to keep the rules centralized and testable.
 type Service struct {
 	registry ports.RegistryPort
 	vc       ports.VCPort
 	consent  ports.ConsentPort
-	auditor  ports.AuditPort
+	auditor  AuditPublisher
 	metrics  *metrics.Metrics
 	logger   *slog.Logger
 }
@@ -50,11 +55,13 @@ func WithLogger(l *slog.Logger) Option {
 
 // New creates a new decision service with required dependencies.
 // Panics if required dependencies are nil - fail fast at startup.
+// All ports are required for compliance: consent gates data access,
+// auditor ensures regulatory audit trail.
 func New(
 	registry ports.RegistryPort,
 	vc ports.VCPort,
 	consent ports.ConsentPort,
-	auditor ports.AuditPort,
+	auditor AuditPublisher,
 	opts ...Option,
 ) *Service {
 	if registry == nil {
@@ -63,7 +70,12 @@ func New(
 	if vc == nil {
 		panic("decision.New: vc port is required")
 	}
-	// consent and auditor can be nil (optional)
+	if consent == nil {
+		panic("decision.New: consent port is required for compliance")
+	}
+	if auditor == nil {
+		panic("decision.New: auditor is required for compliance audit trail")
+	}
 
 	s := &Service{
 		registry: registry,
@@ -78,12 +90,15 @@ func New(
 }
 
 // Evaluate performs a complete decision evaluation for the given request.
-// This is the main entry point that orchestrates evidence gathering and rule evaluation.
+// It checks consent, gathers registry/VC evidence, evaluates rules, emits an audit event,
+// and records metrics using a single evaluation timestamp.
 func (s *Service) Evaluate(ctx context.Context, req EvaluateRequest) (*EvaluateResult, error) {
-	start := time.Now()
+	// Single authoritative timestamp for the entire evaluation.
+	// Extracted from context (set by middleware) for deterministic testing and consistent audit trails.
+	evalTime := requestcontext.Now(ctx)
 	defer func() {
 		if s.metrics != nil {
-			s.metrics.ObserveEvaluateLatency(time.Since(start))
+			s.metrics.ObserveEvaluateLatency(time.Since(evalTime))
 		}
 	}()
 
@@ -93,13 +108,13 @@ func (s *Service) Evaluate(ctx context.Context, req EvaluateRequest) (*EvaluateR
 	}
 
 	// Gather evidence based on purpose
-	evidence, err := s.gatherEvidence(ctx, req)
+	evidence, err := s.gatherEvidence(ctx, req, evalTime)
 	if err != nil {
 		return nil, err
 	}
 
 	// Derive identity attributes
-	derived := s.deriveIdentity(req.UserID, evidence)
+	derived := s.deriveIdentity(req.UserID, evidence, evalTime)
 
 	// Build decision input
 	input := s.buildInput(evidence, derived)
@@ -108,10 +123,12 @@ func (s *Service) Evaluate(ctx context.Context, req EvaluateRequest) (*EvaluateR
 	outcome := s.evaluateRules(req.Purpose, input)
 
 	// Build result
-	result := s.buildResult(req.Purpose, outcome, evidence, derived)
+	result := s.buildResult(req.Purpose, outcome, evidence, derived, evalTime)
 
-	// Emit audit event (fail-open for non-sanctions, fail-closed for sanctions fail)
-	s.emitAudit(ctx, req, result)
+	// Emit audit event (fail-open for non-sanctions, fail-closed for sanctions)
+	if err := s.emitAudit(ctx, req, result, evalTime); err != nil {
+		return nil, err
+	}
 
 	// Record metrics
 	if s.metrics != nil {
@@ -122,9 +139,6 @@ func (s *Service) Evaluate(ctx context.Context, req EvaluateRequest) (*EvaluateR
 }
 
 func (s *Service) requireConsent(ctx context.Context, userID interface{ String() string }) error {
-	if s.consent == nil {
-		return nil
-	}
 	return s.consent.RequireConsent(ctx, userID.String(), consentPurpose)
 }
 
@@ -142,22 +156,22 @@ func (s *Service) evaluateRules(purpose Purpose, input DecisionInput) DecisionOu
 }
 
 func (s *Service) evaluateAgeVerification(input DecisionInput) DecisionOutcome {
-	// Rule 1: Sanctions check (hard fail)
-	if input.Sanctions.Listed {
+	// Rule 1: Sanctions check (hard fail) - compliance-critical
+	if input.IsSanctioned() {
 		return DecisionFail
 	}
 
-	// Rule 2: Citizen validity
-	if !input.Identity.CitizenValid {
+	// Rule 2: Citizen validity - identity baseline
+	if !input.IsCitizenValid() {
 		return DecisionFail
 	}
 
-	// Rule 3: Age requirement
-	if !input.Identity.IsOver18 {
+	// Rule 3: Age requirement - purpose-specific
+	if !input.IsOfLegalAge() {
 		return DecisionFail
 	}
 
-	// Rule 4: Credential check (soft requirement)
+	// Rule 4: Credential check (soft requirement for full pass)
 	if len(input.Credential) > 0 {
 		return DecisionPass
 	}
@@ -166,16 +180,16 @@ func (s *Service) evaluateAgeVerification(input DecisionInput) DecisionOutcome {
 }
 
 func (s *Service) evaluateSanctionsScreening(input DecisionInput) DecisionOutcome {
-	if input.Sanctions.Listed {
+	if input.IsSanctioned() {
 		return DecisionFail
 	}
 	return DecisionPass
 }
 
-func (s *Service) buildResult(purpose Purpose, outcome DecisionOutcome, evidence *GatheredEvidence, derived DerivedIdentity) *EvaluateResult {
+func (s *Service) buildResult(purpose Purpose, outcome DecisionOutcome, evidence *GatheredEvidence, derived DerivedIdentity, evalTime time.Time) *EvaluateResult {
 	result := &EvaluateResult{
 		Status:      outcome,
-		EvaluatedAt: time.Now(),
+		EvaluatedAt: evalTime,
 		Conditions:  []string{},
 		Evidence: EvidenceSummary{
 			SanctionsListed: evidence.Sanctions != nil && evidence.Sanctions.Listed,
@@ -234,12 +248,12 @@ func (s *Service) buildSanctionsResult(result *EvaluateResult, outcome DecisionO
 	return result
 }
 
-func (s *Service) deriveIdentity(userID interface{ String() string }, evidence *GatheredEvidence) DerivedIdentity {
+func (s *Service) deriveIdentity(userID interface{ String() string }, evidence *GatheredEvidence, evalTime time.Time) DerivedIdentity {
 	derived := DerivedIdentity{}
 
 	if evidence.Citizen != nil {
 		derived.CitizenValid = evidence.Citizen.Valid
-		derived.IsOver18 = deriveIsOver18(evidence.Citizen.DateOfBirth)
+		derived.IsOver18 = deriveIsOver18(evidence.Citizen.DateOfBirth, evalTime)
 	}
 
 	return derived
@@ -263,41 +277,56 @@ func (s *Service) buildInput(evidence *GatheredEvidence, derived DerivedIdentity
 	return input
 }
 
-func (s *Service) emitAudit(ctx context.Context, req EvaluateRequest, result *EvaluateResult) {
-	if s.auditor == nil {
-		return
-	}
-
+// emitAudit publishes a decision audit event.
+//
+// Audit semantics vary by decision type:
+//   - Sanctions decisions: fail-closed (audit failure blocks response).
+//     Regulatory compliance requires audit trail guarantees for high-consequence decisions.
+//   - Age verification decisions: fail-open (audit failure is best-effort).
+//     Advisory decisions can proceed without guaranteed audit persistence.
+func (s *Service) emitAudit(ctx context.Context, req EvaluateRequest, result *EvaluateResult, evalTime time.Time) error {
 	event := audit.Event{
-		Category:  audit.CategoryCompliance,
-		Timestamp: time.Now(),
+		Category:  audit.EventDecisionMade.Category(),
+		Timestamp: evalTime,
 		UserID:    req.UserID,
-		Action:    "decision_made",
+		Action:    string(audit.EventDecisionMade),
 		Purpose:   string(req.Purpose),
 		Decision:  string(result.Status),
 		Reason:    string(result.Reason),
 		RequestID: requestcontext.RequestID(ctx),
 	}
 
-	// For sanctions failures, use fail-closed semantics
-	if result.Status == DecisionFail && result.Reason == ReasonSanctioned {
-		if err := s.auditor.Emit(ctx, event); err != nil {
-			if s.logger != nil {
-				s.logger.ErrorContext(ctx, "CRITICAL: audit failed for sanctions decision - blocking response",
-					"user_id", req.UserID,
-					"error", err,
-				)
-			}
-			// Note: In production, this should block the response.
-			// For now, we log but allow the decision to proceed.
-		}
-	} else {
-		// Best-effort for non-sanctions decisions
-		if err := s.auditor.Emit(ctx, event); err != nil && s.logger != nil {
-			s.logger.WarnContext(ctx, "failed to emit decision audit event",
-				"error", err,
+	if isSanctionsDecision(req, result) {
+		return s.emitAuditFailClosed(ctx, event, req)
+	}
+
+	s.emitAuditBestEffort(ctx, event, req)
+	return nil
+}
+
+func isSanctionsDecision(req EvaluateRequest, result *EvaluateResult) bool {
+	return result.Reason == ReasonSanctioned || req.Purpose == PurposeSanctionsScreening
+}
+
+func (s *Service) emitAuditFailClosed(ctx context.Context, event audit.Event, req EvaluateRequest) error {
+	if err := s.auditor.Emit(ctx, event); err != nil {
+		if s.logger != nil {
+			s.logger.ErrorContext(ctx, "CRITICAL: audit failed for sanctions decision - blocking response",
 				"user_id", req.UserID,
+				"purpose", req.Purpose,
+				"error", err,
 			)
 		}
+		return dErrors.New(dErrors.CodeInternal, "decision audit unavailable")
+	}
+	return nil
+}
+
+func (s *Service) emitAuditBestEffort(ctx context.Context, event audit.Event, req EvaluateRequest) {
+	if err := s.auditor.Emit(ctx, event); err != nil && s.logger != nil {
+		s.logger.WarnContext(ctx, "failed to emit decision audit event",
+			"error", err,
+			"user_id", req.UserID,
+		)
 	}
 }

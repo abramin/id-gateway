@@ -1,0 +1,260 @@
+openapi: 3.0.3
+info:
+  title: ID Gateway Decision API
+  version: 0.1.0
+  description: |
+    OpenAPI specification for the decision evaluation endpoint.
+
+    The Decision API gathers evidence (registry + VC) and applies business
+    rules to produce a structured decision outcome.
+
+    ## Security
+    - All endpoints require valid bearer token (JWT)
+    - Consent required: `decision_evaluation`
+    - TLS-only transport in production
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+paths:
+  /decision/evaluate:
+    post:
+      summary: Evaluate a decision for a given purpose
+      description: |
+        Evaluates an authorization decision by gathering evidence and
+        applying purpose-specific rules.
+
+        **Audit:** Emits `decision_made` event with outcome and reason.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EvaluateRequest"
+            examples:
+              age_verification:
+                value:
+                  purpose: "age_verification"
+                  context:
+                    national_id: "123456789"
+              sanctions_screening:
+                value:
+                  purpose: "sanctions_screening"
+                  context:
+                    national_id: "123456789"
+      responses:
+        "200":
+          description: Decision evaluated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluateResponse"
+              examples:
+                pass:
+                  value:
+                    status: "pass"
+                    reason: "all_checks_passed"
+                    conditions: []
+                    evidence:
+                      citizen_valid: true
+                      sanctions_listed: false
+                      has_credential: true
+                      is_over_18: true
+                    evaluated_at: "2025-12-03T10:00:00Z"
+                fail_sanctioned:
+                  value:
+                    status: "fail"
+                    reason: "sanctioned"
+                    conditions: []
+                    evidence:
+                      sanctions_listed: true
+                    evaluated_at: "2025-12-03T10:00:00Z"
+                pass_with_conditions:
+                  value:
+                    status: "pass_with_conditions"
+                    reason: "missing_credential"
+                    conditions:
+                      - "obtain_age_credential"
+                    evidence:
+                      citizen_valid: true
+                      sanctions_listed: false
+                      has_credential: false
+                    evaluated_at: "2025-12-03T10:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/MissingConsent"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "504":
+          $ref: "#/components/responses/RegistryTimeout"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT access token obtained from `/auth/token` endpoint.
+        Include in Authorization header as: `Bearer <token>`
+
+  schemas:
+    EvaluateRequest:
+      type: object
+      required: [purpose, context]
+      properties:
+        purpose:
+          type: string
+          description: Decision purpose
+          enum:
+            - age_verification
+            - sanctions_screening
+        context:
+          type: object
+          required: [national_id]
+          properties:
+            national_id:
+              type: string
+              description: National identifier for evidence lookups
+              pattern: "^[A-Z0-9]{6,20}$"
+              minLength: 6
+              maxLength: 20
+
+    EvaluateResponse:
+      type: object
+      required: [status, reason, conditions, evidence, evaluated_at]
+      properties:
+        status:
+          type: string
+          description: Decision outcome status
+          enum:
+            - pass
+            - pass_with_conditions
+            - fail
+        reason:
+          type: string
+          description: Decision reason code
+          enum:
+            - all_checks_passed
+            - sanctioned
+            - invalid_citizen
+            - underage
+            - missing_credential
+            - not_sanctioned
+        conditions:
+          type: array
+          description: Conditions required for conditional pass
+          items:
+            type: string
+        evidence:
+          $ref: "#/components/schemas/EvidenceSummary"
+        evaluated_at:
+          type: string
+          format: date-time
+          description: Evaluation timestamp (RFC3339)
+
+    EvidenceSummary:
+      type: object
+      required: [sanctions_listed]
+      properties:
+        citizen_valid:
+          type: boolean
+          description: Whether the citizen record is valid
+        sanctions_listed:
+          type: boolean
+          description: Whether the subject is on a sanctions list
+        has_credential:
+          type: boolean
+          description: Whether a matching VC was found
+        is_over_18:
+          type: boolean
+          description: Derived age flag
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code
+          enum:
+            - bad_request
+            - unauthorized
+            - missing_consent
+            - not_found
+            - internal_error
+            - registry_timeout
+        error_description:
+          type: string
+          description: Human-readable error explanation
+
+  responses:
+    BadRequest:
+      description: Invalid or malformed request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            missing_purpose:
+              value:
+                error: bad_request
+                error_description: "purpose is required"
+            missing_national_id:
+              value:
+                error: bad_request
+                error_description: "context.national_id is required"
+
+    Unauthorized:
+      description: Missing or invalid authentication credentials
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            invalid_token:
+              value:
+                error: unauthorized
+                error_description: "Invalid or expired bearer token"
+
+    MissingConsent:
+      description: User has not granted required consent
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            no_consent:
+              value:
+                error: missing_consent
+                error_description: "Consent required for purpose: decision_evaluation"
+
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            internal:
+              value:
+                error: internal_error
+                error_description: "decision evaluation failed"
+
+    RegistryTimeout:
+      description: External registry did not respond within timeout window
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            timeout:
+              value:
+                error: registry_timeout
+                error_description: "registry did not respond within 5 seconds"

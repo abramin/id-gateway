@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
+	evidenceports "credo/internal/evidence/ports"
 	"credo/internal/evidence/registry/models"
 	"credo/internal/evidence/registry/orchestrator"
 	"credo/internal/evidence/registry/ports"
@@ -47,14 +48,9 @@ type Service struct {
 	orchestrator *orchestrator.Orchestrator
 	cache        CacheStore
 	consentPort  ports.ConsentPort
-	auditor      AuditPublisher
+	auditor      evidenceports.AuditPublisher
 	regulated    bool
 	logger       *slog.Logger
-}
-
-type AuditPublisher interface {
-	// Emit publishes an audit event. Returns error if the audit system is unavailable.
-	Emit(ctx context.Context, event audit.Event) error
 }
 
 // CacheStore defines the interface for registry caching operations.
@@ -84,10 +80,10 @@ func WithLogger(logger *slog.Logger) Option {
 	}
 }
 
-// Withauditor sets the audit port for the service.
+// WithAuditor sets the audit port for the service.
 // When set, sanctions lookups will emit audit events with fail-closed semantics
 // for listed sanctions (audit must succeed before result is returned).
-func WithAuditor(auditor AuditPublisher) Option {
+func WithAuditor(auditor evidenceports.AuditPublisher) Option {
 	return func(s *Service) {
 		s.auditor = auditor
 	}

@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	evidenceports "credo/internal/evidence/ports"
 	"credo/internal/evidence/registry/models"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
@@ -30,20 +31,15 @@ type RegistryService interface {
 	Check(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*models.RegistryResult, error)
 }
 
-// AuditPublisher emits audit events for security-relevant operations.
-type AuditPublisher interface {
-	Emit(ctx context.Context, event audit.Event) error
-}
-
 // Handler handles HTTP requests for registry operations.
 type Handler struct {
 	service   RegistryService
-	auditPort AuditPublisher
+	auditPort evidenceports.AuditPublisher
 	logger    *slog.Logger
 }
 
 // New creates a new registry handler.
-func New(service RegistryService, auditPort AuditPublisher, logger *slog.Logger) *Handler {
+func New(service RegistryService, auditPort evidenceports.AuditPublisher, logger *slog.Logger) *Handler {
 	return &Handler{
 		service:   service,
 		auditPort: auditPort,

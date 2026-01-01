@@ -465,11 +465,11 @@ func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service)
 		infra.Log.Error("failed to register citizen provider", "error", err)
 	}
 
-	// Register sanctions provider (uses same timeout, placeholder URL/key for now)
+	// Register sanctions provider
 	sanctionsProv := sanctionsProvider.New(
 		"sanctions-registry",
-		infra.Cfg.Registry.CitizenRegistryURL, // TODO: add SanctionsRegistryURL to config
-		infra.Cfg.Registry.CitizenAPIKey,      // TODO: add SanctionsAPIKey to config
+		infra.Cfg.Registry.SanctionsRegistryURL,
+		infra.Cfg.Registry.SanctionsAPIKey,
 		infra.Cfg.Registry.RegistryTimeout,
 	)
 	if err := registry.Register(sanctionsProv); err != nil {
