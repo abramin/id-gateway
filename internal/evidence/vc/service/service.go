@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	evidenceports "credo/internal/evidence/ports"
 	registrymodels "credo/internal/evidence/registry/models"
 	"credo/internal/evidence/vc/domain/credential"
 	"credo/internal/evidence/vc/domain/shared"
@@ -19,11 +20,6 @@ import (
 	"credo/pkg/requestcontext"
 )
 
-// AuditPublisher emits audit events for credential lifecycle actions.
-type AuditPublisher interface {
-	Emit(ctx context.Context, event audit.Event) error
-}
-
 // Option configures the VC service.
 type Option func(*Service)
 
@@ -32,7 +28,7 @@ type Service struct {
 	store       store.Store
 	registry    ports.RegistryPort
 	consentPort ports.ConsentPort
-	auditor     AuditPublisher
+	auditor     evidenceports.AuditPublisher
 	regulated   bool
 	logger      *slog.Logger
 }
@@ -60,7 +56,7 @@ func NewService(store store.Store, registry ports.RegistryPort, consentPort port
 }
 
 // WithAuditor configures an audit publisher for the service.
-func WithAuditor(auditor AuditPublisher) Option {
+func WithAuditor(auditor evidenceports.AuditPublisher) Option {
 	return func(s *Service) {
 		s.auditor = auditor
 	}
@@ -189,11 +185,13 @@ func (s *Service) Verify(ctx context.Context, credentialID models.CredentialID) 
 	return result, nil
 }
 
+const vcIssuancePurpose = "vc_issuance"
+
 func (s *Service) requireVCIssuanceConsent(ctx context.Context, userID id.UserID) error {
 	if s.consentPort == nil {
 		return dErrors.New(dErrors.CodeInternal, "consent service unavailable")
 	}
-	if err := s.consentPort.RequireVCIssuance(ctx, userID); err != nil {
+	if err := s.consentPort.RequireConsent(ctx, userID, vcIssuancePurpose); err != nil {
 		return sanitizeExternalError(err, "consent check failed")
 	}
 	return nil
@@ -247,8 +245,7 @@ func (s *Service) emitVerifyAudit(ctx context.Context, credential models.Credent
 }
 
 func isOver18(birthDate, now time.Time) bool {
-	adultAt := birthDate.UTC().AddDate(18, 0, 0)
-	return !now.UTC().Before(adultAt)
+	return id.IsOver18(birthDate, now)
 }
 
 func sanitizeExternalError(err error, msg string) error {

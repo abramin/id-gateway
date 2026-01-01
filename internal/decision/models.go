@@ -5,7 +5,6 @@ import (
 
 	registrycontracts "credo/contracts/registry"
 	authModel "credo/internal/auth/models"
-	"credo/internal/decision/ports"
 	vcmodels "credo/internal/evidence/vc/models"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
@@ -60,12 +59,11 @@ func deriveIsOver18(dob string, now time.Time) bool {
 	if dob == "" {
 		return false
 	}
-	t, err := time.Parse("2006-01-02", dob)
+	birthDate, err := time.Parse("2006-01-02", dob)
 	if err != nil {
 		return false
 	}
-	years := now.Sub(t).Hours() / 24 / 365.25
-	return years >= 18
+	return id.IsOver18(birthDate, now)
 }
 
 // Purpose defines supported decision purposes.
@@ -124,9 +122,10 @@ type EvidenceSummary struct {
 
 // GatheredEvidence holds raw evidence before rule evaluation.
 // Internal use only - not exposed in API responses.
+// Uses contract types for cross-module boundary safety.
 type GatheredEvidence struct {
-	Citizen    *ports.CitizenRecord
-	Sanctions  *ports.SanctionsRecord
+	Citizen    *registrycontracts.CitizenRecord
+	Sanctions  *registrycontracts.SanctionsRecord
 	Credential *vcmodels.CredentialRecord
 	FetchedAt  time.Time
 	Latencies  EvidenceLatencies

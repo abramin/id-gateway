@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"credo/internal/decision/ports"
+	registrycontracts "credo/contracts/registry"
 	vcmodels "credo/internal/evidence/vc/models"
 
 	"golang.org/x/sync/errgroup"
@@ -12,10 +12,11 @@ import (
 
 // evidenceFetchResult holds results from a single evidence fetch.
 // Each goroutine writes to its own result, avoiding data races.
+// Uses contract types for cross-module boundary safety.
 type evidenceFetchResult struct {
-	citizen           *ports.CitizenRecord
+	citizen           *registrycontracts.CitizenRecord
 	citizenLatency    time.Duration
-	sanctions         *ports.SanctionsRecord
+	sanctions         *registrycontracts.SanctionsRecord
 	sanctionsLatency  time.Duration
 	credential        *vcmodels.CredentialRecord
 	credentialLatency time.Duration

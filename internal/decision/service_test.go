@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"credo/internal/decision/ports"
+	registrycontracts "credo/contracts/registry"
 	vcmodels "credo/internal/evidence/vc/models"
 	id "credo/pkg/domain"
 	"credo/pkg/platform/audit"
@@ -18,13 +18,13 @@ import (
 // These are integration tests that verify the rule chain produces correct outcomes.
 type RuleEvaluationSuite struct {
 	suite.Suite
-	service     *Service
-	registry    *mockRegistryPort
-	vc          *mockVCPort
-	consent     *mockConsentPort
-	auditor     *mockAuditPublisher
-	testUserID  id.UserID
-	testNatID   id.NationalID
+	service    *Service
+	registry   *mockRegistryPort
+	vc         *mockVCPort
+	consent    *mockConsentPort
+	auditor    *mockAuditPublisher
+	testUserID id.UserID
+	testNatID  id.NationalID
 }
 
 func TestRuleEvaluationSuite(t *testing.T) {
@@ -49,11 +49,11 @@ func (s *RuleEvaluationSuite) SetupTest() {
 
 func (s *RuleEvaluationSuite) TestAgeVerificationRuleChain() {
 	s.Run("sanctions failure takes priority (Rule 1)", func() {
-		s.registry.citizen = &ports.CitizenRecord{
+		s.registry.citizen = &registrycontracts.CitizenRecord{
 			Valid:       true,
 			DateOfBirth: "1990-01-15",
 		}
-		s.registry.sanctions = &ports.SanctionsRecord{Listed: true}
+		s.registry.sanctions = &registrycontracts.SanctionsRecord{Listed: true}
 		s.vc.credential = nil
 
 		result, err := s.service.Evaluate(context.Background(), EvaluateRequest{
@@ -69,11 +69,11 @@ func (s *RuleEvaluationSuite) TestAgeVerificationRuleChain() {
 	})
 
 	s.Run("invalid citizen fails after sanctions check (Rule 2)", func() {
-		s.registry.citizen = &ports.CitizenRecord{
+		s.registry.citizen = &registrycontracts.CitizenRecord{
 			Valid:       false,
 			DateOfBirth: "1990-01-15",
 		}
-		s.registry.sanctions = &ports.SanctionsRecord{Listed: false}
+		s.registry.sanctions = &registrycontracts.SanctionsRecord{Listed: false}
 		s.vc.credential = nil
 
 		result, err := s.service.Evaluate(context.Background(), EvaluateRequest{
@@ -93,11 +93,11 @@ func (s *RuleEvaluationSuite) TestAgeVerificationRuleChain() {
 	s.Run("underage fails after citizen check (Rule 3)", func() {
 		// Born 10 years ago = underage
 		dob := time.Now().AddDate(-10, 0, 0).Format("2006-01-02")
-		s.registry.citizen = &ports.CitizenRecord{
+		s.registry.citizen = &registrycontracts.CitizenRecord{
 			Valid:       true,
 			DateOfBirth: dob,
 		}
-		s.registry.sanctions = &ports.SanctionsRecord{Listed: false}
+		s.registry.sanctions = &registrycontracts.SanctionsRecord{Listed: false}
 		s.vc.credential = nil
 
 		result, err := s.service.Evaluate(context.Background(), EvaluateRequest{
@@ -114,11 +114,11 @@ func (s *RuleEvaluationSuite) TestAgeVerificationRuleChain() {
 	})
 
 	s.Run("passes with credential (Rule 4)", func() {
-		s.registry.citizen = &ports.CitizenRecord{
+		s.registry.citizen = &registrycontracts.CitizenRecord{
 			Valid:       true,
 			DateOfBirth: "1990-01-15",
 		}
-		s.registry.sanctions = &ports.SanctionsRecord{Listed: false}
+		s.registry.sanctions = &registrycontracts.SanctionsRecord{Listed: false}
 		s.vc.credential = &vcmodels.CredentialRecord{
 			Claims: vcmodels.Claims{"is_over_18": true},
 		}
@@ -137,11 +137,11 @@ func (s *RuleEvaluationSuite) TestAgeVerificationRuleChain() {
 	})
 
 	s.Run("passes with conditions when no credential (Rule 5)", func() {
-		s.registry.citizen = &ports.CitizenRecord{
+		s.registry.citizen = &registrycontracts.CitizenRecord{
 			Valid:       true,
 			DateOfBirth: "1990-01-15",
 		}
-		s.registry.sanctions = &ports.SanctionsRecord{Listed: false}
+		s.registry.sanctions = &registrycontracts.SanctionsRecord{Listed: false}
 		s.vc.credential = nil
 
 		result, err := s.service.Evaluate(context.Background(), EvaluateRequest{
@@ -161,7 +161,7 @@ func (s *RuleEvaluationSuite) TestAgeVerificationRuleChain() {
 
 func (s *RuleEvaluationSuite) TestSanctionsScreeningRules() {
 	s.Run("passes when not listed", func() {
-		s.registry.sanctions = &ports.SanctionsRecord{Listed: false}
+		s.registry.sanctions = &registrycontracts.SanctionsRecord{Listed: false}
 
 		result, err := s.service.Evaluate(context.Background(), EvaluateRequest{
 			UserID:     s.testUserID,
@@ -176,7 +176,7 @@ func (s *RuleEvaluationSuite) TestSanctionsScreeningRules() {
 	})
 
 	s.Run("fails when listed", func() {
-		s.registry.sanctions = &ports.SanctionsRecord{Listed: true}
+		s.registry.sanctions = &registrycontracts.SanctionsRecord{Listed: true}
 
 		result, err := s.service.Evaluate(context.Background(), EvaluateRequest{
 			UserID:     s.testUserID,
@@ -208,11 +208,11 @@ func (s *RuleEvaluationSuite) TestConsentEnforcement() {
 
 func (s *RuleEvaluationSuite) TestAuditEmission() {
 	s.Run("emits audit event on successful evaluation", func() {
-		s.registry.citizen = &ports.CitizenRecord{
+		s.registry.citizen = &registrycontracts.CitizenRecord{
 			Valid:       true,
 			DateOfBirth: "1990-01-15",
 		}
-		s.registry.sanctions = &ports.SanctionsRecord{Listed: false}
+		s.registry.sanctions = &registrycontracts.SanctionsRecord{Listed: false}
 		s.auditor.events = nil // reset
 
 		_, err := s.service.Evaluate(context.Background(), EvaluateRequest{
@@ -230,13 +230,13 @@ func (s *RuleEvaluationSuite) TestAuditEmission() {
 
 func (s *RuleEvaluationSuite) TestEvidenceNoPII() {
 	s.Run("result contains only derived flags, no raw PII", func() {
-		s.registry.citizen = &ports.CitizenRecord{
-			NationalID:  "SHOULD_NOT_APPEAR",
-			FullName:    "SHOULD_NOT_APPEAR",
+		// Contract types only contain PII-light fields (DateOfBirth, Valid)
+		// ensuring no full name, national ID, or address crosses module boundaries
+		s.registry.citizen = &registrycontracts.CitizenRecord{
 			DateOfBirth: "1990-01-15",
 			Valid:       true,
 		}
-		s.registry.sanctions = &ports.SanctionsRecord{Listed: false}
+		s.registry.sanctions = &registrycontracts.SanctionsRecord{Listed: false}
 
 		result, err := s.service.Evaluate(context.Background(), EvaluateRequest{
 			UserID:     s.testUserID,
@@ -258,30 +258,23 @@ func (s *RuleEvaluationSuite) TestEvidenceNoPII() {
 // =============================================================================
 
 type mockRegistryPort struct {
-	citizen   *ports.CitizenRecord
-	sanctions *ports.SanctionsRecord
+	citizen   *registrycontracts.CitizenRecord
+	sanctions *registrycontracts.SanctionsRecord
 	err       error
 }
 
-func (m *mockRegistryPort) CheckCitizen(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*ports.CitizenRecord, error) {
+func (m *mockRegistryPort) CheckCitizen(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registrycontracts.CitizenRecord, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
 	return m.citizen, nil
 }
 
-func (m *mockRegistryPort) CheckSanctions(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*ports.SanctionsRecord, error) {
+func (m *mockRegistryPort) CheckSanctions(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registrycontracts.SanctionsRecord, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
 	return m.sanctions, nil
-}
-
-func (m *mockRegistryPort) Check(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*ports.CitizenRecord, *ports.SanctionsRecord, error) {
-	if m.err != nil {
-		return nil, nil, m.err
-	}
-	return m.citizen, m.sanctions, nil
 }
 
 type mockVCPort struct {

@@ -94,8 +94,8 @@ func New(
 // and records metrics using a single evaluation timestamp.
 func (s *Service) Evaluate(ctx context.Context, req EvaluateRequest) (*EvaluateResult, error) {
 	// Single authoritative timestamp for the entire evaluation.
-	// Injected into all functions for deterministic testing and consistent audit trails.
-	evalTime := time.Now()
+	// Extracted from context (set by middleware) for deterministic testing and consistent audit trails.
+	evalTime := requestcontext.Now(ctx)
 	defer func() {
 		if s.metrics != nil {
 			s.metrics.ObserveEvaluateLatency(time.Since(evalTime))

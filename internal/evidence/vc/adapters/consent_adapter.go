@@ -19,7 +19,7 @@ func NewConsentAdapter(consentService *service.Service) ports.ConsentPort {
 	return &ConsentAdapter{consentService: consentService}
 }
 
-// RequireVCIssuance enforces vc_issuance consent for the user.
-func (a *ConsentAdapter) RequireVCIssuance(ctx context.Context, userID id.UserID) error {
-	return a.consentService.Require(ctx, userID, models.PurposeVCIssuance)
+// RequireConsent enforces consent for the specified purpose.
+func (a *ConsentAdapter) RequireConsent(ctx context.Context, userID id.UserID, purpose string) error {
+	return a.consentService.Require(ctx, userID, models.Purpose(purpose))
 }
