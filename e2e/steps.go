@@ -7,6 +7,7 @@ import (
 	"credo/e2e/steps/auth"
 	"credo/e2e/steps/common"
 	"credo/e2e/steps/consent"
+	"credo/e2e/steps/decision"
 	"credo/e2e/steps/ratelimit"
 	"credo/e2e/steps/registry"
 	"credo/e2e/steps/vc"
@@ -34,4 +35,7 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 
 	// Register VC steps (PRD-004 credential issuance)
 	vc.RegisterSteps(ctx, tc)
+
+	// Register decision steps (PRD-005 decision rules)
+	decision.RegisterSteps(ctx, tc)
 }
