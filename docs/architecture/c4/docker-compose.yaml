@@ -1,5 +1,3 @@
-version: "3"
-
 services:
   structurizr:
     image: structurizr/lite
@@ -7,5 +5,3 @@ services:
       - "8082:8080"
     volumes:
       - .:/usr/local/structurizr
-    environment:
-      - STRUCTURIZR_WORKSPACE_PATH=/usr/local/structurizr

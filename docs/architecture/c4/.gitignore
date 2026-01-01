@@ -2,6 +2,9 @@
 .structurizr/
 usr/
 
+# Auto-generated JSON (regenerated from DSL)
+workspace.json
+
 # Exported images (regenerate with CLI)
 images/*.png
 images/*.svg

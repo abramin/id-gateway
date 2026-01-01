@@ -1,7 +1,5 @@
 workspace "Credo Identity Verification Gateway" {
 
-    !identifiers hierarchical
-
     model {
         # ==========================================================================
         # EXTERNAL ACTORS
@@ -30,7 +28,6 @@ workspace "Credo Identity Verification Gateway" {
             # ----------------------------------------------------------------------
 
             publicAPI = container "Public API Server" "Handles OAuth 2.0 flows, consent, registry lookups, and VC issuance" "Go, Chi, Port 8080" "API Gateway" {
-                # Middleware stack
                 requestMiddleware = component "Request Middleware" "Recovery, RequestID, Logger, Timeout, ContentType, BodyLimit" "Go Middleware" "Middleware"
                 deviceMiddleware = component "Device Middleware" "Device fingerprinting and cookie management" "Go Middleware" "Middleware"
                 metadataMiddleware = component "Metadata Middleware" "Request metadata extraction" "Go Middleware" "Middleware"
@@ -158,7 +155,7 @@ workspace "Credo Identity Verification Gateway" {
         }
 
         # ==========================================================================
-        # SYSTEM CONTEXT RELATIONSHIPS
+        # SYSTEM CONTEXT RELATIONSHIPS (External)
         # ==========================================================================
 
         endUser -> credo "Authenticates, manages consent, receives VCs" "HTTPS"
@@ -167,148 +164,6 @@ workspace "Credo Identity Verification Gateway" {
         credo -> citizenRegistry "Verifies citizen identity" "HTTPS"
         credo -> sanctionsRegistry "Screens for PEP/sanctions" "HTTPS"
         credo -> observability "Exports metrics and traces" "Prometheus, OpenTelemetry"
-
-        # ==========================================================================
-        # CONTAINER RELATIONSHIPS
-        # ==========================================================================
-
-        # Public API routes to modules
-        publicAPI -> authModule "Routes auth requests" "In-Process"
-        publicAPI -> consentModule "Routes consent requests" "In-Process"
-        publicAPI -> registryModule "Routes registry lookups" "In-Process"
-        publicAPI -> vcModule "Routes VC requests" "In-Process"
-        publicAPI -> ratelimitModule "Applies rate limiting" "In-Process"
-
-        # Admin API routes
-        adminAPI -> adminModule "Routes admin queries" "In-Process"
-        adminAPI -> tenantModule "Routes tenant management" "In-Process"
-        adminAPI -> ratelimitModule "Applies admin rate limiting" "In-Process"
-
-        # Module dependencies (via ports and adapters)
-        authModule -> tenantModule "Resolves client context" "ClientLookup Port"
-        authModule -> ratelimitModule "Checks auth lockout, records failures" "RateLimitPort"
-        registryModule -> consentModule "Verifies consent before lookup" "ConsentPort"
-        vcModule -> consentModule "Verifies consent for VC issuance" "ConsentPort"
-        vcModule -> registryModule "Fetches citizen/sanctions data" "RegistryPort"
-        decisionModule -> consentModule "Checks consent status" "ConsentPort"
-        decisionModule -> registryModule "Fetches evidence" "RegistryPort"
-
-        # External system calls
-        registryModule -> citizenRegistry "HTTP citizen lookups" "HTTPS"
-        registryModule -> sanctionsRegistry "HTTP sanctions screening" "HTTPS"
-
-        # Platform dependencies (all modules)
-        authModule -> platformModule "Config, logging, audit, metrics" "In-Process"
-        consentModule -> platformModule "Config, logging, audit, metrics" "In-Process"
-        registryModule -> platformModule "Config, logging, audit, metrics" "In-Process"
-        vcModule -> platformModule "Config, logging, audit, metrics" "In-Process"
-        tenantModule -> platformModule "Config, logging, metrics" "In-Process"
-        adminModule -> platformModule "Logging" "In-Process"
-        ratelimitModule -> platformModule "Config, logging" "In-Process"
-
-        # ==========================================================================
-        # COMPONENT RELATIONSHIPS - AUTH MODULE
-        # ==========================================================================
-
-        publicAPI.rateLimitMiddleware -> authModule.authHandler "Forwards authenticated requests"
-        authModule.authHandler -> authModule.authService "Delegates business logic"
-        authModule.authService -> authModule.userStore "CRUD users"
-        authModule.authService -> authModule.sessionStore "CRUD sessions"
-        authModule.authService -> authModule.authCodeStore "CRUD authorization codes"
-        authModule.authService -> authModule.refreshTokenStore "CRUD refresh tokens"
-        authModule.authService -> authModule.revocationStore "Revoke tokens"
-        authModule.authService -> authModule.deviceService "Bind/verify devices"
-        authModule.authHandler -> authModule.rateLimitAdapter "Check/record auth attempts"
-        authModule.rateLimitAdapter -> ratelimitModule.authLockoutService "Implements RateLimitPort"
-        authModule.cleanupWorker -> authModule.sessionStore "Cleanup expired sessions"
-        authModule.cleanupWorker -> authModule.authCodeStore "Cleanup expired codes"
-        authModule.cleanupWorker -> authModule.refreshTokenStore "Cleanup expired tokens"
-
-        # ==========================================================================
-        # COMPONENT RELATIONSHIPS - CONSENT MODULE
-        # ==========================================================================
-
-        publicAPI.authMiddleware -> consentModule.consentHandler "Forwards authenticated requests"
-        consentModule.consentHandler -> consentModule.consentService "Delegates business logic"
-        consentModule.consentService -> consentModule.consentStore "CRUD consent records"
-        consentModule.consentService -> platformModule.auditPublisher "Publishes consent events"
-
-        # ==========================================================================
-        # COMPONENT RELATIONSHIPS - REGISTRY MODULE
-        # ==========================================================================
-
-        publicAPI.authMiddleware -> registryModule.registryHandler "Forwards authenticated requests"
-        registryModule.registryHandler -> registryModule.registryService "Delegates business logic"
-        registryModule.registryService -> registryModule.orchestrator "Coordinates providers"
-        registryModule.registryService -> registryModule.registryCache "Cache lookups"
-        registryModule.registryService -> registryModule.registryConsentAdapter "Verify consent"
-        registryModule.registryConsentAdapter -> consentModule.consentService "Implements ConsentPort"
-        registryModule.orchestrator -> registryModule.providerRegistry "Get providers"
-        registryModule.orchestrator -> registryModule.citizenProvider "Citizen lookups"
-        registryModule.orchestrator -> registryModule.sanctionsProvider "Sanctions lookups"
-        registryModule.citizenProvider -> citizenRegistry "HTTP calls"
-        registryModule.sanctionsProvider -> sanctionsRegistry "HTTP calls"
-        registryModule.registryHandler -> platformModule.auditPublisher "Publishes registry events"
-
-        # ==========================================================================
-        # COMPONENT RELATIONSHIPS - VC MODULE
-        # ==========================================================================
-
-        publicAPI.authMiddleware -> vcModule.vcHandler "Forwards authenticated requests"
-        vcModule.vcHandler -> vcModule.vcService "Delegates business logic"
-        vcModule.vcService -> vcModule.vcStore "CRUD credentials"
-        vcModule.vcService -> vcModule.vcConsentAdapter "Verify consent"
-        vcModule.vcService -> vcModule.vcRegistryAdapter "Fetch evidence"
-        vcModule.vcConsentAdapter -> consentModule.consentService "Implements ConsentPort"
-        vcModule.vcRegistryAdapter -> registryModule.registryService "Implements RegistryPort"
-
-        # ==========================================================================
-        # COMPONENT RELATIONSHIPS - DECISION MODULE
-        # ==========================================================================
-
-        decisionModule.decisionService -> decisionModule.decisionRegistryAdapter "Fetch evidence"
-        decisionModule.decisionRegistryAdapter -> registryModule.registryService "Implements RegistryPort"
-
-        # ==========================================================================
-        # COMPONENT RELATIONSHIPS - RATE LIMIT MODULE
-        # ==========================================================================
-
-        publicAPI.rateLimitMiddleware -> ratelimitModule.limiter "Check rate limits"
-        ratelimitModule.limiter -> ratelimitModule.requestLimitService "Per-IP limits"
-        ratelimitModule.limiter -> ratelimitModule.globalThrottleService "Global throttle"
-        ratelimitModule.requestLimitService -> ratelimitModule.bucketStore "Sliding window counters"
-        ratelimitModule.requestLimitService -> ratelimitModule.allowlistStore "Check bypasses"
-        ratelimitModule.authLockoutService -> ratelimitModule.authLockoutStore "Track failures"
-        ratelimitModule.globalThrottleService -> ratelimitModule.globalThrottleStore "Global counters"
-        ratelimitModule.clientLimitService -> ratelimitModule.bucketStore "Client counters"
-        ratelimitModule.clientLimitService -> tenantModule.tenantService "Client type lookup"
-
-        # ==========================================================================
-        # COMPONENT RELATIONSHIPS - TENANT MODULE
-        # ==========================================================================
-
-        adminAPI.adminTokenMiddleware -> tenantModule.tenantHandler "Forwards admin requests"
-        tenantModule.tenantHandler -> tenantModule.tenantService "Delegates business logic"
-        tenantModule.tenantService -> tenantModule.tenantStore "CRUD tenants"
-        tenantModule.tenantService -> tenantModule.clientStore "CRUD clients"
-
-        # ==========================================================================
-        # COMPONENT RELATIONSHIPS - ADMIN MODULE
-        # ==========================================================================
-
-        adminAPI.adminTokenMiddleware -> adminModule.adminHandler "Forwards admin requests"
-        adminModule.adminHandler -> adminModule.adminService "Delegates business logic"
-        adminModule.adminService -> authModule.userStore "Query users"
-        adminModule.adminService -> authModule.sessionStore "Query sessions"
-        adminModule.adminService -> platformModule.auditStore "Query audit events"
-
-        # ==========================================================================
-        # COMPONENT RELATIONSHIPS - PLATFORM MODULE
-        # ==========================================================================
-
-        platformModule.auditPublisher -> platformModule.auditStore "Persists events"
-        authModule.authService -> platformModule.jwtService "Sign/validate tokens"
-        publicAPI.authMiddleware -> platformModule.jwtService "Validate JWT"
     }
 
     views {
@@ -334,20 +189,6 @@ workspace "Credo Identity Verification Gateway" {
             description "All modules (containers) and their relationships"
         }
 
-        container credo "Containers_PublicAPI" {
-            include publicAPI authModule consentModule registryModule vcModule decisionModule ratelimitModule platformModule citizenRegistry sanctionsRegistry
-            autoLayout
-            title "Credo - Public API Containers (Level 2)"
-            description "Modules serving the public API on port 8080"
-        }
-
-        container credo "Containers_AdminAPI" {
-            include adminAPI adminModule tenantModule ratelimitModule platformModule
-            autoLayout
-            title "Credo - Admin API Containers (Level 2)"
-            description "Modules serving the admin API on port 8081"
-        }
-
         # ==========================================================================
         # LEVEL 3: COMPONENT VIEWS
         # ==========================================================================
@@ -368,7 +209,6 @@ workspace "Credo Identity Verification Gateway" {
 
         component authModule "Components_Auth" {
             include *
-            include ratelimitModule.authLockoutService
             autoLayout
             title "Auth Module - Components (Level 3)"
             description "OAuth 2.0 authorization server components"
@@ -376,7 +216,6 @@ workspace "Credo Identity Verification Gateway" {
 
         component consentModule "Components_Consent" {
             include *
-            include platformModule.auditPublisher
             autoLayout
             title "Consent Module - Components (Level 3)"
             description "Purpose-based consent lifecycle components"
@@ -384,7 +223,6 @@ workspace "Credo Identity Verification Gateway" {
 
         component registryModule "Components_Registry" {
             include *
-            include consentModule.consentService citizenRegistry sanctionsRegistry platformModule.auditPublisher
             autoLayout
             title "Registry Module - Components (Level 3)"
             description "Multi-provider registry lookup components"
@@ -392,7 +230,6 @@ workspace "Credo Identity Verification Gateway" {
 
         component vcModule "Components_VC" {
             include *
-            include consentModule.consentService registryModule.registryService
             autoLayout
             title "VC Module - Components (Level 3)"
             description "Verifiable credential issuance components"
@@ -400,7 +237,6 @@ workspace "Credo Identity Verification Gateway" {
 
         component decisionModule "Components_Decision" {
             include *
-            include registryModule.registryService
             autoLayout
             title "Decision Module - Components (Level 3)"
             description "Rules engine components"
@@ -408,7 +244,6 @@ workspace "Credo Identity Verification Gateway" {
 
         component ratelimitModule "Components_RateLimit" {
             include *
-            include tenantModule.tenantService
             autoLayout
             title "Rate Limit Module - Components (Level 3)"
             description "Rate limiting and DDoS protection components"
@@ -423,7 +258,6 @@ workspace "Credo Identity Verification Gateway" {
 
         component adminModule "Components_Admin" {
             include *
-            include authModule.userStore authModule.sessionStore platformModule.auditStore
             autoLayout
             title "Admin Module - Components (Level 3)"
             description "Administrative query components"
@@ -434,42 +268,6 @@ workspace "Credo Identity Verification Gateway" {
             autoLayout
             title "Platform Module - Components (Level 3)"
             description "Cross-cutting infrastructure components"
-        }
-
-        # ==========================================================================
-        # LEVEL 4: CODE VIEWS (Key Interfaces)
-        # ==========================================================================
-
-        # Note: Structurizr DSL doesn't natively support code-level elements (classes/interfaces)
-        # For Level 4, we document the key port interfaces as a filtered component view
-        # focusing on the hexagonal architecture boundaries
-
-        component registryModule "Code_PortsAdapters_Registry" {
-            include registryService registryConsentAdapter citizenProvider sanctionsProvider
-            autoLayout
-            title "Registry Module - Ports & Adapters (Level 4)"
-            description "ConsentPort adapter and external HTTP adapters"
-        }
-
-        component vcModule "Code_PortsAdapters_VC" {
-            include vcService vcConsentAdapter vcRegistryAdapter
-            autoLayout
-            title "VC Module - Ports & Adapters (Level 4)"
-            description "ConsentPort and RegistryPort adapters"
-        }
-
-        component authModule "Code_PortsAdapters_Auth" {
-            include authService rateLimitAdapter
-            autoLayout
-            title "Auth Module - Ports & Adapters (Level 4)"
-            description "RateLimitPort adapter"
-        }
-
-        component ratelimitModule "Code_PortsAdapters_RateLimit" {
-            include requestLimitService authLockoutService globalThrottleService clientLimitService bucketStore allowlistStore authLockoutStore globalThrottleStore
-            autoLayout
-            title "Rate Limit Module - Store Ports (Level 4)"
-            description "BucketStore, AllowlistStore, AuthLockoutStore, QuotaStore interfaces"
         }
 
         # ==========================================================================
@@ -545,10 +343,6 @@ workspace "Credo Identity Verification Gateway" {
             }
             relationship "Relationship" {
                 dashed false
-            }
-            relationship "In-Process" {
-                color #1168BD
-                style solid
             }
             relationship "HTTPS" {
                 color #999999
