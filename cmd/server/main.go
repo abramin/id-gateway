@@ -46,6 +46,7 @@ import (
 	vcStore "credo/internal/evidence/vc/store"
 	jwttoken "credo/internal/jwt_token"
 	"credo/internal/platform/config"
+	"credo/internal/platform/health"
 	"credo/internal/platform/httpserver"
 	"credo/internal/platform/logger"
 	rateLimitConfig "credo/internal/ratelimit/config"
@@ -623,10 +624,10 @@ func setupRouter(infra *infraBundle) *chi.Mux {
 
 	// Add Prometheus metrics endpoint (no auth required)
 	r.Handle("/metrics", promhttp.Handler())
-	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
+
+	// Health check endpoints (no auth required)
+	healthHandler := health.New(infra.Cfg.Environment)
+	healthHandler.Register(r)
 
 	return r
 }
@@ -711,20 +712,8 @@ func setupAdminRouter(log *slog.Logger, adminSvc *admin.Service, tenantHandler *
 
 	// Health check and metrics
 	r.Handle("/metrics", promhttp.Handler())
-	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
-
-	// Admin info endpoint (unauthenticated)
-	r.Get("/admin/info", func(w http.ResponseWriter, _ *http.Request) {
-		resp := map[string]any{
-			"service": "admin",
-			"version": "1.0.0",
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
-	})
+	healthHandler := health.New(cfg.Environment)
+	healthHandler.Register(r)
 
 	// All admin routes require authentication and rate limiting
 	adminHandler := admin.New(adminSvc, log)
