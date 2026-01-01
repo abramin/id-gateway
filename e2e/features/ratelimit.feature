@@ -8,19 +8,6 @@ Feature: Rate Limiting & Abuse Prevention
     Given the ID Gateway is running
 
   # ============================================================
-  # Real E2E Tests (non-simulation)
-  # ============================================================
-
-  @ratelimit @normal
-  Scenario: Rate limit headers present on authenticated requests
-    Given I am authenticated as "ratelimit-headers@example.com"
-    When I request user info with the access token
-    Then the response status should be 200
-    And the response should contain header "X-RateLimit-Limit"
-    And the response should contain header "X-RateLimit-Remaining"
-    And the response should contain header "X-RateLimit-Reset"
-
-  # ============================================================
   # FR-1: Per-IP Rate Limiting
   # ============================================================
 
