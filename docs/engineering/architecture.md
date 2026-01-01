@@ -10,6 +10,8 @@ This document covers both current architecture and planned migrations. Sections 
 "Planned" describe future work (gRPC, microservices, Phase 7 services). Current state
 uses in-process adapters for service-to-service calls and HTTP/JSON for external APIs.
 
+> **See also:** [C4 Architecture Diagrams](../architecture/c4/README.md) for interactive visual representations of this architecture at all four C4 levels (Context, Container, Component, Code).
+
 ## Table of Contents
 
 - [High Level Architecture](#high-level-architecture)

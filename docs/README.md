@@ -26,6 +26,7 @@ Quick navigation for core docs in this repo.
 | Document | Audience | Description |
 |----------|----------|-------------|
 | [Architecture](engineering/architecture.md) | Engineers | System design, data models, flows |
+| [C4 Diagrams](architecture/c4/README.md) | Engineers | Interactive C4 architecture diagrams (Structurizr DSL) |
 | [DDD in Credo](engineering/ddd.md) | Engineers | DDD overview and module examples |
 | [Conventions](engineering/conventions.md) | Engineers | Code style, patterns, best practices |
 | [Testing](engineering/testing.md) | Engineers | Testing doctrine, layer definitions |

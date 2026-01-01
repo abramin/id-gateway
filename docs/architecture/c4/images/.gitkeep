@@ -1,0 +1,2 @@
+# Placeholder for exported diagram images
+# Run: structurizr-cli export -workspace ../workspace.dsl -format png -output .
