@@ -27,6 +27,11 @@ paths:
         window (`CONSENT_GRANT_WINDOW`, default 5m) for an already-active consent
         are treated as idempotent: no timestamps are updated and the existing
         consent is returned.
+
+        **Session State Transition:** If the user's session is in `pending_consent`
+        status (see `GET /auth/sessions` in auth.yaml), granting consent will
+        automatically transition the session to `active` status, enabling token
+        operations.
       security:
         - bearerAuth: []
       requestBody:
