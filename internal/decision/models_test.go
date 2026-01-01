@@ -24,74 +24,78 @@ func (s *DeriveIsOver18Suite) TestAgeBoundaries() {
 
 	s.Run("exactly 18 years ago returns true", func() {
 		dob := now.AddDate(-18, 0, 0).Format("2006-01-02")
-		s.True(deriveIsOver18(dob), "person born exactly 18 years ago should be over 18")
+		s.True(deriveIsOver18(dob, now), "person born exactly 18 years ago should be over 18")
 	})
 
 	s.Run("one week before 18th birthday returns false", func() {
 		// Born 18 years ago minus 7 days = not yet 18 (use 7 days for margin due to 365.25 approximation)
 		dob := now.AddDate(-18, 0, 7).Format("2006-01-02")
-		s.False(deriveIsOver18(dob), "person one week before 18th birthday should not be over 18")
+		s.False(deriveIsOver18(dob, now), "person one week before 18th birthday should not be over 18")
 	})
 
 	s.Run("one day after 18th birthday returns true", func() {
 		// Born 18 years and 1 day ago = over 18
 		dob := now.AddDate(-18, 0, -1).Format("2006-01-02")
-		s.True(deriveIsOver18(dob), "person one day after 18th birthday should be over 18")
+		s.True(deriveIsOver18(dob, now), "person one day after 18th birthday should be over 18")
 	})
 
 	s.Run("clearly over 18 returns true", func() {
-		s.True(deriveIsOver18("1990-01-15"), "person born in 1990 should be over 18")
+		s.True(deriveIsOver18("1990-01-15", now), "person born in 1990 should be over 18")
 	})
 
 	s.Run("clearly under 18 returns false", func() {
 		dob := now.AddDate(-10, 0, 0).Format("2006-01-02")
-		s.False(deriveIsOver18(dob), "10 year old should not be over 18")
+		s.False(deriveIsOver18(dob, now), "10 year old should not be over 18")
 	})
 
 	s.Run("exactly 17 years old returns false", func() {
 		dob := now.AddDate(-17, 0, 0).Format("2006-01-02")
-		s.False(deriveIsOver18(dob), "17 year old should not be over 18")
+		s.False(deriveIsOver18(dob, now), "17 year old should not be over 18")
 	})
 
 	s.Run("19 years old returns true", func() {
 		dob := now.AddDate(-19, 0, 0).Format("2006-01-02")
-		s.True(deriveIsOver18(dob), "19 year old should be over 18")
+		s.True(deriveIsOver18(dob, now), "19 year old should be over 18")
 	})
 }
 
 func (s *DeriveIsOver18Suite) TestInvalidInputs() {
+	now := time.Now()
+
 	s.Run("empty string returns false", func() {
-		s.False(deriveIsOver18(""), "empty DOB should return false")
+		s.False(deriveIsOver18("", now), "empty DOB should return false")
 	})
 
 	s.Run("malformed date returns false", func() {
-		s.False(deriveIsOver18("not-a-date"), "malformed date should return false")
+		s.False(deriveIsOver18("not-a-date", now), "malformed date should return false")
 	})
 
 	s.Run("wrong format MM/DD/YYYY returns false", func() {
-		s.False(deriveIsOver18("01/15/1990"), "wrong date format should return false")
+		s.False(deriveIsOver18("01/15/1990", now), "wrong date format should return false")
 	})
 
 	s.Run("wrong format DD-MM-YYYY returns false", func() {
-		s.False(deriveIsOver18("15-01-1990"), "wrong date format should return false")
+		s.False(deriveIsOver18("15-01-1990", now), "wrong date format should return false")
 	})
 
 	s.Run("partial date returns false", func() {
-		s.False(deriveIsOver18("1990-01"), "partial date should return false")
+		s.False(deriveIsOver18("1990-01", now), "partial date should return false")
 	})
 
 	s.Run("future date returns false", func() {
-		futureDate := time.Now().AddDate(1, 0, 0).Format("2006-01-02")
-		s.False(deriveIsOver18(futureDate), "future birth date should return false")
+		futureDate := now.AddDate(1, 0, 0).Format("2006-01-02")
+		s.False(deriveIsOver18(futureDate, now), "future birth date should return false")
 	})
 }
 
 func (s *DeriveIsOver18Suite) TestLeapYearBoundary() {
+	now := time.Now()
+
 	// Test leap year birthday handling
 	s.Run("leap year birthday Feb 29 handled correctly", func() {
 		// Someone born on Feb 29, 2000 (leap year)
 		// As of 2024+, they are over 18
-		s.True(deriveIsOver18("2000-02-29"), "person born Feb 29 2000 should be over 18")
+		s.True(deriveIsOver18("2000-02-29", now), "person born Feb 29 2000 should be over 18")
 	})
 }
 

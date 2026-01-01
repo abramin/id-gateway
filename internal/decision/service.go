@@ -92,10 +92,12 @@ func New(
 // Evaluate performs a complete decision evaluation for the given request.
 // This is the main entry point that orchestrates evidence gathering and rule evaluation.
 func (s *Service) Evaluate(ctx context.Context, req EvaluateRequest) (*EvaluateResult, error) {
-	start := time.Now()
+	// Single authoritative timestamp for the entire evaluation.
+	// Injected into all functions for deterministic testing and consistent audit trails.
+	evalTime := time.Now()
 	defer func() {
 		if s.metrics != nil {
-			s.metrics.ObserveEvaluateLatency(time.Since(start))
+			s.metrics.ObserveEvaluateLatency(time.Since(evalTime))
 		}
 	}()
 
@@ -105,13 +107,13 @@ func (s *Service) Evaluate(ctx context.Context, req EvaluateRequest) (*EvaluateR
 	}
 
 	// Gather evidence based on purpose
-	evidence, err := s.gatherEvidence(ctx, req)
+	evidence, err := s.gatherEvidence(ctx, req, evalTime)
 	if err != nil {
 		return nil, err
 	}
 
 	// Derive identity attributes
-	derived := s.deriveIdentity(req.UserID, evidence)
+	derived := s.deriveIdentity(req.UserID, evidence, evalTime)
 
 	// Build decision input
 	input := s.buildInput(evidence, derived)
@@ -120,10 +122,10 @@ func (s *Service) Evaluate(ctx context.Context, req EvaluateRequest) (*EvaluateR
 	outcome := s.evaluateRules(req.Purpose, input)
 
 	// Build result
-	result := s.buildResult(req.Purpose, outcome, evidence, derived)
+	result := s.buildResult(req.Purpose, outcome, evidence, derived, evalTime)
 
 	// Emit audit event (fail-open for non-sanctions, fail-closed for sanctions)
-	if err := s.emitAudit(ctx, req, result); err != nil {
+	if err := s.emitAudit(ctx, req, result, evalTime); err != nil {
 		return nil, err
 	}
 
@@ -153,22 +155,22 @@ func (s *Service) evaluateRules(purpose Purpose, input DecisionInput) DecisionOu
 }
 
 func (s *Service) evaluateAgeVerification(input DecisionInput) DecisionOutcome {
-	// Rule 1: Sanctions check (hard fail)
-	if input.Sanctions.Listed {
+	// Rule 1: Sanctions check (hard fail) - compliance-critical
+	if input.IsSanctioned() {
 		return DecisionFail
 	}
 
-	// Rule 2: Citizen validity
-	if !input.Identity.CitizenValid {
+	// Rule 2: Citizen validity - identity baseline
+	if !input.IsCitizenValid() {
 		return DecisionFail
 	}
 
-	// Rule 3: Age requirement
-	if !input.Identity.IsOver18 {
+	// Rule 3: Age requirement - purpose-specific
+	if !input.IsOfLegalAge() {
 		return DecisionFail
 	}
 
-	// Rule 4: Credential check (soft requirement)
+	// Rule 4: Credential check (soft requirement for full pass)
 	if len(input.Credential) > 0 {
 		return DecisionPass
 	}
@@ -177,16 +179,16 @@ func (s *Service) evaluateAgeVerification(input DecisionInput) DecisionOutcome {
 }
 
 func (s *Service) evaluateSanctionsScreening(input DecisionInput) DecisionOutcome {
-	if input.Sanctions.Listed {
+	if input.IsSanctioned() {
 		return DecisionFail
 	}
 	return DecisionPass
 }
 
-func (s *Service) buildResult(purpose Purpose, outcome DecisionOutcome, evidence *GatheredEvidence, derived DerivedIdentity) *EvaluateResult {
+func (s *Service) buildResult(purpose Purpose, outcome DecisionOutcome, evidence *GatheredEvidence, derived DerivedIdentity, evalTime time.Time) *EvaluateResult {
 	result := &EvaluateResult{
 		Status:      outcome,
-		EvaluatedAt: time.Now(),
+		EvaluatedAt: evalTime,
 		Conditions:  []string{},
 		Evidence: EvidenceSummary{
 			SanctionsListed: evidence.Sanctions != nil && evidence.Sanctions.Listed,
@@ -245,12 +247,12 @@ func (s *Service) buildSanctionsResult(result *EvaluateResult, outcome DecisionO
 	return result
 }
 
-func (s *Service) deriveIdentity(userID interface{ String() string }, evidence *GatheredEvidence) DerivedIdentity {
+func (s *Service) deriveIdentity(userID interface{ String() string }, evidence *GatheredEvidence, evalTime time.Time) DerivedIdentity {
 	derived := DerivedIdentity{}
 
 	if evidence.Citizen != nil {
 		derived.CitizenValid = evidence.Citizen.Valid
-		derived.IsOver18 = deriveIsOver18(evidence.Citizen.DateOfBirth)
+		derived.IsOver18 = deriveIsOver18(evidence.Citizen.DateOfBirth, evalTime)
 	}
 
 	return derived
@@ -275,12 +277,16 @@ func (s *Service) buildInput(evidence *GatheredEvidence, derived DerivedIdentity
 }
 
 // emitAudit publishes a decision audit event.
-// Returns an error only for sanctions-related decisions (fail-closed semantics).
-// Non-sanctions decisions use best-effort logging.
-func (s *Service) emitAudit(ctx context.Context, req EvaluateRequest, result *EvaluateResult) error {
+//
+// Audit semantics vary by decision type:
+//   - Sanctions decisions: fail-closed (audit failure blocks response).
+//     Regulatory compliance requires audit trail guarantees for high-consequence decisions.
+//   - Age verification decisions: fail-open (audit failure is best-effort).
+//     Advisory decisions can proceed without guaranteed audit persistence.
+func (s *Service) emitAudit(ctx context.Context, req EvaluateRequest, result *EvaluateResult, evalTime time.Time) error {
 	event := audit.Event{
 		Category:  audit.EventDecisionMade.Category(),
-		Timestamp: time.Now(),
+		Timestamp: evalTime,
 		UserID:    req.UserID,
 		Action:    string(audit.EventDecisionMade),
 		Purpose:   string(req.Purpose),

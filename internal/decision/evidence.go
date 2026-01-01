@@ -23,8 +23,9 @@ type evidenceFetchResult struct {
 
 // gatherEvidence orchestrates parallel evidence gathering with shared context cancellation.
 // Each fetch writes to isolated variables to avoid data races, then results are assembled
-// after all goroutines complete.
-func (s *Service) gatherEvidence(ctx context.Context, req EvaluateRequest) (*GatheredEvidence, error) {
+// after all goroutines complete. The evalTime parameter ensures consistent timestamps
+// across the evaluation for deterministic testing and audit trail consistency.
+func (s *Service) gatherEvidence(ctx context.Context, req EvaluateRequest, evalTime time.Time) (*GatheredEvidence, error) {
 	ctx, cancel := context.WithTimeout(ctx, evidenceTimeout)
 	defer cancel()
 
@@ -53,7 +54,7 @@ func (s *Service) gatherEvidence(ctx context.Context, req EvaluateRequest) (*Gat
 		Citizen:    result.citizen,
 		Sanctions:  result.sanctions,
 		Credential: result.credential,
-		FetchedAt:  time.Now(),
+		FetchedAt:  evalTime,
 		Latencies: EvidenceLatencies{
 			Citizen:    result.citizenLatency,
 			Sanctions:  result.sanctionsLatency,

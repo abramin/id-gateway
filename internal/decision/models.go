@@ -36,10 +36,19 @@ type DecisionInput struct {
 	Credential vcmodels.Claims
 }
 
+// IsSanctioned returns true if the subject is on a sanctions list.
+func (di DecisionInput) IsSanctioned() bool { return di.Sanctions.Listed }
+
+// IsCitizenValid returns true if the citizen verification passed.
+func (di DecisionInput) IsCitizenValid() bool { return di.Identity.CitizenValid }
+
+// IsOfLegalAge returns true if the subject is 18 or older.
+func (di DecisionInput) IsOfLegalAge() bool { return di.Identity.IsOver18 }
+
 // DerivedIdentityFromCitizen strips PII while producing attributes required for
-// decisions in regulated mode.
-func DerivedIdentityFromCitizen(user authModel.User, citizen registrycontracts.CitizenRecord) DerivedIdentity {
-	isOver18 := deriveIsOver18(citizen.DateOfBirth)
+// decisions in regulated mode. Time is injected for deterministic testing.
+func DerivedIdentityFromCitizen(user authModel.User, citizen registrycontracts.CitizenRecord, now time.Time) DerivedIdentity {
+	isOver18 := deriveIsOver18(citizen.DateOfBirth, now)
 	return DerivedIdentity{
 		PseudonymousID: user.ID, // treat as pseudonymous identifier; avoid emails/names.
 		IsOver18:       isOver18,
@@ -47,7 +56,7 @@ func DerivedIdentityFromCitizen(user authModel.User, citizen registrycontracts.C
 	}
 }
 
-func deriveIsOver18(dob string) bool {
+func deriveIsOver18(dob string, now time.Time) bool {
 	if dob == "" {
 		return false
 	}
@@ -55,7 +64,7 @@ func deriveIsOver18(dob string) bool {
 	if err != nil {
 		return false
 	}
-	years := time.Since(t).Hours() / 24 / 365.25
+	years := now.Sub(t).Hours() / 24 / 365.25
 	return years >= 18
 }
 
