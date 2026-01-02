@@ -154,6 +154,18 @@ func (h *consentTestHarness) revokeConsent(t *testing.T, purposes []string) *han
 	return &data
 }
 
+func (h *consentTestHarness) revokeAllConsents(t *testing.T) *handler.RevokeResponse {
+	resp, err := http.Post(h.server.URL+"/auth/consent/revoke-all", "application/json", nil)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	respBody, _ := io.ReadAll(resp.Body)
+	var data handler.RevokeResponse
+	require.NoError(t, json.Unmarshal(respBody, &data))
+	return &data
+}
+
 func (h *consentTestHarness) adminRevokeAllConsents(t *testing.T, userID id.UserID) *handler.RevokeResponse {
 	req, err := http.NewRequest(http.MethodPost, h.server.URL+"/admin/consent/users/"+userID.String()+"/revoke-all", nil)
 	require.NoError(t, err)
@@ -285,6 +297,38 @@ func TestAdminRevokeAllConsents(t *testing.T) {
 	require.Len(t, listData.Consents, 2)
 	for _, record := range listData.Consents {
 		assert.Equal(t, consentModel.StatusRevoked, record.Status)
+	}
+}
+
+func TestRevokeAllSkipsExpiredAndRevoked(t *testing.T) {
+	h := newConsentTestHarness("550e8400-e29b-41d4-a716-446655440004")
+	defer h.Close()
+
+	h.grantConsent(t, []string{"login", "registry_check", "vc_issuance"})
+	h.revokeConsent(t, []string{"registry_check"})
+
+	scope, err := consentModel.NewConsentScope(h.userID, consentModel.PurposeVCIssuance)
+	require.NoError(t, err)
+	record, err := h.consentStore.FindByScope(context.Background(), scope)
+	require.NoError(t, err)
+	expiredAt := time.Now().Add(-time.Hour)
+	record.ExpiresAt = &expiredAt
+	require.NoError(t, h.consentStore.Update(context.Background(), record))
+
+	resp := h.revokeAllConsents(t)
+	assert.Equal(t, "Consent revoked for 1 purpose", resp.Message)
+
+	listData := h.listConsents(t)
+	require.Len(t, listData.Consents, 3)
+	for _, consent := range listData.Consents {
+		switch consent.Purpose {
+		case consentModel.PurposeLogin:
+			assert.Equal(t, consentModel.StatusRevoked, consent.Status, "login should be revoked")
+		case consentModel.PurposeRegistryCheck:
+			assert.Equal(t, consentModel.StatusRevoked, consent.Status, "registry_check should remain revoked")
+		case consentModel.PurposeVCIssuance:
+			assert.Equal(t, consentModel.StatusExpired, consent.Status, "vc_issuance should remain expired")
+		}
 	}
 }
 

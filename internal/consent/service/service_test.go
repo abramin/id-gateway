@@ -33,6 +33,7 @@ import (
 	auditpublisher "credo/pkg/platform/audit/publisher"
 	auditstore "credo/pkg/platform/audit/store/memory"
 	"credo/pkg/platform/sentinel"
+	"credo/pkg/requestcontext"
 )
 
 type ServiceSuite struct {
@@ -146,6 +147,82 @@ func (s *ServiceSuite) TestRevoke_StoreErrorPropagation() {
 		s.Require().Error(err)
 		s.Assert().True(dErrors.HasCode(err, dErrors.CodeInternal), "expected CodeInternal for store execute error")
 	})
+}
+
+// TestRevokeAll_Audit verifies audit behavior for bulk revocation.
+// Invariant: Bulk revoke emits a single audit event when any records are revoked.
+func (s *ServiceSuite) TestRevokeAll_Audit() {
+	s.Run("bulk revoke emits audit event when count > 0", func() {
+		userID := id.UserID(uuid.New())
+		s.mockStore.EXPECT().
+			RevokeAllByUser(gomock.Any(), userID, gomock.Any()).
+			Return(2, nil)
+
+		count, err := s.service.RevokeAll(context.Background(), userID)
+		s.Require().NoError(err)
+		s.Assert().Equal(2, count)
+
+		events, err := s.auditStore.ListByUser(context.Background(), userID)
+		s.Require().NoError(err)
+		s.Require().Len(events, 1)
+		s.Assert().Equal(models.AuditActionConsentRevoked, events[0].Action)
+		s.Assert().Equal("bulk_revocation", events[0].Reason)
+	})
+
+	s.Run("bulk revoke emits no audit event when count == 0", func() {
+		userID := id.UserID(uuid.New())
+		s.mockStore.EXPECT().
+			RevokeAllByUser(gomock.Any(), userID, gomock.Any()).
+			Return(0, nil)
+
+		count, err := s.service.RevokeAll(context.Background(), userID)
+		s.Require().NoError(err)
+		s.Assert().Equal(0, count)
+
+		events, err := s.auditStore.ListByUser(context.Background(), userID)
+		s.Require().NoError(err)
+		s.Assert().Len(events, 0)
+	})
+}
+
+// TestGrant_IdempotentSkip verifies idempotent grants skip side effects.
+// Invariant: When a grant is within the idempotency window, no audit events are emitted.
+func (s *ServiceSuite) TestGrant_IdempotentSkip() {
+	now := time.Now()
+	userID := id.UserID(uuid.New())
+	scope, err := models.NewConsentScope(userID, models.PurposeLogin)
+	s.Require().NoError(err)
+	ctx := requestcontext.WithTime(context.Background(), now)
+
+	existing := &models.Record{
+		ID:        id.ConsentID(uuid.New()),
+		UserID:    userID,
+		Purpose:   models.PurposeLogin,
+		GrantedAt: now.Add(-time.Minute),
+		ExpiresAt: ptrTime(now.Add(time.Hour)),
+	}
+
+	s.mockStore.EXPECT().
+		Execute(gomock.Any(), scope, gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ models.ConsentScope, validate func(*models.Record) error, mutate func(*models.Record) bool) (*models.Record, error) {
+			if err := validate(existing); err != nil {
+				return nil, err
+			}
+			mutate(existing)
+			return existing, nil
+		})
+
+	records, err := s.service.Grant(ctx, userID, []models.Purpose{models.PurposeLogin})
+	s.Require().NoError(err)
+	s.Require().Len(records, 1)
+
+	events, err := s.auditStore.ListByUser(context.Background(), userID)
+	s.Require().NoError(err)
+	s.Assert().Len(events, 0)
+}
+
+func ptrTime(t time.Time) *time.Time {
+	return &t
 }
 
 // =============================================================================

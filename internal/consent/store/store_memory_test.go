@@ -157,6 +157,35 @@ func (s *InMemoryStoreSuite) TestExecute() {
 		s.Require().NotNil(res.RevokedAt)
 		s.Assert().Equal(revokeTime, *res.RevokedAt)
 	})
+
+	s.Run("skips persistence when mutate returns false", func() {
+		now := time.Now()
+		expiry := now.Add(time.Hour)
+		record := &models.Record{
+			ID:        id.ConsentID(uuid.New()),
+			UserID:    id.UserID(uuid.New()),
+			Purpose:   models.PurposeLogin,
+			GrantedAt: now,
+			ExpiresAt: &expiry,
+		}
+		s.Require().NoError(s.store.Save(s.ctx, record))
+
+		revokeTime := now.Add(30 * time.Minute)
+		scope, err := models.NewConsentScope(record.UserID, models.PurposeLogin)
+		s.Require().NoError(err)
+		_, err = s.store.Execute(s.ctx, scope,
+			func(_ *models.Record) error { return nil },
+			func(existing *models.Record) bool {
+				existing.RevokedAt = &revokeTime
+				return false
+			},
+		)
+		s.Require().NoError(err)
+
+		fetched, err := s.store.FindByScope(s.ctx, scope)
+		s.Require().NoError(err)
+		s.Assert().Nil(fetched.RevokedAt, "no-op mutate should not persist changes")
+	})
 }
 
 // =============================================================================
