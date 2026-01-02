@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/kafka"
+	"github.com/testcontainers/testcontainers-go/modules/redpanda"
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
@@ -26,15 +26,12 @@ func NewKafkaContainer(t *testing.T) *KafkaContainer {
 
 	ctx := context.Background()
 
-	container, err := kafka.Run(ctx,
-		"redpandadata/redpanda:latest",
-		kafka.WithClusterID("test-cluster"),
-	)
+	container, err := redpanda.Run(ctx, "redpandadata/redpanda:v24.2.4")
 	if err != nil {
 		t.Fatalf("failed to start kafka container: %v", err)
 	}
 
-	brokers, err := container.Brokers(ctx)
+	broker, err := container.KafkaSeedBroker(ctx)
 	if err != nil {
 		_ = container.Terminate(ctx)
 		t.Fatalf("failed to get kafka brokers: %v", err)
@@ -42,7 +39,7 @@ func NewKafkaContainer(t *testing.T) *KafkaContainer {
 
 	kc := &KafkaContainer{
 		Container: container,
-		Brokers:   brokers[0],
+		Brokers:   broker,
 	}
 
 	t.Cleanup(func() {

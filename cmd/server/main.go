@@ -76,6 +76,7 @@ import (
 	outboxpostgres "credo/pkg/platform/audit/outbox/store/postgres"
 	outboxworker "credo/pkg/platform/audit/outbox/worker"
 	auditpublisher "credo/pkg/platform/audit/publisher"
+	auditmemory "credo/pkg/platform/audit/store/memory"
 	auditpostgres "credo/pkg/platform/audit/store/postgres"
 	adminmw "credo/pkg/platform/middleware/admin"
 	auth "credo/pkg/platform/middleware/auth"
@@ -435,15 +436,21 @@ func initPhase2Infra(bundle *infraBundle, cfg *config.Server, log *slog.Logger) 
 }
 
 func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *tenantService.Service, authLockoutSvc *authlockout.Service, requestSvc *requestlimit.Service) (*authModule, error) {
-	if infra.DBPool == nil {
-		return nil, fmt.Errorf("database connection required for audit events")
-	}
-
 	users := userStore.New()
 	sessions := sessionStore.New()
 	codes := authCodeStore.New()
 	refreshTokens := refreshTokenStore.New()
-	auditStore := auditpostgres.New(infra.DBPool.DB())
+
+	// Use in-memory audit store for demo mode, postgres otherwise
+	var auditStore audit.Store
+	if infra.Cfg.DemoMode {
+		auditStore = auditmemory.NewInMemoryStore()
+	} else {
+		if infra.DBPool == nil {
+			return nil, fmt.Errorf("database connection required for audit events")
+		}
+		auditStore = auditpostgres.New(infra.DBPool.DB())
+	}
 
 	authCfg := &authService.Config{
 		SessionTTL:             infra.Cfg.Auth.SessionTTL,
