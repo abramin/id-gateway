@@ -60,7 +60,7 @@ import (
 	authlockoutStore "credo/internal/ratelimit/store/authlockout"
 	rwbucketStore "credo/internal/ratelimit/store/bucket"
 	globalthrottleStore "credo/internal/ratelimit/store/globalthrottle"
-	"credo/internal/seeder"
+	audit "credo/pkg/platform/audit"
 	tenantHandler "credo/internal/tenant/handler"
 	tenantmetrics "credo/internal/tenant/metrics"
 	tenantService "credo/internal/tenant/service"
@@ -76,7 +76,6 @@ import (
 	outboxpostgres "credo/pkg/platform/audit/outbox/store/postgres"
 	outboxworker "credo/pkg/platform/audit/outbox/worker"
 	auditpublisher "credo/pkg/platform/audit/publisher"
-	auditstore "credo/pkg/platform/audit/store/memory"
 	auditpostgres "credo/pkg/platform/audit/store/postgres"
 	adminmw "credo/pkg/platform/middleware/admin"
 	auth "credo/pkg/platform/middleware/auth"
@@ -121,7 +120,7 @@ type authModule struct {
 	Sessions      *sessionStore.InMemorySessionStore
 	Codes         *authCodeStore.InMemoryAuthorizationCodeStore
 	RefreshTokens *refreshTokenStore.InMemoryRefreshTokenStore
-	AuditStore    *auditstore.InMemoryStore
+	AuditStore    audit.Store
 }
 
 type consentModule struct {
@@ -436,18 +435,15 @@ func initPhase2Infra(bundle *infraBundle, cfg *config.Server, log *slog.Logger) 
 }
 
 func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *tenantService.Service, authLockoutSvc *authlockout.Service, requestSvc *requestlimit.Service) (*authModule, error) {
+	if infra.DBPool == nil {
+		return nil, fmt.Errorf("database connection required for audit events")
+	}
+
 	users := userStore.New()
 	sessions := sessionStore.New()
 	codes := authCodeStore.New()
 	refreshTokens := refreshTokenStore.New()
-	auditStore := auditstore.NewInMemoryStore()
-
-	if infra.Cfg.DemoMode {
-		seederSvc := seeder.New(users, sessions, codes, refreshTokens, auditStore, infra.Log)
-		if err := seederSvc.SeedAll(ctx); err != nil {
-			infra.Log.Warn("failed to seed demo data", "error", err)
-		}
-	}
+	auditStore := auditpostgres.New(infra.DBPool.DB())
 
 	authCfg := &authService.Config{
 		SessionTTL:             infra.Cfg.Auth.SessionTTL,
@@ -516,7 +512,7 @@ func buildConsentModule(infra *infraBundle) *consentModule {
 	consentSvc := consentService.New(
 		consentStore.New(),
 		auditpublisher.NewPublisher(
-			auditstore.NewInMemoryStore(),
+			auditpostgres.New(infra.DBPool.DB()),
 			auditpublisher.WithAsyncBuffer(1000),
 			auditpublisher.WithMetrics(infra.AuditMetrics),
 			auditpublisher.WithPublisherLogger(infra.Log),
@@ -609,7 +605,7 @@ func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service)
 
 	// Create audit publisher for handler
 	auditPort := auditpublisher.NewPublisher(
-		auditstore.NewInMemoryStore(),
+		auditpostgres.New(infra.DBPool.DB()),
 		auditpublisher.WithAsyncBuffer(1000),
 		auditpublisher.WithMetrics(infra.AuditMetrics),
 		auditpublisher.WithPublisherLogger(infra.Log),
@@ -629,7 +625,7 @@ func buildVCModule(infra *infraBundle, consentSvc *consentService.Service, regis
 	registryAdapter := vcAdapters.NewRegistryAdapter(registrySvc)
 
 	auditPort := auditpublisher.NewPublisher(
-		auditstore.NewInMemoryStore(),
+		auditpostgres.New(infra.DBPool.DB()),
 		auditpublisher.WithAsyncBuffer(1000),
 		auditpublisher.WithMetrics(infra.AuditMetrics),
 		auditpublisher.WithPublisherLogger(infra.Log),
@@ -659,7 +655,7 @@ func buildDecisionModule(infra *infraBundle, registrySvc *registryService.Servic
 
 	// Create audit publisher
 	auditPort := auditpublisher.NewPublisher(
-		auditstore.NewInMemoryStore(),
+		auditpostgres.New(infra.DBPool.DB()),
 		auditpublisher.WithAsyncBuffer(1000),
 		auditpublisher.WithMetrics(infra.AuditMetrics),
 		auditpublisher.WithPublisherLogger(infra.Log),
