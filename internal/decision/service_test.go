@@ -226,6 +226,77 @@ func (s *RuleEvaluationSuite) TestAuditEmission() {
 		s.Equal("decision_made", s.auditor.events[0].Action)
 		s.Equal(audit.CategoryCompliance, s.auditor.events[0].Category)
 	})
+
+	s.Run("includes subject ID hash in audit event", func() {
+		s.registry.citizen = &registrycontracts.CitizenRecord{
+			Valid:       true,
+			DateOfBirth: "1990-01-15",
+		}
+		s.registry.sanctions = &registrycontracts.SanctionsRecord{Listed: false}
+		s.auditor.events = nil // reset
+
+		_, err := s.service.Evaluate(context.Background(), EvaluateRequest{
+			UserID:     s.testUserID,
+			Purpose:    PurposeAgeVerification,
+			NationalID: s.testNatID,
+		})
+
+		s.Require().NoError(err)
+		s.Len(s.auditor.events, 1)
+		s.NotEmpty(s.auditor.events[0].SubjectIDHash, "audit event should include hashed subject ID for traceability")
+	})
+}
+
+func (s *RuleEvaluationSuite) TestAuditFailureSemantics() {
+	s.Run("audit failure blocks sanctions screening response (fail-closed)", func() {
+		s.registry.sanctions = &registrycontracts.SanctionsRecord{Listed: true}
+		s.auditor.err = errors.New("audit service unavailable")
+
+		_, err := s.service.Evaluate(context.Background(), EvaluateRequest{
+			UserID:     s.testUserID,
+			Purpose:    PurposeSanctionsScreening,
+			NationalID: s.testNatID,
+		})
+
+		s.Error(err)
+		s.Contains(err.Error(), "audit unavailable")
+	})
+
+	s.Run("audit failure blocks sanctioned age verification response (fail-closed)", func() {
+		s.registry.citizen = &registrycontracts.CitizenRecord{
+			Valid:       true,
+			DateOfBirth: "1990-01-15",
+		}
+		s.registry.sanctions = &registrycontracts.SanctionsRecord{Listed: true}
+		s.auditor.err = errors.New("audit service unavailable")
+
+		_, err := s.service.Evaluate(context.Background(), EvaluateRequest{
+			UserID:     s.testUserID,
+			Purpose:    PurposeAgeVerification,
+			NationalID: s.testNatID,
+		})
+
+		s.Error(err)
+		s.Contains(err.Error(), "audit unavailable")
+	})
+
+	s.Run("audit failure allows non-sanctions age verification response (fail-open)", func() {
+		s.registry.citizen = &registrycontracts.CitizenRecord{
+			Valid:       true,
+			DateOfBirth: "1990-01-15",
+		}
+		s.registry.sanctions = &registrycontracts.SanctionsRecord{Listed: false}
+		s.auditor.err = errors.New("audit service unavailable")
+
+		result, err := s.service.Evaluate(context.Background(), EvaluateRequest{
+			UserID:     s.testUserID,
+			Purpose:    PurposeAgeVerification,
+			NationalID: s.testNatID,
+		})
+
+		s.NoError(err, "non-sanctions age verification should proceed despite audit failure")
+		s.Equal(DecisionPassWithConditions, result.Status)
+	})
 }
 
 func (s *RuleEvaluationSuite) TestEvidenceNoPII() {

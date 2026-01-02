@@ -46,6 +46,10 @@ type Event struct {
 	// Used for admin operations where an admin acts on a user's behalf.
 	// This is a string to support various actor identification schemes.
 	ActorID string
+	// SubjectIDHash is a SHA-256 hash of the subject identifier (e.g., national ID)
+	// being evaluated. Used for compliance traceability without storing raw PII.
+	// Only populated for decision events where a third-party identity is evaluated.
+	SubjectIDHash string
 }
 
 type AuditEvent string

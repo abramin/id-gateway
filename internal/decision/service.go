@@ -2,6 +2,8 @@ package decision
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"log/slog"
 	"time"
 
@@ -102,7 +104,15 @@ func (s *Service) Evaluate(ctx context.Context, req EvaluateRequest) (*EvaluateR
 		}
 	}()
 
-	// Check consent (if consent port is configured)
+	// Check consent before accessing registry data.
+	//
+	// TOCTOU Note: There is a small window (~5s max, bounded by evidenceTimeout) between
+	// consent verification and evidence access. If consent is revoked during this window,
+	// evidence may be accessed without active consent. This is an accepted tradeoff:
+	// - Window is bounded and short (< 5 seconds)
+	// - Alternative (consent-per-fetch) adds latency and complexity
+	// - Audit trail captures consent state at evaluation time
+	// - For stricter requirements, consider consent-aware adapter pattern.
 	if err := s.requireConsent(ctx, req.UserID); err != nil {
 		return nil, err
 	}
@@ -286,14 +296,15 @@ func (s *Service) buildInput(evidence *GatheredEvidence, derived DerivedIdentity
 //     Advisory decisions can proceed without guaranteed audit persistence.
 func (s *Service) emitAudit(ctx context.Context, req EvaluateRequest, result *EvaluateResult, evalTime time.Time) error {
 	event := audit.Event{
-		Category:  audit.EventDecisionMade.Category(),
-		Timestamp: evalTime,
-		UserID:    req.UserID,
-		Action:    string(audit.EventDecisionMade),
-		Purpose:   string(req.Purpose),
-		Decision:  string(result.Status),
-		Reason:    string(result.Reason),
-		RequestID: requestcontext.RequestID(ctx),
+		Category:      audit.EventDecisionMade.Category(),
+		Timestamp:    evalTime,
+		UserID:       req.UserID,
+		Action:       string(audit.EventDecisionMade),
+		Purpose:      string(req.Purpose),
+		Decision:     string(result.Status),
+		Reason:       string(result.Reason),
+		RequestID:    requestcontext.RequestID(ctx),
+		SubjectIDHash: hashSubjectID(req.NationalID.String()),
 	}
 
 	if isSanctionsDecision(req, result) {
@@ -302,6 +313,13 @@ func (s *Service) emitAudit(ctx context.Context, req EvaluateRequest, result *Ev
 
 	s.emitAuditBestEffort(ctx, event, req)
 	return nil
+}
+
+// hashSubjectID produces a SHA-256 hash of the subject identifier for audit traceability.
+// This allows compliance teams to correlate decisions without storing raw PII in audit logs.
+func hashSubjectID(subjectID string) string {
+	h := sha256.Sum256([]byte(subjectID))
+	return hex.EncodeToString(h[:])
 }
 
 func isSanctionsDecision(req EvaluateRequest, result *EvaluateResult) bool {

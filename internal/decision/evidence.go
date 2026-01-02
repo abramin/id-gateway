@@ -58,13 +58,17 @@ func (s *Service) gatherEvidence(ctx context.Context, req EvaluateRequest, evalT
 			result.sanctions = sanctions
 			return nil
 		})
+		// Credential lookup is soft-fail: infrastructure errors degrade to pass_with_conditions.
+		// Security note: This design prioritizes availability over completeness for advisory
+		// age verification. If credential service is unavailable, the user can still proceed
+		// but must obtain credentials later. For fail-closed behavior, see sanctions lookup.
 		s.launchEvidenceFetch(ctx, g, "credential", func(latency time.Duration) {
 			result.credentialLatency = latency
 		}, func(ctx context.Context) error {
 			cred, err := s.vc.FindBySubjectAndType(ctx, req.UserID, vcmodels.CredentialTypeAgeOver18)
 			if err != nil {
 				if s.logger != nil {
-					s.logger.DebugContext(ctx, "credential lookup failed",
+					s.logger.WarnContext(ctx, "credential lookup failed - degrading to pass_with_conditions",
 						"user_id", req.UserID,
 						"error", err,
 					)
