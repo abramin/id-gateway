@@ -14,6 +14,7 @@ import (
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/httputil"
+	adminmw "credo/pkg/platform/middleware/admin"
 	"credo/pkg/requestcontext"
 )
 
@@ -148,6 +149,10 @@ func (h *Handler) HandleRevokeAllConsents(w http.ResponseWriter, r *http.Request
 func (h *Handler) HandleAdminRevokeAllConsents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestID := requestcontext.RequestID(ctx)
+	if !adminmw.IsAdminRequest(ctx) {
+		httputil.WriteError(w, dErrors.New(dErrors.CodeUnauthorized, "admin token required"))
+		return
+	}
 	userIDStr := chi.URLParam(r, "user_id")
 	userID, err := id.ParseUserID(userIDStr)
 	if err != nil {

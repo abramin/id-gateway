@@ -31,10 +31,12 @@ func (s *AdminMiddlewareSuite) TestTokenValidation() {
 	s.Run("correct token passes to next handler", func() {
 		expectedToken := "secret-admin-token"
 		handlerCalled := false
+		adminAuthorized := false
 
 		handler := RequireAdminToken(expectedToken, s.logger)(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				handlerCalled = true
+				adminAuthorized = IsAdminRequest(r.Context())
 				w.WriteHeader(http.StatusOK)
 			}),
 		)
@@ -46,6 +48,7 @@ func (s *AdminMiddlewareSuite) TestTokenValidation() {
 		handler.ServeHTTP(w, req)
 
 		s.True(handlerCalled, "next handler should be called")
+		s.True(adminAuthorized, "admin context should be marked as authorized")
 		s.Equal(http.StatusOK, w.Code)
 	})
 

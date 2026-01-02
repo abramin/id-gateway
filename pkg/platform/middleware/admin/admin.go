@@ -14,6 +14,10 @@ type contextKeyAdminActorID struct{}
 // ContextKeyAdminActorID is exported for use in handlers and tests.
 var ContextKeyAdminActorID = contextKeyAdminActorID{}
 
+type contextKeyAdminAuthorized struct{}
+
+var adminAuthorizedContextKey = contextKeyAdminAuthorized{}
+
 // GetAdminActorID retrieves the admin actor identifier from the context.
 // Returns empty string if not set or if this is not an admin request.
 func GetAdminActorID(ctx context.Context) string {
@@ -21,6 +25,12 @@ func GetAdminActorID(ctx context.Context) string {
 		return actorID
 	}
 	return ""
+}
+
+// IsAdminRequest reports whether the admin token middleware authenticated this request.
+func IsAdminRequest(ctx context.Context) bool {
+	authorized, ok := ctx.Value(adminAuthorizedContextKey).(bool)
+	return ok && authorized
 }
 
 func RequireAdminToken(expectedToken string, logger *slog.Logger) func(http.Handler) http.Handler {
@@ -40,6 +50,7 @@ func RequireAdminToken(expectedToken string, logger *slog.Logger) func(http.Hand
 			}
 
 			ctx := r.Context()
+			ctx = context.WithValue(ctx, adminAuthorizedContextKey, true)
 			// Capture admin actor identifier for audit attribution.
 			// This header identifies which admin performed the action.
 			if actorID := r.Header.Get("X-Admin-Actor-ID"); actorID != "" {

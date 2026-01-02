@@ -51,6 +51,7 @@ import (
 	id "credo/pkg/domain"
 	auditpublisher "credo/pkg/platform/audit/publisher"
 	auditstore "credo/pkg/platform/audit/store/memory"
+	adminmw "credo/pkg/platform/middleware/admin"
 	"credo/pkg/requestcontext"
 )
 
@@ -61,10 +62,12 @@ type consentTestHarness struct {
 	consentStore *store.InMemoryStore
 	auditStore   *auditstore.InMemoryStore
 	userID       id.UserID
+	adminToken   string
 }
 
 func newConsentTestHarness(userIDStr string) *consentTestHarness {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	adminToken := "test-admin-token"
 	consentStore := store.New()
 	auditStore := auditstore.NewInMemoryStore()
 	svc := service.New(
@@ -94,7 +97,10 @@ func newConsentTestHarness(userIDStr string) *consentTestHarness {
 	router.Post("/auth/consent/revoke-all", h.HandleRevokeAllConsents)
 	router.Get("/auth/consent", h.HandleGetConsents)
 	router.Delete("/auth/consent", h.HandleDeleteAllConsents)
-	router.Post("/admin/consent/users/{user_id}/revoke-all", h.HandleAdminRevokeAllConsents)
+	router.Group(func(r chi.Router) {
+		r.Use(adminmw.RequireAdminToken(adminToken, logger))
+		r.Post("/admin/consent/users/{user_id}/revoke-all", h.HandleAdminRevokeAllConsents)
+	})
 
 	userID, _ := id.ParseUserID(userIDStr)
 	return &consentTestHarness{
@@ -102,6 +108,7 @@ func newConsentTestHarness(userIDStr string) *consentTestHarness {
 		consentStore: consentStore,
 		auditStore:   auditStore,
 		userID:       userID,
+		adminToken:   adminToken,
 	}
 }
 
@@ -148,7 +155,10 @@ func (h *consentTestHarness) revokeConsent(t *testing.T, purposes []string) *han
 }
 
 func (h *consentTestHarness) adminRevokeAllConsents(t *testing.T, userID id.UserID) *handler.RevokeResponse {
-	resp, err := http.Post(h.server.URL+"/admin/consent/users/"+userID.String()+"/revoke-all", "application/json", nil)
+	req, err := http.NewRequest(http.MethodPost, h.server.URL+"/admin/consent/users/"+userID.String()+"/revoke-all", nil)
+	require.NoError(t, err)
+	req.Header.Set("X-Admin-Token", h.adminToken)
+	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)

@@ -33,22 +33,24 @@ func (s *PostgresStore) Save(ctx context.Context, consent *models.Record) error 
 		INSERT INTO consents (id, user_id, purpose, granted_at, expires_at, revoked_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (user_id, purpose) DO UPDATE SET
-			id = EXCLUDED.id,
 			granted_at = EXCLUDED.granted_at,
 			expires_at = EXCLUDED.expires_at,
 			revoked_at = EXCLUDED.revoked_at
+		RETURNING id
 	`
-	_, err := s.db.ExecContext(ctx, query,
+	var storedID uuid.UUID
+	err := s.db.QueryRowContext(ctx, query,
 		uuid.UUID(consent.ID),
 		uuid.UUID(consent.UserID),
 		string(consent.Purpose),
 		consent.GrantedAt,
 		consent.ExpiresAt,
 		consent.RevokedAt,
-	)
+	).Scan(&storedID)
 	if err != nil {
 		return fmt.Errorf("save consent: %w", err)
 	}
+	consent.ID = id.ConsentID(storedID)
 	return nil
 }
 

@@ -36,6 +36,9 @@ func (s *InMemoryStore) Save(_ context.Context, consent *models.Record) error {
 		records = make(map[models.Purpose]*models.Record)
 		s.consents[consent.UserID] = records
 	}
+	if existing, ok := records[consent.Purpose]; ok {
+		consent.ID = existing.ID
+	}
 	copyRecord := *consent
 	records[consent.Purpose] = &copyRecord
 	return nil
