@@ -238,6 +238,11 @@ CREATE INDEX idx_audit_timestamp ON audit_events(timestamp);
 - Add a basic Grafana dashboard for core service health
 - Include panels for request rate/latency, auth success rate, and error rate
 
+**Dashboards:**
+
+- Add a basic Grafana dashboard for core service health
+- Include panels for request rate/latency, auth success rate, and error rate
+
 ### Acceptance Criteria
 
 - [ ] Structured logs in JSON format
