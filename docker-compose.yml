@@ -184,6 +184,24 @@ services:
       timeout: 10s
       retries: 3
 
+  # Database migrations
+  migrate:
+    image: migrate/migrate:latest
+    container_name: credo-migrate
+    volumes:
+      - ./migrations:/migrations:ro
+    command:
+      [
+        "-path=/migrations",
+        "-database=postgres://credo:credo_dev_password@postgres:5432/credo?sslmode=disable",
+        "up",
+      ]
+    networks:
+      - credo-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # Backend API service
   backend:
     build:
@@ -220,6 +238,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
     healthcheck:
       test:

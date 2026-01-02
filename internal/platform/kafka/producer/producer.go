@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/twmb/franz-go/pkg/kgo"
 )
 
 // Message represents a message to be published to Kafka.
@@ -18,12 +20,12 @@ type Message struct {
 	Headers map[string]string
 }
 
-// Producer wraps the confluent-kafka-go producer with a simpler interface.
+// Producer wraps the franz-go client with a simpler interface.
 type Producer struct {
-	producer *kafka.Producer
-	logger   *slog.Logger
-	mu       sync.RWMutex
-	closed   bool
+	client *kgo.Client
+	logger *slog.Logger
+	mu     sync.RWMutex
+	closed bool
 }
 
 // Config holds producer configuration.
@@ -40,50 +42,40 @@ func New(cfg Config, logger *slog.Logger) (*Producer, error) {
 		return nil, fmt.Errorf("kafka brokers not configured")
 	}
 
-	configMap := &kafka.ConfigMap{
-		"bootstrap.servers":  cfg.Brokers,
-		"acks":               cfg.Acks,
-		"retries":            cfg.Retries,
-		"delivery.timeout.ms": int(cfg.DeliveryTimeout.Milliseconds()),
-		"linger.ms":          5,  // Small batching for low latency
-		"batch.size":         16384,
+	brokers := strings.Split(cfg.Brokers, ",")
+
+	// Map acks setting
+	var acks kgo.Acks
+	switch cfg.Acks {
+	case "0":
+		acks = kgo.NoAck()
+	case "1":
+		acks = kgo.LeaderAck()
+	default:
+		acks = kgo.AllISRAcks()
 	}
 
-	producer, err := kafka.NewProducer(configMap)
+	opts := []kgo.Opt{
+		kgo.SeedBrokers(brokers...),
+		kgo.RequiredAcks(acks),
+		kgo.RecordRetries(cfg.Retries),
+		kgo.ProducerBatchMaxBytes(16384),
+		kgo.ProducerLinger(5 * time.Millisecond),
+	}
+
+	if cfg.DeliveryTimeout > 0 {
+		opts = append(opts, kgo.RecordDeliveryTimeout(cfg.DeliveryTimeout))
+	}
+
+	client, err := kgo.NewClient(opts...)
 	if err != nil {
 		return nil, fmt.Errorf("create kafka producer: %w", err)
 	}
 
-	p := &Producer{
-		producer: producer,
-		logger:   logger,
-	}
-
-	// Start delivery report handler
-	go p.handleDeliveryReports()
-
-	return p, nil
-}
-
-// handleDeliveryReports processes delivery reports in the background.
-func (p *Producer) handleDeliveryReports() {
-	for e := range p.producer.Events() {
-		switch ev := e.(type) {
-		case *kafka.Message:
-			if ev.TopicPartition.Error != nil {
-				p.logger.Error("kafka delivery failed",
-					"topic", *ev.TopicPartition.Topic,
-					"partition", ev.TopicPartition.Partition,
-					"error", ev.TopicPartition.Error,
-				)
-			}
-		case kafka.Error:
-			p.logger.Error("kafka producer error",
-				"code", ev.Code(),
-				"error", ev.Error(),
-			)
-		}
-	}
+	return &Producer{
+		client: client,
+		logger: logger,
+	}, nil
 }
 
 // Produce sends a message to Kafka synchronously.
@@ -96,43 +88,30 @@ func (p *Producer) Produce(ctx context.Context, msg *Message) error {
 	}
 	p.mu.RUnlock()
 
-	deliveryChan := make(chan kafka.Event, 1)
-
 	// Convert headers
-	var headers []kafka.Header
+	var headers []kgo.RecordHeader
 	for k, v := range msg.Headers {
-		headers = append(headers, kafka.Header{Key: k, Value: []byte(v)})
+		headers = append(headers, kgo.RecordHeader{Key: k, Value: []byte(v)})
 	}
 
-	kafkaMsg := &kafka.Message{
-		TopicPartition: kafka.TopicPartition{
-			Topic:     &msg.Topic,
-			Partition: kafka.PartitionAny,
-		},
+	record := &kgo.Record{
+		Topic:   msg.Topic,
 		Key:     msg.Key,
 		Value:   msg.Value,
 		Headers: headers,
 	}
 
-	if err := p.producer.Produce(kafkaMsg, deliveryChan); err != nil {
+	// ProduceSync waits for the record to be acknowledged
+	results := p.client.ProduceSync(ctx, record)
+	if err := results.FirstErr(); err != nil {
 		return fmt.Errorf("produce message: %w", err)
 	}
 
-	// Wait for delivery report or context cancellation
-	select {
-	case e := <-deliveryChan:
-		m := e.(*kafka.Message)
-		if m.TopicPartition.Error != nil {
-			return fmt.Errorf("message delivery failed: %w", m.TopicPartition.Error)
-		}
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return nil
 }
 
 // ProduceAsync sends a message to Kafka asynchronously.
-// The message is buffered and will be delivered by the background handler.
+// The message is buffered and will be delivered in the background.
 func (p *Producer) ProduceAsync(msg *Message) error {
 	p.mu.RLock()
 	if p.closed {
@@ -142,27 +121,41 @@ func (p *Producer) ProduceAsync(msg *Message) error {
 	p.mu.RUnlock()
 
 	// Convert headers
-	var headers []kafka.Header
+	var headers []kgo.RecordHeader
 	for k, v := range msg.Headers {
-		headers = append(headers, kafka.Header{Key: k, Value: []byte(v)})
+		headers = append(headers, kgo.RecordHeader{Key: k, Value: []byte(v)})
 	}
 
-	kafkaMsg := &kafka.Message{
-		TopicPartition: kafka.TopicPartition{
-			Topic:     &msg.Topic,
-			Partition: kafka.PartitionAny,
-		},
+	record := &kgo.Record{
+		Topic:   msg.Topic,
 		Key:     msg.Key,
 		Value:   msg.Value,
 		Headers: headers,
 	}
 
-	return p.producer.Produce(kafkaMsg, nil)
+	p.client.Produce(context.Background(), record, func(r *kgo.Record, err error) {
+		if err != nil && p.logger != nil {
+			p.logger.Error("kafka delivery failed",
+				"topic", r.Topic,
+				"partition", r.Partition,
+				"error", err,
+			)
+		}
+	})
+
+	return nil
 }
 
 // Flush waits for all buffered messages to be delivered.
 func (p *Producer) Flush(timeout time.Duration) int {
-	return p.producer.Flush(int(timeout.Milliseconds()))
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	if err := p.client.Flush(ctx); err != nil {
+		// Return 1 to indicate unflushed messages on error
+		return 1
+	}
+	return 0
 }
 
 // Close gracefully shuts down the producer.
@@ -175,15 +168,19 @@ func (p *Producer) Close() error {
 	p.closed = true
 	p.mu.Unlock()
 
-	// Flush remaining messages
-	remaining := p.producer.Flush(30000) // 30 second timeout
-	if remaining > 0 {
-		p.logger.Warn("kafka producer closed with unflushed messages",
-			"remaining", remaining,
-		)
+	// Flush remaining messages with 30 second timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := p.client.Flush(ctx); err != nil {
+		if p.logger != nil {
+			p.logger.Warn("kafka producer closed with unflushed messages",
+				"error", err,
+			)
+		}
 	}
 
-	p.producer.Close()
+	p.client.Close()
 	return nil
 }
 
@@ -196,12 +193,63 @@ func (p *Producer) Healthy(ctx context.Context) bool {
 	}
 	p.mu.RUnlock()
 
-	// A successful flush with timeout 0 indicates the producer is healthy
-	remaining := p.producer.Flush(0)
-	return remaining == 0
+	// Ping the brokers to check connectivity
+	if err := p.client.Ping(ctx); err != nil {
+		return false
+	}
+	return true
 }
 
-// Len returns the number of messages in the producer queue.
+// Len returns the number of messages in the producer buffer.
 func (p *Producer) Len() int {
-	return p.producer.Len()
+	return int(p.client.BufferedProduceRecords())
+}
+
+// NewNoopProducer creates a producer that discards all messages.
+// Useful for testing or when Kafka is disabled.
+func NewNoopProducer(logger *slog.Logger) *NoopProducer {
+	return &NoopProducer{logger: logger}
+}
+
+// NoopProducer is a producer that discards all messages.
+type NoopProducer struct {
+	logger *slog.Logger
+}
+
+// Produce discards the message.
+func (p *NoopProducer) Produce(ctx context.Context, msg *Message) error {
+	return nil
+}
+
+// ProduceAsync discards the message.
+func (p *NoopProducer) ProduceAsync(msg *Message) error {
+	return nil
+}
+
+// Flush is a no-op.
+func (p *NoopProducer) Flush(timeout time.Duration) int {
+	return 0
+}
+
+// Close is a no-op.
+func (p *NoopProducer) Close() error {
+	return nil
+}
+
+// Healthy always returns true.
+func (p *NoopProducer) Healthy(ctx context.Context) bool {
+	return true
+}
+
+// Len always returns 0.
+func (p *NoopProducer) Len() int {
+	return 0
+}
+
+// Dialer returns a custom dialer for the Kafka client.
+// This can be used to customize connection behavior.
+func Dialer(timeout time.Duration) func(ctx context.Context, network, address string) (net.Conn, error) {
+	return (&net.Dialer{
+		Timeout: timeout,
+	}).DialContext
 }

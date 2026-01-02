@@ -4,12 +4,12 @@ go 1.25.5
 
 require (
 	credo/contracts/registry v0.0.0
-	github.com/confluentinc/confluent-kafka-go/v2 v2.12.0
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.11.1
+	github.com/twmb/franz-go v1.18.1
 	go.opentelemetry.io/otel v1.39.0
 	go.uber.org/mock v0.6.0
 	golang.org/x/sync v0.19.0
@@ -21,7 +21,10 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
+	github.com/pierrec/lz4/v4 v4.1.22 // indirect
+	github.com/twmb/franz-go/pkg/kmsg v1.9.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/metric v1.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect

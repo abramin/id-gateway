@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/twmb/franz-go/pkg/kgo"
 )
 
 // Message represents a received Kafka message.
@@ -27,12 +28,12 @@ type Handler interface {
 	Handle(ctx context.Context, msg *Message) error
 }
 
-// Consumer wraps the confluent-kafka-go consumer.
+// Consumer wraps the franz-go client for consuming messages.
 type Consumer struct {
-	consumer *kafka.Consumer
-	handler  Handler
-	logger   *slog.Logger
-	topics   []string
+	client  *kgo.Client
+	handler Handler
+	logger  *slog.Logger
+	topics  []string
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -58,19 +59,25 @@ func New(cfg Config, handler Handler, logger *slog.Logger) (*Consumer, error) {
 		return nil, fmt.Errorf("kafka consumer group ID not configured")
 	}
 
-	autoOffsetReset := cfg.AutoOffsetReset
-	if autoOffsetReset == "" {
-		autoOffsetReset = "earliest"
+	brokers := strings.Split(cfg.Brokers, ",")
+
+	// Map auto offset reset
+	var resetOffset kgo.Offset
+	switch cfg.AutoOffsetReset {
+	case "latest":
+		resetOffset = kgo.NewOffset().AtEnd()
+	default:
+		resetOffset = kgo.NewOffset().AtStart()
 	}
 
-	configMap := &kafka.ConfigMap{
-		"bootstrap.servers":  cfg.Brokers,
-		"group.id":           cfg.GroupID,
-		"auto.offset.reset":  autoOffsetReset,
-		"enable.auto.commit": false, // Manual commits for at-least-once delivery
+	opts := []kgo.Opt{
+		kgo.SeedBrokers(brokers...),
+		kgo.ConsumerGroup(cfg.GroupID),
+		kgo.ConsumeResetOffset(resetOffset),
+		kgo.DisableAutoCommit(), // Manual commits for at-least-once delivery
 	}
 
-	consumer, err := kafka.NewConsumer(configMap)
+	client, err := kgo.NewClient(opts...)
 	if err != nil {
 		return nil, fmt.Errorf("create kafka consumer: %w", err)
 	}
@@ -78,11 +85,11 @@ func New(cfg Config, handler Handler, logger *slog.Logger) (*Consumer, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Consumer{
-		consumer: consumer,
-		handler:  handler,
-		logger:   logger,
-		ctx:      ctx,
-		cancel:   cancel,
+		client:  client,
+		handler: handler,
+		logger:  logger,
+		ctx:     ctx,
+		cancel:  cancel,
 	}, nil
 }
 
@@ -92,10 +99,7 @@ func (c *Consumer) Subscribe(topics []string) error {
 	c.topics = topics
 	c.mu.Unlock()
 
-	if err := c.consumer.SubscribeTopics(topics, nil); err != nil {
-		return fmt.Errorf("subscribe to topics: %w", err)
-	}
-
+	c.client.AddConsumeTopics(topics...)
 	return nil
 }
 
@@ -119,48 +123,46 @@ func (c *Consumer) run() {
 	}
 }
 
-// poll reads and processes a single message.
+// poll reads and processes messages.
 func (c *Consumer) poll() {
-	ev := c.consumer.Poll(100) // 100ms timeout
-	if ev == nil {
+	fetches := c.client.PollFetches(c.ctx)
+	if fetches.IsClientClosed() {
 		return
 	}
 
-	switch e := ev.(type) {
-	case *kafka.Message:
-		c.handleMessage(e)
-
-	case kafka.Error:
-		if e.Code() != kafka.ErrTimedOut {
-			if c.logger != nil {
-				c.logger.Error("kafka consumer error",
-					"code", e.Code(),
-					"error", e.Error(),
-				)
-			}
+	// Log any errors
+	fetches.EachError(func(topic string, partition int32, err error) {
+		if c.logger != nil {
+			c.logger.Error("kafka consumer error",
+				"topic", topic,
+				"partition", partition,
+				"error", err,
+			)
 		}
+	})
 
-	case kafka.PartitionEOF:
-		// End of partition, normal operation
-	}
+	// Process records
+	fetches.EachRecord(func(record *kgo.Record) {
+		c.handleRecord(record)
+	})
 }
 
-// handleMessage processes a single Kafka message.
-func (c *Consumer) handleMessage(km *kafka.Message) {
+// handleRecord processes a single Kafka record.
+func (c *Consumer) handleRecord(record *kgo.Record) {
 	// Convert headers
 	headers := make(map[string]string)
-	for _, h := range km.Headers {
+	for _, h := range record.Headers {
 		headers[h.Key] = string(h.Value)
 	}
 
 	msg := &Message{
-		Topic:     *km.TopicPartition.Topic,
-		Partition: km.TopicPartition.Partition,
-		Offset:    int64(km.TopicPartition.Offset),
-		Key:       km.Key,
-		Value:     km.Value,
+		Topic:     record.Topic,
+		Partition: record.Partition,
+		Offset:    record.Offset,
+		Key:       record.Key,
+		Value:     record.Value,
 		Headers:   headers,
-		Timestamp: km.Timestamp,
+		Timestamp: record.Timestamp,
 	}
 
 	// Process message
@@ -178,7 +180,7 @@ func (c *Consumer) handleMessage(km *kafka.Message) {
 	}
 
 	// Commit offset
-	if _, err := c.consumer.CommitMessage(km); err != nil {
+	if err := c.client.CommitRecords(c.ctx, record); err != nil {
 		if c.logger != nil {
 			c.logger.Error("failed to commit offset",
 				"topic", msg.Topic,
@@ -210,9 +212,10 @@ func (c *Consumer) Stop(ctx context.Context) error {
 
 	select {
 	case <-done:
-		return c.consumer.Close()
+		c.client.Close()
+		return nil
 	case <-ctx.Done():
-		c.consumer.Close()
+		c.client.Close()
 		return ctx.Err()
 	}
 }
@@ -226,12 +229,9 @@ func (c *Consumer) Healthy(ctx context.Context) bool {
 	}
 	c.mu.RUnlock()
 
-	// Check if we have an active subscription
-	assignment, err := c.consumer.Assignment()
-	if err != nil {
+	// Ping the brokers to check connectivity
+	if err := c.client.Ping(ctx); err != nil {
 		return false
 	}
-
-	// Consumer is healthy if it has partition assignments
-	return len(assignment) > 0
+	return true
 }
