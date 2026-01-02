@@ -2,6 +2,7 @@
 //
 // Usage: k6 run loadtest/k6-credo.js
 //        k6 run loadtest/k6-credo.js -e SCENARIO=resolve_client_burst
+//        k6 run loadtest/k6-credo.js -e QUICK=true              # Halves all durations
 //
 // IMPORTANT: Run the server with rate limiting disabled for load tests:
 //   DISABLE_RATE_LIMITING=true docker compose up
@@ -19,6 +20,7 @@
 //   USER_COUNT               - Number of test users (default: 200)
 //   BURST_CLIENT_COUNT       - Clients for ResolveClient burst (default: 100)
 //   LARGE_TENANT_CLIENT_COUNT - Clients per large tenant (default: 500)
+//   QUICK                    - Set to 'true' to halve all durations (~38 min vs ~76 min)
 //   SCENARIO                 - Which scenario to run:
 //
 // Available scenarios:
@@ -104,14 +106,45 @@ const DEFAULT_SCOPES = parseScopes(__ENV.SCOPES || 'openid,profile');
 const MAX_VUS = 200;
 const USER_COUNT = parsePositiveInt(__ENV.USER_COUNT, MAX_VUS);
 
+// Quick mode: halves all durations for faster test runs (~38 min instead of ~76 min)
+const QUICK_MODE = __ENV.QUICK === 'true' || __ENV.QUICK === '1';
+const TIME_MULTIPLIER = QUICK_MODE ? 0.5 : 1.0;
+
+// Duration helper - applies time multiplier and formats as k6 duration string
+function dur(minutes, seconds = 0) {
+  const totalSeconds = Math.round((minutes * 60 + seconds) * TIME_MULTIPLIER);
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  if (m === 0) return `${s}s`;
+  if (s === 0) return `${m}m`;
+  return `${m}m${s}s`;
+}
+
+// Start time helper - calculates cumulative start time with buffer
+function startAt(minutes, seconds = 0) {
+  const totalSeconds = Math.round((minutes * 60 + seconds) * TIME_MULTIPLIER);
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  if (m === 0) return `${s}s`;
+  if (s === 0) return `${m}m`;
+  return `${m}m${s}s`;
+}
+
 const CONSENT_PURPOSES = ['login', 'registry_check', 'vc_issuance', 'decision_evaluation'];
+
+// Log QUICK mode status at module load time
+if (QUICK_MODE) {
+  console.log('QUICK MODE ENABLED: All durations halved (~38 min total)');
+} else {
+  console.log('NORMAL MODE: Full durations (~76 min total). Use QUICK=true for faster runs.');
+}
 
 // Scenario configurations
 export const options = {
   scenarios: {
     // ========== AUTH MODULE SCENARIOS ==========
     // Scenarios run SEQUENTIALLY when SCENARIO=all (staggered startTime)
-    // Total estimated runtime: ~75 minutes
+    // Total estimated runtime: ~76 min (normal) or ~38 min (QUICK=true)
 
     // Scenario 1: Token Refresh Storm (5m)
     // Tests mutex contention under concurrent token refresh load
@@ -119,11 +152,11 @@ export const options = {
       executor: 'constant-arrival-rate',
       rate: 100,
       timeUnit: '1s',
-      duration: '5m',
+      duration: dur(5),
       preAllocatedVUs: 50,
       maxVUs: 200,
       exec: 'tokenRefreshScenario',
-      startTime: '0s',              // 0:00 - 5:00
+      startTime: startAt(0),
       tags: { scenario: 'token_refresh' },
     },
 
@@ -136,12 +169,12 @@ export const options = {
       preAllocatedVUs: 20,
       maxVUs: 100,
       stages: [
-        { duration: '1m', target: 50 },
-        { duration: '3m', target: 50 },
-        { duration: '1m', target: 0 },
+        { duration: dur(1), target: 50 },
+        { duration: dur(3), target: 50 },
+        { duration: dur(1), target: 0 },
       ],
       exec: 'consentBurstScenario',
-      startTime: '5m10s',           // 5:10 - 10:10
+      startTime: startAt(5, 10),
       tags: { scenario: 'consent_burst' },
     },
 
@@ -150,9 +183,9 @@ export const options = {
     mixed_load: {
       executor: 'constant-vus',
       vus: 50,
-      duration: '5m',
+      duration: dur(5),
       exec: 'mixedLoadScenario',
-      startTime: '10m20s',          // 10:20 - 15:20
+      startTime: startAt(10, 20),
       tags: { scenario: 'mixed_load' },
     },
 
@@ -162,11 +195,11 @@ export const options = {
       executor: 'constant-arrival-rate',
       rate: 50,
       timeUnit: '1s',
-      duration: '5m',
+      duration: dur(5),
       preAllocatedVUs: 50,
       maxVUs: 150,
       exec: 'oauthFlowScenario',
-      startTime: '15m30s',          // 15:30 - 20:30
+      startTime: startAt(15, 30),
       tags: { scenario: 'oauth_flow' },
     },
 
@@ -176,11 +209,11 @@ export const options = {
       executor: 'constant-arrival-rate',
       rate: 200,
       timeUnit: '1s',
-      duration: '1m',
+      duration: dur(1),
       preAllocatedVUs: 100,
       maxVUs: 1000,
       exec: 'resolveClientBurstScenario',
-      startTime: '20m40s',          // 20:40 - 21:40
+      startTime: startAt(20, 40),
       tags: { scenario: 'resolve_client_burst' },
     },
 
@@ -189,9 +222,9 @@ export const options = {
     client_onboarding_spike: {
       executor: 'constant-vus',
       vus: 50,
-      duration: '2m',
+      duration: dur(2),
       exec: 'clientOnboardingScenario',
-      startTime: '21m50s',          // 21:50 - 23:50
+      startTime: startAt(21, 50),
       tags: { scenario: 'client_onboarding' },
     },
 
@@ -200,9 +233,9 @@ export const options = {
     tenant_dashboard_load: {
       executor: 'constant-vus',
       vus: 100,
-      duration: '2m',
+      duration: dur(2),
       exec: 'tenantDashboardScenario',
-      startTime: '24m',             // 24:00 - 26:00
+      startTime: startAt(24),
       tags: { scenario: 'tenant_dashboard' },
     },
 
@@ -212,11 +245,11 @@ export const options = {
       executor: 'constant-arrival-rate',
       rate: 500,
       timeUnit: '1s',
-      duration: '1m',
+      duration: dur(1),
       preAllocatedVUs: 50,
       maxVUs: 200,
       exec: 'rateLimitSustainedScenario',
-      startTime: '26m10s',          // 26:10 - 27:10
+      startTime: startAt(26, 10),
       tags: { scenario: 'rate_limit_sustained' },
     },
 
@@ -227,7 +260,7 @@ export const options = {
       vus: 50,
       iterations: 100,
       exec: 'rateLimitCardinalityScenario',
-      startTime: '27m20s',          // 27:20 - ~29:20
+      startTime: startAt(27, 20),
       tags: { scenario: 'rate_limit_cardinality' },
     },
 
@@ -237,11 +270,11 @@ export const options = {
       executor: 'constant-arrival-rate',
       rate: 200,
       timeUnit: '1s',
-      duration: '1m',
+      duration: dur(1),
       preAllocatedVUs: 50,
       maxVUs: 200,
       exec: 'consentShardContentionScenario',
-      startTime: '29m30s',          // 29:30 - 30:30
+      startTime: startAt(29, 30),
       tags: { scenario: 'consent_shard_contention' },
     },
 
@@ -250,9 +283,9 @@ export const options = {
     consent_list_load: {
       executor: 'constant-vus',
       vus: 50,
-      duration: '2m',
+      duration: dur(2),
       exec: 'consentListScenario',
-      startTime: '30m40s',          // 30:40 - 32:40
+      startTime: startAt(30, 40),
       tags: { scenario: 'consent_list_load' },
     },
 
@@ -267,12 +300,12 @@ export const options = {
       preAllocatedVUs: 200,
       maxVUs: 2000,
       stages: [
-        { duration: '10s', target: 10000 },
-        { duration: '30s', target: 10000 },
-        { duration: '10s', target: 1000 },
+        { duration: dur(0, 10), target: 10000 },
+        { duration: dur(0, 30), target: 10000 },
+        { duration: dur(0, 10), target: 1000 },
       ],
       exec: 'globalThrottleSpikeScenario',
-      startTime: '32m50s',          // 32:50 - 33:40
+      startTime: startAt(32, 50),
       tags: { scenario: 'global_throttle_spike' },
     },
 
@@ -282,11 +315,11 @@ export const options = {
       executor: 'constant-arrival-rate',
       rate: 500,
       timeUnit: '1s',
-      duration: '2m',
+      duration: dur(2),
       preAllocatedVUs: 100,
       maxVUs: 500,
       exec: 'hotKeyContentionScenario',
-      startTime: '33m50s',          // 33:50 - 35:50
+      startTime: startAt(33, 50),
       tags: { scenario: 'hot_key_contention' },
     },
 
@@ -297,7 +330,7 @@ export const options = {
       vus: 100,
       iterations: 15,
       exec: 'authLockoutRaceScenario',
-      startTime: '36m',             // 36:00 - ~37:00
+      startTime: startAt(36),
       tags: { scenario: 'auth_lockout_race' },
     },
 
@@ -311,12 +344,12 @@ export const options = {
       preAllocatedVUs: 50,
       maxVUs: 500,
       stages: [
-        { duration: '1m', target: 500 },
-        { duration: '3m', target: 500 },
-        { duration: '1m', target: 100 },
+        { duration: dur(1), target: 500 },
+        { duration: dur(3), target: 500 },
+        { duration: dur(1), target: 100 },
       ],
       exec: 'decisionAgeVerifyScenario',
-      startTime: '37m10s',          // 37:10 - 42:10
+      startTime: startAt(37, 10),
       tags: { scenario: 'decision_age_verify' },
     },
 
@@ -328,12 +361,12 @@ export const options = {
       preAllocatedVUs: 50,
       maxVUs: 500,
       stages: [
-        { duration: '1m', target: 800 },
-        { duration: '3m', target: 800 },
-        { duration: '1m', target: 100 },
+        { duration: dur(1), target: 800 },
+        { duration: dur(3), target: 800 },
+        { duration: dur(1), target: 100 },
       ],
       exec: 'decisionSanctionsScenario',
-      startTime: '42m20s',          // 42:20 - 47:20
+      startTime: startAt(42, 20),
       tags: { scenario: 'decision_sanctions' },
     },
 
@@ -341,9 +374,9 @@ export const options = {
     decision_same_user: {
       executor: 'constant-vus',
       vus: 50,
-      duration: '2m',
+      duration: dur(2),
       exec: 'decisionSameUserScenario',
-      startTime: '47m30s',          // 47:30 - 49:30
+      startTime: startAt(47, 30),
       tags: { scenario: 'decision_same_user' },
     },
 
@@ -352,11 +385,11 @@ export const options = {
       executor: 'constant-arrival-rate',
       rate: 200,
       timeUnit: '1s',
-      duration: '2m',
+      duration: dur(2),
       preAllocatedVUs: 50,
       maxVUs: 200,
       exec: 'decisionCacheHitScenario',
-      startTime: '49m40s',          // 49:40 - 51:40
+      startTime: startAt(49, 40),
       tags: { scenario: 'decision_cache_hit' },
     },
 
@@ -364,9 +397,9 @@ export const options = {
     decision_rule_paths: {
       executor: 'constant-vus',
       vus: 100,
-      duration: '3m',
+      duration: dur(3),
       exec: 'decisionRulePathsScenario',
-      startTime: '51m50s',          // 51:50 - 54:50
+      startTime: startAt(51, 50),
       tags: { scenario: 'decision_rule_paths' },
     },
 
@@ -375,11 +408,11 @@ export const options = {
       executor: 'constant-arrival-rate',
       rate: 200,
       timeUnit: '1s',
-      duration: '2m',
+      duration: dur(2),
       preAllocatedVUs: 50,
       maxVUs: 200,
       exec: 'decisionConsentDenialScenario',
-      startTime: '55m',             // 55:00 - 57:00
+      startTime: startAt(55),
       tags: { scenario: 'decision_consent_denial' },
     },
 
@@ -393,12 +426,12 @@ export const options = {
       preAllocatedVUs: 50,
       maxVUs: 500,
       stages: [
-        { duration: '1m', target: 500 },
-        { duration: '2m', target: 500 },
-        { duration: '1m', target: 100 },
+        { duration: dur(1), target: 500 },
+        { duration: dur(2), target: 500 },
+        { duration: dur(1), target: 100 },
       ],
       exec: 'evidenceCitizenScenario',
-      startTime: '57m10s',          // 57:10 - 61:10
+      startTime: startAt(57, 10),
       tags: { scenario: 'evidence_citizen' },
     },
 
@@ -410,12 +443,12 @@ export const options = {
       preAllocatedVUs: 50,
       maxVUs: 500,
       stages: [
-        { duration: '1m', target: 500 },
-        { duration: '2m', target: 500 },
-        { duration: '1m', target: 100 },
+        { duration: dur(1), target: 500 },
+        { duration: dur(2), target: 500 },
+        { duration: dur(1), target: 100 },
       ],
       exec: 'evidenceSanctionsScenario',
-      startTime: '61m20s',          // 61:20 - 65:20
+      startTime: startAt(61, 20),
       tags: { scenario: 'evidence_sanctions' },
     },
 
@@ -424,11 +457,11 @@ export const options = {
       executor: 'constant-arrival-rate',
       rate: 100,
       timeUnit: '1s',
-      duration: '2m',
+      duration: dur(2),
       preAllocatedVUs: 50,
       maxVUs: 200,
       exec: 'evidenceVCIssueScenario',
-      startTime: '65m30s',          // 65:30 - 67:30
+      startTime: startAt(65, 30),
       tags: { scenario: 'evidence_vc_issue' },
     },
 
@@ -437,9 +470,9 @@ export const options = {
       executor: 'shared-iterations',
       vus: 100,
       iterations: 1000,
-      maxDuration: '30s',
+      maxDuration: dur(0, 30),
       exec: 'evidenceCacheStampedeScenario',
-      startTime: '67m40s',          // 67:40 - 68:10
+      startTime: startAt(67, 40),
       tags: { scenario: 'evidence_cache_stampede' },
     },
 
@@ -448,11 +481,11 @@ export const options = {
       executor: 'constant-arrival-rate',
       rate: 200,
       timeUnit: '1s',
-      duration: '3m',
+      duration: dur(3),
       preAllocatedVUs: 50,
       maxVUs: 300,
       exec: 'evidenceCheckScenario',
-      startTime: '68m20s',          // 68:20 - 71:20
+      startTime: startAt(68, 20),
       tags: { scenario: 'evidence_check' },
     },
 
@@ -464,7 +497,7 @@ export const options = {
       vus: 50,
       iterations: 3,
       exec: 'authCodeReplayScenario',
-      startTime: '71m30s',          // 71:30 - ~72:00
+      startTime: startAt(71, 30),
       tags: { scenario: 'auth_code_replay' },
     },
 
@@ -473,11 +506,11 @@ export const options = {
       executor: 'constant-arrival-rate',
       rate: 500,
       timeUnit: '1s',
-      duration: '1m',
+      duration: dur(1),
       preAllocatedVUs: 100,
       maxVUs: 500,
       exec: 'trlWriteSaturationScenario',
-      startTime: '72m10s',          // 72:10 - 73:10
+      startTime: startAt(72, 10),
       tags: { scenario: 'trl_write_saturation' },
     },
 
@@ -486,11 +519,11 @@ export const options = {
       executor: 'constant-arrival-rate',
       rate: 2000,
       timeUnit: '1s',
-      duration: '30s',
+      duration: dur(0, 30),
       preAllocatedVUs: 100,
       maxVUs: 500,
       exec: 'userinfoThroughputScenario',
-      startTime: '73m20s',          // 73:20 - 73:50
+      startTime: startAt(73, 20),
       tags: { scenario: 'userinfo_throughput' },
     },
 
@@ -500,9 +533,9 @@ export const options = {
     consent_revoke_grant_race: {
       executor: 'constant-vus',
       vus: 50,
-      duration: '1m',
+      duration: dur(1),
       exec: 'consentRevokeGrantRaceScenario',
-      startTime: '74m',             // 74:00 - 75:00
+      startTime: startAt(74),
       tags: { scenario: 'consent_revoke_grant_race' },
     },
 
@@ -512,7 +545,7 @@ export const options = {
       vus: 50,
       iterations: 5,
       exec: 'consentGDPRDeleteScenario',
-      startTime: '75m10s',          // 75:10 - ~76:10
+      startTime: startAt(75, 10),
       tags: { scenario: 'consent_gdpr_delete' },
     },
   },

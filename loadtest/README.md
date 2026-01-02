@@ -67,12 +67,17 @@ DISABLE_RATE_LIMITING=true make run
 | `LARGE_TENANT_CLIENT_COUNT` | `500` | Clients per large tenant |
 | `SCOPES` | `openid,profile` | OAuth scopes |
 | `SCENARIO` | `all` | Which scenario to run |
+| `QUICK` | `false` | Halve all durations (~38 min vs ~76 min) |
 
 ### Run Scenarios
 
 ```bash
 # Run all scenarios (requires DISABLE_RATE_LIMITING=true)
+# Full run: ~76 minutes
 k6 run loadtest/k6-credo.js
+
+# Quick run: ~38 minutes (halves all durations)
+k6 run loadtest/k6-credo.js -e QUICK=true
 
 # Run specific scenario
 k6 run loadtest/k6-credo.js -e SCENARIO=token_refresh_storm
