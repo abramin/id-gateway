@@ -78,18 +78,18 @@ func (s *InMemoryAllowlistStore) StartCleanup(ctx context.Context, interval time
 	for {
 		select {
 		case <-ticker.C:
-			s.removeExpired()
+			s.RemoveExpiredAt(time.Now())
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	}
 }
 
-func (s *InMemoryAllowlistStore) removeExpired() {
+// RemoveExpiredAt removes all entries that have expired as of the given time.
+// Exported for testability; background cleanup passes wall-clock time.
+func (s *InMemoryAllowlistStore) RemoveExpiredAt(now time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// Background cleanup uses wall-clock time since there's no request context
-	now := time.Now()
 	for key, entry := range s.entries {
 		if entry.IsExpiredAt(now) {
 			delete(s.entries, key)

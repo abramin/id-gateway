@@ -7,6 +7,7 @@ import (
 
 	"credo/internal/ratelimit/config"
 	"credo/internal/ratelimit/metrics"
+	"credo/pkg/requestcontext"
 )
 
 // CleanupResult contains the results of a cleanup run (PRD-017 FR-8).
@@ -133,7 +134,7 @@ func (s *AuthLockoutCleanupService) Start(ctx context.Context) error {
 //   - Window failures: reset records older than WindowDuration (default 15 min)
 //   - Daily failures: reset records older than 24 hours
 func (s *AuthLockoutCleanupService) RunOnce(ctx context.Context) (res *CleanupResult, err error) {
-	now := time.Now()
+	now := requestcontext.Now(ctx)
 
 	// Calculate cutoffs (business rules owned by this service, not the store)
 	windowCutoff := now.Add(-s.config.WindowDuration)

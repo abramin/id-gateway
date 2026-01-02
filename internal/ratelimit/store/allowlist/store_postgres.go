@@ -114,13 +114,22 @@ func (s *PostgresStore) StartCleanup(ctx context.Context, interval time.Duration
 	for {
 		select {
 		case <-ticker.C:
-			if _, err := s.db.ExecContext(ctx, `DELETE FROM rate_limit_allowlist WHERE expires_at IS NOT NULL AND expires_at <= $1`, time.Now()); err != nil {
-				return fmt.Errorf("cleanup allowlist entries: %w", err)
+			if err := s.RemoveExpiredAt(ctx, time.Now()); err != nil {
+				return err
 			}
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	}
+}
+
+// RemoveExpiredAt removes all entries that have expired as of the given time.
+// Exported for testability; background cleanup passes wall-clock time.
+func (s *PostgresStore) RemoveExpiredAt(ctx context.Context, now time.Time) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM rate_limit_allowlist WHERE expires_at IS NOT NULL AND expires_at <= $1`, now); err != nil {
+		return fmt.Errorf("cleanup allowlist entries: %w", err)
+	}
+	return nil
 }
 
 type allowlistRow interface {
