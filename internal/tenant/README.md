@@ -181,8 +181,8 @@ internal/tenant/
 ├── secrets/           # Secret generation and hashing
 ├── service/           # Application services (tenant + client)
 └── store/             # Persistence adapters
-    ├── tenant/        # Tenant store (in-memory)
-    └── client/        # Client store (in-memory)
+    ├── tenant/        # Tenant store (PostgreSQL)
+    └── client/        # Client store (PostgreSQL)
 ```
 
 ---
@@ -296,7 +296,7 @@ Security properties:
 ## Known Gaps / Follow-ups
 
 - Tenant-admin auth is not yet wired; handlers use platform-admin access paths.
-- Persistence is demo-only (in-memory stores).
+- Persistence uses PostgreSQL stores.
 - Consider argon2id for new installations; bcrypt is CPU-bound.
 - Grace period for rotated secrets not yet implemented (in-flight requests fail immediately).
 

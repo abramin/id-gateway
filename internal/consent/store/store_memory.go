@@ -17,7 +17,7 @@ import (
 // - Return nil for successful operations
 // - Return wrapped errors with context for infrastructure failures (future: DB errors, network issues, etc.)
 
-// InMemoryStore stores consent records in memory for tests/dev.
+// InMemoryStore stores consent records in memory for tests.
 type InMemoryStore struct {
 	mu       sync.RWMutex
 	consents map[id.UserID]map[models.Purpose]*models.Record

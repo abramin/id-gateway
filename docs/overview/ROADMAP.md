@@ -139,7 +139,7 @@ The delivery plan consists of THREE parallel tracks that can be pursued simultan
 
 **Database:**
 
-- Migrate from in-memory stores to **PostgreSQL**
+- ✅ PostgreSQL-backed stores for core persistence
 - Use schema migrations with **golang-migrate/migrate**
 - Write SQL queries with **sqlc** for type safety
 - Keep in-memory implementations for testing
@@ -966,7 +966,7 @@ Token verification and session introspection are the highest-volume operations f
 ### Additions
 
 - Fast introspection endpoint
-- Local in-memory caching for token and session reads
+- Local cache optional; current runtime uses PostgreSQL-backed reads
 - Optional distributed cache (Redis) for shared state
 
 ### Tradeoffs to Document

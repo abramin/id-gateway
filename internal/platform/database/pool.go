@@ -33,7 +33,7 @@ type Pool struct {
 }
 
 // New creates a new database connection pool.
-// Returns nil if the URL is empty (in-memory mode).
+// Returns nil if the URL is empty.
 func New(cfg Config) (*Pool, error) {
 	if cfg.URL == "" {
 		return nil, nil

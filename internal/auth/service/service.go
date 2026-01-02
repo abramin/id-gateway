@@ -39,7 +39,7 @@ var (
 )
 
 // TokenRevocationList manages revoked access tokens by JTI.
-// Production systems should use Redis for distributed revocation.
+// Production systems should use a persistent, shared store (PostgreSQL or Redis).
 type TokenRevocationList interface {
 	RevokeToken(ctx context.Context, jti string, ttl time.Duration) error
 	IsRevoked(ctx context.Context, jti string) (bool, error)

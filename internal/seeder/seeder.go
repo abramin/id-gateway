@@ -38,7 +38,7 @@ type AuditStore interface {
 	Append(ctx context.Context, event audit.Event) error
 }
 
-// Seeder populates in-memory stores with demo data
+// Seeder populates stores with demo data.
 type Seeder struct {
 	users         UserStore
 	sessions      SessionStore

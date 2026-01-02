@@ -145,7 +145,7 @@ The **Session** is the primary aggregate root, owning:
 - **Device Binding Policy** via `device/device.go` and `service/device_binding.go`
   - Device binding is logging-only unless `DeviceBindingEnabled` is true.
   - Fingerprints are hashed; no IP is stored.
-- **Revocation List** via `store/revocation/revocation.go` (in-memory by default)
+- **Revocation List** via `store/revocation` (PostgreSQL-backed in production)
   - `TRLFailureMode` controls whether TRL write failures warn or fail.
   - Clock injection via `WithClock(func() time.Time)` option for testability
 - **Replay Protection** via `service/token_flow.go#revokeSessionOnReplay`
@@ -292,7 +292,7 @@ Services translate these to domain errors at their boundary.
 - Multi-factor authentication deferred.
 - Self-service account deletion deferred.
 - Device binding is logging-only unless `DeviceBindingEnabled` is true.
-- Admin deletion is not transactional in the in-memory stores.
+- Admin deletion is not transactional across stores.
 
 ---
 

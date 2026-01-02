@@ -309,7 +309,7 @@ func parseAllowedRedirectSchemes(raw, env string) []string {
 }
 
 func validateDemoMode() error {
-	prodVars := []string{"DB_URL", "JWT_SIGNING_KEY", "REDIS_URL"}
+	prodVars := []string{"JWT_SIGNING_KEY"}
 	for _, key := range prodVars {
 		if val := os.Getenv(key); val != "" {
 			return fmt.Errorf("refusing to start demo env with production variables: %s", key)

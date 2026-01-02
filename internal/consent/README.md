@@ -35,7 +35,7 @@ This module follows **hexagonal architecture** (ports-and-adapters):
             ▼                             ▼
 ┌──────────────────────────┐   ┌──────────────────────┐
 │ Store (ports.Store)      │   │ Audit Publisher       │
-│ - in-memory adapter      │   │ - audit events        │
+│ - PostgreSQL adapter     │   │ - audit events        │
 └──────────────────────────┘   └──────────────────────┘
 ```
 
@@ -318,7 +318,7 @@ Unit tests exist only to:
 
 ## Database Migration Strategy
 
-When migrating from in-memory store to PostgreSQL, apply these index strategies:
+PostgreSQL index strategies:
 
 ### Required Indexes
 

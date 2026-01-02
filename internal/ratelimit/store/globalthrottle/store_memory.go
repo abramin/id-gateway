@@ -10,6 +10,7 @@ import (
 // InMemoryGlobalThrottleStore implements global rate limiting with atomic counters.
 // Uses tumbling windows (per-second and per-hour) for lock-free operation.
 // This provides approximate rate limiting with minimal contention.
+// For production, use the PostgreSQL-backed store.
 type InMemoryGlobalThrottleStore struct {
 	// Per-second tracking (tumbling window)
 	secondCount    atomic.Int64

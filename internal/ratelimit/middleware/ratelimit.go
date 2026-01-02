@@ -10,7 +10,7 @@
 //   - RateLimitClient: Per-OAuth-client limiting
 //
 // Resilience features:
-//   - Circuit breaker with automatic fallback to in-memory store
+//   - Circuit breaker with optional fallback limiter
 //   - Fail-open by default (requests proceed on store errors)
 //   - Configurable fail-closed mode for high-security deployments
 //   - X-RateLimit-Status: degraded header when using fallback
@@ -79,7 +79,7 @@ func WithSupportURL(url string) Option {
 }
 
 // WithFallbackLimiter sets the fallback rate limiter used when the primary fails.
-// Typically an in-memory implementation for resilience during store outages.
+// Implementations should avoid shared state divergence (e.g., separate persistent store).
 func WithFallbackLimiter(limiter RateLimiter) Option {
 	return func(m *Middleware) {
 		if limiter != nil {

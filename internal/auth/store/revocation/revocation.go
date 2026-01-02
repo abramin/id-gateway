@@ -12,8 +12,8 @@ const DefaultMaxSize = 10000
 // Clock provides the current time. Used for testability.
 type Clock func() time.Time
 
-// InMemoryTRL is an in-memory implementation of TokenRevocationList for MVP/testing.
-// For production, use RedisTRL for distributed token revocation.
+// InMemoryTRL is an in-memory implementation of TokenRevocationList for tests.
+// For production, use PostgresTRL for shared token revocation.
 type InMemoryTRL struct {
 	mu              sync.RWMutex
 	revoked         map[string]time.Time // jti -> expiry timestamp

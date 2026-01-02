@@ -17,7 +17,7 @@ import (
 // - Return wrapped errors with context for infrastructure failures (future: DB errors, network issues, etc.)
 //
 
-// InMemoryAuthorizationCodeStore stores authorization codes in memory for tests/dev.
+// InMemoryAuthorizationCodeStore stores authorization codes in memory for tests.
 type InMemoryAuthorizationCodeStore struct {
 	mu        sync.RWMutex
 	authCodes map[string]*models.AuthorizationCodeRecord

@@ -494,7 +494,7 @@ type ConsentRecord struct {
 
 **Production Evolution (PRD-002 TR-6):**
 
-- **Write model:** Consent service writes canonical records to `ConsentStore` (SQL/in-memory) and emits `consent_granted`/`consent_revoked` events to Kafka/NATS.
+- **Write model:** Consent service writes canonical records to `ConsentStore` (PostgreSQL) and emits `consent_granted`/`consent_revoked` events to Kafka/NATS.
 - **Read model:** Projection workers consume events and maintain a Redis/DynamoDB read model keyed by `user_id:purpose` with `{status, expires_at, revoked_at, version}` for sub-5ms lookups.
 - **Consistency:** Projection lag budget ≤1s; `Require()` checks projection first, falls back to canonical store on cache miss.
 - **Resilience:** Replay tool rebuilds projections from audit log; outbox pattern guarantees event delivery; no-eviction Redis policy for consent projections.
@@ -813,7 +813,7 @@ type AllowlistEntry struct {
 
 - `service/` - Rate limiting logic and orchestration
 - `middleware/` - HTTP middleware for enforcement
-- `store/bucket/` - Sliding window counters (in-memory, Redis)
+- `store/bucket/` - Sliding window counters (PostgreSQL)
 - `store/allowlist/` - Allowlist entries
 - `handler/` - Admin endpoints for allowlist management
 
@@ -1349,8 +1349,8 @@ Having the code structured by services makes these toggles easier to reason abou
 **What's Implemented:**
 
 - ✅ Complete domain models and service layer logic
-- ✅ In-memory stores (UserStore, SessionStore, ConsentStore, VCStore, RegistryCacheStore, AuditStore)
-- ✅ Storage interfaces abstracted (ready for Postgres implementations)
+- ✅ PostgreSQL stores (UserStore, SessionStore, ConsentStore, VCStore, RegistryCacheStore, AuditStore)
+- ✅ Storage interfaces abstracted (production adapters implemented)
 - ✅ Data minimization functions (MinimizeCitizenRecord, MinimizeClaims)
 - ✅ Consent enforcement with typed errors
 - ✅ Registry caching with TTL
@@ -1372,11 +1372,11 @@ Having the code structured by services makes these toggles easier to reason abou
 - ✅ Device binding service for session security (PRD-001)
 - ✅ Tenant and client management (PRD-026A)
 - ✅ Tenant and client lifecycle management (PRD-026B)
-- ✅ Rate limiting with in-memory sliding window (PRD-017 MVP)
+- ✅ Rate limiting with PostgreSQL-backed sliding window (PRD-017)
 
 **What's Partially Implemented:**
 
-- ⚠️ Rate limiting Redis backend (PRD-017 - in-memory MVP complete, Redis backend deferred to PRD-017B)
+- ⚠️ Rate limiting Redis backend (PRD-017B - optional)
 - ⚠️ Evidence and Decision handlers (501 Not Implemented)
 - ⚠️ User Data Rights handlers (501 Not Implemented)
 - ⚠️ Real VC credential ID generation
@@ -1388,7 +1388,7 @@ Key improvements to harden this design:
 
 1. **Persistent Storage**
 
-   - Replace in-memory stores with Postgres repositories per service
+   - PostgreSQL stores implemented per service
    - Add connection pooling and retry logic
    - Implement proper transaction handling for multi-store operations
    - **CQRS read models:** Deploy Redis projections for consent/decision hot paths (see PRD-002 TR-6, PRD-005 TR-5)
@@ -1431,7 +1431,7 @@ Key improvements to harden this design:
 
 6. **Security Hardening**
 
-   - ✅ Rate limiting with in-memory sliding window (PRD-017 MVP complete)
+   - ✅ Rate limiting with PostgreSQL-backed sliding window (PRD-017)
    - ⚠️ Distributed rate limiting with Redis backend (PRD-017B)
    - ⚠️ Implement circuit breakers for registry calls (hystrix-go or similar)
    - ⚠️ Add request signing/verification for interservice calls
@@ -1483,7 +1483,7 @@ Key improvements to harden this design:
 ### Why Interface-Based Storage?
 
 - **Testability:** Service logic can be tested with mock stores without spinning up databases.
-- **Flexibility:** Easy to swap in-memory stores for Postgres, MongoDB, or cloud-native storage.
+- **Flexibility:** Adapters allow swapping storage backends (PostgreSQL, Redis, cloud-native).
 - **Clear contracts:** Store interfaces document exactly what persistence operations each service needs.
 
 ### Why Derived Identity Pattern?

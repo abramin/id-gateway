@@ -4,7 +4,7 @@ import "sync"
 
 // CircuitBreaker tracks consecutive limiter errors for fail-safe rate limiting (PRD-017 FR-7):
 // - Track consecutive limiter errors.
-// - Open circuit after N failures; during open, use in-memory fallback.
+// - Open circuit after N failures; during open, use the configured fallback limiter.
 // - When open, set X-RateLimit-Status: degraded so callers know they're in fallback mode.
 // - Close circuit after M consecutive successful primary checks.
 type CircuitBreaker struct {

@@ -62,7 +62,7 @@ docker compose up --build
 # Swagger UI:  http://localhost:8081
 ```
 
-Demo mode (all in-memory):
+Demo mode (Postgres-backed):
 
 ```bash
 docker compose --env-file .env.demo \
@@ -96,6 +96,7 @@ python3 -m http.server 8000  # http://localhost:8000
 - Unit/integration: `go test ./...`
 - E2E (godog): `go test -v ./e2e -- -godog.tags=@normal`
 - Latest E2E results: https://abramin.github.io/Credo/e2e/
+- In-memory stores/caches remain available for unit and E2E tests; runtime wiring uses Postgres/Redis.
 
 ## API quick reference
 

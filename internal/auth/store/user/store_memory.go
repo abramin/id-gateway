@@ -15,7 +15,7 @@ import (
 // - Return ErrNotFound when the requested entity does not exist
 // - Return nil for successful operations
 // - Return wrapped errors with context for infrastructure failures (future: DB errors, network issues, etc.)
-// InMemoryUserStore stores users in memory for tests/dev.
+// InMemoryUserStore stores users in memory for tests.
 type InMemoryUserStore struct {
 	mu    sync.RWMutex
 	users map[id.UserID]*models.User

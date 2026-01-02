@@ -8,7 +8,7 @@ import (
 	id "credo/pkg/domain"
 )
 
-// InMemoryStore is an in-memory implementation of Store for tests or local use.
+// InMemoryStore is an in-memory implementation of Store for tests.
 // It is safe for concurrent access but does not persist across process restarts.
 type InMemoryStore struct {
 	mu          sync.RWMutex

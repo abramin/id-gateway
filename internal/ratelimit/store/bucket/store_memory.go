@@ -204,7 +204,7 @@ func (s *shard) delete(key string) {
 
 // InMemoryBucketStore implements a sharded, LRU-evicting rate limit store
 // with circular buffer sliding windows for bounded memory and O(1) operations.
-// For production at scale, use RedisStore instead.
+// For production, use the PostgreSQL-backed store.
 type InMemoryBucketStore struct {
 	shards     []*shard
 	shardCount uint32

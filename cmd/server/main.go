@@ -76,7 +76,6 @@ import (
 	outboxpostgres "credo/pkg/platform/audit/outbox/store/postgres"
 	outboxworker "credo/pkg/platform/audit/outbox/worker"
 	auditpublisher "credo/pkg/platform/audit/publisher"
-	auditmemory "credo/pkg/platform/audit/store/memory"
 	auditpostgres "credo/pkg/platform/audit/store/postgres"
 	adminmw "credo/pkg/platform/middleware/admin"
 	auth "credo/pkg/platform/middleware/auth"
@@ -117,10 +116,6 @@ type authModule struct {
 	Handler       *authHandler.Handler
 	AdminSvc      *admin.Service
 	Cleanup       *cleanupWorker.CleanupService
-	Users         *userStore.InMemoryUserStore
-	Sessions      *sessionStore.InMemorySessionStore
-	Codes         *authCodeStore.InMemoryAuthorizationCodeStore
-	RefreshTokens *refreshTokenStore.InMemoryRefreshTokenStore
 	AuditStore    audit.Store
 }
 
@@ -132,8 +127,6 @@ type consentModule struct {
 type tenantModule struct {
 	Service *tenantService.Service
 	Handler *tenantHandler.Handler
-	Tenants *tenantstore.InMemory
-	Clients *clientstore.InMemory
 }
 
 type registryModule struct {
@@ -170,36 +163,54 @@ func main() {
 		panic(err)
 	}
 
-	rlBundle, err := buildRateLimitServices(infra.Log)
+	rlBundle, err := buildRateLimitServices(infra.Log, infra.DBPool)
 	if err != nil {
 		infra.Log.Error("failed to initialize rate limit services", "error", err)
 		os.Exit(1)
 	}
-	fallbackLimiter := rateLimitMW.NewFallbackLimiter(rlBundle.cfg, rlBundle.allowlistStore, infra.Log)
 	rateLimitMiddleware := rateLimitMW.New(
 		rlBundle.limiter,
 		infra.Log,
 		rateLimitMW.WithDisabled(infra.Cfg.DemoMode || infra.Cfg.DisableRateLimiting),
-		rateLimitMW.WithFallbackLimiter(fallbackLimiter),
 	)
 
 	appCtx, cancelApp := context.WithCancel(context.Background())
 	defer cancelApp()
-	tenantMod := buildTenantModule(infra)
+	tenantMod, err := buildTenantModule(infra)
+	if err != nil {
+		infra.Log.Error("failed to initialize tenant module", "error", err)
+		os.Exit(1)
+	}
 	authMod, err := buildAuthModule(appCtx, infra, tenantMod.Service, rlBundle.authLockoutSvc, rlBundle.requestSvc)
 	if err != nil {
 		infra.Log.Error("failed to initialize auth module", "error", err)
 		os.Exit(1)
 	}
-	clientRateLimitMiddleware, err := buildClientRateLimitMiddleware(infra.Log, tenantMod.Service, rlBundle.cfg, infra.Cfg.DemoMode || infra.Cfg.DisableRateLimiting)
+	clientRateLimitMiddleware, err := buildClientRateLimitMiddleware(infra.Log, tenantMod.Service, rlBundle.cfg, infra.DBPool, infra.Cfg.DemoMode || infra.Cfg.DisableRateLimiting)
 	if err != nil {
 		infra.Log.Error("failed to initialize client rate limit middleware", "error", err)
 		os.Exit(1)
 	}
-	consentMod := buildConsentModule(infra)
-	registryMod := buildRegistryModule(infra, consentMod.Service)
-	vcMod := buildVCModule(infra, consentMod.Service, registryMod.Service)
-	decisionMod := buildDecisionModule(infra, registryMod.Service, vcMod.Store, consentMod.Service)
+	consentMod, err := buildConsentModule(infra)
+	if err != nil {
+		infra.Log.Error("failed to initialize consent module", "error", err)
+		os.Exit(1)
+	}
+	registryMod, err := buildRegistryModule(infra, consentMod.Service)
+	if err != nil {
+		infra.Log.Error("failed to initialize registry module", "error", err)
+		os.Exit(1)
+	}
+	vcMod, err := buildVCModule(infra, consentMod.Service, registryMod.Service)
+	if err != nil {
+		infra.Log.Error("failed to initialize vc module", "error", err)
+		os.Exit(1)
+	}
+	decisionMod, err := buildDecisionModule(infra, registryMod.Service, vcMod.Store, consentMod.Service)
+	if err != nil {
+		infra.Log.Error("failed to initialize decision module", "error", err)
+		os.Exit(1)
+	}
 
 	startCleanupWorker(appCtx, infra.Log, authMod.Cleanup)
 	go func() {
@@ -232,18 +243,25 @@ type rateLimitBundle struct {
 	limiter        *rateLimitMW.Limiter
 	authLockoutSvc *authlockout.Service
 	requestSvc     *requestlimit.Service
-	allowlistStore *rwallowlistStore.InMemoryAllowlistStore
+	allowlistStore interface {
+		requestlimit.AllowlistStore
+		StartCleanup(ctx context.Context, interval time.Duration) error
+	}
 	cfg            *rateLimitConfig.Config
 }
 
-func buildRateLimitServices(logger *slog.Logger) (*rateLimitBundle, error) {
+func buildRateLimitServices(logger *slog.Logger, dbPool *database.Pool) (*rateLimitBundle, error) {
 	cfg := rateLimitConfig.DefaultConfig()
 
+	if dbPool == nil {
+		return nil, fmt.Errorf("database connection required for rate limit stores")
+	}
+
 	// Create stores
-	bucketStore := rwbucketStore.New()
-	allowlistStore := rwallowlistStore.New()
-	authLockoutSt := authlockoutStore.New()
-	globalThrottleSt := globalthrottleStore.New()
+	bucketStore := rwbucketStore.NewPostgres(dbPool.DB())
+	allowlistStore := rwallowlistStore.NewPostgres(dbPool.DB())
+	authLockoutSt := authlockoutStore.NewPostgres(dbPool.DB(), &cfg.AuthLockout)
+	globalThrottleSt := globalthrottleStore.NewPostgres(dbPool.DB(), &cfg.Global)
 
 	// Create focused services
 	requestSvc, err := requestlimit.New(bucketStore, allowlistStore,
@@ -283,12 +301,15 @@ func buildRateLimitServices(logger *slog.Logger) (*rateLimitBundle, error) {
 	}, nil
 }
 
-func buildClientRateLimitMiddleware(logger *slog.Logger, tenantSvc *tenantService.Service, cfg *rateLimitConfig.Config, disabled bool) (*rateLimitMW.ClientMiddleware, error) {
+func buildClientRateLimitMiddleware(logger *slog.Logger, tenantSvc *tenantService.Service, cfg *rateLimitConfig.Config, dbPool *database.Pool, disabled bool) (*rateLimitMW.ClientMiddleware, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("rate limit config is required")
 	}
+	if dbPool == nil {
+		return nil, fmt.Errorf("database connection required for client rate limits")
+	}
 	clientLookup := &tenantClientLookup{tenantSvc: tenantSvc}
-	clientBucketStore := rwbucketStore.New()
+	clientBucketStore := rwbucketStore.NewPostgres(dbPool.DB())
 	clientLimiter, err := rateLimitClientLimit.New(
 		clientBucketStore,
 		clientLookup,
@@ -298,12 +319,10 @@ func buildClientRateLimitMiddleware(logger *slog.Logger, tenantSvc *tenantServic
 	if err != nil {
 		return nil, err
 	}
-	fallback := rateLimitMW.NewFallbackClientLimiter(&cfg.ClientLimits)
 	return rateLimitMW.NewClientMiddleware(
 		clientLimiter,
 		logger,
 		disabled,
-		rateLimitMW.WithClientFallbackLimiter(fallback),
 	), nil
 }
 
@@ -322,7 +341,7 @@ func buildInfra() (*infraBundle, error) {
 	)
 	if cfg.DemoMode {
 		log.Info("CREDO_ENV=demo — starting isolated demo environment",
-			"stores", "in-memory",
+			"stores", "postgres",
 			"issuer_base_url", cfg.Auth.JWTIssuerBaseURL,
 		)
 	}
@@ -436,21 +455,15 @@ func initPhase2Infra(bundle *infraBundle, cfg *config.Server, log *slog.Logger) 
 }
 
 func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *tenantService.Service, authLockoutSvc *authlockout.Service, requestSvc *requestlimit.Service) (*authModule, error) {
-	users := userStore.New()
-	sessions := sessionStore.New()
-	codes := authCodeStore.New()
-	refreshTokens := refreshTokenStore.New()
-
-	// Use in-memory audit store for demo mode, postgres otherwise
-	var auditStore audit.Store
-	if infra.Cfg.DemoMode {
-		auditStore = auditmemory.NewInMemoryStore()
-	} else {
-		if infra.DBPool == nil {
-			return nil, fmt.Errorf("database connection required for audit events")
-		}
-		auditStore = auditpostgres.New(infra.DBPool.DB())
+	if infra.DBPool == nil {
+		return nil, fmt.Errorf("database connection required for auth module")
 	}
+
+	users := userStore.NewPostgres(infra.DBPool.DB())
+	sessions := sessionStore.NewPostgres(infra.DBPool.DB())
+	codes := authCodeStore.NewPostgres(infra.DBPool.DB())
+	refreshTokens := refreshTokenStore.NewPostgres(infra.DBPool.DB())
+	auditStore := auditpostgres.New(infra.DBPool.DB())
 
 	authCfg := &authService.Config{
 		SessionTTL:             infra.Cfg.Auth.SessionTTL,
@@ -458,9 +471,7 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 		AllowedRedirectSchemes: infra.Cfg.Auth.AllowedRedirectSchemes,
 		DeviceBindingEnabled:   infra.Cfg.Auth.DeviceBindingEnabled,
 	}
-	trl := revocationStore.NewInMemoryTRL(
-		revocationStore.WithCleanupInterval(infra.Cfg.Auth.TokenRevocationCleanupInterval),
-	)
+	trl := revocationStore.NewPostgresTRL(infra.DBPool.DB())
 
 	authSvc, err := authService.New(
 		users,
@@ -506,24 +517,18 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 		Handler:       authHandler.New(authSvc, rateLimitAdapter, infra.AuthMetrics, infra.Log, infra.Cfg.Auth.DeviceCookieName, infra.Cfg.Auth.DeviceCookieMaxAge),
 		AdminSvc:      admin.NewService(users, sessions, auditStore),
 		Cleanup:       cleanupSvc,
-		Users:         users,
-		Sessions:      sessions,
-		Codes:         codes,
-		RefreshTokens: refreshTokens,
 		AuditStore:    auditStore,
 	}, nil
 }
 
-func buildConsentModule(infra *infraBundle) *consentModule {
-	var auditStore audit.Store
-	if infra.DBPool != nil {
-		auditStore = auditpostgres.New(infra.DBPool.DB())
-	} else {
-		auditStore = auditmemory.NewInMemoryStore()
+func buildConsentModule(infra *infraBundle) (*consentModule, error) {
+	if infra.DBPool == nil {
+		return nil, fmt.Errorf("database connection required for consent module")
 	}
+	auditStore := auditpostgres.New(infra.DBPool.DB())
 
 	consentSvc := consentService.New(
-		consentStore.New(),
+		consentStore.NewPostgres(infra.DBPool.DB()),
 		auditpublisher.NewPublisher(
 			auditStore,
 			auditpublisher.WithMetrics(infra.AuditMetrics),
@@ -539,31 +544,36 @@ func buildConsentModule(infra *infraBundle) *consentModule {
 	return &consentModule{
 		Service: consentSvc,
 		Handler: consentHandler.New(consentSvc, infra.Log, infra.ConsentMetrics),
-	}
+	}, nil
 }
 
-func buildTenantModule(infra *infraBundle) *tenantModule {
-	tenants := tenantstore.NewInMemory()
-	clients := clientstore.NewInMemory()
+func buildTenantModule(infra *infraBundle) (*tenantModule, error) {
+	if infra.DBPool == nil {
+		return nil, fmt.Errorf("database connection required for tenant module")
+	}
+	tenants := tenantstore.NewPostgres(infra.DBPool.DB())
+	clients := clientstore.NewPostgres(infra.DBPool.DB())
+	userCounter := userStore.NewPostgres(infra.DBPool.DB())
 	service, err := tenantService.New(
 		tenants,
 		clients,
-		nil,
+		userCounter,
 		tenantService.WithMetrics(infra.TenantMetrics),
 	)
 	if err != nil {
-		panic(fmt.Sprintf("failed to create tenant service: %v", err))
+		return nil, fmt.Errorf("failed to create tenant service: %w", err)
 	}
 
 	return &tenantModule{
 		Service: service,
 		Handler: tenantHandler.New(service, infra.Log),
-		Tenants: tenants,
-		Clients: clients,
-	}
+	}, nil
 }
 
-func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service) *registryModule {
+func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service) (*registryModule, error) {
+	if infra.DBPool == nil {
+		return nil, fmt.Errorf("database connection required for registry module")
+	}
 	// Create provider registry
 	registry := providers.NewProviderRegistry()
 
@@ -597,9 +607,10 @@ func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service)
 	})
 
 	// Create cache store with metrics
-	cache := registryStore.NewInMemoryCache(
+	cache := registryStore.NewPostgresCache(
+		infra.DBPool.DB(),
 		infra.Cfg.Registry.CacheTTL,
-		registryStore.WithMetrics(infra.RegistryMetrics),
+		infra.RegistryMetrics,
 	)
 
 	// Create consent adapter (needed by both service and handler)
@@ -615,13 +626,8 @@ func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service)
 		registryService.WithLogger(infra.Log),
 	)
 
-	// Create audit publisher for handler (use in-memory store if no database)
-	var auditStore audit.Store
-	if infra.DBPool != nil {
-		auditStore = auditpostgres.New(infra.DBPool.DB())
-	} else {
-		auditStore = auditmemory.NewInMemoryStore()
-	}
+	// Create audit publisher for handler
+	auditStore := auditpostgres.New(infra.DBPool.DB())
 	auditPort := auditpublisher.NewPublisher(
 		auditStore,
 		auditpublisher.WithMetrics(infra.AuditMetrics),
@@ -633,20 +639,18 @@ func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service)
 	return &registryModule{
 		Service: svc,
 		Handler: handler,
-	}
+	}, nil
 }
 
-func buildVCModule(infra *infraBundle, consentSvc *consentService.Service, registrySvc *registryService.Service) *vcModule {
-	store := vcStore.NewInMemoryStore()
+func buildVCModule(infra *infraBundle, consentSvc *consentService.Service, registrySvc *registryService.Service) (*vcModule, error) {
+	if infra.DBPool == nil {
+		return nil, fmt.Errorf("database connection required for VC module")
+	}
+	store := vcStore.NewPostgres(infra.DBPool.DB())
 	consentAdapter := vcAdapters.NewConsentAdapter(consentSvc)
 	registryAdapter := vcAdapters.NewRegistryAdapter(registrySvc)
 
-	var auditStore audit.Store
-	if infra.DBPool != nil {
-		auditStore = auditpostgres.New(infra.DBPool.DB())
-	} else {
-		auditStore = auditmemory.NewInMemoryStore()
-	}
+	auditStore := auditpostgres.New(infra.DBPool.DB())
 	auditPort := auditpublisher.NewPublisher(
 		auditStore,
 		auditpublisher.WithMetrics(infra.AuditMetrics),
@@ -666,22 +670,20 @@ func buildVCModule(infra *infraBundle, consentSvc *consentService.Service, regis
 		Service: svc,
 		Handler: vcHandler.New(svc, infra.Log),
 		Store:   store,
-	}
+	}, nil
 }
 
-func buildDecisionModule(infra *infraBundle, registrySvc *registryService.Service, vcSt vcStore.Store, consentSvc *consentService.Service) *decisionModule {
+func buildDecisionModule(infra *infraBundle, registrySvc *registryService.Service, vcSt vcStore.Store, consentSvc *consentService.Service) (*decisionModule, error) {
+	if infra.DBPool == nil {
+		return nil, fmt.Errorf("database connection required for decision module")
+	}
 	// Create adapters
 	registryAdapter := decisionAdapters.NewRegistryAdapter(registrySvc)
 	vcAdapter := decisionAdapters.NewVCAdapter(vcSt)
 	consentAdapter := decisionAdapters.NewConsentAdapter(consentSvc)
 
-	// Create audit publisher (use in-memory store if no database)
-	var auditStore audit.Store
-	if infra.DBPool != nil {
-		auditStore = auditpostgres.New(infra.DBPool.DB())
-	} else {
-		auditStore = auditmemory.NewInMemoryStore()
-	}
+	// Create audit publisher
+	auditStore := auditpostgres.New(infra.DBPool.DB())
 	auditPort := auditpublisher.NewPublisher(
 		auditStore,
 		auditpublisher.WithMetrics(infra.AuditMetrics),
@@ -704,7 +706,7 @@ func buildDecisionModule(infra *infraBundle, registrySvc *registryService.Servic
 	return &decisionModule{
 		Service: svc,
 		Handler: decisionHandler.New(svc, infra.Log, metrics),
-	}
+	}, nil
 }
 
 func startCleanupWorker(ctx context.Context, log *slog.Logger, cleanupSvc *cleanupWorker.CleanupService) {
@@ -793,7 +795,7 @@ func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consent
 				"env":             "demo",
 				"users":           []string{"alice", "bob", "charlie"},
 				"jwt_issuer_base": infra.Cfg.Auth.JWTIssuerBaseURL,
-				"data_store":      "in-memory",
+				"data_store":      "postgres",
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(resp)

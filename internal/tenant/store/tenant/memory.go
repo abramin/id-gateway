@@ -11,7 +11,7 @@ import (
 	"credo/pkg/platform/sentinel"
 )
 
-// InMemory stores tenants in memory for the demo environment.
+// InMemory stores tenants in memory for tests.
 type InMemory struct {
 	mu      sync.RWMutex
 	tenants map[id.TenantID]*models.Tenant

@@ -20,7 +20,7 @@ func New() *InMemoryAllowlistStore {
 	}
 }
 
-// TODO: Add to Redis set with optional TTL.
+// Test-only implementation; production uses PostgreSQL store.
 func (s *InMemoryAllowlistStore) Add(ctx context.Context, entry *models.AllowlistEntry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

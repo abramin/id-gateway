@@ -68,12 +68,8 @@ Implementation of PRD-017: Rate Limiting & Abuse Prevention.
 - `GlobalThrottleStore` - per-instance throttle counters
 
 **Adapters:**
-- In-memory implementations with:
-  - 32 shards for reduced lock contention
-  - LRU eviction (100k max buckets per shard)
-  - Nanosecond precision timestamps
-
-**Note:** Redis adapters are not implemented yet; in-memory stores are the current runtime.
+- PostgreSQL implementations for runtime persistence
+- In-memory implementations retained for tests
 
 ---
 
@@ -81,11 +77,11 @@ Implementation of PRD-017: Rate Limiting & Abuse Prevention.
 
 **Fail-Open Behavior:** When rate limit checks fail, requests proceed by default (availability > strict enforcement). Middleware can be configured to fail-closed.
 
-**Circuit Breaker + Fallback:** Middleware supports a circuit breaker and optional fallback limiter. In the current server wiring, both primary and fallback are in-memory.
+**Circuit Breaker + Fallback:** Middleware supports a circuit breaker and optional fallback limiter. The current server wiring uses PostgreSQL-backed stores without an in-memory fallback.
 
 **Sliding Window Algorithm:** Fixed-size circular buffer (256 entries) per bucket. O(1) amortized per-operation complexity. Expired timestamps auto-cleaned during check.
 
-**Global Throttle:** In-memory store uses per-instance tumbling windows (per-second and per-hour) for low contention. Cluster-wide limits require a distributed store.
+**Global Throttle:** PostgreSQL-backed tumbling windows (per-second and per-hour) provide shared limits across instances.
 
 **Backoff Signaling:** Auth lockout returns `Retry-After` hints; handlers do not sleep server-side.
 
@@ -127,7 +123,7 @@ internal/ratelimit/
 ├── models/           # Domain models, requests, responses
 ├── ports/            # Interface definitions
 ├── service/          # Focused services (requestlimit, authlockout, quota, etc.)
-├── store/            # Persistence (in-memory)
+├── store/            # Persistence (PostgreSQL + test-only in-memory)
 └── workers/          # Background cleanup workers
 ```
 
@@ -146,8 +142,9 @@ import (
     "credo/internal/ratelimit/store/allowlist"
 )
 
-bucketStore := bucket.New()
-allowlistStore := allowlist.New()
+db := /* *sql.DB */
+bucketStore := bucket.NewPostgres(db)
+allowlistStore := allowlist.NewPostgres(db)
 
 requestSvc, _ := rlRequest.New(bucketStore, allowlistStore)
 limiter := rlMiddleware.NewLimiter(requestSvc, nil) // add globalthrottle service if used
@@ -295,7 +292,7 @@ PUT /admin/rate-limit/quota/{api_key}/tier
 
 ## Known Gaps / Follow-ups
 
-- Redis backing not implemented (in-memory only).
+- PostgreSQL-backed stores are used in runtime wiring.
 - Global throttle middleware is not wired in the default router.
 - Quota handlers exist but are not registered by default.
 - CAPTCHA requirement is computed but not surfaced in auth responses.

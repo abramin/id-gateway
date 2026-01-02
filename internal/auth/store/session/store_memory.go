@@ -19,7 +19,7 @@ var ErrSessionRevoked = fmt.Errorf("session has been revoked: %w", sentinel.ErrI
 // - Return ErrNotFound when the requested entity does not exist
 // - Return nil for successful operations
 // - Return wrapped errors with context for infrastructure failures (future: DB errors, network issues, etc.)
-// InMemorySessionStore stores sessions in memory for tests/dev.
+// InMemorySessionStore stores sessions in memory for tests.
 type InMemorySessionStore struct {
 	mu       sync.RWMutex
 	sessions map[id.SessionID]*models.Session

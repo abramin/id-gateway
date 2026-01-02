@@ -9,7 +9,7 @@ import (
 	"credo/pkg/platform/sentinel"
 )
 
-// InMemory stores clients in memory for the demo environment.
+// InMemory stores clients in memory for tests.
 // Maintains secondary indexes for efficient OAuth client_id lookups and tenant counts.
 type InMemory struct {
 	mu          sync.RWMutex
