@@ -8,7 +8,7 @@ PROTO_FILES := $(wildcard $(PROTO_DIR)/*.proto)
 # === DEFAULT ===
 default: dev
 
-.PHONY: default build run test test-failed test-failures test-cover test-one test-slow e2e e2e-normal e2e-security e2e-simulation e2e-report e2e-clean lint fmt imports openapi-lint openapi-build clean docker-clean proto-gen proto-check proto-clean help
+.PHONY: default build run test test-failed test-failures test-cover test-one test-slow e2e e2e-normal e2e-security e2e-simulation e2e-report e2e-clean lint fmt imports openapi-lint openapi-build clean docker-clean docker-reset proto-gen proto-check proto-clean help
 
 # === BUILD ===
 build:
@@ -78,6 +78,8 @@ clean:
 docker-clean:
 	@echo "Stopping and removing docker-compose services, images, and volumes for $(APP_NAME)..."
 	docker compose down --rmi local --volumes --remove-orphans
+
+docker-reset: docker-clean
 
 docker-demo:
 	docker compose --env-file .env.demo -f docker-compose.yml -f docker-compose.demo.yml up --build
@@ -238,6 +240,8 @@ help:
 	@echo "  lint           Run golangci-lint if available"
 	@echo "  fmt            Format code and run vet"
 	@echo "  imports        Fix import ordering (goimports)"
+	@echo "  docker-clean   Stop and remove compose services, images, and volumes"
+	@echo "  docker-reset   Alias for docker-clean"
 	@echo "  clean          Remove build artifacts"
 	@echo "  docker-clean   Stop containers and remove images/volumes for this app"
 	@echo ""

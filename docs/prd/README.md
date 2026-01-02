@@ -26,6 +26,15 @@ Credo is a **regulated identity and authorization system** that:
 
 ---
 
+## Local Observability (Grafana)
+
+- Start dashboards: `docker compose up --build backend prometheus grafana`
+- Grafana: http://localhost:3001 (admin/admin)
+- Prometheus: http://localhost:9090
+- Dashboard: `Credo` folder → `Credo Service Overview`
+
+---
+
 ## PRD Index
 
 ### Phase 0: Foundation (MVP Prerequisites) - P0 Critical

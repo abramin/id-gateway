@@ -66,9 +66,18 @@ import (
 	tenantService "credo/internal/tenant/service"
 	clientstore "credo/internal/tenant/store/client"
 	tenantstore "credo/internal/tenant/store/tenant"
+	"credo/internal/platform/database"
+	"credo/internal/platform/kafka"
+	kafkaconsumer "credo/internal/platform/kafka/consumer"
+	kafkaproducer "credo/internal/platform/kafka/producer"
+	auditconsumer "credo/pkg/platform/audit/consumer"
 	auditmetrics "credo/pkg/platform/audit/metrics"
+	outboxmetrics "credo/pkg/platform/audit/outbox/metrics"
+	outboxpostgres "credo/pkg/platform/audit/outbox/store/postgres"
+	outboxworker "credo/pkg/platform/audit/outbox/worker"
 	auditpublisher "credo/pkg/platform/audit/publisher"
 	auditstore "credo/pkg/platform/audit/store/memory"
+	auditpostgres "credo/pkg/platform/audit/store/postgres"
 	adminmw "credo/pkg/platform/middleware/admin"
 	auth "credo/pkg/platform/middleware/auth"
 	devicemw "credo/pkg/platform/middleware/device"
@@ -93,6 +102,14 @@ type infraBundle struct {
 	JWTService      *jwttoken.JWTService
 	JWTValidator    *jwttoken.JWTServiceAdapter
 	DeviceService   *device.Service
+
+	// Phase 2: Infrastructure
+	DBPool         *database.Pool
+	KafkaProducer  *kafkaproducer.Producer
+	OutboxWorker   *outboxworker.Worker
+	OutboxMetrics  *outboxmetrics.Metrics
+	KafkaConsumer  *kafkaconsumer.Consumer
+	KafkaHealthChecker *kafka.HealthChecker
 }
 
 type authModule struct {
@@ -191,6 +208,9 @@ func main() {
 		}
 	}()
 
+	// Start Phase 2 workers if configured
+	startPhase2Workers(infra)
+
 	r := setupRouter(infra)
 	registerRoutes(r, infra, authMod, consentMod, tenantMod, registryMod, vcMod, decisionMod, rateLimitMiddleware, clientRateLimitMiddleware)
 
@@ -204,7 +224,7 @@ func main() {
 		startServer(adminSrv, infra.Log, "admin")
 	}
 
-	waitForShutdown([]*http.Server{mainSrv, adminSrv}, infra.Log, cancelApp)
+	waitForShutdown([]*http.Server{mainSrv, adminSrv}, infra, cancelApp)
 }
 
 // rateLimitBundle holds the rate limiting services needed by middleware and auth.
@@ -313,10 +333,11 @@ func buildInfra() (*infraBundle, error) {
 	auditMet := auditmetrics.New()
 	registryMet := registrymetrics.New()
 	requestMetrics := request.NewMetrics()
+	outboxMet := outboxmetrics.New()
 	jwtService, jwtValidator := initializeJWTService(&cfg)
 	deviceSvc := device.NewService(cfg.Auth.DeviceBindingEnabled)
 
-	return &infraBundle{
+	bundle := &infraBundle{
 		Cfg:             &cfg,
 		Log:             log,
 		AuthMetrics:     authMetrics,
@@ -328,7 +349,90 @@ func buildInfra() (*infraBundle, error) {
 		JWTService:      jwtService,
 		JWTValidator:    jwtValidator,
 		DeviceService:   deviceSvc,
-	}, nil
+		OutboxMetrics:   outboxMet,
+	}
+
+	// Initialize Phase 2 infrastructure if configured
+	if err := initPhase2Infra(bundle, &cfg, log); err != nil {
+		return nil, err
+	}
+
+	return bundle, nil
+}
+
+// initPhase2Infra initializes database, Kafka, and outbox infrastructure.
+func initPhase2Infra(bundle *infraBundle, cfg *config.Server, log *slog.Logger) error {
+	// Initialize database pool if configured
+	if cfg.Database.URL != "" {
+		dbPool, err := database.New(database.Config{
+			URL:             cfg.Database.URL,
+			MaxOpenConns:    cfg.Database.MaxOpenConns,
+			MaxIdleConns:    cfg.Database.MaxIdleConns,
+			ConnMaxLifetime: cfg.Database.ConnMaxLifetime,
+		})
+		if err != nil {
+			return fmt.Errorf("initialize database: %w", err)
+		}
+		bundle.DBPool = dbPool
+		log.Info("database connected", "url", cfg.Database.URL[:min(len(cfg.Database.URL), 50)]+"...")
+	}
+
+	// Initialize Kafka producer if configured
+	if cfg.Kafka.Brokers != "" {
+		producer, err := kafkaproducer.New(kafkaproducer.Config{
+			Brokers:         cfg.Kafka.Brokers,
+			Acks:            cfg.Kafka.Acks,
+			Retries:         cfg.Kafka.Retries,
+			DeliveryTimeout: cfg.Kafka.DeliveryTimeout,
+		}, log)
+		if err != nil {
+			return fmt.Errorf("initialize kafka producer: %w", err)
+		}
+		bundle.KafkaProducer = producer
+		bundle.KafkaHealthChecker = kafka.NewHealthChecker(cfg.Kafka.Brokers)
+		log.Info("kafka producer initialized", "brokers", cfg.Kafka.Brokers)
+	}
+
+	// Initialize outbox worker if both database and Kafka are configured
+	if bundle.DBPool != nil && bundle.KafkaProducer != nil {
+		outboxStore := outboxpostgres.New(bundle.DBPool.DB())
+		bundle.OutboxWorker = outboxworker.New(
+			outboxStore,
+			bundle.KafkaProducer,
+			outboxworker.WithTopic(cfg.Kafka.AuditTopic),
+			outboxworker.WithBatchSize(cfg.Outbox.BatchSize),
+			outboxworker.WithPollInterval(cfg.Outbox.PollInterval),
+			outboxworker.WithMetrics(bundle.OutboxMetrics),
+			outboxworker.WithLogger(log),
+		)
+		log.Info("outbox worker initialized",
+			"topic", cfg.Kafka.AuditTopic,
+			"batch_size", cfg.Outbox.BatchSize,
+			"poll_interval", cfg.Outbox.PollInterval,
+		)
+
+		// Initialize audit event consumer
+		auditStore := auditpostgres.New(bundle.DBPool.DB())
+		handler := auditconsumer.NewHandler(auditStore, log)
+		consumer, err := kafkaconsumer.New(kafkaconsumer.Config{
+			Brokers:         cfg.Kafka.Brokers,
+			GroupID:         cfg.Kafka.ConsumerGroup,
+			AutoOffsetReset: "earliest",
+		}, handler, log)
+		if err != nil {
+			return fmt.Errorf("initialize kafka consumer: %w", err)
+		}
+		if err := consumer.Subscribe([]string{cfg.Kafka.AuditTopic}); err != nil {
+			return fmt.Errorf("subscribe to audit topic: %w", err)
+		}
+		bundle.KafkaConsumer = consumer
+		log.Info("kafka consumer initialized",
+			"group", cfg.Kafka.ConsumerGroup,
+			"topic", cfg.Kafka.AuditTopic,
+		)
+	}
+
+	return nil
 }
 
 func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *tenantService.Service, authLockoutSvc *authlockout.Service, requestSvc *requestlimit.Service) (*authModule, error) {
@@ -588,6 +692,19 @@ func startCleanupWorker(ctx context.Context, log *slog.Logger, cleanupSvc *clean
 	}()
 }
 
+// startPhase2Workers starts the outbox worker and Kafka consumer if configured.
+func startPhase2Workers(infra *infraBundle) {
+	if infra.OutboxWorker != nil {
+		infra.OutboxWorker.Start()
+		infra.Log.Info("outbox worker started")
+	}
+
+	if infra.KafkaConsumer != nil {
+		infra.KafkaConsumer.Start()
+		infra.Log.Info("kafka consumer started")
+	}
+}
+
 // initializeJWTService creates and configures the JWT service and validator
 func initializeJWTService(cfg *config.Server) (*jwttoken.JWTService, *jwttoken.JWTServiceAdapter) {
 	jwtService := jwttoken.NewJWTService(
@@ -627,6 +744,19 @@ func setupRouter(infra *infraBundle) *chi.Mux {
 
 	// Health check endpoints (no auth required)
 	healthHandler := health.New(infra.Cfg.Environment)
+
+	// Register Phase 2 health checks
+	if infra.DBPool != nil {
+		healthHandler.RegisterCheck("database", func() error {
+			return infra.DBPool.Health(context.Background())
+		})
+	}
+	if infra.KafkaHealthChecker != nil {
+		healthHandler.RegisterCheck("kafka", func() error {
+			return infra.KafkaHealthChecker.Check(context.Background())
+		})
+	}
+
 	healthHandler.Register(r)
 
 	return r
@@ -739,28 +869,72 @@ func startServer(srv *http.Server, log *slog.Logger, name string) {
 	}()
 }
 
-// waitForShutdown waits for an interrupt signal and gracefully shuts down all servers
-func waitForShutdown(servers []*http.Server, log *slog.Logger, cancel context.CancelFunc) {
+// waitForShutdown waits for an interrupt signal and gracefully shuts down all servers and workers
+func waitForShutdown(servers []*http.Server, infra *infraBundle, cancel context.CancelFunc) {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt)
 	<-quit
 
-	log.Info("shutting down servers gracefully")
+	infra.Log.Info("shutting down gracefully")
 	if cancel != nil {
 		cancel()
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	ctx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
 
-	// Shutdown all servers
+	// Stop Phase 2 workers first (drain outbox, flush Kafka)
+	stopPhase2Workers(ctx, infra)
+
+	// Shutdown all HTTP servers
 	for _, srv := range servers {
 		if srv != nil {
 			if err := srv.Shutdown(ctx); err != nil {
-				log.Error("graceful shutdown failed", "addr", srv.Addr, "error", err)
+				infra.Log.Error("server shutdown failed", "addr", srv.Addr, "error", err)
 			}
 		}
 	}
 
-	log.Info("servers stopped")
+	// Close Phase 2 infrastructure
+	closePhase2Infra(infra)
+
+	infra.Log.Info("shutdown complete")
+}
+
+// stopPhase2Workers gracefully stops the outbox worker and Kafka consumer.
+func stopPhase2Workers(ctx context.Context, infra *infraBundle) {
+	if infra.OutboxWorker != nil {
+		if err := infra.OutboxWorker.Stop(ctx); err != nil {
+			infra.Log.Error("outbox worker shutdown failed", "error", err)
+		} else {
+			infra.Log.Info("outbox worker stopped")
+		}
+	}
+
+	if infra.KafkaConsumer != nil {
+		if err := infra.KafkaConsumer.Stop(ctx); err != nil {
+			infra.Log.Error("kafka consumer shutdown failed", "error", err)
+		} else {
+			infra.Log.Info("kafka consumer stopped")
+		}
+	}
+}
+
+// closePhase2Infra closes database and Kafka connections.
+func closePhase2Infra(infra *infraBundle) {
+	if infra.KafkaProducer != nil {
+		if err := infra.KafkaProducer.Close(); err != nil {
+			infra.Log.Error("kafka producer close failed", "error", err)
+		} else {
+			infra.Log.Info("kafka producer closed")
+		}
+	}
+
+	if infra.DBPool != nil {
+		if err := infra.DBPool.Close(); err != nil {
+			infra.Log.Error("database close failed", "error", err)
+		} else {
+			infra.Log.Info("database closed")
+		}
+	}
 }

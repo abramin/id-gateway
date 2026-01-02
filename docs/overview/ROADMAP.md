@@ -233,12 +233,18 @@ CREATE INDEX idx_audit_timestamp ON audit_events(timestamp);
   - Decision outcomes (counter)
   - Audit queue lag (gauge)
 
+**Dashboards:**
+
+- Add a basic Grafana dashboard for core service health
+- Include panels for request rate/latency, auth success rate, and error rate
+
 ### Acceptance Criteria
 
 - [ ] Structured logs in JSON format
 - [ ] Correlation IDs in all logs
 - [ ] Prometheus metrics exposed
 - [ ] Key metrics tracked
+- [ ] Grafana dashboard with core panels available in dev
 
 ---
 
@@ -1021,9 +1027,9 @@ An identity service must be observable and measurable.
 
 - Prometheus metrics (auth success rate, latency distribution, token refresh behaviour)
 - Structured logs with correlation IDs
-- Grafana dashboards visualising flow health
 - Defined SLOs and error budgets
 - Simple chaos experiments (kill a pod, observe recovery)
+- SLO/SLI dashboards and alerting for production readiness
 
 ## Phase 8: Final Architectural Narrative
 
