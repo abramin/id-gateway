@@ -5,35 +5,20 @@ import (
 	"sync"
 	"time"
 
-	"credo/internal/ratelimit/config"
 	"credo/internal/ratelimit/models"
-	"credo/pkg/requestcontext"
 )
 
+// InMemoryAuthLockoutStore is for testing only. Use PostgresStore in production.
+// This store is pure I/O—all domain logic belongs in the service.
 type InMemoryAuthLockoutStore struct {
 	mu      sync.RWMutex
 	records map[string]*models.AuthLockout // keyed by identifier
-	config  *config.AuthLockoutConfig
 }
 
-type Option func(*InMemoryAuthLockoutStore)
-
-func WithConfig(cfg *config.AuthLockoutConfig) func(*InMemoryAuthLockoutStore) {
-	return func(s *InMemoryAuthLockoutStore) {
-		s.config = cfg
-	}
-}
-
-func New(opts ...Option) *InMemoryAuthLockoutStore {
-	store := &InMemoryAuthLockoutStore{
+func New() *InMemoryAuthLockoutStore {
+	return &InMemoryAuthLockoutStore{
 		records: make(map[string]*models.AuthLockout),
 	}
-
-	for _, opt := range opts {
-		opt(store)
-	}
-
-	return store
 }
 
 func (s *InMemoryAuthLockoutStore) Get(_ context.Context, identifier string) (*models.AuthLockout, error) {
@@ -46,22 +31,20 @@ func (s *InMemoryAuthLockoutStore) Get(_ context.Context, identifier string) (*m
 	return nil, nil
 }
 
-func (s *InMemoryAuthLockoutStore) RecordFailure(ctx context.Context, identifier string) (*models.AuthLockout, error) {
+// GetOrCreate retrieves an existing lockout record or creates a new one with zero counts.
+// This is pure I/O—the service owns counter increments via domain methods.
+func (s *InMemoryAuthLockoutStore) GetOrCreate(_ context.Context, identifier string, now time.Time) (*models.AuthLockout, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := requestcontext.Now(ctx)
 	if existing, exists := s.records[identifier]; exists {
-		existing.FailureCount++
-		existing.DailyFailures++
-		existing.LastFailureAt = now
 		return existing, nil
 	}
 
 	record := &models.AuthLockout{
 		Identifier:      identifier,
-		FailureCount:    1,
-		DailyFailures:   1,
+		FailureCount:    0,
+		DailyFailures:   0,
 		LastFailureAt:   now,
 		LockedUntil:     nil,
 		RequiresCaptcha: false,
@@ -78,18 +61,6 @@ func (s *InMemoryAuthLockoutStore) Clear(_ context.Context, identifier string) e
 	return nil
 }
 
-func (s *InMemoryAuthLockoutStore) IsLocked(ctx context.Context, identifier string) (bool, *time.Time, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if record, exists := s.records[identifier]; exists {
-		if record.IsLockedAt(requestcontext.Now(ctx)) {
-			return true, record.LockedUntil, nil
-		}
-	}
-	return false, nil, nil
-}
-
 func (s *InMemoryAuthLockoutStore) Update(_ context.Context, record *models.AuthLockout) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -98,12 +69,13 @@ func (s *InMemoryAuthLockoutStore) Update(_ context.Context, record *models.Auth
 	return nil
 }
 
-func (s *InMemoryAuthLockoutStore) ResetFailureCount(ctx context.Context) (failuresReset int, err error) {
+// ResetFailureCount resets window failure counts for records with last_failure_at before cutoff.
+func (s *InMemoryAuthLockoutStore) ResetFailureCount(_ context.Context, cutoff time.Time) (failuresReset int, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for _, record := range s.records {
-		if time.Since(record.LastFailureAt) > s.config.WindowDuration {
+		if record.LastFailureAt.Before(cutoff) {
 			failuresReset += record.FailureCount
 			record.FailureCount = 0
 		}
@@ -111,12 +83,13 @@ func (s *InMemoryAuthLockoutStore) ResetFailureCount(ctx context.Context) (failu
 	return failuresReset, nil
 }
 
-func (s *InMemoryAuthLockoutStore) ResetDailyFailures(ctx context.Context) (failuresReset int, err error) {
+// ResetDailyFailures resets daily failure counts for records with last_failure_at before cutoff.
+func (s *InMemoryAuthLockoutStore) ResetDailyFailures(_ context.Context, cutoff time.Time) (failuresReset int, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for _, record := range s.records {
-		if time.Since(record.LastFailureAt) > 24*time.Hour {
+		if record.LastFailureAt.Before(cutoff) {
 			failuresReset += record.DailyFailures
 			record.DailyFailures = 0
 		}

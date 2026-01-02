@@ -37,11 +37,11 @@ import (
 )
 
 // Store is the persistence interface for auth lockout records.
+// Stores are pure I/O—domain logic (lock checks, counter increments) belongs here in the service.
 type Store interface {
-	RecordFailure(ctx context.Context, identifier string) (*models.AuthLockout, error)
+	GetOrCreate(ctx context.Context, identifier string, now time.Time) (*models.AuthLockout, error)
 	Get(ctx context.Context, identifier string) (*models.AuthLockout, error)
 	Clear(ctx context.Context, identifier string) error
-	IsLocked(ctx context.Context, identifier string) (bool, *time.Time, error)
 	Update(ctx context.Context, record *models.AuthLockout) error
 }
 
@@ -178,41 +178,51 @@ func (s *Service) Check(ctx context.Context, identifier, ip string) (*models.Aut
 // RecordFailure increments failure counters after a failed authentication attempt.
 // Call this AFTER credential validation fails.
 //
+// This method follows the sandwich pattern: read → compute (domain) → write
+//
 // Side effects:
-//   - Increments window and daily failure counts
+//   - Increments window and daily failure counts via domain method
 //   - Applies hard lock if daily threshold (10 failures) is reached
 //   - Sets CAPTCHA requirement after 3 consecutive lockouts in 24 hours
 //   - Emits audit event when hard lock is triggered
 func (s *Service) RecordFailure(ctx context.Context, identifier, ip string) (*models.AuthLockout, error) {
+	now := requestcontext.Now(ctx)
 	key := models.NewAuthLockoutKey(identifier, ip).String()
-	current, err := s.store.RecordFailure(ctx, key)
+
+	// === READ: Get or create the lockout record (pure I/O) ===
+	current, err := s.store.GetOrCreate(ctx, key, now)
 	if err != nil {
-		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to record auth failure")
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to get auth lockout record")
 	}
 
-	now := requestcontext.Now(ctx)
+	// === COMPUTE: Apply domain logic (pure) ===
+	// Increment counters via domain method
+	current.RecordFailure(now)
 
-	// Compute state transitions upfront for clarity
+	// Compute state transitions
 	shouldHardLock := current.ShouldHardLock(s.config.HardLockThreshold)
 	shouldRequireCaptcha := current.ShouldRequireCaptcha(s.config.CaptchaAfterLockouts) && !current.RequiresCaptcha
 
 	if shouldHardLock {
 		current.ApplyHardLock(s.config.HardLockDuration, now)
-		observability.LogAudit(ctx, s.logger, s.auditPublisher, "auth_lockout_triggered",
-			"identifier", identifier,
-			"ip", privacy.AnonymizeIP(ip),
-			"locked_until", current.LockedUntil,
-		)
 	}
 
 	if shouldRequireCaptcha {
 		current.MarkRequiresCaptcha()
 	}
 
-	if shouldHardLock || shouldRequireCaptcha {
-		if err = s.store.Update(ctx, current); err != nil {
-			return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to update auth lockout record")
-		}
+	// === WRITE: Persist the updated record ===
+	if err = s.store.Update(ctx, current); err != nil {
+		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to update auth lockout record")
+	}
+
+	// Audit logging (side effect, after successful write)
+	if shouldHardLock {
+		observability.LogAudit(ctx, s.logger, s.auditPublisher, "auth_lockout_triggered",
+			"identifier", identifier,
+			"ip", privacy.AnonymizeIP(ip),
+			"locked_until", current.LockedUntil,
+		)
 	}
 
 	return current, nil

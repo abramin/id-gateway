@@ -12,6 +12,7 @@ package cleanup
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 )
@@ -24,15 +25,21 @@ type mockAuthLockoutStore struct {
 	dailyFailuresResetToReturn int
 
 	errToReturn error
+
+	// Capture the cutoff times passed to verify business logic is in the service
+	lastFailureCountCutoff  time.Time
+	lastDailyFailuresCutoff time.Time
 }
 
-func (m *mockAuthLockoutStore) ResetFailureCount(_ context.Context) (int, error) {
+func (m *mockAuthLockoutStore) ResetFailureCount(_ context.Context, cutoff time.Time) (int, error) {
 	m.resetFailureCountCalled++
+	m.lastFailureCountCutoff = cutoff
 	return m.failuresResetToReturn, m.errToReturn
 }
 
-func (m *mockAuthLockoutStore) ResetDailyFailures(_ context.Context) (int, error) {
+func (m *mockAuthLockoutStore) ResetDailyFailures(_ context.Context, cutoff time.Time) (int, error) {
 	m.resetDailyFailuresCalled++
+	m.lastDailyFailuresCutoff = cutoff
 	return m.dailyFailuresResetToReturn, m.errToReturn
 }
 

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"credo/internal/ratelimit/config"
 	"credo/internal/ratelimit/metrics"
 )
 
@@ -17,9 +18,10 @@ type CleanupResult struct {
 
 // AuthLockoutStore defines the subset of store operations needed for cleanup.
 // This is kept local because it's a narrow interface specific to cleanup needs.
+// The cutoff time is provided by the caller to keep business rules in the service layer.
 type AuthLockoutStore interface {
-	ResetFailureCount(ctx context.Context) (failuresReset int, err error)
-	ResetDailyFailures(ctx context.Context) (failuresReset int, err error)
+	ResetFailureCount(ctx context.Context, cutoff time.Time) (failuresReset int, err error)
+	ResetDailyFailures(ctx context.Context, cutoff time.Time) (failuresReset int, err error)
 }
 
 type Option func(*AuthLockoutCleanupService)
@@ -46,19 +48,33 @@ func WithMetrics(m *metrics.Metrics) Option {
 	}
 }
 
+// WithConfig sets the auth lockout config for calculating cutoff times.
+func WithConfig(cfg *config.AuthLockoutConfig) Option {
+	return func(s *AuthLockoutCleanupService) {
+		if cfg != nil {
+			s.config = cfg
+		}
+	}
+}
+
+// AuthLockoutCleanupService periodically resets expired lockout counters.
+// This service owns the business rules for cutoff calculations (window duration, daily reset).
 type AuthLockoutCleanupService struct {
 	store    AuthLockoutStore
 	logger   *slog.Logger
 	interval time.Duration
 	metrics  *metrics.Metrics
+	config   *config.AuthLockoutConfig
 }
 
 func New(store AuthLockoutStore, opts ...Option) *AuthLockoutCleanupService {
+	defaultCfg := config.DefaultConfig().AuthLockout
 	service := &AuthLockoutCleanupService{
 		store:    store,
 		logger:   slog.Default(),
 		interval: 15 * time.Minute,
 		metrics:  nil,
+		config:   &defaultCfg,
 	}
 	for _, opt := range opts {
 		opt(service)
@@ -113,12 +129,21 @@ func (s *AuthLockoutCleanupService) Start(ctx context.Context) error {
 }
 
 // RunOnce executes a single cleanup run. Logging is handled by the caller (Start).
+// This method owns the business rules for cutoff calculations:
+//   - Window failures: reset records older than WindowDuration (default 15 min)
+//   - Daily failures: reset records older than 24 hours
 func (s *AuthLockoutCleanupService) RunOnce(ctx context.Context) (res *CleanupResult, err error) {
-	failuresReset, err := s.store.ResetFailureCount(ctx)
+	now := time.Now()
+
+	// Calculate cutoffs (business rules owned by this service, not the store)
+	windowCutoff := now.Add(-s.config.WindowDuration)
+	dailyCutoff := now.Add(-24 * time.Hour)
+
+	failuresReset, err := s.store.ResetFailureCount(ctx, windowCutoff)
 	if err != nil {
 		return nil, err
 	}
-	dailyReset, err := s.store.ResetDailyFailures(ctx)
+	dailyReset, err := s.store.ResetDailyFailures(ctx, dailyCutoff)
 	if err != nil {
 		return nil, err
 	}

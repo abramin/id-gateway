@@ -41,27 +41,29 @@ type AllowlistStore interface {
 }
 
 // AuthLockoutStore manages authentication failure tracking and lockouts.
+// Stores are pure I/O—domain logic (lock checks, state transitions) belongs in the service.
 type AuthLockoutStore interface {
-	// RecordFailure increments the failure count for an identifier.
-	RecordFailure(ctx context.Context, identifier string) (*models.AuthLockout, error)
+	// GetOrCreate retrieves an existing lockout record or creates a new one.
+	// Returns a domain model that the service can mutate via domain methods.
+	// The store does NOT increment counters—that's domain logic owned by the service.
+	GetOrCreate(ctx context.Context, identifier string, now time.Time) (*models.AuthLockout, error)
 
-	// Get retrieves the lockout record for an identifier.
+	// Get retrieves the lockout record for an identifier. Returns nil if not found.
 	Get(ctx context.Context, identifier string) (*models.AuthLockout, error)
 
 	// Clear removes the lockout record for an identifier.
 	Clear(ctx context.Context, identifier string) error
 
-	// IsLocked checks if an identifier is currently locked out.
-	IsLocked(ctx context.Context, identifier string) (bool, *time.Time, error)
-
 	// Update saves changes to a lockout record.
 	Update(ctx context.Context, record *models.AuthLockout) error
 
-	// ResetFailureCount resets window failure counts (for cleanup worker).
-	ResetFailureCount(ctx context.Context) (failuresReset int, err error)
+	// ResetFailureCount resets window failure counts for records older than cutoff.
+	// The cutoff time is provided by the caller (cleanup worker) to keep business rules out of store.
+	ResetFailureCount(ctx context.Context, cutoff time.Time) (failuresReset int, err error)
 
-	// ResetDailyFailures resets daily failure counts (for cleanup worker).
-	ResetDailyFailures(ctx context.Context) (failuresReset int, err error)
+	// ResetDailyFailures resets daily failure counts for records older than cutoff.
+	// The cutoff time is provided by the caller (cleanup worker) to keep business rules out of store.
+	ResetDailyFailures(ctx context.Context, cutoff time.Time) (failuresReset int, err error)
 }
 
 // QuotaStore manages API key usage quotas.

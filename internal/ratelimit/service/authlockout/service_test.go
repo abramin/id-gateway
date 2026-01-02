@@ -35,7 +35,7 @@ func TestAuthLockoutServiceSecuritySuite(t *testing.T) {
 func (s *AuthLockoutServiceSecuritySuite) SetupTest() {
 	cfg := config.DefaultConfig().AuthLockout
 	s.config = &cfg
-	s.store = rwauthlockoutStore.New(rwauthlockoutStore.WithConfig(s.config))
+	s.store = rwauthlockoutStore.New()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	var err error
@@ -171,8 +171,9 @@ func (s *AuthLockoutServiceSecuritySuite) TestDailyFailurePersistence() {
 		_, err := s.service.RecordFailure(ctx, identifier, ip)
 		s.NoError(err)
 
-		// Run daily reset (should NOT reset this user)
-		resetCount, err := s.store.ResetDailyFailures(context.Background())
+		// Run daily reset with cutoff at 24h ago (should NOT reset this user)
+		cutoff := time.Now().Add(-24 * time.Hour)
+		resetCount, err := s.store.ResetDailyFailures(context.Background(), cutoff)
 		s.NoError(err)
 		s.Equal(0, resetCount, "failures within 24h should not be reset")
 
@@ -193,8 +194,9 @@ func (s *AuthLockoutServiceSecuritySuite) TestDailyFailurePersistence() {
 		_, err := s.service.RecordFailure(ctx, identifier, ip)
 		s.NoError(err)
 
-		// Run daily reset (should reset this user)
-		resetCount, err := s.store.ResetDailyFailures(context.Background())
+		// Run daily reset with cutoff at 24h ago (should reset this user)
+		cutoff := time.Now().Add(-24 * time.Hour)
+		resetCount, err := s.store.ResetDailyFailures(context.Background(), cutoff)
 		s.NoError(err)
 		s.Equal(1, resetCount, "failures older than 24h should be reset")
 
