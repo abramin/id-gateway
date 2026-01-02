@@ -957,6 +957,19 @@ Key handlers grouped by file, for example:
 - `RateLimit(class)` - Enforces per-IP rate limits by endpoint class (auth, sensitive, read, write)
 - `RateLimitAuthenticated(class)` - Enforces per-user rate limits for authenticated endpoints
 
+**Device Binding Middleware** (PRD-001):
+
+The device binding system has an intentional architectural split:
+
+- **Extraction (Middleware):** `Device(config)` middleware extracts device ID from cookie and pre-computes fingerprint on every request. This is a cross-cutting concern needed by multiple endpoints.
+- **Setting (Handler):** Device ID cookie is set only by the auth handler on `/auth/authorize` response. This is business logic specific to the authorization flow.
+
+This asymmetry exists because:
+1. Extraction is infrastructure (runs on all requests, injects into context)
+2. Setting is business logic (only during authorization, part of auth service response)
+
+See `docs/security/DEVICE_BINDING.md` for the full security model.
+
 All middleware supports context propagation and includes request_id for distributed tracing.
 
 **JWT Authentication:**
@@ -1047,6 +1060,25 @@ registry_refresh → [cache_warmer, evidence_projector]
 - **Consent projections:** No random eviction (allkeys-lru disabled); only TTL-based expiry
 - **Evidence cache:** LRU with 30s-5m TTL aligned to upstream refresh rates
 - **Session throttle:** LRU acceptable; false negatives fail-open with logging
+
+### Circuit Breaker Pattern
+
+Cross-module dependencies use circuit breakers to prevent cascade failures:
+
+**ClientResolver (Auth → Tenant):**
+
+- Failure threshold: 5 consecutive failures opens circuit
+- Success threshold: 3 consecutive successes closes circuit
+- Fallback: Returns cached client data when circuit is open
+- Cache TTL: 5 minutes
+
+This pattern is applied to any synchronous cross-module call where:
+
+1. The dependency could experience transient failures
+2. Cached/stale data is acceptable as a fallback
+3. Fail-fast is preferable to blocking on a degraded service
+
+See `internal/ratelimit/middleware/circuitbreaker.go` for the reference implementation.
 
 ---
 

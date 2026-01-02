@@ -34,7 +34,10 @@ This is a distinct bounded context because its language and invariants are speci
 | **Revocation**         | `service/token_revocation.go`, `service/session_revoke.go` |
 | **UserInfo**           | `service/userinfo.go`                          |
 | **Device Binding**     | `device/device.go`, `service/device_binding.go` |
+| **Revocation Reason**  | `models.RevocationReason`                       |
 | **Audit events**       | emitted via `service/observability.go#logAudit` |
+
+> **Architecture Note:** Device ID cookie extraction happens in middleware (cross-cutting), while cookie setting happens in the auth handler (business logic). See `docs/engineering/architecture.md` for rationale.
 
 ---
 
@@ -42,7 +45,7 @@ This is a distinct bounded context because its language and invariants are speci
 
 ```
 internal/auth/
-├── adapters/           # External service adapters (e.g., ratelimit)
+├── adapters/           # External service adapters (ratelimit, resilient client resolver)
 ├── device/             # Device binding logic
 ├── email/              # Email validation utilities
 ├── handler/            # HTTP handlers (decode, validate, respond)

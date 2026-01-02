@@ -46,8 +46,12 @@ import (
 	vcStore "credo/internal/evidence/vc/store"
 	jwttoken "credo/internal/jwt_token"
 	"credo/internal/platform/config"
+	"credo/internal/platform/database"
 	"credo/internal/platform/health"
 	"credo/internal/platform/httpserver"
+	"credo/internal/platform/kafka"
+	kafkaconsumer "credo/internal/platform/kafka/consumer"
+	kafkaproducer "credo/internal/platform/kafka/producer"
 	"credo/internal/platform/logger"
 	rateLimitConfig "credo/internal/ratelimit/config"
 	rateLimitMW "credo/internal/ratelimit/middleware"
@@ -60,16 +64,12 @@ import (
 	authlockoutStore "credo/internal/ratelimit/store/authlockout"
 	rwbucketStore "credo/internal/ratelimit/store/bucket"
 	globalthrottleStore "credo/internal/ratelimit/store/globalthrottle"
-	audit "credo/pkg/platform/audit"
 	tenantHandler "credo/internal/tenant/handler"
 	tenantmetrics "credo/internal/tenant/metrics"
 	tenantService "credo/internal/tenant/service"
 	clientstore "credo/internal/tenant/store/client"
 	tenantstore "credo/internal/tenant/store/tenant"
-	"credo/internal/platform/database"
-	"credo/internal/platform/kafka"
-	kafkaconsumer "credo/internal/platform/kafka/consumer"
-	kafkaproducer "credo/internal/platform/kafka/producer"
+	audit "credo/pkg/platform/audit"
 	auditconsumer "credo/pkg/platform/audit/consumer"
 	auditmetrics "credo/pkg/platform/audit/metrics"
 	outboxmetrics "credo/pkg/platform/audit/outbox/metrics"
@@ -103,20 +103,20 @@ type infraBundle struct {
 	DeviceService   *device.Service
 
 	// Phase 2: Infrastructure
-	DBPool         *database.Pool
-	KafkaProducer  *kafkaproducer.Producer
-	OutboxWorker   *outboxworker.Worker
-	OutboxMetrics  *outboxmetrics.Metrics
-	KafkaConsumer  *kafkaconsumer.Consumer
+	DBPool             *database.Pool
+	KafkaProducer      *kafkaproducer.Producer
+	OutboxWorker       *outboxworker.Worker
+	OutboxMetrics      *outboxmetrics.Metrics
+	KafkaConsumer      *kafkaconsumer.Consumer
 	KafkaHealthChecker *kafka.HealthChecker
 }
 
 type authModule struct {
-	Service       *authService.Service
-	Handler       *authHandler.Handler
-	AdminSvc      *admin.Service
-	Cleanup       *cleanupWorker.CleanupService
-	AuditStore    audit.Store
+	Service    *authService.Service
+	Handler    *authHandler.Handler
+	AdminSvc   *admin.Service
+	Cleanup    *cleanupWorker.CleanupService
+	AuditStore audit.Store
 }
 
 type consentModule struct {
@@ -247,7 +247,7 @@ type rateLimitBundle struct {
 		requestlimit.AllowlistStore
 		StartCleanup(ctx context.Context, interval time.Duration) error
 	}
-	cfg            *rateLimitConfig.Config
+	cfg *rateLimitConfig.Config
 }
 
 func buildRateLimitServices(logger *slog.Logger, dbPool *database.Pool) (*rateLimitBundle, error) {
@@ -473,13 +473,21 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 	}
 	trl := revocationStore.NewPostgresTRL(infra.DBPool.DB())
 
+	// Wrap tenant service with circuit breaker for resilience
+	resilientClientResolver := authAdapters.NewResilientClientResolver(
+		tenantService,
+		infra.Log,
+		authAdapters.WithFailureThreshold(5),
+		authAdapters.WithCacheTTL(5*time.Minute),
+	)
+
 	authSvc, err := authService.New(
 		users,
 		sessions,
 		codes,
 		refreshTokens,
 		infra.JWTService,
-		tenantService,
+		resilientClientResolver,
 		authCfg,
 		authService.WithMetrics(infra.AuthMetrics),
 		authService.WithLogger(infra.Log),
@@ -513,11 +521,11 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 	}
 
 	return &authModule{
-		Service:       authSvc,
-		Handler:       authHandler.New(authSvc, rateLimitAdapter, infra.AuthMetrics, infra.Log, infra.Cfg.Auth.DeviceCookieName, infra.Cfg.Auth.DeviceCookieMaxAge),
-		AdminSvc:      admin.NewService(users, sessions, auditStore),
-		Cleanup:       cleanupSvc,
-		AuditStore:    auditStore,
+		Service:    authSvc,
+		Handler:    authHandler.New(authSvc, rateLimitAdapter, infra.AuthMetrics, infra.Log, infra.Cfg.Auth.DeviceCookieName, infra.Cfg.Auth.DeviceCookieMaxAge),
+		AdminSvc:   admin.NewService(users, sessions, auditStore),
+		Cleanup:    cleanupSvc,
+		AuditStore: auditStore,
 	}, nil
 }
 

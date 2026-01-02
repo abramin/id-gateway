@@ -76,7 +76,7 @@ func (s *Service) resolveTokenToSession(ctx context.Context, token, tokenTypeHin
 func (s *Service) revokeAndAudit(ctx context.Context, resolution *tokenResolution) error {
 	session := resolution.Session
 
-	outcome, err := s.revokeSessionInternal(ctx, session, resolution.JTI)
+	outcome, err := s.revokeSessionInternal(ctx, session, resolution.JTI, models.RevocationReasonUserInitiated)
 	if err != nil {
 		return dErrors.Wrap(err, dErrors.CodeInternal, "failed to revoke session")
 	}
@@ -91,7 +91,8 @@ func (s *Service) revokeAndAudit(ctx context.Context, resolution *tokenResolutio
 	s.logAudit(ctx, "token_revoked",
 		"user_id", session.UserID.String(),
 		"session_id", session.ID.String(),
-		"client_id", session.ClientID)
+		"client_id", session.ClientID,
+		"reason", models.RevocationReasonUserInitiated.String())
 	return nil
 }
 
@@ -136,7 +137,7 @@ const (
 	revokeSessionOutcomeAlreadyRevoked
 )
 
-func (s *Service) revokeSessionInternal(ctx context.Context, session *models.Session, jti string) (revokeSessionOutcome, error) {
+func (s *Service) revokeSessionInternal(ctx context.Context, session *models.Session, jti string, reason models.RevocationReason) (revokeSessionOutcome, error) {
 	if err := s.sessions.RevokeSessionIfActive(ctx, session.ID, requestcontext.Now(ctx)); err != nil {
 		if errors.Is(err, sessionStore.ErrSessionRevoked) {
 			return revokeSessionOutcomeAlreadyRevoked, nil

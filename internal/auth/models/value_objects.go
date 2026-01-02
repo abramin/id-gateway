@@ -113,3 +113,50 @@ func (d DeviceBinding) DisplayNameOrDefault() string {
 	}
 	return d.DisplayName
 }
+
+// RevocationReason represents why a session/token was revoked.
+// Tracked for audit, compliance, and analytics purposes.
+type RevocationReason string
+
+const (
+	// RevocationReasonUserInitiated means user explicitly revoked the token.
+	RevocationReasonUserInitiated RevocationReason = "user_initiated"
+
+	// RevocationReasonExpired means the token expired naturally.
+	RevocationReasonExpired RevocationReason = "expired"
+
+	// RevocationReasonUserDeleted means admin deleted the user.
+	RevocationReasonUserDeleted RevocationReason = "user_deleted"
+
+	// RevocationReasonAdminRevoked means admin explicitly revoked the session.
+	RevocationReasonAdminRevoked RevocationReason = "admin_revoked"
+
+	// RevocationReasonSecurityEvent means revocation due to suspicious activity.
+	RevocationReasonSecurityEvent RevocationReason = "security_event"
+
+	// RevocationReasonReplayDetected means a replay attack was detected.
+	RevocationReasonReplayDetected RevocationReason = "replay_detected"
+
+	// RevocationReasonTokenRotation means old token was invalidated by rotation.
+	RevocationReasonTokenRotation RevocationReason = "token_rotation"
+)
+
+var validRevocationReasons = map[RevocationReason]bool{
+	RevocationReasonUserInitiated:  true,
+	RevocationReasonExpired:        true,
+	RevocationReasonUserDeleted:    true,
+	RevocationReasonAdminRevoked:   true,
+	RevocationReasonSecurityEvent:  true,
+	RevocationReasonReplayDetected: true,
+	RevocationReasonTokenRotation:  true,
+}
+
+// IsValid checks if the revocation reason is one of the supported enum values.
+func (r RevocationReason) IsValid() bool {
+	return validRevocationReasons[r]
+}
+
+// String returns the string representation of the revocation reason.
+func (r RevocationReason) String() string {
+	return string(r)
+}

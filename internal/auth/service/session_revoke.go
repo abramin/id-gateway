@@ -36,7 +36,7 @@ func (s *Service) RevokeSession(ctx context.Context, userID id.UserID, sessionID
 		return dErrors.New(dErrors.CodeForbidden, "forbidden")
 	}
 
-	outcome, err := s.revokeSessionInternal(ctx, session, "")
+	outcome, err := s.revokeSessionInternal(ctx, session, "", models.RevocationReasonUserInitiated)
 	if err != nil {
 		return dErrors.Wrap(err, dErrors.CodeInternal, "failed to revoke session")
 	}
@@ -48,6 +48,7 @@ func (s *Service) RevokeSession(ctx context.Context, userID id.UserID, sessionID
 		"user_id", session.UserID.String(),
 		"session_id", session.ID.String(),
 		"client_id", session.ClientID,
+		"reason", models.RevocationReasonUserInitiated.String(),
 	)
 
 	return nil
@@ -75,7 +76,7 @@ func (s *Service) LogoutAll(ctx context.Context, userID id.UserID, currentSessio
 		if exceptCurrent && session.ID == currentSessionID {
 			continue
 		}
-		outcome, err := s.revokeSessionInternal(ctx, session, "")
+		outcome, err := s.revokeSessionInternal(ctx, session, "", models.RevocationReasonUserInitiated)
 		if err != nil {
 			// Continue on error - partial revocation is better than none
 			failedCount++
@@ -92,6 +93,7 @@ func (s *Service) LogoutAll(ctx context.Context, userID id.UserID, currentSessio
 				"user_id", session.UserID.String(),
 				"session_id", session.ID.String(),
 				"client_id", session.ClientID,
+				"reason", models.RevocationReasonUserInitiated.String(),
 			)
 		}
 	}

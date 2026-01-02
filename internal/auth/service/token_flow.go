@@ -89,6 +89,7 @@ func (s *Service) executeTokenFlowTx(
 // revokeSessionOnReplay handles replay attack detection by revoking the associated session.
 // Returns nil if no replay detected. Revokes the session and returns nil on successful revocation.
 // This is called when a token/code consumption fails with an "already used" error.
+// Note: Audit logging for replay detection is handled by the caller after the transaction commits.
 func revokeSessionOnReplay(
 	ctx context.Context,
 	stores txAuthStores,
@@ -104,6 +105,7 @@ func revokeSessionOnReplay(
 	if revokeErr := stores.Sessions.RevokeSessionIfActive(ctx, sessionID, now); revokeErr != nil {
 		return dErrors.Wrap(revokeErr, dErrors.CodeInternal, "failed to revoke session")
 	}
+	// RevocationReasonReplayDetected is tracked in audit by the service layer
 	return nil
 }
 

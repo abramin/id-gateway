@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"credo/internal/auth/models"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
@@ -34,6 +35,7 @@ func (s *Service) DeleteUser(ctx context.Context, userID id.UserID) error {
 	auditAttrs := []any{
 		"user_id", userID.String(),
 		"email", user.Email,
+		"reason", models.RevocationReasonUserDeleted.String(),
 	}
 
 	s.logAudit(ctx, string(audit.EventSessionsRevoked), auditAttrs...)
