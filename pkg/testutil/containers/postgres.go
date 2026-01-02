@@ -113,9 +113,9 @@ func findMigrationsDir() string {
 		return "migrations"
 	}
 
-	// Navigate from pkg/testkit/containers/ to project root
+	// Navigate from pkg/testutil/containers/ to project root (3 levels up)
 	dir := filepath.Dir(filename)
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 3; i++ {
 		dir = filepath.Dir(dir)
 	}
 

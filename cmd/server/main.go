@@ -515,10 +515,17 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 }
 
 func buildConsentModule(infra *infraBundle) *consentModule {
+	var auditStore audit.Store
+	if infra.DBPool != nil {
+		auditStore = auditpostgres.New(infra.DBPool.DB())
+	} else {
+		auditStore = auditmemory.NewInMemoryStore()
+	}
+
 	consentSvc := consentService.New(
 		consentStore.New(),
 		auditpublisher.NewPublisher(
-			auditpostgres.New(infra.DBPool.DB()),
+			auditStore,
 			auditpublisher.WithMetrics(infra.AuditMetrics),
 			auditpublisher.WithPublisherLogger(infra.Log),
 		),
@@ -608,9 +615,15 @@ func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service)
 		registryService.WithLogger(infra.Log),
 	)
 
-	// Create audit publisher for handler
+	// Create audit publisher for handler (use in-memory store if no database)
+	var auditStore audit.Store
+	if infra.DBPool != nil {
+		auditStore = auditpostgres.New(infra.DBPool.DB())
+	} else {
+		auditStore = auditmemory.NewInMemoryStore()
+	}
 	auditPort := auditpublisher.NewPublisher(
-		auditpostgres.New(infra.DBPool.DB()),
+		auditStore,
 		auditpublisher.WithMetrics(infra.AuditMetrics),
 		auditpublisher.WithPublisherLogger(infra.Log),
 	)
@@ -628,8 +641,14 @@ func buildVCModule(infra *infraBundle, consentSvc *consentService.Service, regis
 	consentAdapter := vcAdapters.NewConsentAdapter(consentSvc)
 	registryAdapter := vcAdapters.NewRegistryAdapter(registrySvc)
 
+	var auditStore audit.Store
+	if infra.DBPool != nil {
+		auditStore = auditpostgres.New(infra.DBPool.DB())
+	} else {
+		auditStore = auditmemory.NewInMemoryStore()
+	}
 	auditPort := auditpublisher.NewPublisher(
-		auditpostgres.New(infra.DBPool.DB()),
+		auditStore,
 		auditpublisher.WithMetrics(infra.AuditMetrics),
 		auditpublisher.WithPublisherLogger(infra.Log),
 	)
@@ -656,9 +675,15 @@ func buildDecisionModule(infra *infraBundle, registrySvc *registryService.Servic
 	vcAdapter := decisionAdapters.NewVCAdapter(vcSt)
 	consentAdapter := decisionAdapters.NewConsentAdapter(consentSvc)
 
-	// Create audit publisher
+	// Create audit publisher (use in-memory store if no database)
+	var auditStore audit.Store
+	if infra.DBPool != nil {
+		auditStore = auditpostgres.New(infra.DBPool.DB())
+	} else {
+		auditStore = auditmemory.NewInMemoryStore()
+	}
 	auditPort := auditpublisher.NewPublisher(
-		auditpostgres.New(infra.DBPool.DB()),
+		auditStore,
 		auditpublisher.WithMetrics(infra.AuditMetrics),
 		auditpublisher.WithPublisherLogger(infra.Log),
 	)

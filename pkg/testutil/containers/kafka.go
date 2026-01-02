@@ -26,7 +26,9 @@ func NewKafkaContainer(t *testing.T) *KafkaContainer {
 
 	ctx := context.Background()
 
-	container, err := redpanda.Run(ctx, "redpandadata/redpanda:v24.2.4")
+	container, err := redpanda.Run(ctx, "redpandadata/redpanda:v24.2.4",
+		redpanda.WithAutoCreateTopics(),
+	)
 	if err != nil {
 		t.Fatalf("failed to start kafka container: %v", err)
 	}
