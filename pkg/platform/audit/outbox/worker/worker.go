@@ -133,7 +133,7 @@ func (w *Worker) poll() {
 	}
 
 	for _, entry := range entries {
-		if err := w.publishEntry(entry); err != nil {
+		if err := w.publishEntry(w.ctx, entry); err != nil {
 			if w.logger != nil {
 				w.logger.Error("failed to publish outbox entry",
 					"id", entry.ID,
@@ -171,7 +171,7 @@ func (w *Worker) poll() {
 }
 
 // publishEntry publishes a single outbox entry to Kafka.
-func (w *Worker) publishEntry(entry *outbox.Entry) error {
+func (w *Worker) publishEntry(ctx context.Context, entry *outbox.Entry) error {
 	start := time.Now()
 
 	msg := &producer.Message{
@@ -185,7 +185,7 @@ func (w *Worker) publishEntry(entry *outbox.Entry) error {
 		},
 	}
 
-	err := w.producer.Produce(w.ctx, msg)
+	err := w.producer.Produce(ctx, msg)
 	if err != nil {
 		return err
 	}
@@ -221,7 +221,7 @@ func (w *Worker) drain() {
 		}
 
 		for _, entry := range entries {
-			if err := w.publishEntry(entry); err != nil {
+			if err := w.publishEntry(ctx, entry); err != nil {
 				if w.logger != nil {
 					w.logger.Error("failed to publish during drain",
 						"id", entry.ID,

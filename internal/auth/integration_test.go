@@ -231,7 +231,7 @@ func TestConcurrentAuthorizationCodeReplay(t *testing.T) {
 	// Step 3: Collect results and verify exactly one success
 	successCount := 0
 	failureCount := 0
-	for i := 0; i < concurrentRequests; i++ {
+	for range concurrentRequests {
 		select {
 		case <-successCh:
 			successCount++

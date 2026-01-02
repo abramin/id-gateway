@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"time"
 
 	"credo/internal/platform/kafka/consumer"
+	id "credo/pkg/domain"
 	audit "credo/pkg/platform/audit"
 	auditpostgres "credo/pkg/platform/audit/store/postgres"
 
@@ -22,10 +25,30 @@ type Handler struct {
 
 // NewHandler creates a new audit event consumer handler.
 func NewHandler(store *auditpostgres.Store, logger *slog.Logger) *Handler {
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
 	return &Handler{
 		store:  store,
 		logger: logger,
 	}
+}
+
+// kafkaPayload matches the JSON structure produced by the outbox store.
+type kafkaPayload struct {
+	ID              string `json:"ID"`
+	Category        string `json:"Category"`
+	Timestamp       string `json:"Timestamp"`
+	UserID          string `json:"UserID"`
+	Subject         string `json:"Subject"`
+	Action          string `json:"Action"`
+	Purpose         string `json:"Purpose"`
+	RequestingParty string `json:"RequestingParty"`
+	Decision        string `json:"Decision"`
+	Reason          string `json:"Reason"`
+	Email           string `json:"Email"`
+	RequestID       string `json:"RequestID"`
+	ActorID         string `json:"ActorID"`
 }
 
 // Handle processes a single Kafka message containing an audit event.
@@ -42,15 +65,47 @@ func (h *Handler) Handle(ctx context.Context, msg *consumer.Message) error {
 		return nil
 	}
 
-	// Unmarshal audit event from message value
-	var event audit.Event
-	if err := json.Unmarshal(msg.Value, &event); err != nil {
-		h.logger.Error("failed to unmarshal audit event",
+	// Unmarshal into intermediate struct that matches the JSON format
+	var payload kafkaPayload
+	if err := json.Unmarshal(msg.Value, &payload); err != nil {
+		h.logger.Error("failed to unmarshal audit payload",
 			"event_id", eventID,
 			"error", err,
 		)
-		// Return nil to commit the offset - malformed messages should not block processing
 		return nil
+	}
+
+	// Convert to audit.Event
+	event := audit.Event{
+		Category:        audit.EventCategory(payload.Category),
+		Subject:         payload.Subject,
+		Action:          payload.Action,
+		Purpose:         payload.Purpose,
+		RequestingParty: payload.RequestingParty,
+		Decision:        payload.Decision,
+		Reason:          payload.Reason,
+		Email:           payload.Email,
+		RequestID:       payload.RequestID,
+		ActorID:         payload.ActorID,
+	}
+
+	// Parse timestamp
+	if payload.Timestamp != "" {
+		if ts, err := time.Parse(time.RFC3339Nano, payload.Timestamp); err == nil {
+			event.Timestamp = ts
+		}
+	}
+
+	// Parse UserID
+	if payload.UserID != "" {
+		if uid, err := uuid.Parse(payload.UserID); err == nil {
+			event.UserID = id.UserID(uid)
+		}
+	}
+
+	// Default category if empty
+	if event.Category == "" {
+		event.Category = audit.CategoryOperations
 	}
 
 	// Log the event being processed

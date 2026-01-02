@@ -4,6 +4,8 @@ PKG := ./...
 MAIN := ./cmd/server/main.go
 PROTO_DIR := api/proto
 PROTO_FILES := $(wildcard $(PROTO_DIR)/*.proto)
+TEST_CPUS ?= $(shell (command -v nproc >/dev/null 2>&1 && nproc) || (sysctl -n hw.ncpu 2>/dev/null) || echo 4)
+TEST_FLAGS ?= -p $(TEST_CPUS) -parallel $(TEST_CPUS)
 
 # === DEFAULT ===
 default: dev
@@ -20,10 +22,10 @@ run:
 # === TESTING ===
 test:
 	@if command -v gotestsum >/dev/null 2>&1; then \
-		FORCE_COLOR=1 TERM=xterm-256color gotestsum --hide-summary=skipped --format testname --no-color=false -- -v $(PKG); \
+		FORCE_COLOR=1 TERM=xterm-256color gotestsum --hide-summary=skipped --format testname --no-color=false -- -v $(TEST_FLAGS) $(PKG); \
 	else \
 		echo "gotestsum not installed, falling back to go test"; \
-		go test -v $(PKG); \
+		go test -v $(TEST_FLAGS) $(PKG); \
 	fi
 
 test-cover:

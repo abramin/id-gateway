@@ -60,7 +60,7 @@ import (
 	authlockoutStore "credo/internal/ratelimit/store/authlockout"
 	rwbucketStore "credo/internal/ratelimit/store/bucket"
 	globalthrottleStore "credo/internal/ratelimit/store/globalthrottle"
-	"credo/internal/seeder"
+	audit "credo/pkg/platform/audit"
 	tenantHandler "credo/internal/tenant/handler"
 	tenantmetrics "credo/internal/tenant/metrics"
 	tenantService "credo/internal/tenant/service"
@@ -76,7 +76,7 @@ import (
 	outboxpostgres "credo/pkg/platform/audit/outbox/store/postgres"
 	outboxworker "credo/pkg/platform/audit/outbox/worker"
 	auditpublisher "credo/pkg/platform/audit/publisher"
-	auditstore "credo/pkg/platform/audit/store/memory"
+	auditmemory "credo/pkg/platform/audit/store/memory"
 	auditpostgres "credo/pkg/platform/audit/store/postgres"
 	adminmw "credo/pkg/platform/middleware/admin"
 	auth "credo/pkg/platform/middleware/auth"
@@ -121,7 +121,7 @@ type authModule struct {
 	Sessions      *sessionStore.InMemorySessionStore
 	Codes         *authCodeStore.InMemoryAuthorizationCodeStore
 	RefreshTokens *refreshTokenStore.InMemoryRefreshTokenStore
-	AuditStore    *auditstore.InMemoryStore
+	AuditStore    audit.Store
 }
 
 type consentModule struct {
@@ -440,13 +440,16 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 	sessions := sessionStore.New()
 	codes := authCodeStore.New()
 	refreshTokens := refreshTokenStore.New()
-	auditStore := auditstore.NewInMemoryStore()
 
+	// Use in-memory audit store for demo mode, postgres otherwise
+	var auditStore audit.Store
 	if infra.Cfg.DemoMode {
-		seederSvc := seeder.New(users, sessions, codes, refreshTokens, auditStore, infra.Log)
-		if err := seederSvc.SeedAll(ctx); err != nil {
-			infra.Log.Warn("failed to seed demo data", "error", err)
+		auditStore = auditmemory.NewInMemoryStore()
+	} else {
+		if infra.DBPool == nil {
+			return nil, fmt.Errorf("database connection required for audit events")
 		}
+		auditStore = auditpostgres.New(infra.DBPool.DB())
 	}
 
 	authCfg := &authService.Config{
@@ -472,7 +475,6 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 		authService.WithTRL(trl),
 		authService.WithAuditPublisher(auditpublisher.NewPublisher(
 			auditStore,
-			auditpublisher.WithAsyncBuffer(1000),
 			auditpublisher.WithMetrics(infra.AuditMetrics),
 			auditpublisher.WithPublisherLogger(infra.Log),
 		)),
@@ -513,11 +515,17 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 }
 
 func buildConsentModule(infra *infraBundle) *consentModule {
+	var auditStore audit.Store
+	if infra.DBPool != nil {
+		auditStore = auditpostgres.New(infra.DBPool.DB())
+	} else {
+		auditStore = auditmemory.NewInMemoryStore()
+	}
+
 	consentSvc := consentService.New(
 		consentStore.New(),
 		auditpublisher.NewPublisher(
-			auditstore.NewInMemoryStore(),
-			auditpublisher.WithAsyncBuffer(1000),
+			auditStore,
 			auditpublisher.WithMetrics(infra.AuditMetrics),
 			auditpublisher.WithPublisherLogger(infra.Log),
 		),
@@ -607,10 +615,15 @@ func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service)
 		registryService.WithLogger(infra.Log),
 	)
 
-	// Create audit publisher for handler
+	// Create audit publisher for handler (use in-memory store if no database)
+	var auditStore audit.Store
+	if infra.DBPool != nil {
+		auditStore = auditpostgres.New(infra.DBPool.DB())
+	} else {
+		auditStore = auditmemory.NewInMemoryStore()
+	}
 	auditPort := auditpublisher.NewPublisher(
-		auditstore.NewInMemoryStore(),
-		auditpublisher.WithAsyncBuffer(1000),
+		auditStore,
 		auditpublisher.WithMetrics(infra.AuditMetrics),
 		auditpublisher.WithPublisherLogger(infra.Log),
 	)
@@ -628,9 +641,14 @@ func buildVCModule(infra *infraBundle, consentSvc *consentService.Service, regis
 	consentAdapter := vcAdapters.NewConsentAdapter(consentSvc)
 	registryAdapter := vcAdapters.NewRegistryAdapter(registrySvc)
 
+	var auditStore audit.Store
+	if infra.DBPool != nil {
+		auditStore = auditpostgres.New(infra.DBPool.DB())
+	} else {
+		auditStore = auditmemory.NewInMemoryStore()
+	}
 	auditPort := auditpublisher.NewPublisher(
-		auditstore.NewInMemoryStore(),
-		auditpublisher.WithAsyncBuffer(1000),
+		auditStore,
 		auditpublisher.WithMetrics(infra.AuditMetrics),
 		auditpublisher.WithPublisherLogger(infra.Log),
 	)
@@ -657,10 +675,15 @@ func buildDecisionModule(infra *infraBundle, registrySvc *registryService.Servic
 	vcAdapter := decisionAdapters.NewVCAdapter(vcSt)
 	consentAdapter := decisionAdapters.NewConsentAdapter(consentSvc)
 
-	// Create audit publisher
+	// Create audit publisher (use in-memory store if no database)
+	var auditStore audit.Store
+	if infra.DBPool != nil {
+		auditStore = auditpostgres.New(infra.DBPool.DB())
+	} else {
+		auditStore = auditmemory.NewInMemoryStore()
+	}
 	auditPort := auditpublisher.NewPublisher(
-		auditstore.NewInMemoryStore(),
-		auditpublisher.WithAsyncBuffer(1000),
+		auditStore,
 		auditpublisher.WithMetrics(infra.AuditMetrics),
 		auditpublisher.WithPublisherLogger(infra.Log),
 	)

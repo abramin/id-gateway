@@ -148,8 +148,8 @@ workspace "Credo Identity Verification Gateway" {
                 configLoader = component "Config Loader" "Environment-based configuration loading" "Go" "Infrastructure"
                 logger = component "Logger" "Structured slog-based logging" "Go" "Infrastructure"
                 jwtService = component "JWT Service" "Token signing and validation" "Go, HMAC-SHA256" "Service"
-                auditPublisher = component "Audit Publisher" "Async event publishing with buffering" "Go" "Service"
-                auditStore = component "Audit Store" "Audit event persistence" "In-Memory" "Store"
+                auditPublisher = component "Audit Publisher" "Synchronous event emission to the audit store" "Go" "Service"
+                auditStore = component "Audit Store" "Audit event persistence (outbox-backed)" "PostgreSQL" "Store"
                 metricsRegistry = component "Metrics Registry" "Prometheus metrics collection" "Go, Prometheus" "Infrastructure"
             }
         }

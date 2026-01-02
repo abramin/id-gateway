@@ -8,9 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	id "credo/pkg/domain"
@@ -108,13 +106,13 @@ func (s *AuthMiddlewareTestSuite) TestValidToken() {
 
 	w := s.makeRequest("Bearer valid-token")
 
-	require.True(s.T(), s.nextHandler.called, "next handler should be called")
-	assert.Equal(s.T(), http.StatusOK, w.Code)
+	s.Require().True(s.nextHandler.called, "next handler should be called")
+	s.Equal(http.StatusOK, w.Code)
 
 	// Verify context values were set correctly as typed IDs
-	assert.Equal(s.T(), testUserID, requestcontext.UserID(s.nextHandler.context).String())
-	assert.Equal(s.T(), testSessionID, requestcontext.SessionID(s.nextHandler.context).String())
-	assert.Equal(s.T(), testClientID, requestcontext.ClientID(s.nextHandler.context).String())
+	s.Equal(testUserID, requestcontext.UserID(s.nextHandler.context).String())
+	s.Equal(testSessionID, requestcontext.SessionID(s.nextHandler.context).String())
+	s.Equal(testClientID, requestcontext.ClientID(s.nextHandler.context).String())
 }
 
 func (s *AuthMiddlewareTestSuite) TestRevokedToken() {
@@ -133,9 +131,9 @@ func (s *AuthMiddlewareTestSuite) TestRevokedToken() {
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	assert.False(s.T(), s.nextHandler.called, "next handler should not be called")
-	assert.Equal(s.T(), http.StatusUnauthorized, w.Code)
-	assert.JSONEq(s.T(),
+	s.False(s.nextHandler.called, "next handler should not be called")
+	s.Equal(http.StatusUnauthorized, w.Code)
+	s.JSONEq(
 		`{"error":"unauthorized","error_description":"Token has been revoked"}`,
 		w.Body.String(),
 	)
@@ -155,9 +153,9 @@ func (s *AuthMiddlewareTestSuite) TestRevocationCheckMissingJTI() {
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	assert.False(s.T(), s.nextHandler.called, "next handler should not be called")
-	assert.Equal(s.T(), http.StatusUnauthorized, w.Code)
-	assert.JSONEq(s.T(),
+	s.False(s.nextHandler.called, "next handler should not be called")
+	s.Equal(http.StatusUnauthorized, w.Code)
+	s.JSONEq(
 		`{"error":"unauthorized","error_description":"Token has been revoked"}`,
 		w.Body.String(),
 	)
@@ -179,9 +177,9 @@ func (s *AuthMiddlewareTestSuite) TestRevocationCheckError() {
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	assert.False(s.T(), s.nextHandler.called, "next handler should not be called")
-	assert.Equal(s.T(), http.StatusInternalServerError, w.Code)
-	assert.JSONEq(s.T(),
+	s.False(s.nextHandler.called, "next handler should not be called")
+	s.Equal(http.StatusInternalServerError, w.Code)
+	s.JSONEq(
 		`{"error":"internal_error","error_description":"Failed to validate token"}`,
 		w.Body.String(),
 	)
@@ -198,9 +196,9 @@ func (s *AuthMiddlewareTestSuite) TestMalformedUserIDInClaims() {
 
 	w := s.makeRequest("Bearer valid-token")
 
-	assert.False(s.T(), s.nextHandler.called, "next handler should not be called for malformed claims")
-	assert.Equal(s.T(), http.StatusUnauthorized, w.Code)
-	assert.JSONEq(s.T(),
+	s.False(s.nextHandler.called, "next handler should not be called for malformed claims")
+	s.Equal(http.StatusUnauthorized, w.Code)
+	s.JSONEq(
 		`{"error":"unauthorized","error_description":"Invalid or expired token"}`,
 		w.Body.String(),
 	)
@@ -211,10 +209,10 @@ func (s *AuthMiddlewareTestSuite) TestInvalidToken() {
 
 	w := s.makeRequest("Bearer invalid-token")
 
-	assert.False(s.T(), s.nextHandler.called, "next handler should not be called")
-	assert.Equal(s.T(), http.StatusUnauthorized, w.Code)
-	assert.Equal(s.T(), "application/json", w.Header().Get("Content-Type"))
-	assert.JSONEq(s.T(),
+	s.False(s.nextHandler.called, "next handler should not be called")
+	s.Equal(http.StatusUnauthorized, w.Code)
+	s.Equal("application/json", w.Header().Get("Content-Type"))
+	s.JSONEq(
 		`{"error":"unauthorized","error_description":"Invalid or expired token"}`,
 		w.Body.String(),
 	)
@@ -223,10 +221,10 @@ func (s *AuthMiddlewareTestSuite) TestInvalidToken() {
 func (s *AuthMiddlewareTestSuite) TestMissingAuthorizationHeader() {
 	w := s.makeRequest("")
 
-	assert.False(s.T(), s.nextHandler.called, "next handler should not be called")
-	assert.Equal(s.T(), http.StatusUnauthorized, w.Code)
-	assert.Equal(s.T(), "application/json", w.Header().Get("Content-Type"))
-	assert.JSONEq(s.T(),
+	s.False(s.nextHandler.called, "next handler should not be called")
+	s.Equal(http.StatusUnauthorized, w.Code)
+	s.Equal("application/json", w.Header().Get("Content-Type"))
+	s.JSONEq(
 		`{"error":"unauthorized","error_description":"Missing or invalid Authorization header"}`,
 		w.Body.String(),
 	)
@@ -254,9 +252,9 @@ func (s *AuthMiddlewareTestSuite) TestInvalidAuthorizationFormats() {
 			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, req)
 
-			assert.False(s.T(), nextHandler.called, "next handler should not be called")
-			assert.Equal(s.T(), http.StatusUnauthorized, w.Code)
-			assert.JSONEq(s.T(),
+			s.False(nextHandler.called, "next handler should not be called")
+			s.Equal(http.StatusUnauthorized, w.Code)
+			s.JSONEq(
 				`{"error":"unauthorized","error_description":"Missing or invalid Authorization header"}`,
 				w.Body.String(),
 			)
@@ -269,9 +267,9 @@ func (s *AuthMiddlewareTestSuite) TestBearerWithEmptyToken() {
 
 	w := s.makeRequest("Bearer ")
 
-	assert.False(s.T(), s.nextHandler.called, "next handler should not be called")
-	assert.Equal(s.T(), http.StatusUnauthorized, w.Code)
-	assert.JSONEq(s.T(),
+	s.False(s.nextHandler.called, "next handler should not be called")
+	s.Equal(http.StatusUnauthorized, w.Code)
+	s.JSONEq(
 		`{"error":"unauthorized","error_description":"Invalid or expired token"}`,
 		w.Body.String(),
 	)
@@ -282,8 +280,8 @@ func (s *AuthMiddlewareTestSuite) TestBearerWithWhitespaceToken() {
 
 	w := s.makeRequest("Bearer    ")
 
-	assert.False(s.T(), s.nextHandler.called, "next handler should not be called")
-	assert.Equal(s.T(), http.StatusUnauthorized, w.Code)
+	s.False(s.nextHandler.called, "next handler should not be called")
+	s.Equal(http.StatusUnauthorized, w.Code)
 }
 
 func TestAuthMiddlewareTestSuite(t *testing.T) {
@@ -301,13 +299,13 @@ func (s *ContextGettersTestSuite) TestUserID() {
 	s.Run("valid user ID", func() {
 		ctx := requestcontext.WithUserID(context.Background(), parsedUserID)
 		result := requestcontext.UserID(ctx)
-		assert.Equal(s.T(), testUserID, result.String())
+		s.Equal(testUserID, result.String())
 	})
 
 	s.Run("missing user ID", func() {
 		ctx := context.Background()
 		result := requestcontext.UserID(ctx)
-		assert.True(s.T(), result.IsNil())
+		s.True(result.IsNil())
 	})
 }
 
@@ -317,13 +315,13 @@ func (s *ContextGettersTestSuite) TestSessionID() {
 	s.Run("valid session ID", func() {
 		ctx := requestcontext.WithSessionID(context.Background(), parsedSessionID)
 		result := requestcontext.SessionID(ctx)
-		assert.Equal(s.T(), testSessionID, result.String())
+		s.Equal(testSessionID, result.String())
 	})
 
 	s.Run("missing session ID", func() {
 		ctx := context.Background()
 		result := requestcontext.SessionID(ctx)
-		assert.True(s.T(), result.IsNil())
+		s.True(result.IsNil())
 	})
 }
 
@@ -333,13 +331,13 @@ func (s *ContextGettersTestSuite) TestClientID() {
 	s.Run("valid client ID", func() {
 		ctx := requestcontext.WithClientID(context.Background(), parsedClientID)
 		result := requestcontext.ClientID(ctx)
-		assert.Equal(s.T(), testClientID, result.String())
+		s.Equal(testClientID, result.String())
 	})
 
 	s.Run("missing client ID", func() {
 		ctx := context.Background()
 		result := requestcontext.ClientID(ctx)
-		assert.True(s.T(), result.IsNil())
+		s.True(result.IsNil())
 	})
 }
 

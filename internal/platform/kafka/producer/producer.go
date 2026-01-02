@@ -61,6 +61,7 @@ func New(cfg Config, logger *slog.Logger) (*Producer, error) {
 		kgo.RecordRetries(cfg.Retries),
 		kgo.ProducerBatchMaxBytes(16384),
 		kgo.ProducerLinger(5 * time.Millisecond),
+		kgo.AllowAutoTopicCreation(),
 	}
 
 	if cfg.DeliveryTimeout > 0 {
