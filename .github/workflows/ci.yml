@@ -48,6 +48,8 @@ jobs:
 
   integration:
     name: Integration Tests (Testcontainers)
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
