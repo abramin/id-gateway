@@ -207,55 +207,52 @@ type clientRow interface {
 }
 
 func scanClient(row clientRow) (*models.Client, error) {
-	var client models.Client
-	var tenantID uuid.UUID
-	var clientID uuid.UUID
-	var secret sql.NullString
-	var redirectBytes []byte
-	var grantsBytes []byte
-	var scopesBytes []byte
-	var status string
-
-	err := row.Scan(
-		&clientID,
-		&tenantID,
-		&client.Name,
-		&client.OAuthClientID,
-		&secret,
-		&redirectBytes,
-		&grantsBytes,
-		&scopesBytes,
-		&status,
-		&client.CreatedAt,
-		&client.UpdatedAt,
+	var (
+		clientID, tenantID         uuid.UUID
+		secret                     sql.NullString
+		redirectBytes, grantsBytes []byte
+		scopesBytes                []byte
+		status                     string
+		client                     models.Client
 	)
-	if err != nil {
+
+	if err := row.Scan(
+		&clientID, &tenantID,
+		&client.Name, &client.OAuthClientID, &secret,
+		&redirectBytes, &grantsBytes, &scopesBytes,
+		&status, &client.CreatedAt, &client.UpdatedAt,
+	); err != nil {
 		return nil, err
 	}
 
 	if secret.Valid {
 		client.ClientSecretHash = secret.String
 	}
-	if len(redirectBytes) > 0 {
-		if err := json.Unmarshal(redirectBytes, &client.RedirectURIs); err != nil {
-			return nil, fmt.Errorf("unmarshal redirect uris: %w", err)
-		}
+	if err := unmarshalJSONIfPresent(redirectBytes, &client.RedirectURIs, "redirect_uris"); err != nil {
+		return nil, err
 	}
-	if len(grantsBytes) > 0 {
-		if err := json.Unmarshal(grantsBytes, &client.AllowedGrants); err != nil {
-			return nil, fmt.Errorf("unmarshal allowed grants: %w", err)
-		}
+	if err := unmarshalJSONIfPresent(grantsBytes, &client.AllowedGrants, "allowed_grants"); err != nil {
+		return nil, err
 	}
-	if len(scopesBytes) > 0 {
-		if err := json.Unmarshal(scopesBytes, &client.AllowedScopes); err != nil {
-			return nil, fmt.Errorf("unmarshal allowed scopes: %w", err)
-		}
+	if err := unmarshalJSONIfPresent(scopesBytes, &client.AllowedScopes, "allowed_scopes"); err != nil {
+		return nil, err
 	}
 
 	client.ID = id.ClientID(clientID)
 	client.TenantID = id.TenantID(tenantID)
 	client.Status = models.ClientStatus(status)
 	return &client, nil
+}
+
+// unmarshalJSONIfPresent unmarshals JSON data into target if data is non-empty.
+func unmarshalJSONIfPresent[T any](data []byte, target *T, field string) error {
+	if len(data) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(data, target); err != nil {
+		return fmt.Errorf("unmarshal %s: %w", field, err)
+	}
+	return nil
 }
 
 func nullString(value string) sql.NullString {

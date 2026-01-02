@@ -200,33 +200,15 @@ func (e *auditEmitter) emitToAudit(ctx context.Context, event string, attributes
 		return dErrors.New(dErrors.CodeInternal, "audit publisher is required")
 	}
 
-	// Extract admin user who performed the action
 	userIDStr := attrs.ExtractString(attributes, "user_id")
-	userID, err := id.ParseUserID(userIDStr)
-	if err != nil && userIDStr != "" && e.logger != nil {
-		e.logger.WarnContext(ctx, "failed to parse user_id for audit event",
-			"user_id", userIDStr,
-			"event", event,
-			"error", err,
-		)
-	}
-
-	// Subject is the affected entity (tenant_id or client_id for searchability)
-	subject := attrs.ExtractString(attributes, "tenant_id")
-	if subject == "" {
-		subject = attrs.ExtractString(attributes, "client_id")
-	}
-	if subject == "" {
-		subject = userIDStr // Fallback to user_id if no entity ID
-	}
-
-	requestID := requestcontext.RequestID(ctx)
+	userID := e.parseUserID(ctx, userIDStr, event)
+	subject := resolveAuditSubject(attributes, userIDStr)
 
 	if err := e.publisher.Emit(ctx, audit.Event{
 		UserID:    userID,
 		Subject:   subject,
 		Action:    event,
-		RequestID: requestID,
+		RequestID: requestcontext.RequestID(ctx),
 	}); err != nil {
 		if e.logger != nil {
 			e.logger.ErrorContext(ctx, "failed to emit audit event",
@@ -237,4 +219,32 @@ func (e *auditEmitter) emitToAudit(ctx context.Context, event string, attributes
 		return dErrors.Wrap(err, dErrors.CodeInternal, "failed to emit audit event")
 	}
 	return nil
+}
+
+// parseUserID attempts to parse the user ID, logging a warning on failure.
+func (e *auditEmitter) parseUserID(ctx context.Context, userIDStr, event string) id.UserID {
+	if userIDStr == "" {
+		return id.UserID{}
+	}
+	userID, err := id.ParseUserID(userIDStr)
+	if err != nil && e.logger != nil {
+		e.logger.WarnContext(ctx, "failed to parse user_id for audit event",
+			"user_id", userIDStr,
+			"event", event,
+			"error", err,
+		)
+	}
+	return userID
+}
+
+// resolveAuditSubject determines the audit subject from attributes.
+// Priority: tenant_id > client_id > user_id (fallback).
+func resolveAuditSubject(attributes []any, fallbackUserID string) string {
+	if s := attrs.ExtractString(attributes, "tenant_id"); s != "" {
+		return s
+	}
+	if s := attrs.ExtractString(attributes, "client_id"); s != "" {
+		return s
+	}
+	return fallbackUserID
 }
