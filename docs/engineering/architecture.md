@@ -476,12 +476,17 @@ const (
 )
 
 type ConsentRecord struct {
-    ID        string     // Format: "consent_<uuid>" - Always reused per user+purpose
+    ID        string     // UUID reused per user+purpose
     UserID    string
     Purpose   Purpose
     GrantedAt time.Time
     ExpiresAt *time.Time
     RevokedAt *time.Time
+}
+
+type ConsentScope struct {
+    UserID  string
+    Purpose Purpose
 }
 ```
 
@@ -494,7 +499,7 @@ type ConsentRecord struct {
 
 **Production Evolution (PRD-002 TR-6):**
 
-- **Write model:** Consent service writes canonical records to `ConsentStore` (PostgreSQL) and emits `consent_granted`/`consent_revoked` events to Kafka/NATS.
+- **Write model:** Consent service writes canonical records to `ConsentStore` (PostgreSQL) and emits `consent_granted`/`consent_revoked` events to Kafka/NATS after commit (or via outbox).
 - **Read model:** Projection workers consume events and maintain a Redis/DynamoDB read model keyed by `user_id:purpose` with `{status, expires_at, revoked_at, version}` for sub-5ms lookups.
 - **Consistency:** Projection lag budget ≤1s; `Require()` checks projection first, falls back to canonical store on cache miss.
 - **Resilience:** Replay tool rebuilds projections from audit log; outbox pattern guarantees event delivery; no-eviction Redis policy for consent projections.

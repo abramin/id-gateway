@@ -71,13 +71,13 @@ func (s *PostgresStore) Save(ctx context.Context, consent *models.Record) error 
 	return nil
 }
 
-func (s *PostgresStore) FindByUserAndPurpose(ctx context.Context, userID id.UserID, purpose models.Purpose) (*models.Record, error) {
+func (s *PostgresStore) FindByScope(ctx context.Context, scope models.ConsentScope) (*models.Record, error) {
 	query := `
 		SELECT id, user_id, purpose, granted_at, expires_at, revoked_at
 		FROM consents
 		WHERE user_id = $1 AND purpose = $2
 	`
-	record, err := scanConsent(s.execer().QueryRowContext(ctx, query, uuid.UUID(userID), string(purpose)))
+	record, err := scanConsent(s.execer().QueryRowContext(ctx, query, uuid.UUID(scope.UserID), string(scope.Purpose)))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, sentinel.ErrNotFound
@@ -127,9 +127,9 @@ func (s *PostgresStore) Update(ctx context.Context, consent *models.Record) erro
 }
 
 // Execute atomically validates and mutates a consent record under lock.
-func (s *PostgresStore) Execute(ctx context.Context, userID id.UserID, purpose models.Purpose, validate func(*models.Record) error, mutate func(*models.Record)) (*models.Record, error) {
+func (s *PostgresStore) Execute(ctx context.Context, scope models.ConsentScope, validate func(*models.Record) error, mutate func(*models.Record)) (*models.Record, error) {
 	if s.tx != nil {
-		return s.executeWithTx(ctx, s.tx, userID, purpose, validate, mutate)
+		return s.executeWithTx(ctx, s.tx, scope, validate, mutate)
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -140,7 +140,7 @@ func (s *PostgresStore) Execute(ctx context.Context, userID id.UserID, purpose m
 		_ = tx.Rollback()
 	}()
 
-	record, err := s.executeWithTx(ctx, tx, userID, purpose, validate, mutate)
+	record, err := s.executeWithTx(ctx, tx, scope, validate, mutate)
 	if err != nil {
 		return nil, err
 	}
@@ -151,14 +151,14 @@ func (s *PostgresStore) Execute(ctx context.Context, userID id.UserID, purpose m
 	return record, nil
 }
 
-func (s *PostgresStore) executeWithTx(ctx context.Context, tx *sql.Tx, userID id.UserID, purpose models.Purpose, validate func(*models.Record) error, mutate func(*models.Record)) (*models.Record, error) {
+func (s *PostgresStore) executeWithTx(ctx context.Context, tx *sql.Tx, scope models.ConsentScope, validate func(*models.Record) error, mutate func(*models.Record)) (*models.Record, error) {
 	query := `
 		SELECT id, user_id, purpose, granted_at, expires_at, revoked_at
 		FROM consents
 		WHERE user_id = $1 AND purpose = $2
 		FOR UPDATE
 	`
-	record, err := scanConsent(tx.QueryRowContext(ctx, query, uuid.UUID(userID), string(purpose)))
+	record, err := scanConsent(tx.QueryRowContext(ctx, query, uuid.UUID(scope.UserID), string(scope.Purpose)))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, sentinel.ErrNotFound

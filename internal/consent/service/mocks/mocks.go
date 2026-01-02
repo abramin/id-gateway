@@ -57,33 +57,33 @@ func (mr *MockStoreMockRecorder) DeleteByUser(ctx, userID any) *gomock.Call {
 }
 
 // Execute mocks base method.
-func (m *MockStore) Execute(ctx context.Context, userID domain.UserID, purpose models.Purpose, validate func(*models.Record) error, mutate func(*models.Record)) (*models.Record, error) {
+func (m *MockStore) Execute(ctx context.Context, scope models.ConsentScope, validate func(*models.Record) error, mutate func(*models.Record)) (*models.Record, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Execute", ctx, userID, purpose, validate, mutate)
+	ret := m.ctrl.Call(m, "Execute", ctx, scope, validate, mutate)
 	ret0, _ := ret[0].(*models.Record)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Execute indicates an expected call of Execute.
-func (mr *MockStoreMockRecorder) Execute(ctx, userID, purpose, validate, mutate any) *gomock.Call {
+func (mr *MockStoreMockRecorder) Execute(ctx, scope, validate, mutate any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Execute", reflect.TypeOf((*MockStore)(nil).Execute), ctx, userID, purpose, validate, mutate)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Execute", reflect.TypeOf((*MockStore)(nil).Execute), ctx, scope, validate, mutate)
 }
 
-// FindByUserAndPurpose mocks base method.
-func (m *MockStore) FindByUserAndPurpose(ctx context.Context, userID domain.UserID, purpose models.Purpose) (*models.Record, error) {
+// FindByScope mocks base method.
+func (m *MockStore) FindByScope(ctx context.Context, scope models.ConsentScope) (*models.Record, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FindByUserAndPurpose", ctx, userID, purpose)
+	ret := m.ctrl.Call(m, "FindByScope", ctx, scope)
 	ret0, _ := ret[0].(*models.Record)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// FindByUserAndPurpose indicates an expected call of FindByUserAndPurpose.
-func (mr *MockStoreMockRecorder) FindByUserAndPurpose(ctx, userID, purpose any) *gomock.Call {
+// FindByScope indicates an expected call of FindByScope.
+func (mr *MockStoreMockRecorder) FindByScope(ctx, scope any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByUserAndPurpose", reflect.TypeOf((*MockStore)(nil).FindByUserAndPurpose), ctx, userID, purpose)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByScope", reflect.TypeOf((*MockStore)(nil).FindByScope), ctx, scope)
 }
 
 // ListByUser mocks base method.

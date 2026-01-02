@@ -47,11 +47,11 @@ func (s *InMemoryStore) Save(_ context.Context, consent *models.Record) error {
 	return nil
 }
 
-func (s *InMemoryStore) FindByUserAndPurpose(_ context.Context, userID id.UserID, purpose models.Purpose) (*models.Record, error) {
+func (s *InMemoryStore) FindByScope(_ context.Context, scope models.ConsentScope) (*models.Record, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	records := s.consents[userID]
-	record, ok := records[purpose]
+	records := s.consents[scope.UserID]
+	record, ok := records[scope.Purpose]
 	if !ok {
 		return nil, sentinel.ErrNotFound
 	}
@@ -106,11 +106,11 @@ func (s *InMemoryStore) DeleteByUser(_ context.Context, userID id.UserID) error 
 }
 
 // Execute atomically validates and mutates a consent record under lock.
-func (s *InMemoryStore) Execute(_ context.Context, userID id.UserID, purpose models.Purpose, validate func(*models.Record) error, mutate func(*models.Record)) (*models.Record, error) {
+func (s *InMemoryStore) Execute(_ context.Context, scope models.ConsentScope, validate func(*models.Record) error, mutate func(*models.Record)) (*models.Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	records := s.consents[userID]
-	record, ok := records[purpose]
+	records := s.consents[scope.UserID]
+	record, ok := records[scope.Purpose]
 	if !ok {
 		return nil, sentinel.ErrNotFound
 	}
@@ -121,7 +121,7 @@ func (s *InMemoryStore) Execute(_ context.Context, userID id.UserID, purpose mod
 	}
 
 	mutate(&copyRecord)
-	records[purpose] = &copyRecord
-	s.consents[userID] = records
+	records[scope.Purpose] = &copyRecord
+	s.consents[scope.UserID] = records
 	return &copyRecord, nil
 }

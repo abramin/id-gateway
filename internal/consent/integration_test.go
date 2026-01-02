@@ -187,7 +187,9 @@ func TestConsentExpiryAndIDReuse(t *testing.T) {
 	h.revokeConsent(t, []string{"registry_check"})
 
 	// Get the vc_issuance consent ID before expiring it
-	vcRecord, err := h.consentStore.FindByUserAndPurpose(context.Background(), h.userID, consentModel.PurposeVCIssuance)
+	scope, err := consentModel.NewConsentScope(h.userID, consentModel.PurposeVCIssuance)
+	require.NoError(t, err)
+	vcRecord, err := h.consentStore.FindByScope(context.Background(), scope)
 	require.NoError(t, err)
 	require.NotNil(t, vcRecord)
 	originalVCID := vcRecord.ID
@@ -225,7 +227,9 @@ func TestConsentExpiryAndIDReuse(t *testing.T) {
 	assert.Equal(t, consentModel.StatusActive, regrantData.Granted[0].Status)
 
 	t.Log("Step 4: Verify consent ID was reused (not creating a new record)")
-	regrantedRecord, err := h.consentStore.FindByUserAndPurpose(context.Background(), h.userID, consentModel.PurposeVCIssuance)
+	scope, err = consentModel.NewConsentScope(h.userID, consentModel.PurposeVCIssuance)
+	require.NoError(t, err)
+	regrantedRecord, err := h.consentStore.FindByScope(context.Background(), scope)
 	require.NoError(t, err)
 	assert.Equal(t, originalVCID, regrantedRecord.ID, "consent ID should be reused when re-granting expired consent")
 
@@ -303,7 +307,9 @@ func TestIdempotencyWindowBoundary(t *testing.T) {
 	firstExpiresAt := grant1.Granted[0].ExpiresAt
 
 	// Get consent ID for verification
-	record1, err := h.consentStore.FindByUserAndPurpose(context.Background(), h.userID, consentModel.PurposeLogin)
+	scope, err := consentModel.NewConsentScope(h.userID, consentModel.PurposeLogin)
+	require.NoError(t, err)
+	record1, err := h.consentStore.FindByScope(context.Background(), scope)
 	require.NoError(t, err)
 	consentID := record1.ID
 
@@ -320,7 +326,9 @@ func TestIdempotencyWindowBoundary(t *testing.T) {
 	assert.Len(t, auditEvents, 1, "should only have 1 audit event (idempotent request didn't create new event)")
 
 	t.Log("Step 4: Manipulate timestamp to simulate time passing (6 minutes ago)")
-	record, err := h.consentStore.FindByUserAndPurpose(context.Background(), h.userID, consentModel.PurposeLogin)
+	scope, err = consentModel.NewConsentScope(h.userID, consentModel.PurposeLogin)
+	require.NoError(t, err)
+	record, err := h.consentStore.FindByScope(context.Background(), scope)
 	require.NoError(t, err)
 	record.GrantedAt = time.Now().Add(-6 * time.Minute)
 	require.NoError(t, h.consentStore.Update(context.Background(), record))
@@ -332,7 +340,9 @@ func TestIdempotencyWindowBoundary(t *testing.T) {
 	assert.True(t, grant3.Granted[0].ExpiresAt.After(*firstExpiresAt), "ExpiresAt should be updated after 5-min window")
 
 	t.Log("Step 6: Verify consent ID is still reused")
-	record3, err := h.consentStore.FindByUserAndPurpose(context.Background(), h.userID, consentModel.PurposeLogin)
+	scope, err = consentModel.NewConsentScope(h.userID, consentModel.PurposeLogin)
+	require.NoError(t, err)
+	record3, err := h.consentStore.FindByScope(context.Background(), scope)
 	require.NoError(t, err)
 	assert.Equal(t, consentID, record3.ID, "consent ID should still be reused")
 
@@ -402,7 +412,9 @@ func TestConcurrentGrantRevoke(t *testing.T) {
 	}
 
 	// Verify final state is consistent (exactly one record exists, in some valid state)
-	record, err := h.consentStore.FindByUserAndPurpose(context.Background(), h.userID, consentModel.PurposeLogin)
+	scope, err := consentModel.NewConsentScope(h.userID, consentModel.PurposeLogin)
+	require.NoError(t, err)
+	record, err := h.consentStore.FindByScope(context.Background(), scope)
 	require.NoError(t, err)
 	require.NotNil(t, record)
 

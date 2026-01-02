@@ -55,7 +55,9 @@ func (s *InMemoryStoreSuite) TestSaveAndFind() {
 
 		s.Require().NoError(s.store.Save(s.ctx, record))
 
-		fetched, err := s.store.FindByUserAndPurpose(s.ctx, record.UserID, models.PurposeLogin)
+		scope, err := models.NewConsentScope(record.UserID, models.PurposeLogin)
+		s.Require().NoError(err)
+		fetched, err := s.store.FindByScope(s.ctx, scope)
 		s.Require().NoError(err)
 		s.Assert().Equal(record.ID, fetched.ID)
 		s.Assert().Equal(record.UserID, fetched.UserID)
@@ -65,7 +67,9 @@ func (s *InMemoryStoreSuite) TestSaveAndFind() {
 	s.Run("returns ErrNotFound when record does not exist", func() {
 		nonExistentUserID := id.UserID(uuid.New())
 
-		fetched, err := s.store.FindByUserAndPurpose(s.ctx, nonExistentUserID, models.PurposeLogin)
+		scope, err := models.NewConsentScope(nonExistentUserID, models.PurposeLogin)
+		s.Require().NoError(err)
+		fetched, err := s.store.FindByScope(s.ctx, scope)
 		s.Require().ErrorIs(err, sentinel.ErrNotFound)
 		s.Assert().Nil(fetched)
 	})
@@ -110,7 +114,9 @@ func (s *InMemoryStoreSuite) TestUpdate() {
 		record.ExpiresAt = &newExpiry
 		s.Require().NoError(s.store.Update(s.ctx, record))
 
-		fetched, err := s.store.FindByUserAndPurpose(s.ctx, record.UserID, models.PurposeLogin)
+		scope, err := models.NewConsentScope(record.UserID, models.PurposeLogin)
+		s.Require().NoError(err)
+		fetched, err := s.store.FindByScope(s.ctx, scope)
 		s.Require().NoError(err)
 		s.Require().NotNil(fetched.ExpiresAt)
 		s.Assert().Equal(newExpiry, *fetched.ExpiresAt)
@@ -137,7 +143,9 @@ func (s *InMemoryStoreSuite) TestExecute() {
 		s.Require().NoError(s.store.Save(s.ctx, record))
 
 		revokeTime := now.Add(30 * time.Minute)
-		res, err := s.store.Execute(s.ctx, record.UserID, models.PurposeLogin,
+		scope, err := models.NewConsentScope(record.UserID, models.PurposeLogin)
+		s.Require().NoError(err)
+		res, err := s.store.Execute(s.ctx, scope,
 			func(_ *models.Record) error { return nil },
 			func(existing *models.Record) { existing.RevokedAt = &revokeTime },
 		)
@@ -179,7 +187,9 @@ func (s *InMemoryStoreSuite) TestCopySemanticsPreventsMutation() {
 		list[0].UserID = id.UserID(uuid.New())
 
 		// Verify original is unchanged
-		fetched, err := s.store.FindByUserAndPurpose(s.ctx, originalUserID, models.PurposeLogin)
+		scope, err := models.NewConsentScope(originalUserID, models.PurposeLogin)
+		s.Require().NoError(err)
+		fetched, err := s.store.FindByScope(s.ctx, scope)
 		s.Require().NoError(err)
 		s.Assert().Equal(originalUserID, fetched.UserID, "stored record should remain unchanged")
 	})
@@ -213,11 +223,15 @@ func (s *InMemoryStoreSuite) TestDeleteRemovesAllUserRecords() {
 		s.Require().NoError(s.store.DeleteByUser(s.ctx, userID))
 
 		// Verify all are gone
-		fetched, err := s.store.FindByUserAndPurpose(s.ctx, userID, models.PurposeLogin)
+		scope, err := models.NewConsentScope(userID, models.PurposeLogin)
+		s.Require().NoError(err)
+		fetched, err := s.store.FindByScope(s.ctx, scope)
 		s.Require().ErrorIs(err, sentinel.ErrNotFound)
 		s.Assert().Nil(fetched)
 
-		fetched, err = s.store.FindByUserAndPurpose(s.ctx, userID, models.PurposeRegistryCheck)
+		scope, err = models.NewConsentScope(userID, models.PurposeRegistryCheck)
+		s.Require().NoError(err)
+		fetched, err = s.store.FindByScope(s.ctx, scope)
 		s.Require().ErrorIs(err, sentinel.ErrNotFound)
 		s.Assert().Nil(fetched)
 	})

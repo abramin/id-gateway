@@ -1,6 +1,9 @@
 package models
 
-import dErrors "credo/pkg/domain-errors"
+import (
+	id "credo/pkg/domain"
+	dErrors "credo/pkg/domain-errors"
+)
 
 // Purpose labels why data is processed. Purpose binding allows selective
 // revocation without affecting other flows.
@@ -87,4 +90,22 @@ const (
 // String returns the string representation of the consent check state.
 func (c ConsentCheckState) String() string {
 	return string(c)
+}
+
+// ConsentScope identifies a consent aggregate by user and purpose.
+// It is the stable boundary for read/write operations on consent records.
+type ConsentScope struct {
+	UserID  id.UserID
+	Purpose Purpose
+}
+
+// NewConsentScope constructs a validated ConsentScope.
+func NewConsentScope(userID id.UserID, purpose Purpose) (ConsentScope, error) {
+	if userID.IsNil() {
+		return ConsentScope{}, dErrors.New(dErrors.CodeInvariantViolation, "user ID required")
+	}
+	if !purpose.IsValid() {
+		return ConsentScope{}, dErrors.New(dErrors.CodeInvariantViolation, "invalid consent purpose")
+	}
+	return ConsentScope{UserID: userID, Purpose: purpose}, nil
 }

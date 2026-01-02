@@ -93,7 +93,7 @@ func (s *ServiceSuite) TestGrant_StoreErrorPropagation() {
 	s.Run("store error on execute propagates as CodeInternal", func() {
 		userID := id.UserID(uuid.New())
 		s.mockStore.EXPECT().
-			Execute(gomock.Any(), userID, models.PurposeLogin, gomock.Any(), gomock.Any()).
+			Execute(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil, assert.AnError)
 
 		_, err := s.service.Grant(context.Background(), userID, []models.Purpose{models.PurposeLogin})
@@ -104,7 +104,7 @@ func (s *ServiceSuite) TestGrant_StoreErrorPropagation() {
 	s.Run("store error on save propagates as CodeInternal", func() {
 		userID := id.UserID(uuid.New())
 		s.mockStore.EXPECT().
-			Execute(gomock.Any(), userID, models.PurposeLogin, gomock.Any(), gomock.Any()).
+			Execute(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil, sentinel.ErrNotFound)
 
 		s.mockStore.EXPECT().
@@ -139,7 +139,7 @@ func (s *ServiceSuite) TestRevoke_StoreErrorPropagation() {
 	s.Run("store error on execute propagates as CodeInternal", func() {
 		userID := id.UserID(uuid.New())
 		s.mockStore.EXPECT().
-			Execute(gomock.Any(), userID, models.PurposeLogin, gomock.Any(), gomock.Any()).
+			Execute(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil, assert.AnError)
 
 		_, err := s.service.Revoke(context.Background(), userID, []models.Purpose{models.PurposeLogin})
@@ -177,7 +177,7 @@ func (s *ServiceSuite) TestRequire_ConsentStates() {
 	s.Run("missing consent returns CodeMissingConsent", func() {
 		userID := id.UserID(uuid.New())
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeVCIssuance).
+			FindByScope(gomock.Any(), gomock.Any()).
 			Return(nil, sentinel.ErrNotFound)
 
 		err := s.service.Require(context.Background(), userID, models.PurposeVCIssuance)
@@ -194,7 +194,7 @@ func (s *ServiceSuite) TestRequire_ConsentStates() {
 		}
 
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeVCIssuance).
+			FindByScope(gomock.Any(), gomock.Any()).
 			Return(record, nil)
 
 		err := s.service.Require(context.Background(), userID, models.PurposeVCIssuance)
@@ -211,7 +211,7 @@ func (s *ServiceSuite) TestRequire_ConsentStates() {
 		}
 
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeVCIssuance).
+			FindByScope(gomock.Any(), gomock.Any()).
 			Return(record, nil)
 
 		err := s.service.Require(context.Background(), userID, models.PurposeVCIssuance)
@@ -228,7 +228,7 @@ func (s *ServiceSuite) TestRequire_ConsentStates() {
 		}
 
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeVCIssuance).
+			FindByScope(gomock.Any(), gomock.Any()).
 			Return(record, nil)
 
 		err := s.service.Require(context.Background(), userID, models.PurposeVCIssuance)
@@ -251,7 +251,7 @@ func (s *ServiceSuite) TestRequire_TimeBoundary() {
 		}
 
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeVCIssuance).
+			FindByScope(gomock.Any(), gomock.Any()).
 			Return(record, nil)
 
 		// Service uses time.Now() internally, so ExpiresAt.Before(now) will be false initially
@@ -278,7 +278,7 @@ func (s *ServiceSuite) TestRequire_TimeBoundary() {
 		}
 
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeVCIssuance).
+			FindByScope(gomock.Any(), gomock.Any()).
 			Return(record, nil)
 
 		err := s.service.Require(context.Background(), userID, models.PurposeVCIssuance)
@@ -297,7 +297,7 @@ func (s *ServiceSuite) TestRequire_TimeBoundary() {
 		}
 
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeVCIssuance).
+			FindByScope(gomock.Any(), gomock.Any()).
 			Return(record, nil)
 
 		err := s.service.Require(context.Background(), userID, models.PurposeVCIssuance)
@@ -317,7 +317,7 @@ func (s *ServiceSuite) TestRequire_TimeBoundary() {
 		}
 
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeVCIssuance).
+			FindByScope(gomock.Any(), gomock.Any()).
 			Return(record, nil)
 
 		err := s.service.Require(context.Background(), userID, models.PurposeVCIssuance)
@@ -331,7 +331,7 @@ func (s *ServiceSuite) TestRequire_StoreErrorPropagation() {
 	s.Run("store error propagates as CodeInternal", func() {
 		userID := id.UserID(uuid.New())
 		s.mockStore.EXPECT().
-			FindByUserAndPurpose(gomock.Any(), userID, models.PurposeVCIssuance).
+			FindByScope(gomock.Any(), gomock.Any()).
 			Return(nil, assert.AnError)
 
 		err := s.service.Require(context.Background(), userID, models.PurposeVCIssuance)

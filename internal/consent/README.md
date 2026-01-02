@@ -62,6 +62,7 @@ This is a distinct bounded context because consent management has its own langua
 | Domain Term        | Code Location                                                              |
 | ------------------ | -------------------------------------------------------------------------- |
 | **Purpose**        | `models.Purpose` (login, registry_check, vc_issuance, decision_evaluation) |
+| **Consent Scope**  | `models.ConsentScope` (UserID + Purpose aggregate boundary)                |
 | **Consent Record** | `models.Record` (persisted consent decision)                               |
 | **Status**         | `models.Status` (active, expired, revoked)                                 |
 | **Grant**          | `service.Grant()` - create or renew consent                                |
@@ -74,6 +75,7 @@ This is a distinct bounded context because consent management has its own langua
 **Aggregate Root:** `Record`
 - One record per (UserID, Purpose) pair (upsert semantics)
 - ID is a UUID (`id.ConsentID`), reused across grant/revoke cycles
+- `ConsentScope` is the stable key for reads and writes
 
 **Domain Invariants** (must always hold for stored state):
 1. A `Record` must have non-empty `ID`, `UserID`, `Purpose`, `GrantedAt`
@@ -97,6 +99,7 @@ The consent service uses `ConsentStoreTx.RunInTx` to wrap multi-purpose operatio
 - `service.Revoke()` - multiple purposes in a single request
 
 This prevents partial state if one purpose fails mid-operation.
+Audit and metrics effects are executed after the transaction completes.
 
 ### Domain Events / Audit
 
@@ -111,6 +114,7 @@ Audit emissions behave like domain events (emitted on lifecycle transitions):
 | Consent check failed | `consent_check_failed` | `denied`  |
 
 All events include: `user_id`, `purpose`, `reason`, `timestamp`.
+Events are emitted after the transaction commits to keep I/O out of the critical section.
 
 ---
 
@@ -201,7 +205,9 @@ The `Store` interface defines error behavior:
 ```go
 // Store defines the persistence interface for consent records.
 // Error Contract:
-// - FindByUserAndPurpose returns store.ErrNotFound when no record exists
+// - FindByScope returns store.ErrNotFound when no record exists
+// - Save returns store.ErrConflict when a record already exists for user+purpose
+// - Execute returns store.ErrNotFound when no record exists
 // - Other methods return nil on success or wrapped errors on failure
 ```
 
@@ -323,7 +329,7 @@ PostgreSQL index strategies:
 ### Required Indexes
 
 ```sql
--- Primary lookup pattern: Require()/FindByUserAndPurpose
+-- Primary lookup pattern: Require()/FindByScope
 CREATE UNIQUE INDEX idx_consents_user_purpose
     ON consents (user_id, purpose)
     WHERE revoked_at IS NULL;
@@ -340,7 +346,7 @@ CREATE INDEX idx_consents_purpose ON consents (purpose);
 | Operation | Query Pattern | Index Used |
 |-----------|---------------|------------|
 | `Require()` | `WHERE user_id = $1 AND purpose = $2` | `idx_consents_user_purpose` |
-| `FindByUserAndPurpose()` | `WHERE user_id = $1 AND purpose = $2` | `idx_consents_user_purpose` |
+| `FindByScope()` | `WHERE user_id = $1 AND purpose = $2` | `idx_consents_user_purpose` |
 | `ListByUser()` | `WHERE user_id = $1` | `idx_consents_user_id` |
 | `Execute()` | `WHERE user_id = $1 AND purpose = $2 FOR UPDATE` | `idx_consents_user_purpose` |
 
