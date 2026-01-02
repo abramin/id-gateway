@@ -31,7 +31,9 @@ CREATE TABLE IF NOT EXISTS vc_credentials (
     subject_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     issuer VARCHAR(255) NOT NULL,
     issued_at TIMESTAMPTZ NOT NULL,
-    claims JSONB NOT NULL
+    claims JSONB NOT NULL,
+    is_over_18 BOOLEAN,
+    verified_via TEXT
 );
 
 CREATE INDEX idx_vc_credentials_subject_type ON vc_credentials (subject_id, type, issued_at DESC);

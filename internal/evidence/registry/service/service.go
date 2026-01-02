@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"log/slog"
+	"sync"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -22,6 +23,7 @@ import (
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit"
 	"credo/pkg/requestcontext"
+	"golang.org/x/sync/errgroup"
 )
 
 // Tracer for distributed tracing of registry operations.
@@ -213,19 +215,48 @@ func (s *Service) checkCache(ctx context.Context, nationalID id.NationalID) (cac
 		return result, nil
 	}
 
-	if cached, cacheErr := s.cache.FindCitizen(ctx, nationalID, s.regulated); cacheErr == nil {
-		result.citizen = cached
-		result.citizenCached = true
-	} else if !errors.Is(cacheErr, store.ErrNotFound) {
-		return cacheCheckResult{}, cacheErr
+	var (
+		citizen        *models.CitizenRecord
+		sanction       *models.SanctionsRecord
+		citizenCached  bool
+		sanctionCached bool
+	)
+
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.Go(func() error {
+		cached, cacheErr := s.cache.FindCitizen(groupCtx, nationalID, s.regulated)
+		if cacheErr == nil {
+			citizen = cached
+			citizenCached = true
+			return nil
+		}
+		if errors.Is(cacheErr, store.ErrNotFound) {
+			return nil
+		}
+		return cacheErr
+	})
+
+	group.Go(func() error {
+		cached, cacheErr := s.cache.FindSanction(groupCtx, nationalID)
+		if cacheErr == nil {
+			sanction = cached
+			sanctionCached = true
+			return nil
+		}
+		if errors.Is(cacheErr, store.ErrNotFound) {
+			return nil
+		}
+		return cacheErr
+	})
+
+	if err := group.Wait(); err != nil {
+		return cacheCheckResult{}, err
 	}
 
-	if cached, cacheErr := s.cache.FindSanction(ctx, nationalID); cacheErr == nil {
-		result.sanction = cached
-		result.sanctionsCached = true
-	} else if !errors.Is(cacheErr, store.ErrNotFound) {
-		return cacheCheckResult{}, cacheErr
-	}
+	result.citizen = citizen
+	result.sanction = sanction
+	result.citizenCached = citizenCached
+	result.sanctionsCached = sanctionCached
 
 	return result, nil
 }
@@ -290,12 +321,23 @@ func (s *Service) cacheNewlyFetched(ctx context.Context, key id.NationalID, citi
 	if s.cache == nil {
 		return
 	}
+
+	var wg sync.WaitGroup
 	if !fromCache.citizenCached && citizen != nil {
-		_ = s.cache.SaveCitizen(ctx, key, citizen, s.regulated)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = s.cache.SaveCitizen(ctx, key, citizen, s.regulated)
+		}()
 	}
 	if !fromCache.sanctionsCached && sanction != nil {
-		_ = s.cache.SaveSanction(ctx, key, sanction)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = s.cache.SaveSanction(ctx, key, sanction)
+		}()
 	}
+	wg.Wait()
 }
 
 // Citizen performs a single citizen lookup with cache-through semantics.
