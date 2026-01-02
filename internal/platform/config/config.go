@@ -24,6 +24,36 @@ type Server struct {
 
 	// RateLimiting
 	DisableRateLimiting bool
+
+	// Infrastructure (Phase 2)
+	Database DatabaseConfig
+	Kafka    KafkaConfig
+	Outbox   OutboxConfig
+}
+
+// DatabaseConfig holds PostgreSQL connection configuration.
+type DatabaseConfig struct {
+	URL             string
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
+}
+
+// KafkaConfig holds Kafka producer/consumer configuration.
+type KafkaConfig struct {
+	Brokers         string
+	AuditTopic      string
+	Acks            string
+	Retries         int
+	DeliveryTimeout time.Duration
+	ConsumerGroup   string
+}
+
+// OutboxConfig holds outbox worker configuration.
+type OutboxConfig struct {
+	PollInterval  time.Duration
+	BatchSize     int
+	RetentionDays int
 }
 
 // AuthConfig holds authentication and session configuration
@@ -81,6 +111,23 @@ var (
 	DefaultRegistryTimeout                = 5 * time.Second
 	DefaultDeviceCookieName               = "__Secure-Device-ID"
 	DefaultDeviceCookieMaxAge             = 31536000 // 1 year
+
+	// Database defaults
+	DefaultDBMaxOpenConns    = 25
+	DefaultDBMaxIdleConns    = 5
+	DefaultDBConnMaxLifetime = 5 * time.Minute
+
+	// Kafka defaults
+	DefaultKafkaAuditTopic      = "credo.audit.events"
+	DefaultKafkaAcks            = "all"
+	DefaultKafkaRetries         = 3
+	DefaultKafkaDeliveryTimeout = 30 * time.Second
+	DefaultKafkaConsumerGroup   = "credo-audit-consumer"
+
+	// Outbox defaults
+	DefaultOutboxPollInterval  = 100 * time.Millisecond
+	DefaultOutboxBatchSize     = 100
+	DefaultOutboxRetentionDays = 7
 )
 
 // FromEnv builds config from environment variables
@@ -98,6 +145,9 @@ func FromEnv() (Server, error) {
 		Registry:            loadRegistryConfig(),
 		Security:            loadSecurityConfig(env, demoMode),
 		DisableRateLimiting: disableRateLimiting,
+		Database:            loadDatabaseConfig(),
+		Kafka:               loadKafkaConfig(),
+		Outbox:              loadOutboxConfig(),
 	}
 
 	if demoMode {
@@ -176,6 +226,34 @@ func loadSecurityConfig(env string, demoMode bool) SecurityConfig {
 	return SecurityConfig{
 		RegulatedMode: regulated,
 		AdminAPIToken: adminToken,
+	}
+}
+
+func loadDatabaseConfig() DatabaseConfig {
+	return DatabaseConfig{
+		URL:             os.Getenv("DATABASE_URL"),
+		MaxOpenConns:    parseInt("DB_MAX_OPEN_CONNS", DefaultDBMaxOpenConns),
+		MaxIdleConns:    parseInt("DB_MAX_IDLE_CONNS", DefaultDBMaxIdleConns),
+		ConnMaxLifetime: parseDuration("DB_CONN_MAX_LIFETIME", DefaultDBConnMaxLifetime),
+	}
+}
+
+func loadKafkaConfig() KafkaConfig {
+	return KafkaConfig{
+		Brokers:         os.Getenv("KAFKA_BROKERS"),
+		AuditTopic:      getEnv("KAFKA_AUDIT_TOPIC", DefaultKafkaAuditTopic),
+		Acks:            getEnv("KAFKA_ACKS", DefaultKafkaAcks),
+		Retries:         parseInt("KAFKA_RETRIES", DefaultKafkaRetries),
+		DeliveryTimeout: parseDuration("KAFKA_DELIVERY_TIMEOUT", DefaultKafkaDeliveryTimeout),
+		ConsumerGroup:   getEnv("KAFKA_CONSUMER_GROUP", DefaultKafkaConsumerGroup),
+	}
+}
+
+func loadOutboxConfig() OutboxConfig {
+	return OutboxConfig{
+		PollInterval:  parseDuration("OUTBOX_POLL_INTERVAL", DefaultOutboxPollInterval),
+		BatchSize:     parseInt("OUTBOX_BATCH_SIZE", DefaultOutboxBatchSize),
+		RetentionDays: parseInt("OUTBOX_RETENTION_DAYS", DefaultOutboxRetentionDays),
 	}
 }
 
