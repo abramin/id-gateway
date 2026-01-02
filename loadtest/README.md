@@ -150,6 +150,15 @@ k6 run loadtest/k6-credo.js -e SCENARIO=rate_limit_cardinality
 - **Setup**: Creates tenant with 500 clients
 - **Target**: p95 latency < 100ms (COUNT queries should be O(1))
 
+### 7b. Tenant Name Lookup (`tenant_name_lookup`)
+
+**Purpose**: Validate case-insensitive tenant name lookup using functional index
+
+- **Load**: 200 req/sec for 1 minute
+- **Setup**: Creates 5 tenants with known names
+- **Method**: Lookups use random case variations (UPPER, lower, Mixed)
+- **Target**: p95 latency < 50ms (functional index on lower(name))
+
 ### 8. Rate Limit Sustained (`rate_limit_sustained`)
 
 **Purpose**: Validate rate limiting under sustained high request rate
@@ -299,6 +308,7 @@ k6 run loadtest/k6-credo.js -e SCENARIO=rate_limit_cardinality
 | `resolve_client_latency`    | ResolveClient call latency               |
 | `create_client_latency`     | CreateClient endpoint latency            |
 | `get_tenant_latency`        | GetTenant endpoint latency               |
+| `get_tenant_by_name_latency` | GetTenantByName endpoint latency        |
 | `rate_limit_latency`        | Health endpoint latency (rate tests)     |
 | `rate_limited_count`        | Count of 429 responses                   |
 | `token_errors`              | Count of token refresh failures          |

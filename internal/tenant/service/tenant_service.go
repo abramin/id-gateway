@@ -81,6 +81,19 @@ func (s *TenantService) GetTenant(ctx context.Context, tenantID id.TenantID) (*m
 	return tenant, nil
 }
 
+// GetTenantByName retrieves a tenant by name (case-insensitive).
+func (s *TenantService) GetTenantByName(ctx context.Context, name string) (*models.Tenant, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, dErrors.New(dErrors.CodeBadRequest, "tenant name is required")
+	}
+	tenant, err := s.tenants.FindByName(ctx, name)
+	if err != nil {
+		return nil, wrapTenantErr(err, "failed to load tenant")
+	}
+	return tenant, nil
+}
+
 // DeactivateTenant transitions a tenant to inactive status.
 // Returns the updated tenant or an error if tenant is not found or already inactive.
 func (s *TenantService) DeactivateTenant(ctx context.Context, tenantID id.TenantID) (*models.Tenant, error) {

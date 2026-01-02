@@ -52,6 +52,7 @@ const tokenExchangeLatency = new Trend('token_exchange_latency', true);
 const resolveClientLatency = new Trend('resolve_client_latency', true);
 const createClientLatency = new Trend('create_client_latency', true);
 const getTenantLatency = new Trend('get_tenant_latency', true);
+const getTenantByNameLatency = new Trend('get_tenant_by_name_latency', true);
 const rateLimitLatency = new Trend('rate_limit_latency', true);
 const tokenErrors = new Counter('token_errors');
 const consentErrors = new Counter('consent_errors');
@@ -237,6 +238,20 @@ export const options = {
       exec: 'tenantDashboardScenario',
       startTime: startAt(24),
       tags: { scenario: 'tenant_dashboard' },
+    },
+
+    // Scenario 7b: Tenant Name Lookup (1m)
+    // Case-insensitive tenant name lookups to validate functional index
+    tenant_name_lookup: {
+      executor: 'constant-arrival-rate',
+      rate: 200,
+      timeUnit: '1s',
+      duration: dur(1),
+      preAllocatedVUs: 50,
+      maxVUs: 200,
+      exec: 'tenantNameLookupScenario',
+      startTime: startAt(26, 10),
+      tags: { scenario: 'tenant_name_lookup' },
     },
 
     // Scenario 8: Rate Limit Sustained (1m)
@@ -576,6 +591,9 @@ export const options = {
     // Tenant dashboard: p95 < 100ms (COUNT queries should be O(1))
     'get_tenant_latency{scenario:tenant_dashboard}': ['p(95)<100'],
 
+    // Tenant name lookup: p95 < 50ms (functional index makes this fast)
+    'get_tenant_by_name_latency{scenario:tenant_name_lookup}': ['p(95)<50'],
+
     // Rate limiting: no latency thresholds (429s are expected behavior)
 
     // Consent shard contention: validate lock wait time under single-user load
@@ -661,6 +679,7 @@ export function setup() {
   const needsBurstClients = SCENARIO === 'all' || SCENARIO === 'resolve_client_burst';
   const needsOnboardingTenant = SCENARIO === 'all' || SCENARIO === 'client_onboarding_spike';
   const needsLargeTenants = SCENARIO === 'all' || SCENARIO === 'tenant_dashboard_load';
+  const needsTenantNames = SCENARIO === 'all' || SCENARIO === 'tenant_name_lookup';
 
   // Create users/tokens only if needed (token refresh, consent, mixed load, oauth flow)
   const tokens = [];
@@ -685,6 +704,7 @@ export function setup() {
   let burstClients = [];
   let onboardingTenantID = '';
   let largeTenants = [];
+  let tenantNames = [];
 
   // Create 100 clients for ResolveClient burst scenario
   if (needsBurstClients) {
@@ -729,14 +749,28 @@ export function setup() {
     console.log(`Created large tenant with ${LARGE_TENANT_CLIENT_COUNT} clients`);
   }
 
+  // Create tenants with known names for name lookup test
+  if (needsTenantNames) {
+    console.log('Creating tenants for name lookup test...');
+    const namePatterns = ['Alpha', 'BetaCorp', 'GammaTech', 'DeltaInc', 'EpsilonLtd'];
+    for (const pattern of namePatterns) {
+      const name = `${pattern}-${Date.now()}`;
+      createTenant(name, ADMIN_TOKEN);
+      tenantNames.push(name);
+    }
+    console.log(`Created ${tenantNames.length} tenants for name lookup`);
+  }
+
   return {
     tokens,
     users,
     clientID,
     tenantID,
+    tenantName,
     burstClients,
     onboardingTenantID,
     largeTenants,
+    tenantNames,
   };
 }
 
@@ -1260,6 +1294,56 @@ export function tenantDashboardScenario(data) {
   }
 
   sleep(0.05); // 50ms between operations
+}
+
+// Scenario 7b: Tenant Name Lookup
+// Purpose: Validate case-insensitive tenant name lookups using functional index
+export function tenantNameLookupScenario(data) {
+  // Use tenant names from setup, with random case variations
+  const tenantNames = data.tenantNames || [data.tenantName];
+  const baseName = tenantNames[Math.floor(Math.random() * tenantNames.length)];
+
+  // Apply random case transformation to test case-insensitivity
+  const caseVariants = [
+    baseName,
+    baseName.toLowerCase(),
+    baseName.toUpperCase(),
+    baseName.charAt(0).toUpperCase() + baseName.slice(1).toLowerCase(),
+  ];
+  const name = caseVariants[Math.floor(Math.random() * caseVariants.length)];
+
+  const startTime = Date.now();
+  const res = http.get(
+    `${BASE_URL}/admin/tenants/by-name/${encodeURIComponent(name)}`,
+    {
+      headers: {
+        'X-Admin-Token': ADMIN_TOKEN,
+      },
+      tags: { name: 'get_tenant_by_name' },
+    }
+  );
+  const duration = Date.now() - startTime;
+
+  getTenantByNameLatency.add(duration);
+
+  const success = check(res, {
+    'get tenant by name status is 200': (r) => r.status === 200,
+    'get tenant by name has id': (r) => {
+      try {
+        return JSON.parse(r.body).id !== undefined;
+      } catch {
+        return false;
+      }
+    },
+  });
+
+  if (!success) {
+    getTenantErrors.add(1);
+    errorRate.add(1);
+    console.log(`GetTenantByName failed for "${name}": ${res.status} - ${res.body}`);
+  } else {
+    errorRate.add(0);
+  }
 }
 
 // Scenario 8: Rate Limit Sustained

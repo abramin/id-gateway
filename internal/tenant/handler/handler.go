@@ -27,6 +27,7 @@ import (
 type Service interface {
 	CreateTenant(ctx context.Context, name string) (*models.Tenant, error)
 	GetTenant(ctx context.Context, id id.TenantID) (*readmodels.TenantDetails, error)
+	GetTenantByName(ctx context.Context, name string) (*models.Tenant, error)
 	DeactivateTenant(ctx context.Context, id id.TenantID) (*models.Tenant, error)
 	ReactivateTenant(ctx context.Context, id id.TenantID) (*models.Tenant, error)
 	CreateClient(ctx context.Context, cmd *service.CreateClientCommand) (*models.Client, string, error)
@@ -57,6 +58,7 @@ func New(service Service, logger *slog.Logger) *Handler {
 func (h *Handler) Register(r chi.Router) {
 	r.Post("/admin/tenants", h.HandleCreateTenant)
 	r.Get("/admin/tenants/{id}", h.HandleGetTenant)
+	r.Get("/admin/tenants/by-name/{name}", h.HandleGetTenantByName)
 	r.Post("/admin/tenants/{id}/deactivate", h.HandleDeactivateTenant)
 	r.Post("/admin/tenants/{id}/reactivate", h.HandleReactivateTenant)
 	r.Post("/admin/clients", h.HandleCreateClient)
@@ -112,6 +114,23 @@ func (h *Handler) HandleGetTenant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, toTenantDetailsResponse(res))
+}
+
+// HandleGetTenantByName returns tenant by name (case-insensitive lookup).
+// Used for admin operations when tenant ID is not known.
+func (h *Handler) HandleGetTenantByName(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	requestID := requestcontext.RequestID(ctx)
+	name := chi.URLParam(r, "name")
+
+	tenant, err := h.service.GetTenantByName(ctx, name)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "get tenant by name failed", "error", err, "request_id", requestID, "tenant_name", name)
+		httputil.WriteError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, toTenantResponse(tenant))
 }
 
 // HandleDeactivateTenant deactivates a tenant.
