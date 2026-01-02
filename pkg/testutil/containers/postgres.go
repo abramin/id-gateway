@@ -6,12 +6,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
+	"io/fs"
 	"sort"
+	"strings"
 	"testing"
 	"time"
+
+	"credo/migrations"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/testcontainers/testcontainers-go"
@@ -81,19 +82,23 @@ func NewPostgresContainer(t *testing.T) *PostgresContainer {
 	return pc
 }
 
-// runMigrations executes all *.up.sql migrations from the migrations directory.
+// runMigrations executes all *.up.sql migrations from the embedded migrations.FS.
 func (p *PostgresContainer) runMigrations(ctx context.Context) error {
-	migrationsDir := findMigrationsDir()
-
-	files, err := filepath.Glob(filepath.Join(migrationsDir, "*.up.sql"))
+	entries, err := fs.ReadDir(migrations.FS, ".")
 	if err != nil {
-		return fmt.Errorf("glob migrations: %w", err)
+		return fmt.Errorf("read migrations dir: %w", err)
 	}
 
+	var files []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".up.sql") {
+			files = append(files, e.Name())
+		}
+	}
 	sort.Strings(files)
 
 	for _, file := range files {
-		content, err := os.ReadFile(file)
+		content, err := fs.ReadFile(migrations.FS, file)
 		if err != nil {
 			return fmt.Errorf("read migration %s: %w", file, err)
 		}
@@ -104,22 +109,6 @@ func (p *PostgresContainer) runMigrations(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-// findMigrationsDir locates the migrations directory relative to the source file.
-func findMigrationsDir() string {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		return "migrations"
-	}
-
-	// Navigate from pkg/testutil/containers/ to project root (3 levels up)
-	dir := filepath.Dir(filename)
-	for i := 0; i < 3; i++ {
-		dir = filepath.Dir(dir)
-	}
-
-	return filepath.Join(dir, "migrations")
 }
 
 // TruncateTables clears all data from the specified tables.
