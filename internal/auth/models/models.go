@@ -1,3 +1,28 @@
+/*
+Package models contains the auth domain model.
+
+# Aggregate Structure
+
+	Session (Aggregate Root)
+	├── Identity: SessionID
+	├── Child Entities:
+	│   ├── AuthorizationCodeRecord (single-use, 10-min TTL)
+	│   └── RefreshTokenRecord (rotation-tracked, 30-day TTL)
+	├── Value Objects:
+	│   ├── SessionStatus: pending_consent | active | revoked
+	│   ├── DeviceBinding: {DeviceID, FingerprintHash, DisplayName, Location}
+	│   └── RevocationReason, Scope, TokenType, Grant
+	└── Invariants:
+	    ├── Scopes cannot be empty
+	    ├── ExpiresAt must be after CreatedAt
+	    ├── Revoked sessions are terminal
+	    └── Codes/tokens cannot be reused after MarkUsed()
+
+	User (Aggregate)
+	├── Identity: UserID
+	├── Invariants: Email cannot be empty
+	└── Behaviors: IsActive()
+*/
 package models
 
 import (
@@ -10,9 +35,6 @@ import (
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
-
-// This file contains pure domain models for authentication: entities
-// that should not depend on transport or HTTP-specific concerns.
 
 const authorizationCodePrefix = "authz_"
 
@@ -329,7 +351,8 @@ func NewSession(id id.SessionID, userID id.UserID, clientID id.ClientID, tenantI
 }
 
 // NewAuthorizationCode constructs an AuthorizationCodeRecord with invariant checks.
-func NewAuthorizationCode(code string, sessionID id.SessionID, redirectURI string, createdAt time.Time, expiresAt time.Time, now time.Time) (*AuthorizationCodeRecord, error) {
+// The id parameter must be provided by the caller to keep the domain layer pure.
+func NewAuthorizationCode(id uuid.UUID, code string, sessionID id.SessionID, redirectURI string, createdAt time.Time, expiresAt time.Time, now time.Time) (*AuthorizationCodeRecord, error) {
 	if code == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "authorization code cannot be empty")
 	}
@@ -347,7 +370,7 @@ func NewAuthorizationCode(code string, sessionID id.SessionID, redirectURI strin
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, fmt.Sprintf("authorization code already expired at %v", expiresAt))
 	}
 	return &AuthorizationCodeRecord{
-		ID:          uuid.New(),
+		ID:          id,
 		Code:        authorizationCodePrefix + code,
 		SessionID:   sessionID,
 		RedirectURI: redirectURI,
@@ -358,7 +381,8 @@ func NewAuthorizationCode(code string, sessionID id.SessionID, redirectURI strin
 }
 
 // NewRefreshToken constructs a RefreshTokenRecord with invariant checks.
-func NewRefreshToken(token string, sessionID id.SessionID, createdAt time.Time, expiresAt time.Time, now time.Time) (*RefreshTokenRecord, error) {
+// The id parameter must be provided by the caller to keep the domain layer pure.
+func NewRefreshToken(id uuid.UUID, token string, sessionID id.SessionID, createdAt time.Time, expiresAt time.Time, now time.Time) (*RefreshTokenRecord, error) {
 	if token == "" {
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, "refresh token cannot be empty")
 	}
@@ -369,7 +393,7 @@ func NewRefreshToken(token string, sessionID id.SessionID, createdAt time.Time, 
 		return nil, dErrors.New(dErrors.CodeInvariantViolation, fmt.Sprintf("refresh token already expired at %v", expiresAt))
 	}
 	return &RefreshTokenRecord{
-		ID:        uuid.New(),
+		ID:        id,
 		Token:     token,
 		SessionID: sessionID,
 		ExpiresAt: expiresAt,

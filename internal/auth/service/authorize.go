@@ -144,6 +144,7 @@ func (s *Service) authorizeInTx(ctx context.Context, params authorizeParams) (*a
 		// Step 2: Generate authorization code
 		sessionID := id.SessionID(uuid.New())
 		authCode, err := models.NewAuthorizationCode(
+			uuid.New(),
 			uuid.New().String(),
 			sessionID,
 			params.RedirectURI,

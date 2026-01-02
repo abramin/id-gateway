@@ -67,7 +67,6 @@ type SessionStore interface {
 	ListByUser(ctx context.Context, userID id.UserID) ([]*models.Session, error)
 	UpdateSession(ctx context.Context, session *models.Session) error
 	DeleteSessionsByUser(ctx context.Context, userID id.UserID) error
-	RevokeSession(ctx context.Context, sessionID id.SessionID) error
 	RevokeSessionIfActive(ctx context.Context, sessionID id.SessionID, now time.Time) error
 
 	// Execute atomically validates and mutates a session under lock.
@@ -432,6 +431,7 @@ func (s *Service) generateTokenArtifacts(ctx context.Context, session *models.Se
 
 	now := requestcontext.Now(ctx)
 	tokenRecord, err := models.NewRefreshToken(
+		uuid.New(),
 		refreshToken,
 		session.ID,
 		now,

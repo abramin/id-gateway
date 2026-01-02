@@ -284,20 +284,6 @@ func (mr *MockSessionStoreMockRecorder) ListByUser(ctx, userID any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByUser", reflect.TypeOf((*MockSessionStore)(nil).ListByUser), ctx, userID)
 }
 
-// RevokeSession mocks base method.
-func (m *MockSessionStore) RevokeSession(ctx context.Context, sessionID domain.SessionID) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RevokeSession", ctx, sessionID)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// RevokeSession indicates an expected call of RevokeSession.
-func (mr *MockSessionStoreMockRecorder) RevokeSession(ctx, sessionID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokeSession", reflect.TypeOf((*MockSessionStore)(nil).RevokeSession), ctx, sessionID)
-}
-
 // RevokeSessionIfActive mocks base method.
 func (m *MockSessionStore) RevokeSessionIfActive(ctx context.Context, sessionID domain.SessionID, now time.Time) error {
 	m.ctrl.T.Helper()

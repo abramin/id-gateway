@@ -89,10 +89,6 @@ func (s *InMemorySessionStore) DeleteSessionsByUser(_ context.Context, userID id
 	return nil
 }
 
-func (s *InMemorySessionStore) RevokeSession(ctx context.Context, sessionID id.SessionID) error {
-	return s.RevokeSessionIfActive(ctx, sessionID, time.Now())
-}
-
 func (s *InMemorySessionStore) RevokeSessionIfActive(_ context.Context, sessionID id.SessionID, now time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

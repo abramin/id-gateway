@@ -1,6 +1,11 @@
 package models
 
-import domain "credo/pkg/domain"
+import (
+	"fmt"
+	"strings"
+
+	domain "credo/pkg/domain"
+)
 
 // SessionStatus represents the lifecycle state of an auth session.
 type SessionStatus string
@@ -114,6 +119,17 @@ func (d DeviceBinding) DisplayNameOrDefault() string {
 	return d.DisplayName
 }
 
+// NewDeviceBinding creates a DeviceBinding with trimmed field values.
+// At least one of deviceID or fingerprintHash should be provided for meaningful binding.
+func NewDeviceBinding(deviceID, fingerprintHash, displayName, location string) DeviceBinding {
+	return DeviceBinding{
+		DeviceID:            strings.TrimSpace(deviceID),
+		FingerprintHash:     strings.TrimSpace(fingerprintHash),
+		DisplayName:         strings.TrimSpace(displayName),
+		ApproximateLocation: strings.TrimSpace(location),
+	}
+}
+
 // RevocationReason represents why a session/token was revoked.
 // Tracked for audit, compliance, and analytics purposes.
 type RevocationReason string
@@ -159,4 +175,14 @@ func (r RevocationReason) IsValid() bool {
 // String returns the string representation of the revocation reason.
 func (r RevocationReason) String() string {
 	return string(r)
+}
+
+// ParseRevocationReason converts a string to RevocationReason.
+// Returns error if the string is not a valid reason.
+func ParseRevocationReason(s string) (RevocationReason, error) {
+	r := RevocationReason(s)
+	if !r.IsValid() {
+		return "", fmt.Errorf("invalid revocation reason: %q", s)
+	}
+	return r, nil
 }

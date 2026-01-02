@@ -188,10 +188,6 @@ func (s *PostgresStore) DeleteSessionsByUser(ctx context.Context, userID id.User
 	return nil
 }
 
-func (s *PostgresStore) RevokeSession(ctx context.Context, sessionID id.SessionID) error {
-	return s.RevokeSessionIfActive(ctx, sessionID, time.Now())
-}
-
 func (s *PostgresStore) RevokeSessionIfActive(ctx context.Context, sessionID id.SessionID, now time.Time) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

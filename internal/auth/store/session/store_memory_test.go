@@ -121,7 +121,7 @@ func (s *InMemorySessionStoreSuite) TestSessionStore_RevocationMarksStatus() {
 
 	s.Require().NoError(s.store.Create(context.Background(), session))
 
-	err := s.store.RevokeSession(context.Background(), session.ID)
+	err := s.store.RevokeSessionIfActive(context.Background(), session.ID, time.Now())
 	s.Require().NoError(err)
 
 	found, err := s.store.FindByID(context.Background(), session.ID)
@@ -134,7 +134,7 @@ func (s *InMemorySessionStoreSuite) TestSessionStore_RevocationMarksStatus() {
 }
 
 func (s *InMemorySessionStoreSuite) TestSessionStore_RevocationMissing() {
-	err := s.store.RevokeSession(context.Background(), id.SessionID(uuid.New()))
+	err := s.store.RevokeSessionIfActive(context.Background(), id.SessionID(uuid.New()), time.Now())
 	s.Require().ErrorIs(err, sentinel.ErrNotFound)
 }
 
