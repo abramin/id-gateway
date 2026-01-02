@@ -468,7 +468,6 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 		authService.WithTRL(trl),
 		authService.WithAuditPublisher(auditpublisher.NewPublisher(
 			auditStore,
-			auditpublisher.WithAsyncBuffer(1000),
 			auditpublisher.WithMetrics(infra.AuditMetrics),
 			auditpublisher.WithPublisherLogger(infra.Log),
 		)),
@@ -513,7 +512,6 @@ func buildConsentModule(infra *infraBundle) *consentModule {
 		consentStore.New(),
 		auditpublisher.NewPublisher(
 			auditpostgres.New(infra.DBPool.DB()),
-			auditpublisher.WithAsyncBuffer(1000),
 			auditpublisher.WithMetrics(infra.AuditMetrics),
 			auditpublisher.WithPublisherLogger(infra.Log),
 		),
@@ -606,7 +604,6 @@ func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service)
 	// Create audit publisher for handler
 	auditPort := auditpublisher.NewPublisher(
 		auditpostgres.New(infra.DBPool.DB()),
-		auditpublisher.WithAsyncBuffer(1000),
 		auditpublisher.WithMetrics(infra.AuditMetrics),
 		auditpublisher.WithPublisherLogger(infra.Log),
 	)
@@ -626,7 +623,6 @@ func buildVCModule(infra *infraBundle, consentSvc *consentService.Service, regis
 
 	auditPort := auditpublisher.NewPublisher(
 		auditpostgres.New(infra.DBPool.DB()),
-		auditpublisher.WithAsyncBuffer(1000),
 		auditpublisher.WithMetrics(infra.AuditMetrics),
 		auditpublisher.WithPublisherLogger(infra.Log),
 	)
@@ -656,7 +652,6 @@ func buildDecisionModule(infra *infraBundle, registrySvc *registryService.Servic
 	// Create audit publisher
 	auditPort := auditpublisher.NewPublisher(
 		auditpostgres.New(infra.DBPool.DB()),
-		auditpublisher.WithAsyncBuffer(1000),
 		auditpublisher.WithMetrics(infra.AuditMetrics),
 		auditpublisher.WithPublisherLogger(infra.Log),
 	)

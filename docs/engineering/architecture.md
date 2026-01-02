@@ -367,7 +367,7 @@ pkg/
   domain/                       # Typed IDs and domain primitives
   domain-errors/                # Domain error codes
   platform/
-    audit/                      # Audit publisher/store
+    audit/                      # Audit emitter/outbox store
 ```
 
 Rules of thumb:

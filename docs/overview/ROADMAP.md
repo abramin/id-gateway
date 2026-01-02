@@ -231,7 +231,7 @@ CREATE INDEX idx_audit_timestamp ON audit_events(timestamp);
   - HTTP request duration (histogram)
   - Request count by endpoint (counter)
   - Decision outcomes (counter)
-  - Audit queue lag (gauge)
+  - Outbox backlog/age (gauge)
 
 **Dashboards:**
 
@@ -256,8 +256,9 @@ CREATE INDEX idx_audit_timestamp ON audit_events(timestamp);
 
 ### What to Add
 
-- In-memory channel-based queue for audit events
-- Background worker to drain queue → database
+- Outbox table for audit events
+- Worker to publish outbox entries → Kafka
+- Consumer to materialize Kafka events → audit_events
 - Graceful shutdown drains queue
 - Retry on transient failures
 - Dead-letter queue for permanent failures
