@@ -1,16 +1,108 @@
-version: "2"
-
 run:
   timeout: 5m
   tests: true
 
-linters:
-  enable:
-    - errcheck
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
+output:
+  formats: colored-line-number
 
 issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
   exclude-use-default: false
+  exclude-rules:
+    # Allow tests to be looser
+    - path: _test\.go
+      linters:
+        - gosec
+        - errcheck
+        - gocyclo
+        - revive
+
+    # If you have generated code
+    - path: ".*\\.gen\\.go"
+      linters:
+        - revive
+        - errcheck
+        - gosec
+
+    # Ban printf-style logging (tune to your codebase)
+    - linters:
+        - revive
+      text: ".*" # placeholder so revive section stays; actual bans via forbidigo below
+
+linters:
+  enable:
+    # correctness
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - unused
+    - typecheck
+    - bodyclose
+    - nilerr
+    - noctx
+
+    # style, but practical
+    - revive
+    - unparam
+    - gocyclo
+
+    # security-ish, start as signal
+    - gosec
+
+    # enforce no printf-style logging
+    - forbidigo
+
+linters-settings:
+  govet:
+    enable-all: false
+    # keep default vet set; add extras that catch real bugs
+    enable:
+      - nilness
+      - shadow
+      - fieldalignment
+
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+  gocyclo:
+    min-complexity: 15
+
+  revive:
+    ignore-generated-header: true
+    severity: warning
+    rules:
+      # low noise, high signal
+      - name: blank-imports
+      - name: context-as-argument
+      - name: errorf
+      - name: error-naming
+      - name: if-return
+      - name: indent-error-flow
+      - name: range
+      - name: receiver-naming
+      - name: redefines-builtin-id
+      - name: superfluous-else
+      - name: unexported-return
+      - name: unused-parameter
+      - name: var-naming
+
+      # tastey, but usually worth it in a backend
+      - name: naked-return
+        arguments: [10] # allow only in very small funcs
+
+  gosec:
+    severity: medium
+    confidence: medium
+    excludes:
+      - G104 # ignore "errors unhandled" duplication with errcheck
+      - G307 # defer Close false positives sometimes, revisit later
+
+  forbidigo:
+    forbid:
+      - 'log\.Printf'
+      - 'log\.Fatalf'
+      - 'fmt\.Printf'
+      - 'fmt\.Sprintf'
