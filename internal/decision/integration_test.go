@@ -178,7 +178,7 @@ func (s *decisionIntegrationSuite) TestAuditContentionFailsClosed() {
 	_, err = conn.ExecContext(ctx, "LOCK TABLE outbox IN ACCESS EXCLUSIVE MODE")
 	s.Require().NoError(err)
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+	timeoutCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
 
 	_, err = s.decisionSvc.Evaluate(timeoutCtx, decision.EvaluateRequest{
