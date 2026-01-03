@@ -12,12 +12,14 @@ import (
 	"testing"
 	"time"
 
-	"credo/migrations"
-
+	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"credo/migrations"
+	id "credo/pkg/domain"
 )
 
 // PostgresContainer wraps a testcontainers Postgres instance.
@@ -173,4 +175,50 @@ func (p *PostgresContainer) Query(ctx context.Context, query string, args ...any
 // QueryRow runs a SQL query expected to return a single row.
 func (p *PostgresContainer) QueryRow(ctx context.Context, query string, args ...any) *sql.Row {
 	return p.DB.QueryRowContext(ctx, query, args...)
+}
+
+// CreateTestTenant inserts a test tenant and returns its ID.
+// Fails the test if insertion fails.
+func (p *PostgresContainer) CreateTestTenant(ctx context.Context, t testing.TB) id.TenantID {
+	t.Helper()
+	tenantID := id.TenantID(uuid.New())
+	_, err := p.Exec(ctx, `
+		INSERT INTO tenants (id, name, status, created_at, updated_at)
+		VALUES ($1, $2, 'active', NOW(), NOW())
+	`, uuid.UUID(tenantID), "Test Tenant "+uuid.NewString())
+	if err != nil {
+		t.Fatalf("CreateTestTenant: %v", err)
+	}
+	return tenantID
+}
+
+// CreateTestUser inserts a test user for the given tenant and returns its ID.
+// Fails the test if insertion fails.
+func (p *PostgresContainer) CreateTestUser(ctx context.Context, t testing.TB, tenantID id.TenantID) id.UserID {
+	t.Helper()
+	userID := id.UserID(uuid.New())
+	_, err := p.Exec(ctx, `
+		INSERT INTO users (id, tenant_id, email, first_name, last_name, verified, status)
+		VALUES ($1, $2, $3, 'Test', 'User', true, 'active')
+	`, uuid.UUID(userID), uuid.UUID(tenantID), "test-"+uuid.NewString()+"@example.com")
+	if err != nil {
+		t.Fatalf("CreateTestUser: %v", err)
+	}
+	return userID
+}
+
+// CreateTestClient inserts a test OAuth client for the given tenant and returns its ID.
+// Fails the test if insertion fails.
+func (p *PostgresContainer) CreateTestClient(ctx context.Context, t testing.TB, tenantID id.TenantID) id.ClientID {
+	t.Helper()
+	clientID := id.ClientID(uuid.New())
+	_, err := p.Exec(ctx, `
+		INSERT INTO clients (id, tenant_id, name, oauth_client_id, redirect_uris, allowed_grants, allowed_scopes, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', NOW(), NOW())
+	`, uuid.UUID(clientID), uuid.UUID(tenantID), "Test Client", uuid.NewString(),
+		`["https://example.com/callback"]`, `["authorization_code"]`, `["openid"]`)
+	if err != nil {
+		t.Fatalf("CreateTestClient: %v", err)
+	}
+	return clientID
 }

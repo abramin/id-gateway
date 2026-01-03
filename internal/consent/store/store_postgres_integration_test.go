@@ -4,13 +4,11 @@ package store_test
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/suite"
 
 	"credo/internal/consent/models"
@@ -18,6 +16,7 @@ import (
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/sentinel"
+	"credo/pkg/testutil"
 	"credo/pkg/testutil/containers"
 )
 
@@ -48,35 +47,12 @@ func (s *PostgresStoreSuite) SetupTest() {
 	err := s.postgres.TruncateTables(ctx, "consents", "users", "clients", "tenants")
 	s.Require().NoError(err)
 
-	// Create a tenant
-	s.tenantID = id.TenantID(uuid.New())
-	_, err = s.postgres.Exec(ctx, `
-		INSERT INTO tenants (id, name, status, created_at, updated_at)
-		VALUES ($1, $2, 'active', NOW(), NOW())
-	`, uuid.UUID(s.tenantID), "Test Tenant "+uuid.NewString())
-	s.Require().NoError(err)
+	// Create a tenant using shared helper
+	s.tenantID = s.postgres.CreateTestTenant(ctx, s.T())
 }
 
 func (s *PostgresStoreSuite) createTestUser(ctx context.Context) id.UserID {
-	userID := id.UserID(uuid.New())
-	_, err := s.postgres.Exec(ctx, `
-		INSERT INTO users (id, tenant_id, email, first_name, last_name, verified, status)
-		VALUES ($1, $2, $3, 'Test', 'User', true, 'active')
-	`, uuid.UUID(userID), uuid.UUID(s.tenantID), "test-"+uuid.NewString()+"@example.com")
-	s.Require().NoError(err)
-	return userID
-}
-
-func (s *PostgresStoreSuite) newTestConsent(userID id.UserID, purpose models.Purpose) *models.Record {
-	now := time.Now()
-	expiresAt := now.Add(24 * time.Hour)
-	return &models.Record{
-		ID:        id.ConsentID(uuid.New()),
-		UserID:    userID,
-		Purpose:   purpose,
-		GrantedAt: now,
-		ExpiresAt: &expiresAt,
-	}
+	return s.postgres.CreateTestUser(ctx, s.T(), s.tenantID)
 }
 
 // TestConcurrentGrantRevoke verifies that concurrent grant/revoke operations
@@ -86,7 +62,7 @@ func (s *PostgresStoreSuite) TestConcurrentGrantRevoke() {
 	userID := s.createTestUser(ctx)
 
 	// Create initial consent
-	consent := s.newTestConsent(userID, models.PurposeLogin)
+	consent := testutil.NewTestConsent(userID, models.PurposeLogin)
 	err := s.store.Save(ctx, consent)
 	s.Require().NoError(err)
 
@@ -158,7 +134,7 @@ func (s *PostgresStoreSuite) TestExecuteCallbackAtomicity() {
 	userID := s.createTestUser(ctx)
 
 	// Create consent
-	consent := s.newTestConsent(userID, models.PurposeRegistryCheck)
+	consent := testutil.NewTestConsent(userID, models.PurposeRegistryCheck)
 	err := s.store.Save(ctx, consent)
 	s.Require().NoError(err)
 
@@ -193,7 +169,7 @@ func (s *PostgresStoreSuite) TestTransactionRollbackOnValidationFailure() {
 	userID := s.createTestUser(ctx)
 
 	// Create consent
-	consent := s.newTestConsent(userID, models.PurposeVCIssuance)
+	consent := testutil.NewTestConsent(userID, models.PurposeVCIssuance)
 	originalGrantedAt := consent.GrantedAt
 	err := s.store.Save(ctx, consent)
 	s.Require().NoError(err)
@@ -243,7 +219,7 @@ func (s *PostgresStoreSuite) TestDeadlockDetection() {
 	userIDs := make([]id.UserID, users)
 	for i := 0; i < users; i++ {
 		userIDs[i] = s.createTestUser(ctx)
-		consent := s.newTestConsent(userIDs[i], models.PurposeLogin)
+		consent := testutil.NewTestConsent(userIDs[i], models.PurposeLogin)
 		err := s.store.Save(ctx, consent)
 		s.Require().NoError(err)
 	}
@@ -285,32 +261,15 @@ func (s *PostgresStoreSuite) TestDeadlockDetection() {
 func (s *PostgresStoreSuite) TestConcurrentSaveConflict() {
 	ctx := context.Background()
 	userID := s.createTestUser(ctx)
-	const goroutines = 50
 
-	var wg sync.WaitGroup
-	var successCount atomic.Int32
-	var conflictCount atomic.Int32
-
-	for i := 0; i < goroutines; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			consent := s.newTestConsent(userID, models.PurposeLogin)
-			err := s.store.Save(ctx, consent)
-			if err == nil {
-				successCount.Add(1)
-			} else if errors.Is(err, sentinel.ErrConflict) {
-				conflictCount.Add(1)
-			}
-		}()
-	}
-
-	wg.Wait()
+	result := testutil.RunConcurrent(50, func(_ int) error {
+		consent := testutil.NewTestConsent(userID, models.PurposeLogin)
+		return s.store.Save(ctx, consent)
+	})
 
 	// Exactly one should succeed due to unique constraint
-	s.Equal(int32(1), successCount.Load(), "exactly one save should succeed")
-	s.Equal(int32(goroutines-1), conflictCount.Load(), "all others should conflict")
+	s.Equal(int32(1), result.Successes, "exactly one save should succeed")
+	s.Equal(int32(49), result.Conflicts, "all others should conflict")
 }
 
 // TestRevokeAllByUserConcurrency verifies RevokeAllByUser under concurrent access.
@@ -327,7 +286,7 @@ func (s *PostgresStoreSuite) TestRevokeAllByUserConcurrency() {
 	}
 
 	for _, purpose := range purposes {
-		consent := s.newTestConsent(userID, purpose)
+		consent := testutil.NewTestConsent(userID, purpose)
 		err := s.store.Save(ctx, consent)
 		s.Require().NoError(err)
 	}
@@ -369,7 +328,7 @@ func (s *PostgresStoreSuite) TestListByUserUnderConcurrentModification() {
 
 	// Create initial consents
 	for _, purpose := range []models.Purpose{models.PurposeLogin, models.PurposeRegistryCheck} {
-		consent := s.newTestConsent(userID, purpose)
+		consent := testutil.NewTestConsent(userID, purpose)
 		err := s.store.Save(ctx, consent)
 		s.Require().NoError(err)
 	}
