@@ -287,7 +287,8 @@ func (s *PostgresStoreSuite) TestDeleteExpiredSessions() {
 	// Create expired sessions
 	for i := 0; i < 10; i++ {
 		sess := s.newTestSession()
-		sess.ExpiresAt = time.Now().Add(-1 * time.Hour) // Expired
+		sess.CreatedAt = time.Now().Add(-2 * time.Hour) // Created 2 hours ago
+		sess.ExpiresAt = time.Now().Add(-1 * time.Hour) // Expired 1 hour ago
 		err := s.store.Create(ctx, sess)
 		s.Require().NoError(err)
 	}

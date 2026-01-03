@@ -127,26 +127,31 @@ func (s *PostgresStoreSuite) TestSubjectTypeQueryOrdering() {
 	ctx := context.Background()
 
 	// Create multiple credentials with different timestamps
-	baseTime := time.Now()
+	baseTime := time.Now().Truncate(time.Second)
+	var expectedLatestTime time.Time
 	for i := 0; i < 5; i++ {
+		issuedAt := baseTime.Add(time.Duration(i) * time.Hour)
+		if i == 4 {
+			expectedLatestTime = issuedAt
+		}
 		credential := models.CredentialRecord{
 			ID:       models.NewCredentialID(),
 			Type:     models.CredentialTypeAgeOver18,
 			Subject:  s.userID,
 			Issuer:   models.IssuerCredo,
-			IssuedAt: baseTime.Add(time.Duration(i) * time.Hour),
+			IssuedAt: issuedAt,
 			Claims: models.Claims{
-				"iteration": i,
+				"is_over_18": true,
 			},
 		}
 		err := s.store.Save(ctx, credential)
 		s.Require().NoError(err)
 	}
 
-	// FindBySubjectAndType should return the most recent (iteration 4)
+	// FindBySubjectAndType should return the most recent (i=4, latest timestamp)
 	found, err := s.store.FindBySubjectAndType(ctx, s.userID, models.CredentialTypeAgeOver18)
 	s.Require().NoError(err)
-	s.Equal(4, int(found.Claims["iteration"].(float64)))
+	s.WithinDuration(expectedLatestTime, found.IssuedAt, time.Second)
 }
 
 // TestAgeOver18ClaimsRoundTrip verifies AgeOver18 claims are stored in columns and restored on read.
@@ -296,7 +301,7 @@ func (s *PostgresStoreSuite) TestMultipleUsersCredentials() {
 			Issuer:   models.IssuerCredo,
 			IssuedAt: time.Now(),
 			Claims: models.Claims{
-				"user_id": userID.String(),
+				"is_over_18": true,
 			},
 		}
 		err := s.store.Save(ctx, credential)
@@ -308,7 +313,7 @@ func (s *PostgresStoreSuite) TestMultipleUsersCredentials() {
 		found, err := s.store.FindBySubjectAndType(ctx, userID, models.CredentialTypeAgeOver18)
 		s.Require().NoError(err)
 		s.Equal(userID, found.Subject)
-		s.Equal(userID.String(), found.Claims["user_id"])
+		s.Equal(true, found.Claims["is_over_18"])
 	}
 }
 

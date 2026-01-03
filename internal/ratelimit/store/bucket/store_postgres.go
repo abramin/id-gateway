@@ -116,6 +116,8 @@ func (s *PostgresBucketStore) GetCurrentCount(ctx context.Context, key string) (
 	}
 
 	now := requestcontext.Now(ctx)
+	// Query uses COALESCE to handle empty case: if no events exist for this key,
+	// use 0 seconds which results in no matching events (correct behavior).
 	query := `
 		WITH recent AS (
 			SELECT window_seconds
@@ -127,7 +129,7 @@ func (s *PostgresBucketStore) GetCurrentCount(ctx context.Context, key string) (
 		SELECT COALESCE(SUM(cost), 0)
 		FROM rate_limit_events
 		WHERE key = $1
-		  AND occurred_at >= $2 - (SELECT make_interval(secs => window_seconds) FROM recent)
+		  AND occurred_at >= $2 - make_interval(secs => COALESCE((SELECT window_seconds FROM recent), 0))
 	`
 	var count int
 	err := s.db.QueryRowContext(ctx, query, key, now).Scan(&count)

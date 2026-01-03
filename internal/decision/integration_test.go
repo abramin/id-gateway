@@ -177,10 +177,6 @@ func (s *decisionIntegrationSuite) TestAuditContentionFailsClosed() {
 	s.Require().NoError(err)
 	_, err = conn.ExecContext(ctx, "LOCK TABLE outbox IN ACCESS EXCLUSIVE MODE")
 	s.Require().NoError(err)
-	defer func() {
-		_, _ = conn.ExecContext(ctx, "ROLLBACK")
-		_ = conn.Close()
-	}()
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
 	defer cancel()
@@ -193,6 +189,11 @@ func (s *decisionIntegrationSuite) TestAuditContentionFailsClosed() {
 
 	s.Error(err)
 	s.Contains(err.Error(), "decision audit unavailable")
+
+	// Release the lock before checking outbox count to avoid deadlock
+	_, _ = conn.ExecContext(ctx, "ROLLBACK")
+	_ = conn.Close()
+
 	s.Equal(0, s.countOutboxEvents(ctx, string(decisionAuditEvent())))
 }
 

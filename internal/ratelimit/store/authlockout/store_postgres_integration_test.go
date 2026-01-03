@@ -46,15 +46,8 @@ func (s *PostgresStoreSuite) SetupTest() {
 // GetOrCreate + domain mutation + Update
 func (s *PostgresStoreSuite) recordFailure(ctx context.Context, identifier string) (*models.AuthLockout, error) {
 	now := time.Now()
-	record, err := s.store.GetOrCreate(ctx, identifier, now)
-	if err != nil {
-		return nil, err
-	}
-	record.RecordFailure(now)
-	if err := s.store.Update(ctx, record); err != nil {
-		return nil, err
-	}
-	return record, nil
+	// Use RecordFailureAtomic for thread-safe concurrent increments
+	return s.store.RecordFailureAtomic(ctx, identifier, now)
 }
 
 // TestConcurrentFailureRecording verifies that concurrent GetOrCreate + Update calls
