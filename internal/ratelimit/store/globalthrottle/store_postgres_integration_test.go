@@ -13,6 +13,7 @@ import (
 
 	"credo/internal/ratelimit/config"
 	"credo/internal/ratelimit/store/globalthrottle"
+	"credo/pkg/requestcontext"
 	"credo/pkg/testutil/containers"
 )
 
@@ -185,7 +186,10 @@ func (s *PostgresStoreSuite) TestGetGlobalCount() {
 
 // TestConcurrentWithDifferentLimits verifies multiple configs don't interfere.
 func (s *PostgresStoreSuite) TestConcurrentWithDifferentLimits() {
-	ctx := context.Background()
+	// Use a fixed time to prevent bucket reset if test crosses second boundary
+	fixedTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	ctx := requestcontext.WithTime(context.Background(), fixedTime)
+
 	cfg := &config.GlobalLimit{
 		GlobalPerSecond:    50,
 		PerInstancePerHour: 1000,
