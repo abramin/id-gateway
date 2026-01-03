@@ -19,20 +19,6 @@ import (
 	"credo/pkg/requestcontext"
 )
 
-// validateRequestedScopes checks that all requested scopes are allowed by the client.
-// Returns nil if allowed is empty (no restrictions) or all requested scopes are in allowed.
-func validateRequestedScopes(requested, allowed []string) error {
-	if len(allowed) == 0 {
-		return nil
-	}
-	for _, scope := range requested {
-		if !slices.Contains(allowed, scope) {
-			return dErrors.New(dErrors.CodeBadRequest, fmt.Sprintf("requested scope '%s' not allowed for client", scope))
-		}
-	}
-	return nil
-}
-
 type authorizeParams struct {
 	Email             string
 	Scopes            []string
@@ -87,8 +73,8 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 		return nil, dErrors.Wrap(err, dErrors.CodeBadRequest, "failed to resolve client")
 	}
 
-	if req.RedirectURI != "" && !slices.Contains(client.RedirectURIs, req.RedirectURI) {
-		return nil, dErrors.New(dErrors.CodeBadRequest, "redirect_uri not allowed")
+	if !allowedRedirectURI(parsedURI.String(), client.RedirectURIs) {
+		return nil, dErrors.New(dErrors.CodeBadRequest, "redirect_uri not allowed for client")
 	}
 
 	deviceID, deviceIDToSet := s.resolveDeviceID(ctx)
@@ -116,6 +102,13 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 
 	s.emitAuthorizeAuditEvents(ctx, result, req.ClientID)
 	return s.buildAuthorizeResponse(parsedURI, result.AuthCode, req.State, deviceIDToSet), nil
+}
+
+func allowedRedirectURI(redirectURI string, clientRedirectURIs []string) bool {
+	if redirectURI == "" || len(clientRedirectURIs) == 0 {
+		return false
+	}
+	return slices.Contains(clientRedirectURIs, redirectURI)
 }
 
 // resolveDeviceID extracts or generates a device ID for session tracking.
@@ -248,4 +241,18 @@ func (s *Service) buildAuthorizeResponse(parsedURI *url.URL, authCode *models.Au
 		RedirectURI: parsedURI.String(),
 		DeviceID:    deviceIDToSet,
 	}
+}
+
+// validateRequestedScopes checks that all requested scopes are allowed by the client.
+// Returns nil if allowed is empty (no restrictions) or all requested scopes are in allowed.
+func validateRequestedScopes(requested, allowed []string) error {
+	if len(allowed) == 0 {
+		return nil
+	}
+	for _, scope := range requested {
+		if !slices.Contains(allowed, scope) {
+			return dErrors.New(dErrors.CodeBadRequest, fmt.Sprintf("requested scope '%s' not allowed for client", scope))
+		}
+	}
+	return nil
 }

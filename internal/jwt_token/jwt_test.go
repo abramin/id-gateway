@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -13,10 +14,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var userID = uuid.New()
-var sessionID = uuid.New()
-var clientID = "test-client"
-var tenantID = "test-tenant"
+var userID = id.UserID(uuid.New())
+var sessionID = id.SessionID(uuid.New())
+var clientID = id.ClientID(uuid.New())
+var tenantID = id.TenantID(uuid.New())
 var expiresIn = time.Second * 1
 
 var jwtService = NewJWTService(
@@ -72,8 +73,8 @@ func Test_ValidateToken_RejectsAlgorithmConfusion(t *testing.T) {
 	claims := AccessTokenClaims{
 		UserID:    userID.String(),
 		SessionID: sessionID.String(),
-		ClientID:  clientID,
-		TenantID:  tenantID,
+		ClientID:  clientID.String(),
+		TenantID:  tenantID.String(),
 		Scope:     []string{"read"},
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute)),
@@ -206,13 +207,13 @@ func Test_BuildIssuer(t *testing.T) {
 	service := NewJWTService("key", "https://auth.example.com", "audience", time.Hour)
 
 	t.Run("builds per-tenant issuer", func(t *testing.T) {
-		tenantID := "550e8400-e29b-41d4-a716-446655440000"
+		tenantID := id.TenantID(uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"))
 		issuer := service.BuildIssuer(tenantID)
 		assert.Equal(t, "https://auth.example.com/tenants/550e8400-e29b-41d4-a716-446655440000", issuer)
 	})
 
 	t.Run("returns base URL for empty tenant", func(t *testing.T) {
-		issuer := service.BuildIssuer("")
+		issuer := service.BuildIssuer(id.TenantID{})
 		assert.Equal(t, "https://auth.example.com", issuer)
 	})
 }
@@ -278,7 +279,7 @@ func Test_GenerateAccessToken_RejectsNilScopes(t *testing.T) {
 func Test_PerTenantIssuerInToken(t *testing.T) {
 	ctx := context.Background()
 	service := NewJWTService("signing-key", "https://auth.example.com", "audience", time.Hour)
-	testTenantID := "tenant-abc-123"
+	testTenantID := id.TenantID(uuid.New())
 
 	t.Run("access token has per-tenant issuer", func(t *testing.T) {
 		token, err := service.GenerateAccessToken(ctx, userID, sessionID, clientID, testTenantID, []string{"openid"})
