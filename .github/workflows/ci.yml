@@ -42,7 +42,6 @@ jobs:
             ./internal/auth/store/session \
             ./internal/auth/store/revocation \
             ./internal/consent/store \
-            ./pkg/platform/audit/publisher \
             ./pkg/platform/audit/store/memory
 
   integration:

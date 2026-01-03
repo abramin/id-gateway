@@ -34,7 +34,7 @@ import (
 	tenantstore "credo/internal/tenant/store/tenant"
 	id "credo/pkg/domain"
 	audit "credo/pkg/platform/audit"
-	auditpublisher "credo/pkg/platform/audit/publisher"
+	"credo/pkg/platform/audit/publishers/compliance"
 	auditpostgres "credo/pkg/platform/audit/store/postgres"
 	"credo/pkg/requestcontext"
 	"credo/pkg/testutil/containers"
@@ -80,7 +80,7 @@ func (s *decisionIntegrationSuite) SetupTest() {
 	s.nationalID = s.parseNationalID("DEC12345")
 
 	auditStore := auditpostgres.New(s.pg.DB)
-	auditPublisher := auditpublisher.NewPublisher(auditStore)
+	auditPublisher := compliance.New(auditStore)
 
 	consentStore := consentstore.NewPostgres(s.pg.DB)
 	consentTx := &postgresConsentTx{db: s.pg.DB}

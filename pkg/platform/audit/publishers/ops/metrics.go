@@ -1,6 +1,8 @@
 package ops
 
 import (
+	"sync"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -14,30 +16,39 @@ type Metrics struct {
 	CircuitBreakerState   prometheus.Gauge
 }
 
-// NewMetrics creates a new Metrics instance with ops audit metrics registered.
+var (
+	metricsOnce     sync.Once
+	metricsInstance *Metrics
+)
+
+// NewMetrics returns the singleton Metrics instance with ops audit metrics registered.
+// Safe to call multiple times; metrics are only registered once.
 func NewMetrics() *Metrics {
-	return &Metrics{
-		Tracked: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "credo_audit_ops_tracked_total",
-			Help: "Total number of operational audit events successfully tracked",
-		}),
-		Sampled: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "credo_audit_ops_sampled_total",
-			Help: "Total number of operational audit events dropped due to sampling",
-		}),
-		CircuitBreakerDropped: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "credo_audit_ops_circuit_breaker_dropped_total",
-			Help: "Total number of operational audit events dropped due to circuit breaker",
-		}),
-		PersistFailures: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "credo_audit_ops_persist_failures_total",
-			Help: "Total number of operational audit event persistence failures",
-		}),
-		CircuitBreakerState: promauto.NewGauge(prometheus.GaugeOpts{
-			Name: "credo_audit_ops_circuit_breaker_state",
-			Help: "Current circuit breaker state (0=closed/healthy, 1=open/unhealthy)",
-		}),
-	}
+	metricsOnce.Do(func() {
+		metricsInstance = &Metrics{
+			Tracked: promauto.NewCounter(prometheus.CounterOpts{
+				Name: "credo_audit_ops_tracked_total",
+				Help: "Total number of operational audit events successfully tracked",
+			}),
+			Sampled: promauto.NewCounter(prometheus.CounterOpts{
+				Name: "credo_audit_ops_sampled_total",
+				Help: "Total number of operational audit events dropped due to sampling",
+			}),
+			CircuitBreakerDropped: promauto.NewCounter(prometheus.CounterOpts{
+				Name: "credo_audit_ops_circuit_breaker_dropped_total",
+				Help: "Total number of operational audit events dropped due to circuit breaker",
+			}),
+			PersistFailures: promauto.NewCounter(prometheus.CounterOpts{
+				Name: "credo_audit_ops_persist_failures_total",
+				Help: "Total number of operational audit event persistence failures",
+			}),
+			CircuitBreakerState: promauto.NewGauge(prometheus.GaugeOpts{
+				Name: "credo_audit_ops_circuit_breaker_state",
+				Help: "Current circuit breaker state (0=closed/healthy, 1=open/unhealthy)",
+			}),
+		}
+	})
+	return metricsInstance
 }
 
 // IncTracked increments the tracked counter.

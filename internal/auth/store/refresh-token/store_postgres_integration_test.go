@@ -79,7 +79,7 @@ func (s *PostgresStoreSuite) SetupTest() {
 func (s *PostgresStoreSuite) newTestToken() *models.RefreshTokenRecord {
 	now := time.Now()
 	return &models.RefreshTokenRecord{
-		ID:        uuid.NewString(),
+		ID:        uuid.New(),
 		Token:     uuid.NewString(),
 		SessionID: s.sessionID,
 		ExpiresAt: now.Add(24 * time.Hour),

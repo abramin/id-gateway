@@ -1,6 +1,8 @@
 package compliance
 
 import (
+	"sync"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -12,23 +14,32 @@ type Metrics struct {
 	EventsEmitted   prometheus.Counter
 }
 
-// NewMetrics creates a new Metrics instance with compliance audit metrics registered.
+var (
+	metricsOnce     sync.Once
+	metricsInstance *Metrics
+)
+
+// NewMetrics returns the singleton Metrics instance with compliance audit metrics registered.
+// Safe to call multiple times; metrics are only registered once.
 func NewMetrics() *Metrics {
-	return &Metrics{
-		PersistDuration: promauto.NewHistogram(prometheus.HistogramOpts{
-			Name:    "credo_audit_compliance_persist_duration_seconds",
-			Help:    "Time taken to persist a compliance audit event",
-			Buckets: []float64{0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1},
-		}),
-		PersistFailures: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "credo_audit_compliance_persist_failures_total",
-			Help: "Total number of compliance audit event persistence failures (CRITICAL)",
-		}),
-		EventsEmitted: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "credo_audit_compliance_events_emitted_total",
-			Help: "Total number of compliance audit events successfully emitted",
-		}),
-	}
+	metricsOnce.Do(func() {
+		metricsInstance = &Metrics{
+			PersistDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+				Name:    "credo_audit_compliance_persist_duration_seconds",
+				Help:    "Time taken to persist a compliance audit event",
+				Buckets: []float64{0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1},
+			}),
+			PersistFailures: promauto.NewCounter(prometheus.CounterOpts{
+				Name: "credo_audit_compliance_persist_failures_total",
+				Help: "Total number of compliance audit event persistence failures (CRITICAL)",
+			}),
+			EventsEmitted: promauto.NewCounter(prometheus.CounterOpts{
+				Name: "credo_audit_compliance_events_emitted_total",
+				Help: "Total number of compliance audit events successfully emitted",
+			}),
+		}
+	})
+	return metricsInstance
 }
 
 // ObservePersistDuration records the persist operation latency.

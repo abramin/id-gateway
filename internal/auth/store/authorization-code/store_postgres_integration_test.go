@@ -79,7 +79,7 @@ func (s *PostgresStoreSuite) SetupTest() {
 func (s *PostgresStoreSuite) newTestCode() *models.AuthorizationCodeRecord {
 	now := time.Now()
 	return &models.AuthorizationCodeRecord{
-		ID:          uuid.NewString(),
+		ID:          uuid.New(),
 		Code:        uuid.NewString(),
 		SessionID:   s.sessionID,
 		RedirectURI: "https://example.com/callback",

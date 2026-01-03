@@ -1,6 +1,8 @@
 package security
 
 import (
+	"sync"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -15,35 +17,44 @@ type Metrics struct {
 	FlushDuration     prometheus.Histogram
 }
 
-// NewMetrics creates a new Metrics instance with security audit metrics registered.
+var (
+	metricsOnce     sync.Once
+	metricsInstance *Metrics
+)
+
+// NewMetrics returns the singleton Metrics instance with security audit metrics registered.
+// Safe to call multiple times; metrics are only registered once.
 func NewMetrics() *Metrics {
-	return &Metrics{
-		QueueDepth: promauto.NewGauge(prometheus.GaugeOpts{
-			Name: "credo_audit_security_queue_depth",
-			Help: "Current number of security events in the buffer",
-		}),
-		Flushed: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "credo_audit_security_flushed_total",
-			Help: "Total number of security audit events successfully flushed",
-		}),
-		Dropped: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "credo_audit_security_dropped_total",
-			Help: "Total number of security audit events dropped due to buffer overflow",
-		}),
-		DroppedAfterRetry: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "credo_audit_security_dropped_after_retry_total",
-			Help: "Total number of security audit events dropped after exhausting retries",
-		}),
-		Retries: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "credo_audit_security_retries_total",
-			Help: "Total number of retry attempts for security audit events",
-		}),
-		FlushDuration: promauto.NewHistogram(prometheus.HistogramOpts{
-			Name:    "credo_audit_security_flush_duration_seconds",
-			Help:    "Time taken to flush a batch of security audit events",
-			Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1},
-		}),
-	}
+	metricsOnce.Do(func() {
+		metricsInstance = &Metrics{
+			QueueDepth: promauto.NewGauge(prometheus.GaugeOpts{
+				Name: "credo_audit_security_queue_depth",
+				Help: "Current number of security events in the buffer",
+			}),
+			Flushed: promauto.NewCounter(prometheus.CounterOpts{
+				Name: "credo_audit_security_flushed_total",
+				Help: "Total number of security audit events successfully flushed",
+			}),
+			Dropped: promauto.NewCounter(prometheus.CounterOpts{
+				Name: "credo_audit_security_dropped_total",
+				Help: "Total number of security audit events dropped due to buffer overflow",
+			}),
+			DroppedAfterRetry: promauto.NewCounter(prometheus.CounterOpts{
+				Name: "credo_audit_security_dropped_after_retry_total",
+				Help: "Total number of security audit events dropped after exhausting retries",
+			}),
+			Retries: promauto.NewCounter(prometheus.CounterOpts{
+				Name: "credo_audit_security_retries_total",
+				Help: "Total number of retry attempts for security audit events",
+			}),
+			FlushDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+				Name:    "credo_audit_security_flush_duration_seconds",
+				Help:    "Time taken to flush a batch of security audit events",
+				Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1},
+			}),
+		}
+	})
+	return metricsInstance
 }
 
 // SetQueueDepth sets the current queue depth.
