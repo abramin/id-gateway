@@ -2,27 +2,60 @@ package adapters
 
 import (
 	"context"
+	"time"
 
 	"credo/internal/auth/ports"
-	ratelimitModels "credo/internal/ratelimit/models"
 )
 
-// classAuth is a local constant for the auth endpoint class.
-// Defined here to avoid coupling to internal/ratelimit/models.
-const classAuth ratelimitModels.EndpointClass = "auth"
+// EndpointClass identifies the type of endpoint for rate limiting purposes.
+// Defined locally to avoid coupling to internal/ratelimit/models.
+// Exported so composition root can create wrappers returning this type.
+type EndpointClass string
 
-// authLockoutChecker defines the interface for auth lockout operations.
+// ClassAuth is the endpoint class for auth operations.
+const ClassAuth EndpointClass = "auth"
+
+// AuthCheckResult is the local contract type for auth lockout check results.
+// Maps to ratelimit's AuthRateLimitResult without importing it.
+// Exported so composition root can create wrappers returning this type.
+type AuthCheckResult struct {
+	Allowed    bool
+	Remaining  int
+	RetryAfter int
+	ResetAt    time.Time
+}
+
+// AuthLockoutResult is the local contract type for lockout state after recording failure.
+// Maps to ratelimit's AuthLockout without importing it.
+// Exported so composition root can create wrappers returning this type.
+type AuthLockoutResult struct {
+	FailureCount    int
+	LockedUntil     *time.Time
+	RequiresCaptcha bool
+}
+
+// IPCheckResult is the local contract type for IP rate limit check results.
+// Maps to ratelimit's RateLimitResult without importing it.
+// Exported so composition root can create wrappers returning this type.
+type IPCheckResult struct {
+	Allowed    bool
+	Remaining  int
+	RetryAfter int
+	ResetAt    time.Time
+}
+
+// AuthLockoutChecker defines the interface for auth lockout operations.
 // Defined locally to avoid coupling to ratelimit service packages.
-type authLockoutChecker interface {
-	Check(ctx context.Context, identifier, ip string) (*ratelimitModels.AuthRateLimitResult, error)
-	RecordFailure(ctx context.Context, identifier, ip string) (*ratelimitModels.AuthLockout, error)
+type AuthLockoutChecker interface {
+	Check(ctx context.Context, identifier, ip string) (*AuthCheckResult, error)
+	RecordFailure(ctx context.Context, identifier, ip string) (*AuthLockoutResult, error)
 	Clear(ctx context.Context, identifier, ip string) error
 }
 
-// requestLimiter defines the interface for request rate limiting.
+// RequestLimiter defines the interface for request rate limiting.
 // Defined locally to avoid coupling to ratelimit service packages.
-type requestLimiter interface {
-	CheckIP(ctx context.Context, ip string, class ratelimitModels.EndpointClass) (*ratelimitModels.RateLimitResult, error)
+type RequestLimiter interface {
+	CheckIP(ctx context.Context, ip string, class EndpointClass) (*IPCheckResult, error)
 }
 
 // RateLimitAdapter is an in-process adapter that implements ports.RateLimitPort
@@ -31,12 +64,12 @@ type requestLimiter interface {
 // When splitting into microservices, this can be replaced with a gRPC adapter
 // without changing the auth handler.
 type RateLimitAdapter struct {
-	authLockout authLockoutChecker
-	requests    requestLimiter
+	authLockout AuthLockoutChecker
+	requests    RequestLimiter
 }
 
 // New builds an in-process adapter backed by ratelimit services.
-func New(authLockout authLockoutChecker, requests requestLimiter) ports.RateLimitPort {
+func New(authLockout AuthLockoutChecker, requests RequestLimiter) ports.RateLimitPort {
 	return &RateLimitAdapter{
 		authLockout: authLockout,
 		requests:    requests,
@@ -59,7 +92,7 @@ func (a *RateLimitAdapter) CheckAuthRateLimit(ctx context.Context, identifier, i
 	}
 
 	// Secondary defense: IP rate limit for auth endpoints
-	ipResult, err := a.requests.CheckIP(ctx, ip, classAuth)
+	ipResult, err := a.requests.CheckIP(ctx, ip, ClassAuth)
 	if err != nil {
 		return nil, err
 	}

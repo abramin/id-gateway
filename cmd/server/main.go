@@ -74,10 +74,10 @@ import (
 	audit "credo/pkg/platform/audit"
 	auditconsumer "credo/pkg/platform/audit/consumer"
 	auditmetrics "credo/pkg/platform/audit/metrics"
-	auditpublishers "credo/pkg/platform/audit/publishers"
 	outboxmetrics "credo/pkg/platform/audit/outbox/metrics"
 	outboxpostgres "credo/pkg/platform/audit/outbox/store/postgres"
 	outboxworker "credo/pkg/platform/audit/outbox/worker"
+	auditpublishers "credo/pkg/platform/audit/publishers"
 	auditmemory "credo/pkg/platform/audit/store/memory"
 	auditpostgres "credo/pkg/platform/audit/store/postgres"
 	adminmw "credo/pkg/platform/middleware/admin"
@@ -519,9 +519,13 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 	)
 
 	// Create rate limit adapter for auth handler (nil if rate limiting is disabled)
+	// Wrappers convert ratelimit types to auth adapter's local types, maintaining decoupling.
 	var rateLimitAdapter authPorts.RateLimitPort
 	if !infra.Cfg.DemoMode && !infra.Cfg.DisableRateLimiting {
-		rateLimitAdapter = authAdapters.New(authLockoutSvc, requestSvc)
+		rateLimitAdapter = authAdapters.New(
+			&authLockoutWrapper{svc: authLockoutSvc},
+			&requestLimiterWrapper{svc: requestSvc},
+		)
 	}
 
 	if infra.DBPool != nil {
