@@ -85,6 +85,9 @@ uses in-process adapters for service-to-service calls and HTTP/JSON for external
 
 Everything runs in one binary, but each internal package has a clear responsibility and limited dependencies.
 
+Current runtime uses PostgreSQL as the system of record, Redis for session/token revocation and registry cache
+lookups, and Kafka for audit event streaming via the outbox pipeline. In-memory stores are test-only.
+
 ---
 
 ## Interservice Communication Model
@@ -310,10 +313,13 @@ contracts/
 internal/
   platform/
     config/                     # Configuration loading
+    database/                   # PostgreSQL connection pooling
+    kafka/                      # Kafka producer/consumer + health checks
     logger/                     # Structured logging with slog
     httpserver/                 # Shared HTTP server setup
     middleware/                 # HTTP middleware (recovery, logging, request ID, latency, JWT auth, device, admin)
     metrics/                    # Prometheus metrics collection
+    redis/                      # Redis client and health checks
   jwt_token/
     jwt.go                      # JWT generation and validation with HS256
     jwt_adapter.go              # Adapter for middleware interface
@@ -357,7 +363,7 @@ internal/
     handler/                    # HTTP handlers
     service/                    # Tenant/client orchestration
     models/                     # Domain models
-    store/                      # In-memory tenant storage
+    store/                      # PostgreSQL stores; in-memory for tests
   admin/                        # Administrative operations
   transport/
     http/                       # HTTP routing and handlers
@@ -367,7 +373,7 @@ pkg/
   domain/                       # Typed IDs and domain primitives
   domain-errors/                # Domain error codes
   platform/
-    audit/                      # Audit emitter/outbox store
+    audit/                      # Audit models, publishers, outbox store
 ```
 
 Rules of thumb:
@@ -499,7 +505,7 @@ type ConsentScope struct {
 
 **Production Evolution (PRD-002 TR-6):**
 
-- **Write model:** Consent service writes canonical records to `ConsentStore` (PostgreSQL) and emits `consent_granted`/`consent_revoked` events to Kafka/NATS after commit (or via outbox).
+- **Write model:** Consent service writes canonical records to `ConsentStore` (PostgreSQL) and emits `consent_granted`/`consent_revoked` events to Kafka after commit (via outbox).
 - **Read model:** Projection workers consume events and maintain a Redis/DynamoDB read model keyed by `user_id:purpose` with `{status, expires_at, revoked_at, version}` for sub-5ms lookups.
 - **Consistency:** Projection lag budget ≤1s; `Require()` checks projection first, falls back to canonical store on cache miss.
 - **Resilience:** Replay tool rebuilds projections from audit log; outbox pattern guarantees event delivery; no-eviction Redis policy for consent projections.
@@ -703,7 +709,7 @@ type DecisionInput struct {
 
 **Production Evolution (PRD-005 TR-5):**
 
-- **Write model:** Decision service orchestrates registry/VC/audit lookups and emits `decision_made` events to Kafka/NATS with full input/output context.
+- **Write model:** Decision service orchestrates registry/VC/audit lookups and emits `decision_made` events to Kafka with full input/output context.
 - **Read model:** NoSQL projection (Redis/DynamoDB) stores recent decisions by `user_id+purpose` for fast re-checks and idempotent retries; fields include `status`, `reason`, `conditions`, `evaluated_at`, `evidence_hash`.
 - **Evidence caches:** Registry and VC results cached in Redis with short TTLs (30s-5m) aligned to upstream refresh rates to avoid evaluation bursts.
 - **Event consumers:** Downstream services (risk scoring, audit indexing, analytics) subscribe to `decision_made` events without coupling to HTTP layer.
@@ -716,7 +722,7 @@ type DecisionInput struct {
 **Responsibilities**
 
 - Provide a simple API for other services to publish audit events.
-- Decouple publishing from persistence using a queue or Go channel.
+- Decouple publishing from persistence using the outbox and Kafka pipeline.
 - Persist events in an `AuditStore` and log them.
 - Stream events to downstream consumers (indexing, analytics, compliance dashboards).
 
@@ -766,10 +772,13 @@ Unknown events default to `operations` category.
 
 **Components**
 
-- `AuditPublisher` interface for publishing events.
-- Channel based implementation for the prototype.
-- Worker that drains the channel and writes to `AuditStore`.
-- **Event streaming (production):** Outbox pattern to publish events to Kafka/NATS topics for downstream consumers (Elasticsearch indexing, analytics, SIEM export).
+- **Tri-publisher system** (`pkg/platform/audit/publishers`):
+  - **Compliance**: synchronous, fail-closed persistence (operations fail if audit write fails).
+  - **Security**: async buffered with retry and flush for SIEM pipelines.
+  - **Ops**: fire-and-forget with sampling and circuit breaker for high-volume telemetry.
+- `audit.Store` backed by PostgreSQL outbox entries (Kafka payloads).
+- `outbox` worker publishes entries to Kafka (`credo.audit.events` by default).
+- Kafka consumer materializes events into `audit_events` for querying and exports.
 
 **Clients**
 
@@ -777,10 +786,11 @@ Unknown events default to `operations` category.
 
 **Production Evolution (PRD-006 TR-5):**
 
-- **Write path:** HTTP handlers emit events synchronously to `AuditStore` (append-only SQL/object store) and asynchronously to event bus via outbox worker.
-- **Read path:** Compliance queries hit Elasticsearch/OpenSearch index fed by Kafka consumers; supports cross-user investigations with sub-second latency.
+- **Write path (current):** Services emit via compliance/security/ops publishers → PostgreSQL outbox → Kafka.
+- **Read path (current):** Kafka consumer materializes `audit_events` table for admin and user queries.
+- **Read path (planned):** Elasticsearch/OpenSearch index fed by Kafka consumers for cross-user investigations.
 - **Reliability:** Outbox pattern guarantees at-least-once delivery; consumers use event IDs for idempotent processing.
-- **Storage tiers:** Hot queries (24h) cached in Redis; warm queries (7d) in ES; cold queries (90d+) in object store with presigned export URLs.
+- **Storage tiers (planned):** Hot queries (24h) cached in Redis; warm queries (7d) in ES; cold queries (90d+) in object store with presigned export URLs.
 
 ---
 
@@ -866,7 +876,7 @@ type Client struct {
 
 - `service/` - Tenant and client orchestration, lifecycle management
 - `handler/` - HTTP handlers for admin endpoints
-- `store/` - In-memory tenant/client storage
+- `store/` - PostgreSQL tenant/client stores; in-memory for tests
 - `models/` - Domain models
 
 **Lifecycle Operations** (PRD-026B):
@@ -1003,45 +1013,46 @@ The system uses JWT (JSON Web Tokens) for access token authentication:
 
 Credo follows a **progressive enhancement** approach to storage and caching:
 
-**Phase 1 - MVP (Current):**
+**Phase 1 - Current Baseline:**
 
-- In-memory stores with interface-based design for testability
-- Synchronous audit via Go channels
-- Direct service-to-service calls within monolith
+- PostgreSQL as canonical store for all services
+- Redis for sessions, token revocation, and registry cache lookups
+- Kafka audit pipeline via outbox worker and consumer
+- In-memory stores used only in tests
 
-**Phase 2 - Production Baseline:**
+**Phase 2 - Production Hardening (Planned):**
 
-- Persistent stores (PostgreSQL for canonical data)
-- Redis for sessions and token revocation (implemented)
-- Redis for hot caches (consent projections, evidence lookups - planned)
-- Kafka/NATS event bus for audit, consent changes, decision outcomes
+- Redis projections for consent/decision hot paths (CQRS read models)
+- Kafka topics for consent changes, decision outcomes, and VC events
+- Outbox/inbox pattern generalized across services
 
-**Phase 3 - Scale and Observability:**
+**Phase 3 - Scale and Observability (Planned):**
 
 - CQRS read models for high-volume queries
 - Elasticsearch/OpenSearch for searchable audit index
-- Outbox/inbox pattern for guaranteed event delivery
 - Distributed tracing with OpenTelemetry
 
 ### Storage Tiers
 
 | Tier      | Technology             | Use Cases                                                | TTL Strategy                                  |
 | --------- | ---------------------- | -------------------------------------------------------- | --------------------------------------------- |
-| **Write** | PostgreSQL / In-Memory | Canonical consent, users, auth codes, refresh tokens     | N/A (durable)                                 |
-| **Hot**   | Redis (implemented)    | Sessions, token revocation list (TRL)                    | Session TTL, token expiry                     |
-| **Hot**   | Redis (planned)        | Consent projections, registry cache, rate limiting       | Align with domain expiry (consent, sanctions) |
+| **Write** | PostgreSQL             | Canonical consent, users, auth codes, refresh tokens     | N/A (durable)                                 |
+| **Hot**   | Redis (implemented)    | Sessions, token revocation list (TRL), registry cache    | Session TTL, token expiry                     |
+| **Hot**   | Redis (planned)        | Consent projections, decision cache, rate limiting       | Align with domain expiry (consent, sanctions) |
 | **Warm**  | Elasticsearch          | Audit index, compliance queries, investigations          | Time-based indices (daily/weekly)             |
 | **Cold**  | S3 / Object Store      | Audit archive, GDPR exports, long-term compliance        | Lifecycle policies (90d+ retention)           |
+
+Note: In-memory stores are test-only and do not run in production.
 
 ### Event Bus Architecture
 
 **Topics and Consumers:**
 
 ```
-consent_events → [projection_worker, audit_indexer, analytics]
-decision_events → [risk_scorer, audit_indexer, compliance_dashboard]
-audit_events → [elasticsearch_indexer, s3_archiver, siem_exporter]
-registry_refresh → [cache_warmer, evidence_projector]
+audit_events (current) → [audit_events_materializer]
+consent_events (planned) → [projection_worker, audit_indexer, analytics]
+decision_events (planned) → [risk_scorer, audit_indexer, compliance_dashboard]
+registry_refresh (planned) → [cache_warmer, evidence_projector]
 ```
 
 **Reliability Patterns:**
@@ -1383,7 +1394,7 @@ Having the code structured by services makes these toggles easier to reason abou
 
 ## Productionisation Considerations
 
-### Current State (MVP)
+### Current State (Baseline)
 
 **What's Implemented:**
 
@@ -1401,7 +1412,8 @@ Having the code structured by services makes these toggles easier to reason abou
 - ✅ HTTP middleware stack (recovery, request ID, logging, timeout, content-type, device, admin)
 - ✅ Prometheus metrics collection and `/metrics` endpoint
 - ✅ Comprehensive test coverage (unit, handler, integration tests)
-- ✅ Basic audit event models
+- ✅ Tri-publisher audit system (compliance/security/ops) with outbox-backed store
+- ✅ Kafka outbox pipeline for audit events (Postgres → Kafka → `audit_events`)
 - ✅ JWT token generation and validation with HS256
 - ✅ JWT authentication middleware (RequireAuth)
 - ✅ Auth handlers fully implemented (authorize, token, userinfo, sessions, revoke)
@@ -1419,13 +1431,13 @@ Having the code structured by services makes these toggles easier to reason abou
 - ⚠️ Evidence and Decision handlers (501 Not Implemented)
 - ⚠️ User Data Rights handlers (501 Not Implemented)
 - ⚠️ Real VC credential ID generation
-- ⚠️ Async audit worker (worker.go exists but not wired)
 
 **Redis Integration (Implemented):**
 
 - ✅ Redis client package with connection pooling and health checks
 - ✅ Redis session store with JSON serialization and TTL-based expiry
 - ✅ Redis token revocation list (TRL) with pipeline batch operations
+- ✅ Redis registry cache store for evidence lookups
 - ✅ Automatic fallback to PostgreSQL when Redis is not configured
 - ✅ Configuration via `REDIS_URL` environment variable
 
@@ -1442,9 +1454,8 @@ Key improvements to harden this design:
 
 2. **Event Streaming & Audit System**
 
-   - ✅ Channel-based audit (implemented for MVP)
-   - ⚠️ **Event bus integration:** Deploy Kafka/NATS for audit, consent change, decision outcomes, and VC issuance events
-   - ⚠️ **Outbox pattern:** Guarantee at-least-once delivery from canonical stores to event bus
+   - ✅ Kafka-backed audit pipeline with outbox worker and consumer materialization
+   - ⚠️ **Event bus expansion:** Add Kafka topics for consent change, decision outcomes, and VC issuance events
    - ⚠️ **Elasticsearch indexing:** Feed audit events into ES for searchable compliance queries (see PRD-006 FR-3, TR-5)
    - ⚠️ **Stream consumers:** Deploy projection workers, cache warmers, and analytics subscribers
    - Add audit log encryption and signing for tamper-proofing
@@ -1510,7 +1521,7 @@ Key improvements to harden this design:
 8. **Streaming, Caching, and Resilience Patterns** (Detailed in [Storage and Caching Architecture](#storage-and-caching-architecture))
 
    - **Redis tiers:** Low-latency caches for registry lookups, decision evidence, consent read models, and session throttling; align TTLs with domain expiry (consent TTL, sanctions refresh) and avoid eviction policies that risk losing consent projections.
-   - **Kafka/NATS event bus:** Standardize on a message bus for audit, consent change, decision outcomes, and VC issuance events; supports replay, backfills (e.g., Elasticsearch indexing), and downstream analytics without coupling to HTTP handlers.
+   - **Kafka event bus:** Standardize on a message bus for audit, consent change, decision outcomes, and VC issuance events; supports replay, backfills (e.g., Elasticsearch indexing), and downstream analytics without coupling to HTTP handlers.
    - **Outbox/inbox pattern:** Persist events alongside writes and ship to Kafka via workers to ensure at-least-once delivery; consumers de-duplicate via event IDs and store offsets for idempotence.
    - **Dead-letter & retries:** Per-topic DLQs with exponential backoff for registry refresh jobs, audit indexers, and credential issuers; surface backlog metrics.
    - **Distributed tracing:** OpenTelemetry traces across HTTP handlers, service layer, and async consumers to follow a user request through caches and Kafka pipelines.
@@ -1582,3 +1593,4 @@ The codebase currently has:
 | 2.5     | 2025-12-17 | Engineering Team | Added Phase 7 Differentiation Pack services and package layout: Trust Score, Compliance Templates, Privacy Analytics, Trust Network, Consent-as-a-Service |
 | 2.6     | 2025-12-24 | Engineering Team | Phase 0 completion update: add PRD-026B tenant/client lifecycle management, update rate limiting to MVP complete status, add lifecycle API routes, update implementation status summary |
 | 2.7     | 2026-01-02 | Engineering Team | Add Redis integration for sessions and token revocation (PRD-016, PRD-020): Redis session store, Redis TRL, client package with health checks; update storage tiers and implementation status |
+| 2.8     | 2026-01-03 | Engineering Team | Update current-state architecture: PostgreSQL/Redis/Kafka baseline, tri-publisher audit system, outbox pipeline, and test-only in-memory stores |
