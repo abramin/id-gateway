@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -225,9 +224,9 @@ func (s *Service) Grant(ctx context.Context, userID id.UserID, purposes []models
 
 	for _, effect := range effects {
 		s.emitGrantAudit(ctx, effect.record.UserID, effect.record.Purpose, effect.timestamp)
-		s.incrementConsentsGranted(effect.record.Purpose)
+		s.metrics.IncrementConsentsGranted(string(effect.record.Purpose))
 		if !effect.wasActive {
-			s.incrementActiveConsents(1)
+			s.metrics.IncrementActiveConsents(1)
 		}
 	}
 
@@ -238,34 +237,6 @@ type grantEffect struct {
 	record    *models.Record
 	wasActive bool
 	timestamp time.Time
-}
-
-type grantUpdate struct {
-	updated   models.Record
-	changed   bool
-	wasActive bool
-}
-
-// evaluateGrant applies idempotency and re-grant cooldown rules to an existing record.
-// It returns a change descriptor without mutating storage.
-func (s *Service) evaluateGrant(existing *models.Record, now time.Time) (grantUpdate, error) {
-	update := grantUpdate{wasActive: existing.IsActive(now)}
-	if update.wasActive && now.Sub(existing.GrantedAt) < s.grantIdempotencyWindow {
-		return update, nil
-	}
-
-	if !existing.CanReGrant(now, s.reGrantCooldown) {
-		return grantUpdate{}, pkgerrors.New(pkgerrors.CodeBadRequest,
-			fmt.Sprintf("consent was recently revoked; please wait before re-granting (cooldown: %v)", s.reGrantCooldown))
-	}
-
-	updated, err := existing.RenewAt(now, s.consentTTL)
-	if err != nil {
-		return grantUpdate{}, err
-	}
-	update.updated = updated
-	update.changed = true
-	return update, nil
 }
 
 // tryRevokeScopeTx revokes consent for a single scope inside the store Execute lock.
@@ -316,27 +287,27 @@ func (s *Service) tryRevokeScopeTx(ctx context.Context, txStore Store, scope mod
 func (s *Service) upsertGrantTx(ctx context.Context, txStore Store, scope models.ConsentScope) (*models.Record, *grantEffect, error) {
 	now := requestcontext.Now(ctx)
 	for attempt := 0; attempt < 2; attempt++ {
-		var update grantUpdate
+		var eval models.GrantEvaluation
 
 		record, err := txStore.Execute(ctx, scope,
 			func(existing *models.Record) error {
 				var err error
-				update, err = s.evaluateGrant(existing, now)
+				eval, err = existing.EvaluateGrant(now, s.grantIdempotencyWindow, s.reGrantCooldown, s.consentTTL)
 				return err
 			},
 			func(existing *models.Record) bool {
-				if !update.changed {
+				if !eval.Changed {
 					return false
 				}
-				*existing = update.updated
+				*existing = eval.Updated
 				return true
 			},
 		)
 		if err == nil {
-			if !update.changed {
+			if !eval.Changed {
 				return record, nil, nil
 			}
-			return record, &grantEffect{record: record, wasActive: update.wasActive, timestamp: now}, nil
+			return record, &grantEffect{record: record, wasActive: eval.WasActive, timestamp: now}, nil
 		}
 
 		if errors.Is(err, sentinel.ErrNotFound) {
@@ -434,8 +405,8 @@ func (s *Service) Revoke(ctx context.Context, userID id.UserID, purposes []model
 			Decision:  models.AuditDecisionRevoked,
 			Timestamp: now,
 		})
-		s.incrementConsentsRevoked(record.Purpose)
-		s.decrementActiveConsents(1)
+		s.metrics.IncrementConsentsRevoked(string(record.Purpose))
+		s.metrics.DecrementActiveConsents(1)
 	}
 
 	return revoked, nil
@@ -475,7 +446,7 @@ func (s *Service) RevokeAll(ctx context.Context, userID id.UserID) (int, error) 
 			Timestamp: now,
 			ActorID:   actorID,
 		})
-		s.decrementActiveConsents(float64(revokedCount))
+		s.metrics.DecrementActiveConsents(float64(revokedCount))
 	}
 
 	return revokedCount, nil
@@ -533,7 +504,7 @@ func (s *Service) List(ctx context.Context, userID id.UserID, filter *models.Rec
 	}
 
 	// Record distribution of records per user for performance monitoring
-	s.observeRecordsPerUser(float64(len(records)))
+	s.metrics.ObserveRecordsPerUser(float64(len(records)))
 
 	return records, nil
 }
@@ -738,8 +709,8 @@ func (s *Service) recordConsentCheckOutcome(ctx context.Context, userID id.UserI
 	})
 	s.logConsentCheck(ctx, logLevel, logMsg, userID, purpose, outcome.statusState())
 	if outcome.passed {
-		s.incrementConsentCheckPassed(purpose)
+		s.metrics.IncrementConsentCheckPassed(string(purpose))
 	} else {
-		s.incrementConsentCheckFailed(purpose)
+		s.metrics.IncrementConsentCheckFailed(string(purpose))
 	}
 }

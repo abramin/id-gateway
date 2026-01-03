@@ -4,13 +4,26 @@ import (
 	"context"
 
 	"credo/internal/auth/ports"
-	"credo/internal/ratelimit/service/authlockout"
-	"credo/internal/ratelimit/service/requestlimit"
+	ratelimitModels "credo/internal/ratelimit/models"
 )
 
 // classAuth is a local constant for the auth endpoint class.
 // Defined here to avoid coupling to internal/ratelimit/models.
-const classAuth = "auth"
+const classAuth ratelimitModels.EndpointClass = "auth"
+
+// authLockoutChecker defines the interface for auth lockout operations.
+// Defined locally to avoid coupling to ratelimit service packages.
+type authLockoutChecker interface {
+	Check(ctx context.Context, identifier, ip string) (*ratelimitModels.AuthRateLimitResult, error)
+	RecordFailure(ctx context.Context, identifier, ip string) (*ratelimitModels.AuthLockout, error)
+	Clear(ctx context.Context, identifier, ip string) error
+}
+
+// requestLimiter defines the interface for request rate limiting.
+// Defined locally to avoid coupling to ratelimit service packages.
+type requestLimiter interface {
+	CheckIP(ctx context.Context, ip string, class ratelimitModels.EndpointClass) (*ratelimitModels.RateLimitResult, error)
+}
 
 // RateLimitAdapter is an in-process adapter that implements ports.RateLimitPort
 // by directly calling the ratelimit services. This maintains the hexagonal
@@ -18,12 +31,12 @@ const classAuth = "auth"
 // When splitting into microservices, this can be replaced with a gRPC adapter
 // without changing the auth handler.
 type RateLimitAdapter struct {
-	authLockout *authlockout.Service
-	requests    *requestlimit.Service
+	authLockout authLockoutChecker
+	requests    requestLimiter
 }
 
-// NewRateLimitAdapter builds an in-process adapter backed by ratelimit services.
-func New(authLockout *authlockout.Service, requests *requestlimit.Service) ports.RateLimitPort {
+// New builds an in-process adapter backed by ratelimit services.
+func New(authLockout authLockoutChecker, requests requestLimiter) ports.RateLimitPort {
 	return &RateLimitAdapter{
 		authLockout: authLockout,
 		requests:    requests,

@@ -4,19 +4,25 @@ import (
 	"context"
 
 	registrycontracts "credo/contracts/registry"
-	registryservice "credo/internal/evidence/registry/service"
+	registryModels "credo/internal/evidence/registry/models"
 	"credo/internal/evidence/vc/ports"
 	id "credo/pkg/domain"
 )
 
+// registryLookup defines the interface for registry lookups.
+// Defined locally to avoid coupling to registry service package.
+type registryLookup interface {
+	CitizenWithDetails(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registryModels.CitizenRecord, error)
+}
+
 // RegistryAdapter bridges the registry service into the VC registry port.
 // Maps internal registry models to contract types at the boundary.
 type RegistryAdapter struct {
-	registryService *registryservice.Service
+	registryService registryLookup
 }
 
 // NewRegistryAdapter creates a new in-process registry adapter.
-func NewRegistryAdapter(registryService *registryservice.Service) ports.RegistryPort {
+func NewRegistryAdapter(registryService registryLookup) ports.RegistryPort {
 	return &RegistryAdapter{registryService: registryService}
 }
 

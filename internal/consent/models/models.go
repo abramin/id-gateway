@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"time"
 
 	id "credo/pkg/domain"
@@ -99,6 +100,49 @@ func (c Record) CanReGrant(now time.Time, cooldown time.Duration) bool {
 	}
 	// Check if cooldown period has elapsed since revocation
 	return now.Sub(*c.RevokedAt) >= cooldown
+}
+
+// GrantEvaluation captures the result of evaluating a grant request against an existing record.
+type GrantEvaluation struct {
+	// Updated contains the renewed record if Changed is true.
+	Updated Record
+	// Changed indicates whether the record was modified.
+	Changed bool
+	// WasActive indicates whether the record was active before evaluation.
+	// Used by callers to track metrics (e.g., new active consent vs renewal).
+	WasActive bool
+}
+
+// EvaluateGrant applies idempotency and re-grant cooldown rules to determine if a grant should proceed.
+// Returns a GrantEvaluation describing the outcome:
+//   - If active and within idempotencyWindow: no change (idempotent)
+//   - If recently revoked (within cooldown): returns error
+//   - Otherwise: returns renewed record with Changed=true
+//
+// This is pure domain logic with no side effects.
+func (c Record) EvaluateGrant(now time.Time, idempotencyWindow, reGrantCooldown, ttl time.Duration) (GrantEvaluation, error) {
+	eval := GrantEvaluation{WasActive: c.IsActive(now)}
+
+	// Idempotency: if active and recently granted, skip update
+	if eval.WasActive && now.Sub(c.GrantedAt) < idempotencyWindow {
+		return eval, nil
+	}
+
+	// Re-grant cooldown: prevent rapid revoke→grant cycles
+	if !c.CanReGrant(now, reGrantCooldown) {
+		return GrantEvaluation{}, dErrors.New(dErrors.CodeBadRequest,
+			fmt.Sprintf("consent was recently revoked; please wait before re-granting (cooldown: %v)", reGrantCooldown))
+	}
+
+	// Renew the consent
+	updated, err := c.RenewAt(now, ttl)
+	if err != nil {
+		return GrantEvaluation{}, err
+	}
+
+	eval.Updated = updated
+	eval.Changed = true
+	return eval, nil
 }
 
 // RenewAt returns an updated record with a new grant window applied.

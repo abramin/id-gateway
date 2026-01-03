@@ -5,9 +5,17 @@ import (
 
 	registrycontracts "credo/contracts/registry"
 	"credo/internal/decision/ports"
-	registryService "credo/internal/evidence/registry/service"
+	registryModels "credo/internal/evidence/registry/models"
 	id "credo/pkg/domain"
 )
+
+// registryLookup defines the interface for registry lookups.
+// Defined locally to avoid coupling to registry service package.
+// The adapter imports models for return types but not the service implementation.
+type registryLookup interface {
+	CitizenWithDetails(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registryModels.CitizenRecord, error)
+	Sanctions(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registryModels.SanctionsRecord, error)
+}
 
 // RegistryAdapter is an in-process adapter that implements ports.RegistryPort
 // by directly calling the registry service. This maintains the hexagonal
@@ -18,11 +26,11 @@ import (
 // The adapter maps registry service models to contract types, ensuring
 // the decision module only receives PII-light data at the boundary.
 type RegistryAdapter struct {
-	registryService *registryService.Service
+	registryService registryLookup
 }
 
 // NewRegistryAdapter creates a new in-process registry adapter.
-func NewRegistryAdapter(registryService *registryService.Service) ports.RegistryPort {
+func NewRegistryAdapter(registryService registryLookup) ports.RegistryPort {
 	return &RegistryAdapter{
 		registryService: registryService,
 	}
