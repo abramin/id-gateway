@@ -6,6 +6,9 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   changes:
     name: Detect Changes
@@ -59,6 +62,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     needs: changes
     if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.ci == 'true'
     steps:
