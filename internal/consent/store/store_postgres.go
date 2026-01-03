@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"credo/internal/consent/models"
+	consentsqlc "credo/internal/consent/store/sqlc"
 	id "credo/pkg/domain"
 	"credo/pkg/platform/sentinel"
 
@@ -16,52 +17,39 @@ import (
 
 // PostgresStore persists consent records in PostgreSQL.
 type PostgresStore struct {
-	db *sql.DB
-	tx *sql.Tx
+	db      *sql.DB
+	tx      *sql.Tx
+	queries *consentsqlc.Queries
 }
 
 // NewPostgres constructs a PostgreSQL-backed consent store.
 func NewPostgres(db *sql.DB) *PostgresStore {
-	return &PostgresStore{db: db}
+	return &PostgresStore{
+		db:      db,
+		queries: consentsqlc.New(db),
+	}
 }
 
 // NewPostgresTx constructs a PostgreSQL-backed consent store bound to a transaction.
 func NewPostgresTx(tx *sql.Tx) *PostgresStore {
-	return &PostgresStore{tx: tx}
-}
-
-type dbExecutor interface {
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-}
-
-func (s *PostgresStore) execer() dbExecutor {
-	if s.tx != nil {
-		return s.tx
+	return &PostgresStore{
+		tx:      tx,
+		queries: consentsqlc.New(tx),
 	}
-	return s.db
 }
 
 func (s *PostgresStore) Save(ctx context.Context, consent *models.Record) error {
 	if consent == nil {
 		return fmt.Errorf("consent record is required")
 	}
-	query := `
-		INSERT INTO consents (id, user_id, purpose, granted_at, expires_at, revoked_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (user_id, purpose) DO NOTHING
-		RETURNING id
-	`
-	var storedID uuid.UUID
-	err := s.execer().QueryRowContext(ctx, query,
-		uuid.UUID(consent.ID),
-		uuid.UUID(consent.UserID),
-		string(consent.Purpose),
-		consent.GrantedAt,
-		consent.ExpiresAt,
-		consent.RevokedAt,
-	).Scan(&storedID)
+	storedID, err := s.queries.InsertConsent(ctx, consentsqlc.InsertConsentParams{
+		ID:        uuid.UUID(consent.ID),
+		UserID:    uuid.UUID(consent.UserID),
+		Purpose:   string(consent.Purpose),
+		GrantedAt: consent.GrantedAt,
+		ExpiresAt: nullTime(consent.ExpiresAt),
+		RevokedAt: nullTime(consent.RevokedAt),
+	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return sentinel.ErrConflict
@@ -73,49 +61,39 @@ func (s *PostgresStore) Save(ctx context.Context, consent *models.Record) error 
 }
 
 func (s *PostgresStore) FindByScope(ctx context.Context, scope models.ConsentScope) (*models.Record, error) {
-	query := `
-		SELECT id, user_id, purpose, granted_at, expires_at, revoked_at
-		FROM consents
-		WHERE user_id = $1 AND purpose = $2
-	`
-	record, err := scanConsent(s.execer().QueryRowContext(ctx, query, uuid.UUID(scope.UserID), string(scope.Purpose)))
+	record, err := s.queries.GetConsentByScope(ctx, consentsqlc.GetConsentByScopeParams{
+		UserID:  uuid.UUID(scope.UserID),
+		Purpose: string(scope.Purpose),
+	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, sentinel.ErrNotFound
 		}
 		return nil, fmt.Errorf("find consent: %w", err)
 	}
-	return record, nil
+	return toConsent(record), nil
 }
 
 func (s *PostgresStore) ListByUser(ctx context.Context, userID id.UserID, filter *models.RecordFilter) ([]*models.Record, error) {
-	query := `
-		SELECT id, user_id, purpose, granted_at, expires_at, revoked_at
-		FROM consents
-		WHERE user_id = $1
-	`
-	args := []any{uuid.UUID(userID)}
+	var (
+		rows []consentsqlc.Consent
+		err  error
+	)
 	if filter != nil && filter.Purpose != nil {
-		query += " AND purpose = $2"
-		args = append(args, string(*filter.Purpose))
+		rows, err = s.queries.ListConsentsByUserAndPurpose(ctx, consentsqlc.ListConsentsByUserAndPurposeParams{
+			UserID:  uuid.UUID(userID),
+			Purpose: string(*filter.Purpose),
+		})
+	} else {
+		rows, err = s.queries.ListConsentsByUser(ctx, uuid.UUID(userID))
 	}
-
-	rows, err := s.execer().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list consents: %w", err)
 	}
-	defer rows.Close()
 
-	var records []*models.Record
-	for rows.Next() {
-		record, err := scanConsent(rows)
-		if err != nil {
-			return nil, fmt.Errorf("scan consent: %w", err)
-		}
-		records = append(records, record)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate consents: %w", err)
+	records := make([]*models.Record, 0, len(rows))
+	for _, row := range rows {
+		records = append(records, toConsent(row))
 	}
 	return records, nil
 }
@@ -124,18 +102,14 @@ func (s *PostgresStore) Update(ctx context.Context, consent *models.Record) erro
 	if consent == nil {
 		return fmt.Errorf("consent record is required")
 	}
-	return updateConsent(ctx, s.execer(), consent)
+	return updateConsent(ctx, s.queries, consent)
 }
 
 func (s *PostgresStore) RevokeAllByUser(ctx context.Context, userID id.UserID, now time.Time) (int, error) {
-	query := `
-		UPDATE consents
-		SET revoked_at = $2
-		WHERE user_id = $1
-		  AND revoked_at IS NULL
-		  AND (expires_at IS NULL OR expires_at >= $2)
-	`
-	res, err := s.execer().ExecContext(ctx, query, uuid.UUID(userID), now)
+	res, err := s.queries.RevokeAllConsentsByUser(ctx, consentsqlc.RevokeAllConsentsByUserParams{
+		UserID:    uuid.UUID(userID),
+		RevokedAt: sql.NullTime{Time: now, Valid: true},
+	})
 	if err != nil {
 		return 0, fmt.Errorf("revoke all consents: %w", err)
 	}
@@ -172,13 +146,11 @@ func (s *PostgresStore) Execute(ctx context.Context, scope models.ConsentScope, 
 }
 
 func (s *PostgresStore) executeWithTx(ctx context.Context, tx *sql.Tx, scope models.ConsentScope, validate func(*models.Record) error, mutate func(*models.Record) bool) (*models.Record, error) {
-	query := `
-		SELECT id, user_id, purpose, granted_at, expires_at, revoked_at
-		FROM consents
-		WHERE user_id = $1 AND purpose = $2
-		FOR UPDATE
-	`
-	record, err := scanConsent(tx.QueryRowContext(ctx, query, uuid.UUID(scope.UserID), string(scope.Purpose)))
+	qtx := s.queries.WithTx(tx)
+	record, err := qtx.GetConsentByScopeForUpdate(ctx, consentsqlc.GetConsentByScopeForUpdateParams{
+		UserID:  uuid.UUID(scope.UserID),
+		Purpose: string(scope.Purpose),
+	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, sentinel.ErrNotFound
@@ -186,42 +158,37 @@ func (s *PostgresStore) executeWithTx(ctx context.Context, tx *sql.Tx, scope mod
 		return nil, fmt.Errorf("find consent for execute: %w", err)
 	}
 
-	if err := validate(record); err != nil {
+	modelRecord := toConsent(record)
+	if err := validate(modelRecord); err != nil {
 		return nil, err
 	}
 
-	changed := mutate(record)
+	changed := mutate(modelRecord)
 	if !changed {
-		return record, nil
+		return modelRecord, nil
 	}
-	if err := updateConsent(ctx, tx, record); err != nil {
+	if err := updateConsent(ctx, qtx, modelRecord); err != nil {
 		return nil, err
 	}
-	return record, nil
+	return modelRecord, nil
 }
 
 func (s *PostgresStore) DeleteByUser(ctx context.Context, userID id.UserID) error {
-	_, err := s.execer().ExecContext(ctx, `DELETE FROM consents WHERE user_id = $1`, uuid.UUID(userID))
-	if err != nil {
+	if err := s.queries.DeleteConsentsByUser(ctx, uuid.UUID(userID)); err != nil {
 		return fmt.Errorf("delete consents by user: %w", err)
 	}
 	return nil
 }
 
-func updateConsent(ctx context.Context, exec dbExecutor, consent *models.Record) error {
-	query := `
-		UPDATE consents
-		SET granted_at = $2, expires_at = $3, revoked_at = $4
-		WHERE id = $1 AND user_id = $5 AND purpose = $6
-	`
-	res, err := exec.ExecContext(ctx, query,
-		uuid.UUID(consent.ID),
-		consent.GrantedAt,
-		consent.ExpiresAt,
-		consent.RevokedAt,
-		uuid.UUID(consent.UserID),
-		string(consent.Purpose),
-	)
+func updateConsent(ctx context.Context, queries *consentsqlc.Queries, consent *models.Record) error {
+	res, err := queries.UpdateConsent(ctx, consentsqlc.UpdateConsentParams{
+		ID:        uuid.UUID(consent.ID),
+		GrantedAt: consent.GrantedAt,
+		ExpiresAt: nullTime(consent.ExpiresAt),
+		RevokedAt: nullTime(consent.RevokedAt),
+		UserID:    uuid.UUID(consent.UserID),
+		Purpose:   string(consent.Purpose),
+	})
 	if err != nil {
 		return fmt.Errorf("update consent: %w", err)
 	}
@@ -235,28 +202,25 @@ func updateConsent(ctx context.Context, exec dbExecutor, consent *models.Record)
 	return nil
 }
 
-type consentRow interface {
-	Scan(dest ...any) error
+func toConsent(record consentsqlc.Consent) *models.Record {
+	modelRecord := &models.Record{
+		ID:        id.ConsentID(record.ID),
+		UserID:    id.UserID(record.UserID),
+		Purpose:   models.Purpose(record.Purpose),
+		GrantedAt: record.GrantedAt,
+	}
+	if record.ExpiresAt.Valid {
+		modelRecord.ExpiresAt = &record.ExpiresAt.Time
+	}
+	if record.RevokedAt.Valid {
+		modelRecord.RevokedAt = &record.RevokedAt.Time
+	}
+	return modelRecord
 }
 
-func scanConsent(row consentRow) (*models.Record, error) {
-	var record models.Record
-	var consentID uuid.UUID
-	var userID uuid.UUID
-	var purpose string
-	var expiresAt sql.NullTime
-	var revokedAt sql.NullTime
-	if err := row.Scan(&consentID, &userID, &purpose, &record.GrantedAt, &expiresAt, &revokedAt); err != nil {
-		return nil, err
+func nullTime(t *time.Time) sql.NullTime {
+	if t == nil {
+		return sql.NullTime{}
 	}
-	record.ID = id.ConsentID(consentID)
-	record.UserID = id.UserID(userID)
-	record.Purpose = models.Purpose(purpose)
-	if expiresAt.Valid {
-		record.ExpiresAt = &expiresAt.Time
-	}
-	if revokedAt.Valid {
-		record.RevokedAt = &revokedAt.Time
-	}
-	return &record, nil
+	return sql.NullTime{Time: *t, Valid: true}
 }

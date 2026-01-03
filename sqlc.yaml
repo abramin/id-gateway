@@ -14,3 +14,15 @@ sql:
             go_type: "github.com/google/uuid.UUID"
           - db_type: "text[]"
             go_type: "github.com/lib/pq.StringArray"
+  - engine: "postgresql"
+    schema: "migrations/*.up.sql"
+    queries: "internal/consent/store/sqlc/queries/*.sql"
+    gen:
+      go:
+        package: "sqlc"
+        out: "internal/consent/store/sqlc"
+        sql_package: "database/sql"
+        emit_interface: false
+        overrides:
+          - db_type: "uuid"
+            go_type: "github.com/google/uuid.UUID"
