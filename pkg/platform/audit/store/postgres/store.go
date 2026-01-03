@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"time"
 
 	id "credo/pkg/domain"
@@ -158,6 +159,10 @@ func (s *Store) ListAll(ctx context.Context) ([]audit.Event, error) {
 
 // ListRecent returns the N most recent events.
 func (s *Store) ListRecent(ctx context.Context, limit int) ([]audit.Event, error) {
+	// Clamp limit to int32 range to prevent overflow
+	if limit > math.MaxInt32 {
+		limit = math.MaxInt32
+	}
 	rows, err := s.queries.ListRecentAuditEvents(ctx, int32(limit))
 	if err != nil {
 		return nil, fmt.Errorf("query audit events: %w", err)
