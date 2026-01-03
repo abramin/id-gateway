@@ -5,20 +5,18 @@
 - **Owners:** Platform & Security
 
 ## Context
-- The platform serves multiple tenants with separate client registrations, policies, and audit boundaries. Staff review called out the lack of an explicit isolation model.
-- Architecture favors clean service boundaries and typed identifiers, but current storage and middleware do not consistently scope by tenant or enforce issuer/audience binding to a tenant.
-- Regulatory features (regulated mode, consent minimization, per-tenant audit exports) require deterministic isolation to prevent cross-tenant data exposure.
+- The platform serves multiple tenants with separate client registrations and lifecycle controls. The architecture now includes a dedicated tenant service (PRD-026A/026B).
+- Services share infrastructure (Postgres + Redis), so tenant isolation must be enforced consistently at the application and data layers.
+- OAuth flows must respect tenant and client lifecycle states (deactivate/reactivate) to prevent cross-tenant access.
 
 ## Decision
-- Adopt **logical isolation with strict tenant scoping** across all layers:
-  - Every domain model and request context carries a typed `TenantID`; repositories require it as a parameter, and queries must include explicit tenant predicates.
-  - Authentication and token issuance bind `iss` and `aud` to the tenant’s namespace (`https://{tenant}.credo/idp`), and middleware rejects tokens whose issuer or client does not match the resolved tenant context.
-  - Per-tenant configuration (keys, policies, rate limits, redirect URIs, consent templates) is stored in Postgres tables keyed by `TenantID` with unique constraints to prevent cross-tenant reuse.
-- **Transport isolation:** admin and operational APIs require a tenant header or path segment; public OAuth endpoints resolve tenant via client metadata, not caller-supplied headers, to avoid spoofing.
-- **Data plane isolation:** caches (Redis) prefix keys with `TenantID`; background workers process jobs partitioned by tenant to avoid mixing events and to enable tenant-level throttling or pausing.
-- **Observability and auditing:** logs, metrics, and audit events include `tenant_id` dimensions; cross-tenant aggregation is limited to anonymous, privacy-safe metrics in regulated mode.
+- Adopt **logical isolation with strict tenant scoping**:
+  - Domain models use typed `TenantID` values; repositories require tenant-scoped queries with explicit tenant predicates.
+  - Tenants and clients are stored in Postgres and managed by the tenant service; lifecycle transitions are explicit (`DeactivateTenant`, `ReactivateTenant`, `DeactivateClient`, `ReactivateClient`).
+  - Auth flows resolve tenant and client via `ResolveClient` and enforce `tenant.IsActive()` and `client.IsActive()` as the OAuth choke point.
+- **Transport isolation:** admin endpoints manage tenants and clients via `/admin/tenants/{tenant_id}` routes; OAuth flows rely on client registration rather than caller-supplied tenant headers.
 
 ## Consequences
-- Requires refactoring repository interfaces and middleware to accept typed tenant identifiers, adding validation to guard against missing/unknown tenants before performing business logic.
-- Tenant-aware JWKS exposure and token validation must align with the signing ADR to ensure keys and issuers are segregated per tenant.
-- Operationally, incident response and backups/restores run at tenant granularity; data exports and deletion flows must respect tenant partitions.
+- Stores and services must keep tenant predicates explicit and fail fast on unknown tenants or inactive tenant/client states.
+- Admin handlers must enforce tenant lifecycle controls consistently across tenant and client management endpoints.
+- Data exports and deletion flows must operate within tenant boundaries and use tenant-scoped identifiers end-to-end.
