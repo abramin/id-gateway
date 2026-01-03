@@ -3,7 +3,7 @@ package ports
 import (
 	"context"
 
-	registrymodels "credo/internal/evidence/registry/models"
+	registrycontracts "credo/contracts/registry"
 	id "credo/pkg/domain"
 )
 
@@ -12,6 +12,6 @@ import (
 // and adapters (in-process, gRPC client, mock) implement it.
 type RegistryPort interface {
 	// Citizen fetches a citizen record for the given user and national ID.
-	// Returns the citizen record or an error if the lookup fails.
-	Citizen(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registrymodels.CitizenRecord, error)
+	// Returns the citizen record (contract type) or an error if the lookup fails.
+	Citizen(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registrycontracts.CitizenRecord, error)
 }

@@ -3,16 +3,16 @@ package ports
 import (
 	"context"
 
-	vcmodels "credo/internal/evidence/vc/models"
+	vccontracts "credo/contracts/vc"
 	id "credo/pkg/domain"
 )
 
 // VCPort defines the interface for VC lookups in the decision engine.
 // This port allows finding existing credentials by subject/type without
-// depending on the VC store implementation directly.
+// depending on the VC store or internal models directly.
 type VCPort interface {
-	// FindBySubjectAndType retrieves a credential by user ID and type.
-	// Returns nil, nil if no credential exists (not an error).
+	// FindCredentialPresence checks if a valid credential exists for a user and type.
+	// Returns a minimal contract type (Exists, Claims) rather than the full record.
 	// Returns nil, error only for infrastructure failures.
-	FindBySubjectAndType(ctx context.Context, userID id.UserID, credType vcmodels.CredentialType) (*vcmodels.CredentialRecord, error)
+	FindCredentialPresence(ctx context.Context, userID id.UserID, credType vccontracts.CredentialType) (*vccontracts.CredentialPresence, error)
 }

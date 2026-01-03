@@ -209,7 +209,7 @@ func main() {
 		infra.Log.Error("failed to initialize vc module", "error", err)
 		os.Exit(1)
 	}
-	decisionMod, err := buildDecisionModule(infra, registryMod.Service, vcMod.Store, consentMod.Service)
+	decisionMod, err := buildDecisionModule(infra, registryMod.Service, vcMod.Service, consentMod.Service)
 	if err != nil {
 		infra.Log.Error("failed to initialize decision module", "error", err)
 		os.Exit(1)
@@ -818,10 +818,10 @@ func buildVCModule(infra *infraBundle, consentSvc *consentService.Service, regis
 	}, nil
 }
 
-func buildDecisionModule(infra *infraBundle, registrySvc *registryService.Service, vcSt vcStore.Store, consentSvc *consentService.Service) (*decisionModule, error) {
+func buildDecisionModule(infra *infraBundle, registrySvc *registryService.Service, vcSvc *vcService.Service, consentSvc *consentService.Service) (*decisionModule, error) {
 	// Create adapters
 	registryAdapter := decisionAdapters.NewRegistryAdapter(registrySvc)
-	vcAdapter := decisionAdapters.NewVCAdapter(vcSt)
+	vcAdapter := decisionAdapters.NewVCAdapter(vcSvc)
 	consentAdapter := decisionAdapters.NewConsentAdapter(consentSvc)
 
 	// Create audit publisher using tri-publisher architecture

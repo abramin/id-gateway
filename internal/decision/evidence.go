@@ -5,7 +5,7 @@ import (
 	"time"
 
 	registrycontracts "credo/contracts/registry"
-	vcmodels "credo/internal/evidence/vc/models"
+	vccontracts "credo/contracts/vc"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -18,7 +18,7 @@ type evidenceFetchResult struct {
 	citizenLatency    time.Duration
 	sanctions         *registrycontracts.SanctionsRecord
 	sanctionsLatency  time.Duration
-	credential        *vcmodels.CredentialRecord
+	credential        *vccontracts.CredentialPresence
 	credentialLatency time.Duration
 }
 
@@ -131,7 +131,7 @@ func (s *Service) credentialTask(req EvaluateRequest, result *evidenceFetchResul
 			// Security note: This design prioritizes availability over completeness for advisory
 			// age verification. If credential service is unavailable, the user can still proceed
 			// but must obtain credentials later. For fail-closed behavior, see sanctions lookup.
-			cred, err := s.vc.FindBySubjectAndType(ctx, req.UserID, vcmodels.CredentialTypeAgeOver18)
+			cred, err := s.vc.FindCredentialPresence(ctx, req.UserID, vccontracts.CredentialTypeAgeOver18)
 			if err != nil {
 				if s.logger != nil {
 					s.logger.WarnContext(ctx, "credential lookup failed - degrading to pass_with_conditions",

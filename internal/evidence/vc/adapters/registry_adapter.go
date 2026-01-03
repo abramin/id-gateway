@@ -3,13 +3,14 @@ package adapters
 import (
 	"context"
 
-	registrymodels "credo/internal/evidence/registry/models"
+	registrycontracts "credo/contracts/registry"
 	registryservice "credo/internal/evidence/registry/service"
 	"credo/internal/evidence/vc/ports"
 	id "credo/pkg/domain"
 )
 
 // RegistryAdapter bridges the registry service into the VC registry port.
+// Maps internal registry models to contract types at the boundary.
 type RegistryAdapter struct {
 	registryService *registryservice.Service
 }
@@ -20,8 +21,16 @@ func NewRegistryAdapter(registryService *registryservice.Service) ports.Registry
 }
 
 // Citizen fetches a citizen record for the given user and national ID.
-// Uses CitizenWithDetails to get full PII for age computation - the VC service
-// applies its own minimization to the credential claims before output.
-func (a *RegistryAdapter) Citizen(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registrymodels.CitizenRecord, error) {
-	return a.registryService.CitizenWithDetails(ctx, userID, nationalID)
+// Maps the internal registry model to the contract type at the boundary,
+// exposing only DateOfBirth and Valid to the VC service.
+func (a *RegistryAdapter) Citizen(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registrycontracts.CitizenRecord, error) {
+	record, err := a.registryService.CitizenWithDetails(ctx, userID, nationalID)
+	if err != nil {
+		return nil, err
+	}
+	// Map to contract type - only DateOfBirth and Valid cross the boundary
+	return &registrycontracts.CitizenRecord{
+		DateOfBirth: record.DateOfBirth,
+		Valid:       record.Valid,
+	}, nil
 }

@@ -6,7 +6,8 @@ import (
 	"log/slog"
 	"time"
 
-	registrymodels "credo/internal/evidence/registry/models"
+	registrycontracts "credo/contracts/registry"
+	vccontracts "credo/contracts/vc"
 	"credo/internal/evidence/vc/domain/credential"
 	"credo/internal/evidence/vc/domain/shared"
 	"credo/internal/evidence/vc/models"
@@ -114,7 +115,7 @@ func (s *Service) validateIssueRequest(req models.IssueRequest) error {
 	return nil
 }
 
-func (s *Service) fetchCitizenRecord(ctx context.Context, req models.IssueRequest) (*registrymodels.CitizenRecord, error) {
+func (s *Service) fetchCitizenRecord(ctx context.Context, req models.IssueRequest) (*registrycontracts.CitizenRecord, error) {
 	record, err := s.registry.Citizen(ctx, req.UserID, req.NationalID)
 	if err != nil {
 		return nil, sanitizeExternalError(err, "registry lookup failed")
@@ -125,7 +126,7 @@ func (s *Service) fetchCitizenRecord(ctx context.Context, req models.IssueReques
 	return record, nil
 }
 
-func (s *Service) buildCredentialModel(req models.IssueRequest, record *registrymodels.CitizenRecord, now time.Time) (models.CredentialRecord, error) {
+func (s *Service) buildCredentialModel(req models.IssueRequest, record *registrycontracts.CitizenRecord, now time.Time) (models.CredentialRecord, error) {
 	birthDate, err := time.Parse("2006-01-02", record.DateOfBirth)
 	if err != nil {
 		return models.CredentialRecord{}, dErrors.New(dErrors.CodeBadRequest, "invalid citizen record")
@@ -184,6 +185,25 @@ func (s *Service) Verify(ctx context.Context, credentialID models.CredentialID) 
 	s.emitVerifyAudit(ctx, cred)
 
 	return result, nil
+}
+
+// FindCredentialPresence checks if a valid credential exists for a user and type.
+// This is the decision-module-friendly entry point that returns minimal contract data.
+// Returns CredentialPresence{Exists: false} if no credential found (not an error).
+// Returns nil, error only for infrastructure failures.
+func (s *Service) FindCredentialPresence(ctx context.Context, userID id.UserID, credType vccontracts.CredentialType) (*vccontracts.CredentialPresence, error) {
+	internalType := models.CredentialType(credType)
+	record, err := s.store.FindBySubjectAndType(ctx, userID, internalType)
+	if err != nil {
+		if errors.Is(err, sentinel.ErrNotFound) {
+			return &vccontracts.CredentialPresence{Exists: false}, nil
+		}
+		return nil, err
+	}
+	return &vccontracts.CredentialPresence{
+		Exists: true,
+		Claims: map[string]interface{}(record.Claims),
+	}, nil
 }
 
 const vcIssuancePurpose id.ConsentPurpose = id.ConsentPurposeVCIssuance
