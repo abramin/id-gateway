@@ -5,16 +5,16 @@ import (
 
 	registrycontracts "credo/contracts/registry"
 	"credo/internal/decision/ports"
-	registryModels "credo/internal/evidence/registry/models"
 	id "credo/pkg/domain"
 )
 
-// registryLookup defines the interface for registry lookups.
+// registryContractProvider defines the interface for registry lookups using contract types.
 // Defined locally to avoid coupling to registry service package.
-// The adapter imports models for return types but not the service implementation.
-type registryLookup interface {
-	CitizenWithDetails(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registryModels.CitizenRecord, error)
-	Sanctions(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registryModels.SanctionsRecord, error)
+// The registry service implements these methods to return contract types directly,
+// eliminating the need for this adapter to import internal registry models.
+type registryContractProvider interface {
+	CitizenContract(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registrycontracts.CitizenRecord, error)
+	SanctionsContract(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registrycontracts.SanctionsRecord, error)
 }
 
 // RegistryAdapter is an in-process adapter that implements ports.RegistryPort
@@ -23,14 +23,14 @@ type registryLookup interface {
 // When splitting into microservices, this can be replaced with a gRPC adapter
 // without changing the decision domain layer.
 //
-// The adapter maps registry service models to contract types, ensuring
-// the decision module only receives PII-light data at the boundary.
+// The adapter uses registry service contract methods, ensuring the decision
+// module depends only on stable contract types, not internal registry models.
 type RegistryAdapter struct {
-	registryService registryLookup
+	registryService registryContractProvider
 }
 
 // NewRegistryAdapter creates a new in-process registry adapter.
-func NewRegistryAdapter(registryService registryLookup) ports.RegistryPort {
+func NewRegistryAdapter(registryService registryContractProvider) ports.RegistryPort {
 	return &RegistryAdapter{
 		registryService: registryService,
 	}
@@ -38,30 +38,12 @@ func NewRegistryAdapter(registryService registryLookup) ports.RegistryPort {
 
 // CheckCitizen retrieves citizen record by national ID.
 // Side effects: calls the registry service and may perform external I/O.
-// Uses CitizenWithDetails to get DOB for age derivation, then maps to contract type.
 func (a *RegistryAdapter) CheckCitizen(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registrycontracts.CitizenRecord, error) {
-	record, err := a.registryService.CitizenWithDetails(ctx, userID, nationalID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Map to contract type - only DateOfBirth and Valid cross the boundary
-	return &registrycontracts.CitizenRecord{
-		DateOfBirth: record.DateOfBirth,
-		Valid:       record.Valid,
-	}, nil
+	return a.registryService.CitizenContract(ctx, userID, nationalID)
 }
 
 // CheckSanctions retrieves sanctions record by national ID.
 // Side effects: calls the registry service and may perform external I/O.
 func (a *RegistryAdapter) CheckSanctions(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registrycontracts.SanctionsRecord, error) {
-	record, err := a.registryService.Sanctions(ctx, userID, nationalID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Map to contract type - only Listed crosses the boundary
-	return &registrycontracts.SanctionsRecord{
-		Listed: record.Listed,
-	}, nil
+	return a.registryService.SanctionsContract(ctx, userID, nationalID)
 }

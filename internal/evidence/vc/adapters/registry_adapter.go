@@ -4,39 +4,30 @@ import (
 	"context"
 
 	registrycontracts "credo/contracts/registry"
-	registryModels "credo/internal/evidence/registry/models"
 	"credo/internal/evidence/vc/ports"
 	id "credo/pkg/domain"
 )
 
-// registryLookup defines the interface for registry lookups.
+// registryContractProvider defines the interface for registry lookups using contract types.
 // Defined locally to avoid coupling to registry service package.
-type registryLookup interface {
-	CitizenWithDetails(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registryModels.CitizenRecord, error)
+// The registry service implements this method to return contract types directly.
+type registryContractProvider interface {
+	CitizenContract(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registrycontracts.CitizenRecord, error)
 }
 
 // RegistryAdapter bridges the registry service into the VC registry port.
-// Maps internal registry models to contract types at the boundary.
+// Uses registry service contract methods to avoid importing internal models.
 type RegistryAdapter struct {
-	registryService registryLookup
+	registryService registryContractProvider
 }
 
 // NewRegistryAdapter creates a new in-process registry adapter.
-func NewRegistryAdapter(registryService registryLookup) ports.RegistryPort {
+func NewRegistryAdapter(registryService registryContractProvider) ports.RegistryPort {
 	return &RegistryAdapter{registryService: registryService}
 }
 
 // Citizen fetches a citizen record for the given user and national ID.
-// Maps the internal registry model to the contract type at the boundary,
-// exposing only DateOfBirth and Valid to the VC service.
+// Returns contract type directly from the registry service.
 func (a *RegistryAdapter) Citizen(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registrycontracts.CitizenRecord, error) {
-	record, err := a.registryService.CitizenWithDetails(ctx, userID, nationalID)
-	if err != nil {
-		return nil, err
-	}
-	// Map to contract type - only DateOfBirth and Valid cross the boundary
-	return &registrycontracts.CitizenRecord{
-		DateOfBirth: record.DateOfBirth,
-		Valid:       record.Valid,
-	}, nil
+	return a.registryService.CitizenContract(ctx, userID, nationalID)
 }
