@@ -62,40 +62,70 @@ func New() *Metrics {
 	}
 }
 
+// All methods are nil-safe: callers can invoke on nil receiver without panic.
+// This eliminates nil checks at call sites.
+
 func (m *Metrics) IncrementConsentsGranted(purpose string) {
+	if m == nil {
+		return
+	}
 	m.ConsentsGranted.WithLabelValues(purpose).Inc()
 }
 
 func (m *Metrics) IncrementConsentsRevoked(purpose string) {
+	if m == nil {
+		return
+	}
 	m.ConsentsRevoked.WithLabelValues(purpose).Inc()
 }
 
 func (m *Metrics) IncrementConsentCheckPassed(purpose string) {
+	if m == nil {
+		return
+	}
 	m.ConsentCheckPassed.WithLabelValues(purpose).Inc()
 }
 
 func (m *Metrics) IncrementConsentCheckFailed(purpose string) {
+	if m == nil {
+		return
+	}
 	m.ConsentCheckFailed.WithLabelValues(purpose).Inc()
 }
 
 func (m *Metrics) IncrementActiveConsents(count float64) {
+	if m == nil {
+		return
+	}
 	m.ActiveConsentsTotal.Add(count)
 }
 
 func (m *Metrics) DecrementActiveConsents(count float64) {
+	if m == nil {
+		return
+	}
 	m.ActiveConsentsTotal.Sub(count)
 }
 
 func (m *Metrics) ObserveConsentGrantLatency(durationSeconds float64) {
+	if m == nil {
+		return
+	}
 	m.ConsentGrantLatency.Observe(durationSeconds)
 }
 
 // ObserveStoreOperationLatency records the latency of a store operation.
 func (m *Metrics) ObserveStoreOperationLatency(operation string, durationSeconds float64) {
+	if m == nil {
+		return
+	}
 	m.StoreOperationLatency.WithLabelValues(operation).Observe(durationSeconds)
 }
 
 // ObserveRecordsPerUser records the number of consent records for a user.
 func (m *Metrics) ObserveRecordsPerUser(count float64) {
+	if m == nil {
+		return
+	}
 	m.RecordsPerUser.Observe(count)
 }

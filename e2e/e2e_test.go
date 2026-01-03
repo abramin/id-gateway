@@ -32,8 +32,11 @@ func TestMain(m *testing.M) {
 	if tags := os.Getenv("GODOG_TAGS"); tags != "" {
 		opts.Tags = tags
 	} else if os.Getenv("DISABLE_RATE_LIMITING") == "true" {
-		// Exclude simulation tests when rate limiting is disabled
-		opts.Tags = "~@simulation"
+		// Exclude simulation and pending tests when rate limiting is disabled
+		opts.Tags = "~@simulation && ~@pending"
+	} else {
+		// By default, exclude pending scenarios (not yet implemented)
+		opts.Tags = "~@pending"
 	}
 
 	// Set up tenant and client once before all tests

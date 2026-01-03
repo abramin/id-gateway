@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -13,10 +14,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var userID = uuid.New()
-var sessionID = uuid.New()
-var clientID = "test-client"
-var tenantID = "test-tenant"
+var userID = id.UserID(uuid.New())
+var sessionID = id.SessionID(uuid.New())
+var clientID = id.ClientID(uuid.New())
+var tenantID = id.TenantID(uuid.New())
 var expiresIn = time.Second * 1
 
 var jwtService = NewJWTService(
@@ -36,7 +37,7 @@ func Test_GenerateAccessToken(t *testing.T) {
 	assert.NotNil(t, claims)
 	assert.Equal(t, userID.String(), claims.UserID)
 	assert.Equal(t, sessionID.String(), claims.SessionID)
-	assert.Equal(t, clientID, claims.ClientID)
+	assert.Equal(t, clientID.String(), claims.ClientID)
 	assert.WithinDuration(t, time.Now().Add(expiresIn), claims.ExpiresAt.Time, time.Minute)
 }
 
@@ -65,15 +66,15 @@ func Test_ValidateToken_ValidTokent(t *testing.T) {
 	assert.NotNil(t, claims)
 	assert.Equal(t, userID.String(), claims.UserID)
 	assert.Equal(t, sessionID.String(), claims.SessionID)
-	assert.Equal(t, clientID, claims.ClientID)
+	assert.Equal(t, clientID.String(), claims.ClientID)
 }
 
 func Test_ValidateToken_RejectsAlgorithmConfusion(t *testing.T) {
 	claims := AccessTokenClaims{
 		UserID:    userID.String(),
 		SessionID: sessionID.String(),
-		ClientID:  clientID,
-		TenantID:  tenantID,
+		ClientID:  clientID.String(),
+		TenantID:  tenantID.String(),
 		Scope:     []string{"read"},
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute)),
@@ -124,7 +125,7 @@ func Test_GenerateIDToken(t *testing.T) {
 	assert.NotNil(t, claims)
 	assert.Equal(t, userID.String(), claims.Subject)
 	assert.Equal(t, sessionID.String(), claims.SessionID)
-	assert.Equal(t, clientID, claims.ClientID)
+	assert.Equal(t, clientID.String(), claims.ClientID)
 	assert.WithinDuration(t, time.Now().Add(expiresIn), claims.ExpiresAt.Time, time.Minute)
 }
 func Test_ParseTokenSkipClaimsValidation(t *testing.T) {
@@ -138,7 +139,7 @@ func Test_ParseTokenSkipClaimsValidation(t *testing.T) {
 		assert.NotNil(t, claims)
 		assert.Equal(t, userID.String(), claims.UserID)
 		assert.Equal(t, sessionID.String(), claims.SessionID)
-		assert.Equal(t, clientID, claims.ClientID)
+		assert.Equal(t, clientID.String(), claims.ClientID)
 	})
 
 	t.Run("expired token still parses", func(t *testing.T) {
@@ -206,13 +207,13 @@ func Test_BuildIssuer(t *testing.T) {
 	service := NewJWTService("key", "https://auth.example.com", "audience", time.Hour)
 
 	t.Run("builds per-tenant issuer", func(t *testing.T) {
-		tenantID := "550e8400-e29b-41d4-a716-446655440000"
+		tenantID := id.TenantID(uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"))
 		issuer := service.BuildIssuer(tenantID)
 		assert.Equal(t, "https://auth.example.com/tenants/550e8400-e29b-41d4-a716-446655440000", issuer)
 	})
 
 	t.Run("returns base URL for empty tenant", func(t *testing.T) {
-		issuer := service.BuildIssuer("")
+		issuer := service.BuildIssuer(id.TenantID{})
 		assert.Equal(t, "https://auth.example.com", issuer)
 	})
 }
@@ -278,7 +279,8 @@ func Test_GenerateAccessToken_RejectsNilScopes(t *testing.T) {
 func Test_PerTenantIssuerInToken(t *testing.T) {
 	ctx := context.Background()
 	service := NewJWTService("signing-key", "https://auth.example.com", "audience", time.Hour)
-	testTenantID := "tenant-abc-123"
+	testTenantID := id.TenantID(uuid.New())
+	expectedIssuer := "https://auth.example.com/tenants/" + testTenantID.String()
 
 	t.Run("access token has per-tenant issuer", func(t *testing.T) {
 		token, err := service.GenerateAccessToken(ctx, userID, sessionID, clientID, testTenantID, []string{"openid"})
@@ -287,8 +289,8 @@ func Test_PerTenantIssuerInToken(t *testing.T) {
 		claims, err := service.ValidateToken(token)
 		require.NoError(t, err)
 
-		assert.Equal(t, "https://auth.example.com/tenants/tenant-abc-123", claims.Issuer)
-		assert.Equal(t, testTenantID, claims.TenantID)
+		assert.Equal(t, expectedIssuer, claims.Issuer)
+		assert.Equal(t, testTenantID.String(), claims.TenantID)
 	})
 
 	t.Run("ID token has per-tenant issuer", func(t *testing.T) {
@@ -298,6 +300,6 @@ func Test_PerTenantIssuerInToken(t *testing.T) {
 		claims, err := service.ValidateIDToken(token)
 		require.NoError(t, err)
 
-		assert.Equal(t, "https://auth.example.com/tenants/tenant-abc-123", claims.Issuer)
+		assert.Equal(t, expectedIssuer, claims.Issuer)
 	})
 }

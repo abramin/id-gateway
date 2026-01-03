@@ -15,14 +15,13 @@ import (
 	"credo/internal/auth/metrics"
 	"credo/internal/auth/models"
 	"credo/internal/auth/store/revocation"
+	"credo/internal/auth/types"
 	jwttoken "credo/internal/jwt_token"
-	tenant "credo/internal/tenant/models"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/platform/audit/publishers/security"
 	"credo/pkg/requestcontext"
 )
-
 
 // TokenRevocationList manages revoked access tokens by JTI.
 // Production systems should use a persistent, shared store (PostgreSQL or Redis).
@@ -100,10 +99,11 @@ type RefreshTokenStore interface {
 
 // TokenGenerator issues signed access/ID tokens and generates refresh tokens.
 type TokenGenerator interface {
-	GenerateAccessToken(ctx context.Context, userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string, scopes []string) (string, error)
-	GenerateAccessTokenWithJTI(ctx context.Context, userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string, scopes []string) (string, string, error)
-	GenerateIDToken(ctx context.Context, userID uuid.UUID, sessionID uuid.UUID, clientID string, tenantID string) (string, error)
+	GenerateAccessToken(ctx context.Context, userID id.UserID, sessionID id.SessionID, clientID id.ClientID, tenantID id.TenantID, scopes []string) (string, error)
+	GenerateAccessTokenWithJTI(ctx context.Context, userID id.UserID, sessionID id.SessionID, clientID id.ClientID, tenantID id.TenantID, scopes []string) (string, string, error)
+	GenerateIDToken(ctx context.Context, userID id.UserID, sessionID id.SessionID, clientID id.ClientID, tenantID id.TenantID) (string, error)
 	CreateRefreshToken() (string, error)
+	TokenType() string
 	// ParseTokenSkipClaimsValidation parses a JWT with signature verification but skips claims validation (e.g., expiration)
 	// This is used for token revocation where we need to verify the signature but accept expired tokens
 	ParseTokenSkipClaimsValidation(token string) (*jwttoken.AccessTokenClaims, error)
@@ -117,7 +117,7 @@ type AuditPublisher = *security.Publisher
 type ClientResolver interface {
 	// ResolveClient maps client_id -> client and tenant as a single choke point.
 	// If the client or tenant is inactive, returns an invalid_client error.
-	ResolveClient(ctx context.Context, clientID string) (*tenant.Client, *tenant.Tenant, error)
+	ResolveClient(ctx context.Context, clientID string) (*types.ResolvedClient, *types.ResolvedTenant, error)
 }
 
 // Service orchestrates auth workflows across stores, tokens, audits, and metrics.
@@ -126,7 +126,7 @@ type Service struct {
 	sessions       SessionStore
 	codes          AuthCodeStore
 	refreshTokens  RefreshTokenStore
-	tx             *inMemoryAuthTx
+	tx             *authTx
 	deviceService  *device.Service
 	trl            TokenRevocationList
 	logger         *slog.Logger
@@ -189,12 +189,15 @@ func (c *Config) applyDefaults() {
 	}
 }
 
+// tokenArtifacts bundles generated tokens and their associated records.
+// Used internally to pass multiple artifacts between methods.
 type tokenArtifacts struct {
 	accessToken    string
 	accessTokenJTI string
 	idToken        string
 	refreshToken   string
 	refreshRecord  *models.RefreshTokenRecord
+	tokenType      string
 }
 
 // Option configures Service during initialization.
@@ -211,9 +214,10 @@ type txAuthStores struct {
 // defaultTxTimeout is the maximum duration for a transaction before it's aborted.
 const defaultTxTimeout = 5 * time.Second
 
-// inMemoryAuthTx provides simple mutex-based transaction support for in-memory stores.
-// Used for tests and demo mode. Production uses database transactions directly.
-type inMemoryAuthTx struct {
+// authTx provides mutex-based transaction support for auth stores.
+// The underlying stores may use in-memory storage (tests/demo) or database transactions (production).
+// This wrapper ensures atomic multi-store operations regardless of store implementation.
+type authTx struct {
 	mu      sync.Mutex
 	stores  txAuthStores
 	timeout time.Duration
@@ -221,7 +225,7 @@ type inMemoryAuthTx struct {
 
 // RunInTx acquires a mutex and executes the transaction.
 // Enforces a timeout to prevent runaway operations.
-func (t *inMemoryAuthTx) RunInTx(ctx context.Context, fn func(stores txAuthStores) error) error {
+func (t *authTx) RunInTx(ctx context.Context, fn func(stores txAuthStores) error) error {
 	// Check if context is already cancelled
 	if err := ctx.Err(); err != nil {
 		return dErrors.Wrap(err, dErrors.CodeTimeout, "transaction aborted: context cancelled")
@@ -271,7 +275,7 @@ func WithMetrics(m *metrics.Metrics) Option {
 }
 
 // WithAuthStoreTx overrides the default transaction wrapper for auth stores.
-func WithAuthStoreTx(tx *inMemoryAuthTx) Option {
+func WithAuthStoreTx(tx *authTx) Option {
 	return func(s *Service) {
 		s.tx = tx
 	}
@@ -333,7 +337,7 @@ func New(
 		refreshTokens:  refreshTokens,
 		jwt:            jwt,
 		clientResolver: clientResolver,
-		tx: &inMemoryAuthTx{
+		tx: &authTx{
 			stores: txAuthStores{
 				Users:         users,
 				Codes:         codes,
@@ -368,21 +372,24 @@ func (s *Service) isRedirectSchemeAllowed(uri *url.URL) bool {
 	return false
 }
 
+// generateTokenArtifacts creates access, ID, and refresh tokens along with their records.
+// Used internally during token issuance flows.
+// Returns a tokenArtifacts struct bundling all generated tokens and records.
 func (s *Service) generateTokenArtifacts(ctx context.Context, session *models.Session) (*tokenArtifacts, error) {
 	// Generate tokens before mutating persistence state so failures do not leave partial writes.
 	accessToken, accessTokenJTI, err := s.jwt.GenerateAccessTokenWithJTI(
 		ctx,
-		uuid.UUID(session.UserID),
-		uuid.UUID(session.ID),
-		session.ClientID.String(),
-		session.TenantID.String(),
+		session.UserID,
+		session.ID,
+		session.ClientID,
+		session.TenantID,
 		session.RequestedScope,
 	)
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate access token")
 	}
 
-	idToken, err := s.jwt.GenerateIDToken(ctx, uuid.UUID(session.UserID), uuid.UUID(session.ID), session.ClientID.String(), session.TenantID.String())
+	idToken, err := s.jwt.GenerateIDToken(ctx, session.UserID, session.ID, session.ClientID, session.TenantID)
 	if err != nil {
 		return nil, dErrors.Wrap(err, dErrors.CodeInternal, "failed to generate ID token")
 	}
@@ -411,6 +418,7 @@ func (s *Service) generateTokenArtifacts(ctx context.Context, session *models.Se
 		idToken:        idToken,
 		refreshToken:   refreshToken,
 		refreshRecord:  tokenRecord,
+		tokenType:      s.jwt.TokenType(),
 	}, nil
 }
 
@@ -420,8 +428,8 @@ func (s *Service) buildTokenResult(artifacts *tokenArtifacts, scope []string) *m
 		AccessToken:  artifacts.accessToken,
 		IDToken:      artifacts.idToken,
 		RefreshToken: artifacts.refreshToken,
-		TokenType:    "Bearer",
-		ExpiresIn:    int(s.TokenTTL.Seconds()),
-		Scope:        strings.Join(scope, " "),
+		TokenType:    artifacts.tokenType,
+		ExpiresIn: int(s.TokenTTL.Seconds()),
+		Scope:     strings.Join(scope, " "),
 	}
 }

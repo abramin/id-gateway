@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"credo/internal/admin"
+	adminAdapters "credo/internal/admin/adapters"
 	authAdapters "credo/internal/auth/adapters"
 	"credo/internal/auth/device"
 	authHandler "credo/internal/auth/handler"
@@ -73,10 +74,10 @@ import (
 	audit "credo/pkg/platform/audit"
 	auditconsumer "credo/pkg/platform/audit/consumer"
 	auditmetrics "credo/pkg/platform/audit/metrics"
-	auditpublishers "credo/pkg/platform/audit/publishers"
 	outboxmetrics "credo/pkg/platform/audit/outbox/metrics"
 	outboxpostgres "credo/pkg/platform/audit/outbox/store/postgres"
 	outboxworker "credo/pkg/platform/audit/outbox/worker"
+	auditpublishers "credo/pkg/platform/audit/publishers"
 	auditmemory "credo/pkg/platform/audit/store/memory"
 	auditpostgres "credo/pkg/platform/audit/store/postgres"
 	adminmw "credo/pkg/platform/middleware/admin"
@@ -209,7 +210,7 @@ func main() {
 		infra.Log.Error("failed to initialize vc module", "error", err)
 		os.Exit(1)
 	}
-	decisionMod, err := buildDecisionModule(infra, registryMod.Service, vcMod.Store, consentMod.Service)
+	decisionMod, err := buildDecisionModule(infra, registryMod.Service, vcMod.Service, consentMod.Service)
 	if err != nil {
 		infra.Log.Error("failed to initialize decision module", "error", err)
 		os.Exit(1)
@@ -506,9 +507,12 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 		DeviceBindingEnabled:   infra.Cfg.Auth.DeviceBindingEnabled,
 	}
 
-	// Wrap tenant service with circuit breaker for resilience
+	// Wrap tenant service with adapter to map to auth types
+	clientAdapter := authAdapters.NewTenantClientResolver(tenantService)
+
+	// Wrap with circuit breaker for resilience
 	resilientClientResolver := authAdapters.NewResilientClientResolver(
-		tenantService,
+		clientAdapter,
 		infra.Log,
 		authAdapters.WithFailureThreshold(5),
 		authAdapters.WithCacheTTL(5*time.Minute),
@@ -517,7 +521,7 @@ func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *ten
 	// Create rate limit adapter for auth handler (nil if rate limiting is disabled)
 	var rateLimitAdapter authPorts.RateLimitPort
 	if !infra.Cfg.DemoMode && !infra.Cfg.DisableRateLimiting {
-		rateLimitAdapter = authAdapters.New(authLockoutSvc, requestSvc)
+		rateLimitAdapter = NewRateLimitAdapter(authLockoutSvc, requestSvc)
 	}
 
 	if infra.DBPool != nil {
@@ -574,10 +578,14 @@ func buildAuthModulePostgres(infra *infraBundle, clientResolver authService.Clie
 		return nil, err
 	}
 
+	// Wrap auth stores with admin adapters to decouple admin from auth models
+	adminUserStore := adminAdapters.NewUserStoreAdapter(users)
+	adminSessionStore := adminAdapters.NewSessionStoreAdapter(sessions)
+
 	return &authModule{
 		Service:    authSvc,
 		Handler:    authHandler.New(authSvc, rateLimitAdapter, infra.AuthMetrics, infra.Log, infra.Cfg.Auth.DeviceCookieName, infra.Cfg.Auth.DeviceCookieMaxAge),
-		AdminSvc:   admin.NewService(users, sessions, auditSt),
+		AdminSvc:   admin.NewService(adminUserStore, adminSessionStore, auditSt),
 		Cleanup:    cleanupSvc,
 		AuditStore: auditSt,
 	}, nil
@@ -613,11 +621,15 @@ func buildAuthModuleInMemory(infra *infraBundle, clientResolver authService.Clie
 		return nil, err
 	}
 
+	// Wrap auth stores with admin adapters to decouple admin from auth models
+	adminUserStore := adminAdapters.NewUserStoreAdapter(users)
+	adminSessionStore := adminAdapters.NewSessionStoreAdapter(sessions)
+
 	// No cleanup worker for in-memory stores (not needed for tests)
 	return &authModule{
 		Service:    authSvc,
 		Handler:    authHandler.New(authSvc, rateLimitAdapter, infra.AuthMetrics, infra.Log, infra.Cfg.Auth.DeviceCookieName, infra.Cfg.Auth.DeviceCookieMaxAge),
-		AdminSvc:   admin.NewService(users, sessions, auditSt),
+		AdminSvc:   admin.NewService(adminUserStore, adminSessionStore, auditSt),
 		Cleanup:    nil,
 		AuditStore: auditSt,
 	}, nil
@@ -818,10 +830,10 @@ func buildVCModule(infra *infraBundle, consentSvc *consentService.Service, regis
 	}, nil
 }
 
-func buildDecisionModule(infra *infraBundle, registrySvc *registryService.Service, vcSt vcStore.Store, consentSvc *consentService.Service) (*decisionModule, error) {
+func buildDecisionModule(infra *infraBundle, registrySvc *registryService.Service, vcSvc *vcService.Service, consentSvc *consentService.Service) (*decisionModule, error) {
 	// Create adapters
 	registryAdapter := decisionAdapters.NewRegistryAdapter(registrySvc)
-	vcAdapter := decisionAdapters.NewVCAdapter(vcSt)
+	vcAdapter := decisionAdapters.NewVCAdapter(vcSvc)
 	consentAdapter := decisionAdapters.NewConsentAdapter(consentSvc)
 
 	// Create audit publisher using tri-publisher architecture

@@ -23,6 +23,9 @@ const (
 	// maxSessionsPerUser caps the number of sessions loaded per user to prevent
 	// unbounded memory growth. Sessions beyond this limit are not loaded.
 	maxSessionsPerUser = 100
+
+	// defaultSessionTTL is the fallback TTL when session expiry cannot be determined.
+	defaultSessionTTL = 30 * 24 * time.Hour
 )
 
 // sessionJSON is the JSON-serializable representation of a Session.
@@ -139,6 +142,37 @@ func (s *RedisStore) userSessionsKey(userID id.UserID) string {
 	return userSessionKeyPrefix + uuid.UUID(userID).String()
 }
 
+// getOrComputeTTL retrieves the existing TTL for a key, falling back to computing
+// from session expiry or using the default TTL.
+func getOrComputeTTL(ctx context.Context, getter redis.Cmdable, key string, session *models.Session) time.Duration {
+	ttl, err := getter.TTL(ctx, key).Result()
+	if err == nil && ttl > 0 {
+		return ttl
+	}
+	if remaining := time.Until(session.ExpiresAt); remaining > 0 {
+		return remaining
+	}
+	return defaultSessionTTL
+}
+
+// deserializeSessionCmd extracts and deserializes a session from a Redis string command result.
+// Returns nil if the command failed or the data is malformed.
+func deserializeSessionCmd(cmd *redis.StringCmd) *models.Session {
+	data, err := cmd.Result()
+	if err != nil {
+		return nil
+	}
+	var j sessionJSON
+	if err := json.Unmarshal([]byte(data), &j); err != nil {
+		return nil
+	}
+	session, err := sessionFromJSON(&j)
+	if err != nil {
+		return nil
+	}
+	return session
+}
+
 func (s *RedisStore) Create(ctx context.Context, session *models.Session) error {
 	if session == nil {
 		return fmt.Errorf("session is required")
@@ -156,7 +190,7 @@ func (s *RedisStore) Create(ctx context.Context, session *models.Session) error 
 	// Calculate TTL from session expiry
 	ttl := time.Until(session.ExpiresAt)
 	if ttl <= 0 {
-		ttl = time.Hour * 24 * 30 // Default 30 days if expiry is invalid
+		ttl = defaultSessionTTL
 	}
 
 	// Use pipeline for atomic operations
@@ -220,26 +254,14 @@ func (s *RedisStore) ListByUser(ctx context.Context, userID id.UserID) ([]*model
 	expiredIDs := make([]string, 0)
 
 	for i, cmd := range cmds {
-		data, err := cmd.Result()
-		if errors.Is(err, redis.Nil) {
+		if _, err := cmd.Result(); errors.Is(err, redis.Nil) {
 			// Session expired/deleted, mark for cleanup from user set
 			expiredIDs = append(expiredIDs, sessionIDs[i])
 			continue
 		}
-		if err != nil {
-			continue // Skip on error
+		if session := deserializeSessionCmd(cmd); session != nil {
+			sessions = append(sessions, session)
 		}
-
-		var j sessionJSON
-		if err := json.Unmarshal([]byte(data), &j); err != nil {
-			continue // Skip malformed entries
-		}
-
-		session, err := sessionFromJSON(&j)
-		if err != nil {
-			continue
-		}
-		sessions = append(sessions, session)
 	}
 
 	// Cleanup expired session IDs from user set (async, best effort)
@@ -275,18 +297,7 @@ func (s *RedisStore) UpdateSession(ctx context.Context, session *models.Session)
 		return fmt.Errorf("marshal session: %w", err)
 	}
 
-	// Preserve TTL
-	ttl, err := s.client.TTL(ctx, key).Result()
-	if err != nil {
-		return fmt.Errorf("get session ttl: %w", err)
-	}
-	if ttl <= 0 {
-		ttl = time.Until(session.ExpiresAt)
-		if ttl <= 0 {
-			ttl = time.Hour * 24 * 30
-		}
-	}
-
+	ttl := getOrComputeTTL(ctx, s.client, key, session)
 	err = s.client.Set(ctx, key, data, ttl).Err()
 	if err != nil {
 		return fmt.Errorf("update session: %w", err)
@@ -322,53 +333,17 @@ func (s *RedisStore) DeleteSessionsByUser(ctx context.Context, userID id.UserID)
 }
 
 func (s *RedisStore) RevokeSessionIfActive(ctx context.Context, sessionID id.SessionID, now time.Time) error {
-	key := s.sessionKey(sessionID)
-
-	// Use WATCH for optimistic locking
-	err := s.client.Watch(ctx, func(tx *redis.Tx) error {
-		data, err := tx.Get(ctx, key).Result()
-		if errors.Is(err, redis.Nil) {
-			return sentinel.ErrNotFound
-		}
-		if err != nil {
-			return fmt.Errorf("get session for revoke: %w", err)
-		}
-
-		var j sessionJSON
-		if err := json.Unmarshal([]byte(data), &j); err != nil {
-			return fmt.Errorf("unmarshal session: %w", err)
-		}
-
-		session, err := sessionFromJSON(&j)
-		if err != nil {
-			return err
-		}
-
-		if !session.Revoke(now) {
-			return ErrSessionRevoked
-		}
-
-		newData, err := json.Marshal(sessionToJSON(session))
-		if err != nil {
-			return fmt.Errorf("marshal session: %w", err)
-		}
-
-		// Preserve TTL
-		ttl, err := tx.TTL(ctx, key).Result()
-		if err != nil {
-			return fmt.Errorf("get session ttl: %w", err)
-		}
-		if ttl <= 0 {
-			ttl = time.Hour * 24
-		}
-
-		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-			pipe.Set(ctx, key, newData, ttl)
+	_, err := s.Execute(ctx, sessionID,
+		func(session *models.Session) error {
+			if session.IsRevoked() {
+				return ErrSessionRevoked
+			}
 			return nil
-		})
-		return err
-	}, key)
-
+		},
+		func(session *models.Session) {
+			session.Revoke(now)
+		},
+	)
 	return err
 }
 
@@ -407,21 +382,9 @@ func (s *RedisStore) ListAll(ctx context.Context) (map[id.SessionID]*models.Sess
 			}
 
 			for _, cmd := range cmds {
-				data, err := cmd.Result()
-				if err != nil {
-					continue
+				if session := deserializeSessionCmd(cmd); session != nil {
+					sessions[session.ID] = session
 				}
-
-				var j sessionJSON
-				if err := json.Unmarshal([]byte(data), &j); err != nil {
-					continue
-				}
-
-				session, err := sessionFromJSON(&j)
-				if err != nil {
-					continue
-				}
-				sessions[session.ID] = session
 			}
 		}
 
@@ -469,18 +432,7 @@ func (s *RedisStore) Execute(ctx context.Context, sessionID id.SessionID, valida
 			return fmt.Errorf("marshal session: %w", err)
 		}
 
-		// Preserve TTL
-		ttl, err := tx.TTL(ctx, key).Result()
-		if err != nil {
-			return fmt.Errorf("get session ttl: %w", err)
-		}
-		if ttl <= 0 {
-			ttl = time.Until(session.ExpiresAt)
-			if ttl <= 0 {
-				ttl = time.Hour * 24 * 30
-			}
-		}
-
+		ttl := getOrComputeTTL(ctx, tx, key, session)
 		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 			pipe.Set(ctx, key, newData, ttl)
 			return nil

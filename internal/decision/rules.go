@@ -95,7 +95,7 @@ func setAgeVerificationEvidence(result *EvaluateResult, evidence *GatheredEviden
 	}
 	over18 := derived.IsOver18
 	result.Evidence.IsOver18 = &over18
-	hasCred := evidence.Credential != nil
+	hasCred := evidence.Credential != nil && evidence.Credential.Exists
 	result.Evidence.HasCredential = &hasCred
 }
 

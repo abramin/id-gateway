@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"credo/internal/auth/models"
-	tenant "credo/internal/tenant/models"
+	"credo/internal/auth/types"
 	dErrors "credo/pkg/domain-errors"
 )
 
@@ -73,8 +73,8 @@ func (s *Service) resolveTokenContext(
 
 type tokenContext struct {
 	Session *models.Session
-	Client  *tenant.Client
-	Tenant  *tenant.Tenant
+	Client  *types.ResolvedClient
+	Tenant  *types.ResolvedTenant
 	User    *models.User
 }
 

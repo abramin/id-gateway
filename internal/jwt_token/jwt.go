@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/requestcontext"
 
@@ -46,6 +47,9 @@ type JWTService struct {
 	env           string
 }
 
+// TokenTypeBearer is the OAuth2 token_type value for bearer access tokens.
+const TokenTypeBearer = "Bearer"
+
 func NewJWTService(signingKey string, issuerBaseURL string, audience string, tokenTTL time.Duration) *JWTService {
 	return &JWTService{
 		signingKey:    []byte(signingKey),
@@ -57,11 +61,11 @@ func NewJWTService(signingKey string, issuerBaseURL string, audience string, tok
 
 // BuildIssuer constructs a per-tenant issuer URL following RFC 8414 format.
 // Format: {baseURL}/tenants/{tenantID}
-func (s *JWTService) BuildIssuer(tenantID string) string {
-	if tenantID == "" {
+func (s *JWTService) BuildIssuer(tenantID id.TenantID) string {
+	if tenantID.IsNil() {
 		return s.issuerBaseURL
 	}
-	return fmt.Sprintf("%s/tenants/%s", s.issuerBaseURL, tenantID)
+	return fmt.Sprintf("%s/tenants/%s", s.issuerBaseURL, tenantID.String())
 }
 
 // ExtractTenantFromIssuer parses a tenant ID from a per-tenant issuer URL.
@@ -80,10 +84,10 @@ func (s *JWTService) ExtractTenantFromIssuer(issuer string) (string, error) {
 
 func (s *JWTService) GenerateAccessTokenWithJTI(
 	ctx context.Context,
-	userID uuid.UUID,
-	sessionID uuid.UUID,
-	clientID string,
-	tenantID string,
+	userID id.UserID,
+	sessionID id.SessionID,
+	clientID id.ClientID,
+	tenantID id.TenantID,
 	scopes []string,
 ) (string, string, error) {
 	newToken, err := s.GenerateAccessToken(ctx, userID, sessionID, clientID, tenantID, scopes)
@@ -104,12 +108,17 @@ func (s *JWTService) GenerateAccessTokenWithJTI(
 	return newToken, claims.ID, nil
 }
 
+// TokenType returns the OAuth2 token_type value for tokens issued by this service.
+func (s *JWTService) TokenType() string {
+	return TokenTypeBearer
+}
+
 func (s *JWTService) GenerateAccessToken(
 	ctx context.Context,
-	userID uuid.UUID,
-	sessionID uuid.UUID,
-	clientID string,
-	tenantID string,
+	userID id.UserID,
+	sessionID id.SessionID,
+	clientID id.ClientID,
+	tenantID id.TenantID,
 	scopes []string,
 ) (string, error) {
 	if len(scopes) == 0 {
@@ -127,8 +136,8 @@ func (s *JWTService) GenerateAccessToken(
 	newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, AccessTokenClaims{
 		UserID:    userID.String(),
 		SessionID: sessionID.String(),
-		ClientID:  clientID,
-		TenantID:  tenantID,
+		ClientID:  clientID.String(),
+		TenantID:  tenantID.String(),
 		Env:       s.env,
 		Scope:     scopes,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -192,14 +201,14 @@ func (s *JWTService) ParseTokenSkipClaimsValidation(tokenString string) (*Access
 
 func (s *JWTService) GenerateIDToken(
 	ctx context.Context,
-	userID uuid.UUID,
-	sessionID uuid.UUID,
-	clientID string,
-	tenantID string) (string, error) {
+	userID id.UserID,
+	sessionID id.SessionID,
+	clientID id.ClientID,
+	tenantID id.TenantID) (string, error) {
 	now := requestcontext.Now(ctx)
 	newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, IDTokenClaims{
 		SessionID: sessionID.String(),
-		ClientID:  clientID,
+		ClientID:  clientID.String(),
 		Env:       s.env,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID.String(), // OIDC sub
@@ -224,7 +233,7 @@ func (s *JWTService) SetEnv(env string) {
 }
 
 func (s *JWTService) ValidateToken(tokenString string) (*AccessTokenClaims, error) {
-	parsed, err := jwt.ParseWithClaims(tokenString, &AccessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
+	parsed, err := jwt.ParseWithClaims(tokenString, &AccessTokenClaims{}, func(token *jwt.Token) (any, error) {
 		if token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
 			return nil, jwt.ErrTokenUnverifiable
 		}

@@ -115,6 +115,54 @@ func (s *PostgresStore) Update(ctx context.Context, tenant *models.Tenant) error
 	return nil
 }
 
+// Execute atomically validates and mutates a tenant under lock.
+func (s *PostgresStore) Execute(ctx context.Context, tenantID id.TenantID, validate func(*models.Tenant) error, mutate func(*models.Tenant)) (*models.Tenant, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tenant execute tx: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	qtx := s.queries.WithTx(tx)
+	row, err := qtx.GetTenantForUpdate(ctx, uuid.UUID(tenantID))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, sentinel.ErrNotFound
+		}
+		return nil, fmt.Errorf("find tenant for execute: %w", err)
+	}
+
+	tenant := toTenant(row)
+	if err := validate(tenant); err != nil {
+		return nil, err
+	}
+
+	mutate(tenant)
+	res, err := qtx.UpdateTenant(ctx, tenantsqlc.UpdateTenantParams{
+		ID:        uuid.UUID(tenant.ID),
+		Name:      tenant.Name,
+		Status:    string(tenant.Status),
+		UpdatedAt: tenant.UpdatedAt,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("update tenant: %w", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("update tenant rows: %w", err)
+	}
+	if rows == 0 {
+		return nil, sentinel.ErrNotFound
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit tenant execute: %w", err)
+	}
+	return tenant, nil
+}
+
 func toTenant(row tenantsqlc.Tenant) *models.Tenant {
 	return &models.Tenant{
 		ID:        id.TenantID(row.ID),

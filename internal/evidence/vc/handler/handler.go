@@ -70,11 +70,11 @@ func (r *IssueRequest) Validate() error {
 	// Phase 3: Syntax and lexical validation
 	parsedType, err := models.ParseCredentialType(r.Type)
 	if err != nil {
-		return dErrors.New(dErrors.CodeBadRequest, err.Error())
+		return dErrors.New(dErrors.CodeValidation, err.Error())
 	}
 	parsedNationalID, err := id.ParseNationalID(r.NationalID)
 	if err != nil {
-		return dErrors.New(dErrors.CodeBadRequest, err.Error())
+		return dErrors.New(dErrors.CodeValidation, err.Error())
 	}
 
 	r.parsedType = parsedType

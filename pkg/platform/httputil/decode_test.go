@@ -11,6 +11,8 @@ import (
 	"os"
 	"testing"
 
+	dErrors "credo/pkg/domain-errors"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -165,5 +167,57 @@ func TestPrepareRequest(t *testing.T) {
 		req := &testRequest{Name: "test"}
 		err := PrepareRequest(req)
 		assert.NoError(t, err)
+	})
+}
+
+// domainErrorRequest returns a domain error from Validate()
+type domainErrorRequest struct {
+	ID string `json:"id"`
+}
+
+func (r *domainErrorRequest) Validate() error {
+	if r.ID == "" {
+		return dErrors.New(dErrors.CodeBadRequest, "id is required")
+	}
+	return nil
+}
+
+func TestDecodeAndPrepare_PreservesDomainError(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	ctx := context.Background()
+
+	t.Run("preserves domain error code from Validate", func(t *testing.T) {
+		body := `{"id":""}`
+		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
+		w := httptest.NewRecorder()
+
+		result, ok := DecodeAndPrepare[domainErrorRequest](w, req, logger, ctx, "test-request-id")
+
+		assert.False(t, ok)
+		assert.Nil(t, result)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+
+		var errResp map[string]string
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &errResp))
+		// Domain error with CodeBadRequest should map to "bad_request", not "validation_error"
+		assert.Equal(t, "bad_request", errResp["error"])
+		assert.Contains(t, errResp["error_description"], "id is required")
+	})
+
+	t.Run("wraps plain error with validation code", func(t *testing.T) {
+		body := `{"name":""}`
+		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
+		w := httptest.NewRecorder()
+
+		result, ok := DecodeAndPrepare[validatingRequest](w, req, logger, ctx, "test-request-id")
+
+		assert.False(t, ok)
+		assert.Nil(t, result)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+
+		var errResp map[string]string
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &errResp))
+		// Plain error should be wrapped with CodeValidation -> "validation_error"
+		assert.Equal(t, "validation_error", errResp["error"])
 	})
 }

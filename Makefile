@@ -88,12 +88,16 @@ docker-demo:
 
 # === E2E TESTS ===
 e2e:
-	@echo "Running E2E tests with godog (excluding @simulation, @unregulated, @pending tests)..."
-	@cd e2e && GODOG_TAGS="~@simulation && ~@unregulated && ~@pending" go test -v
+	@echo "Running E2E tests with godog (excluding @simulation, @unregulated, @regulated, @pending tests)..."
+	@cd e2e && GODOG_TAGS="~@simulation && ~@unregulated && ~@regulated && ~@pending" go test -v
 
 e2e-unregulated:
 	@echo "Running unregulated mode E2E tests (requires REGULATED_MODE=false)..."
 	@cd e2e && GODOG_TAGS="@unregulated" go test -v
+
+e2e-regulated:
+	@echo "Running regulated mode E2E tests (requires REGULATED_MODE=true)..."
+	@cd e2e && GODOG_TAGS="@regulated" go test -v
 
 e2e-normal:
 	@echo "Running normal flow E2E tests..."

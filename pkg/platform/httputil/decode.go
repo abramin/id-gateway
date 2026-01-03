@@ -3,6 +3,7 @@ package httputil
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -83,7 +84,13 @@ func DecodeAndPrepare[T any](w http.ResponseWriter, r *http.Request, logger *slo
 			"error", err,
 			"request_id", requestID,
 		)
-		WriteError(w, dErrors.New(dErrors.CodeValidation, err.Error()))
+		// Preserve original error code if it's already a domain error
+		var domainErr *dErrors.Error
+		if errors.As(err, &domainErr) {
+			WriteError(w, err)
+		} else {
+			WriteError(w, dErrors.New(dErrors.CodeValidation, err.Error()))
+		}
 		return nil, false
 	}
 

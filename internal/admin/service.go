@@ -4,21 +4,21 @@ import (
 	"context"
 	"time"
 
-	"credo/internal/auth/models"
+	"credo/internal/admin/types"
 	id "credo/pkg/domain"
 	"credo/pkg/platform/audit"
 )
 
 // UserStore defines the interface for user storage operations
 type UserStore interface {
-	ListAll(ctx context.Context) (map[id.UserID]*models.User, error)
-	FindByID(ctx context.Context, userID id.UserID) (*models.User, error)
+	ListAll(ctx context.Context) (map[id.UserID]*types.AdminUser, error)
+	FindByID(ctx context.Context, userID id.UserID) (*types.AdminUser, error)
 }
 
 // SessionStore defines the interface for session storage operations
 type SessionStore interface {
-	ListAll(ctx context.Context) (map[id.SessionID]*models.Session, error)
-	ListByUser(ctx context.Context, userID id.UserID) ([]*models.Session, error)
+	ListAll(ctx context.Context) (map[id.SessionID]*types.AdminSession, error)
+	ListByUser(ctx context.Context, userID id.UserID) ([]*types.AdminSession, error)
 }
 
 // Service provides admin-level operations for monitoring and management
@@ -128,7 +128,7 @@ func (s *Service) GetAllUsers(ctx context.Context) ([]*UserInfo, error) {
 		// Error suppression: see function doc for rationale.
 		sessions, err := s.sessions.ListByUser(ctx, user.ID)
 		if err != nil {
-			sessions = []*models.Session{}
+			sessions = []*types.AdminSession{}
 		}
 
 		// Find most recent session activity

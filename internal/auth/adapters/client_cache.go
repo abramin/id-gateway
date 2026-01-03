@@ -4,13 +4,13 @@ import (
 	"sync"
 	"time"
 
-	"credo/internal/tenant/models"
+	"credo/internal/auth/types"
 )
 
 // clientCacheEntry holds cached client and tenant data with expiration.
 type clientCacheEntry struct {
-	client    *models.Client
-	tenant    *models.Tenant
+	client    *types.ResolvedClient
+	tenant    *types.ResolvedTenant
 	expiresAt time.Time
 }
 
@@ -31,7 +31,7 @@ func newClientCache(ttl time.Duration) *clientCache {
 }
 
 // Get retrieves a cached entry if it exists and hasn't expired.
-func (c *clientCache) Get(clientID string) (*models.Client, *models.Tenant, bool) {
+func (c *clientCache) Get(clientID string) (*types.ResolvedClient, *types.ResolvedTenant, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -49,7 +49,7 @@ func (c *clientCache) Get(clientID string) (*models.Client, *models.Tenant, bool
 }
 
 // Set stores a client and tenant in the cache.
-func (c *clientCache) Set(clientID string, client *models.Client, tenant *models.Tenant) {
+func (c *clientCache) Set(clientID string, client *types.ResolvedClient, tenant *types.ResolvedTenant) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

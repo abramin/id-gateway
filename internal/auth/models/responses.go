@@ -22,6 +22,8 @@ type TokenResult struct {
 	Scope        string `json:"scope,omitempty"` // space-delimited scopes granted
 }
 
+const TokenTypeBearer = "Bearer"
+
 // UserInfoResult is the OIDC userinfo response payload.
 type UserInfoResult struct {
 	Sub           string `json:"sub"`            // Subject - Identifier for the End-User at the Issuer.

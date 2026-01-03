@@ -37,3 +37,10 @@ WHERE oauth_client_id = $1;
 
 -- name: CountClientsByTenant :one
 SELECT COUNT(*) FROM clients WHERE tenant_id = $1;
+
+-- name: GetClientForUpdate :one
+SELECT id, tenant_id, name, oauth_client_id, client_secret_hash, redirect_uris,
+    allowed_grants, allowed_scopes, status, created_at, updated_at
+FROM clients
+WHERE id = $1
+FOR UPDATE;

@@ -5,7 +5,7 @@ import (
 
 	authdevice "credo/internal/auth/device"
 	"credo/internal/auth/models"
-	tenant "credo/internal/tenant/models"
+	"credo/internal/auth/types"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/requestcontext"
@@ -25,18 +25,17 @@ func (s *ServiceSuite) TestAuthorizationCodeFlow() {
 	tenantID := id.TenantID(uuid.New())
 	clientID := id.ClientID(uuid.New())
 
-	mockClient := &tenant.Client{
+	mockClient := &types.ResolvedClient{
 		ID:            clientID,
 		TenantID:      tenantID,
 		OAuthClientID: "client-123",
-		Name:          "Test Client",
-		Status:        "active",
 		RedirectURIs:  []string{"https://client.app/callback"},
+		Active:        true,
 	}
 
-	mockTenant := &tenant.Tenant{
-		ID:   tenantID,
-		Name: "Test Tenant",
+	mockTenant := &types.ResolvedTenant{
+		ID:     tenantID,
+		Active: true,
 	}
 
 	var existingUser = &models.User{

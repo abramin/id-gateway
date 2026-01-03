@@ -115,8 +115,8 @@ func TestHandleSanctionsLookup_InvalidNationalIDFormat(t *testing.T) {
 			handler.HandleSanctionsLookup(w, req)
 
 			assert.Equal(t, http.StatusBadRequest, w.Code)
-			// Validation errors return "validation_error" code
-			assertErrorResponse(t, w, "validation_error")
+			// Handler returns domain error with CodeBadRequest for invalid input
+			assertErrorResponse(t, w, "bad_request")
 		})
 	}
 }

@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -225,9 +224,9 @@ func (s *Service) Grant(ctx context.Context, userID id.UserID, purposes []models
 
 	for _, effect := range effects {
 		s.emitGrantAudit(ctx, effect.record.UserID, effect.record.Purpose, effect.timestamp)
-		s.incrementConsentsGranted(effect.record.Purpose)
+		s.metrics.IncrementConsentsGranted(string(effect.record.Purpose))
 		if !effect.wasActive {
-			s.incrementActiveConsents(1)
+			s.metrics.IncrementActiveConsents(1)
 		}
 	}
 
@@ -238,34 +237,6 @@ type grantEffect struct {
 	record    *models.Record
 	wasActive bool
 	timestamp time.Time
-}
-
-type grantUpdate struct {
-	updated   models.Record
-	changed   bool
-	wasActive bool
-}
-
-// evaluateGrant applies idempotency and re-grant cooldown rules to an existing record.
-// It returns a change descriptor without mutating storage.
-func (s *Service) evaluateGrant(existing *models.Record, now time.Time) (grantUpdate, error) {
-	update := grantUpdate{wasActive: existing.IsActive(now)}
-	if update.wasActive && now.Sub(existing.GrantedAt) < s.grantIdempotencyWindow {
-		return update, nil
-	}
-
-	if !existing.CanReGrant(now, s.reGrantCooldown) {
-		return grantUpdate{}, pkgerrors.New(pkgerrors.CodeBadRequest,
-			fmt.Sprintf("consent was recently revoked; please wait before re-granting (cooldown: %v)", s.reGrantCooldown))
-	}
-
-	updated, err := existing.RenewAt(now, s.consentTTL)
-	if err != nil {
-		return grantUpdate{}, err
-	}
-	update.updated = updated
-	update.changed = true
-	return update, nil
 }
 
 // tryRevokeScopeTx revokes consent for a single scope inside the store Execute lock.
@@ -316,27 +287,27 @@ func (s *Service) tryRevokeScopeTx(ctx context.Context, txStore Store, scope mod
 func (s *Service) upsertGrantTx(ctx context.Context, txStore Store, scope models.ConsentScope) (*models.Record, *grantEffect, error) {
 	now := requestcontext.Now(ctx)
 	for attempt := 0; attempt < 2; attempt++ {
-		var update grantUpdate
+		var eval models.GrantEvaluation
 
 		record, err := txStore.Execute(ctx, scope,
 			func(existing *models.Record) error {
 				var err error
-				update, err = s.evaluateGrant(existing, now)
+				eval, err = existing.EvaluateGrant(now, s.grantIdempotencyWindow, s.reGrantCooldown, s.consentTTL)
 				return err
 			},
 			func(existing *models.Record) bool {
-				if !update.changed {
+				if !eval.Changed {
 					return false
 				}
-				*existing = update.updated
+				*existing = eval.Updated
 				return true
 			},
 		)
 		if err == nil {
-			if !update.changed {
+			if !eval.Changed {
 				return record, nil, nil
 			}
-			return record, &grantEffect{record: record, wasActive: update.wasActive, timestamp: now}, nil
+			return record, &grantEffect{record: record, wasActive: eval.WasActive, timestamp: now}, nil
 		}
 
 		if errors.Is(err, sentinel.ErrNotFound) {
@@ -434,8 +405,8 @@ func (s *Service) Revoke(ctx context.Context, userID id.UserID, purposes []model
 			Decision:  models.AuditDecisionRevoked,
 			Timestamp: now,
 		})
-		s.incrementConsentsRevoked(record.Purpose)
-		s.decrementActiveConsents(1)
+		s.metrics.IncrementConsentsRevoked(string(record.Purpose))
+		s.metrics.DecrementActiveConsents(1)
 	}
 
 	return revoked, nil
@@ -452,7 +423,6 @@ func (s *Service) RevokeAll(ctx context.Context, userID id.UserID) (int, error) 
 	now := requestcontext.Now(ctx)
 	revokedCount := 0
 
-	// Wrap bulk revoke in transaction to ensure atomicity
 	txErr := s.withUserTx(ctx, userID, func(txCtx context.Context, txStore Store) error {
 		count, err := txStore.RevokeAllByUser(txCtx, userID, now)
 		if err != nil {
@@ -475,7 +445,7 @@ func (s *Service) RevokeAll(ctx context.Context, userID id.UserID) (int, error) 
 			Timestamp: now,
 			ActorID:   actorID,
 		})
-		s.decrementActiveConsents(float64(revokedCount))
+		s.metrics.DecrementActiveConsents(float64(revokedCount))
 	}
 
 	return revokedCount, nil
@@ -533,7 +503,7 @@ func (s *Service) List(ctx context.Context, userID id.UserID, filter *models.Rec
 	}
 
 	// Record distribution of records per user for performance monitoring
-	s.observeRecordsPerUser(float64(len(records)))
+	s.metrics.ObserveRecordsPerUser(float64(len(records)))
 
 	return records, nil
 }
@@ -554,20 +524,6 @@ func filterRecords(records []*models.Record, filter *models.RecordFilter, now ti
 		filtered = append(filtered, record)
 	}
 	return filtered
-}
-
-func auditReasonForRevokeAll(ctx context.Context) string {
-	if admin.IsAdminRequest(ctx) {
-		return models.AuditReasonSecurityConcern
-	}
-	return models.AuditReasonUserBulkRevocation
-}
-
-func auditReasonForDeleteAll(ctx context.Context) string {
-	if admin.IsAdminRequest(ctx) {
-		return models.AuditReasonGdprErasureRequest
-	}
-	return models.AuditReasonGdprSelfService
 }
 
 // Require enforces that a user has active consent for the given purpose.
@@ -630,55 +586,6 @@ func (s *Service) emitAudit(ctx context.Context, event audit.ComplianceEvent) {
 	}
 }
 
-// incrementConsentsGranted increments the consents granted metric if metrics are enabled
-func (s *Service) incrementConsentsGranted(purpose models.Purpose) {
-	if s.metrics != nil {
-		s.metrics.IncrementConsentsGranted(string(purpose))
-	}
-}
-
-// incrementConsentsRevoked increments the consents revoked metric if metrics are enabled
-func (s *Service) incrementConsentsRevoked(purpose models.Purpose) {
-	if s.metrics != nil {
-		s.metrics.IncrementConsentsRevoked(string(purpose))
-	}
-}
-
-// incrementConsentCheckPassed increments the consent check passed metric if metrics are enabled
-func (s *Service) incrementConsentCheckPassed(purpose models.Purpose) {
-	if s.metrics != nil {
-		s.metrics.IncrementConsentCheckPassed(string(purpose))
-	}
-}
-
-// incrementConsentCheckFailed increments the consent check failed metric if metrics are enabled
-func (s *Service) incrementConsentCheckFailed(purpose models.Purpose) {
-	if s.metrics != nil {
-		s.metrics.IncrementConsentCheckFailed(string(purpose))
-	}
-}
-
-// incrementActiveConsents updates the active consents gauge when it increases.
-func (s *Service) incrementActiveConsents(count float64) {
-	if s.metrics != nil {
-		s.metrics.IncrementActiveConsents(count)
-	}
-}
-
-// decrementActiveConsents updates the active consents gauge when it decreases.
-func (s *Service) decrementActiveConsents(count float64) {
-	if s.metrics != nil {
-		s.metrics.DecrementActiveConsents(count)
-	}
-}
-
-// observeRecordsPerUser records the distribution of consent records per user.
-func (s *Service) observeRecordsPerUser(count float64) {
-	if s.metrics != nil {
-		s.metrics.ObserveRecordsPerUser(count)
-	}
-}
-
 // logConsentCheck writes a structured log entry for consent checks when logging is enabled.
 func (s *Service) logConsentCheck(ctx context.Context, level slog.Level, msg string, userID id.UserID, purpose models.Purpose, state string) {
 	if s.logger == nil {
@@ -695,15 +602,26 @@ func (s *Service) logConsentCheck(ctx context.Context, level slog.Level, msg str
 // Invariant: passed=true requires decision=AuditDecisionGranted; passed=false requires decision=AuditDecisionDenied
 type consentCheckOutcome struct {
 	passed   bool
-	state    models.ConsentCheckState
-	decision string // models.AuditDecisionGranted or models.AuditDecisionDenied
+	status   *models.Status // nil means consent not found ("missing")
+	decision string         // models.AuditDecisionGranted or models.AuditDecisionDenied
+}
+
+// statusState returns the state string for logging. Returns "missing" if status is nil.
+func (o consentCheckOutcome) statusState() string {
+	if o.status == nil {
+		return "missing"
+	}
+	return string(*o.status)
 }
 
 var (
-	outcomeMissing = consentCheckOutcome{passed: false, state: models.ConsentCheckStateMissing, decision: models.AuditDecisionDenied}
-	outcomeRevoked = consentCheckOutcome{passed: false, state: models.ConsentCheckStateRevoked, decision: models.AuditDecisionDenied}
-	outcomeExpired = consentCheckOutcome{passed: false, state: models.ConsentCheckStateExpired, decision: models.AuditDecisionDenied}
-	outcomePassed  = consentCheckOutcome{passed: true, state: models.ConsentCheckStateActive, decision: models.AuditDecisionGranted}
+	statusRevoked  = models.StatusRevoked
+	statusExpired  = models.StatusExpired
+	statusActive   = models.StatusActive
+	outcomeMissing = consentCheckOutcome{passed: false, status: nil, decision: models.AuditDecisionDenied}
+	outcomeRevoked = consentCheckOutcome{passed: false, status: &statusRevoked, decision: models.AuditDecisionDenied}
+	outcomeExpired = consentCheckOutcome{passed: false, status: &statusExpired, decision: models.AuditDecisionDenied}
+	outcomePassed  = consentCheckOutcome{passed: true, status: &statusActive, decision: models.AuditDecisionGranted}
 )
 
 // recordConsentCheckOutcome emits audit event, logs, and updates metrics for a consent check.
@@ -725,10 +643,10 @@ func (s *Service) recordConsentCheckOutcome(ctx context.Context, userID id.UserI
 		Decision:  outcome.decision,
 		Timestamp: now,
 	})
-	s.logConsentCheck(ctx, logLevel, logMsg, userID, purpose, outcome.state.String())
+	s.logConsentCheck(ctx, logLevel, logMsg, userID, purpose, outcome.statusState())
 	if outcome.passed {
-		s.incrementConsentCheckPassed(purpose)
+		s.metrics.IncrementConsentCheckPassed(string(purpose))
 	} else {
-		s.incrementConsentCheckFailed(purpose)
+		s.metrics.IncrementConsentCheckFailed(string(purpose))
 	}
 }

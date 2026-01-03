@@ -316,3 +316,71 @@ func MustParsePurpose(s string) consentmodels.Purpose {
 	}
 	return p
 }
+
+// ConsentRecordBuilder provides a fluent interface for building test consent records.
+type ConsentRecordBuilder struct {
+	record *consentmodels.Record
+}
+
+// NewConsentRecordBuilder creates a new ConsentRecordBuilder with sensible defaults.
+func NewConsentRecordBuilder() *ConsentRecordBuilder {
+	now := time.Now()
+	expiresAt := now.Add(24 * time.Hour)
+	return &ConsentRecordBuilder{
+		record: &consentmodels.Record{
+			ID:        id.ConsentID(uuid.New()),
+			UserID:    TestIDs.UserID1,
+			Purpose:   consentmodels.PurposeLogin,
+			GrantedAt: now,
+			ExpiresAt: &expiresAt,
+		},
+	}
+}
+
+func (b *ConsentRecordBuilder) WithID(consentID id.ConsentID) *ConsentRecordBuilder {
+	b.record.ID = consentID
+	return b
+}
+
+func (b *ConsentRecordBuilder) WithUserID(userID id.UserID) *ConsentRecordBuilder {
+	b.record.UserID = userID
+	return b
+}
+
+func (b *ConsentRecordBuilder) WithPurpose(purpose consentmodels.Purpose) *ConsentRecordBuilder {
+	b.record.Purpose = purpose
+	return b
+}
+
+func (b *ConsentRecordBuilder) WithGrantedAt(t time.Time) *ConsentRecordBuilder {
+	b.record.GrantedAt = t
+	return b
+}
+
+func (b *ConsentRecordBuilder) WithExpiresAt(t time.Time) *ConsentRecordBuilder {
+	b.record.ExpiresAt = &t
+	return b
+}
+
+func (b *ConsentRecordBuilder) NoExpiry() *ConsentRecordBuilder {
+	b.record.ExpiresAt = nil
+	return b
+}
+
+func (b *ConsentRecordBuilder) Revoked() *ConsentRecordBuilder {
+	now := time.Now()
+	b.record.RevokedAt = &now
+	return b
+}
+
+func (b *ConsentRecordBuilder) Build() *consentmodels.Record {
+	return b.record
+}
+
+// NewTestConsent creates a test consent record with the given user and purpose.
+func NewTestConsent(userID id.UserID, purpose consentmodels.Purpose) *consentmodels.Record {
+	return NewConsentRecordBuilder().
+		WithUserID(userID).
+		WithPurpose(purpose).
+		Build()
+}

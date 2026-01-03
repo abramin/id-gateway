@@ -51,22 +51,6 @@ func (s Status) IsValid() bool {
 	return s == StatusActive || s == StatusExpired || s == StatusRevoked
 }
 
-// ConsentCheckState represents the outcome state of a consent check operation.
-// This differs from Status in that it includes "missing" for when no consent exists.
-type ConsentCheckState string
-
-const (
-	ConsentCheckStateMissing ConsentCheckState = "missing"
-	ConsentCheckStateRevoked ConsentCheckState = "revoked"
-	ConsentCheckStateExpired ConsentCheckState = "expired"
-	ConsentCheckStateActive  ConsentCheckState = "active"
-)
-
-// String returns the string representation of the consent check state.
-func (c ConsentCheckState) String() string {
-	return string(c)
-}
-
 // ConsentScope identifies a consent aggregate by user and purpose.
 // It is the stable boundary for read/write operations on consent records.
 type ConsentScope struct {
@@ -83,4 +67,10 @@ func NewConsentScope(userID id.UserID, purpose Purpose) (ConsentScope, error) {
 		return ConsentScope{}, dErrors.New(dErrors.CodeInvariantViolation, "invalid consent purpose")
 	}
 	return ConsentScope{UserID: userID, Purpose: purpose}, nil
+}
+
+// RecordFilter allows filtering consent records by purpose and status.
+type RecordFilter struct {
+	Purpose *Purpose
+	Status  *Status
 }

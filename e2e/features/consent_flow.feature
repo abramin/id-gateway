@@ -246,8 +246,8 @@ Feature: Consent Management
   # Consent Enforcement (Require)
   # ============================================================================
   # Note: Consent enforcement via Require() is tested in registry_flow.feature:
-  #   - "Citizen lookup without consent" (403 missing_consent)
-  #   - "Sanctions check without consent" (403 missing_consent)
+  #   - "Citizen lookup without consent" (403 invalid_consent - revoked)
+  #   - "Sanctions check without consent" (403 invalid_consent - revoked)
   # Expired consent enforcement is tested in integration_test.go via time manipulation.
 
       @consent @enforcement
@@ -259,4 +259,4 @@ Feature: Consent Management
     When I revoke consent for purposes "registry_check"
     And I lookup citizen record for national_id "ENFORCE456"
     Then the response status should be 403
-    And the response field "error" should equal "missing_consent"
+    And the response field "error" should equal "invalid_consent"

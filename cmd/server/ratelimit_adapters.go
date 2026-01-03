@@ -1,4 +1,4 @@
-package adapters
+package main
 
 import (
 	"context"
@@ -9,18 +9,16 @@ import (
 	"credo/internal/ratelimit/service/requestlimit"
 )
 
-// RateLimitAdapter is an in-process adapter that implements ports.RateLimitPort
-// by directly calling the ratelimit services. This maintains the hexagonal
-// architecture boundaries while keeping everything in a single process.
-// When splitting into microservices, this can be replaced with a gRPC adapter
-// without changing the auth handler.
+// RateLimitAdapter implements ports.RateLimitPort by calling ratelimit services directly.
+// This adapter lives in the composition root to keep the auth module decoupled from
+// ratelimit internals. When splitting into microservices, replace with a gRPC adapter.
 type RateLimitAdapter struct {
 	authLockout *authlockout.Service
 	requests    *requestlimit.Service
 }
 
-// NewRateLimitAdapter builds an in-process adapter backed by ratelimit services.
-func New(authLockout *authlockout.Service, requests *requestlimit.Service) ports.RateLimitPort {
+// NewRateLimitAdapter creates an adapter that implements auth's RateLimitPort.
+func NewRateLimitAdapter(authLockout *authlockout.Service, requests *requestlimit.Service) ports.RateLimitPort {
 	return &RateLimitAdapter{
 		authLockout: authLockout,
 		requests:    requests,

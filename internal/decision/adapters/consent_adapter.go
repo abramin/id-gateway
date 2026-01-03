@@ -3,7 +3,7 @@ package adapters
 import (
 	"context"
 
-	consentService "credo/internal/consent/service"
+	consentcontracts "credo/contracts/consent"
 	"credo/internal/decision/ports"
 	id "credo/pkg/domain"
 )
@@ -12,11 +12,11 @@ import (
 // This maintains hexagonal architecture boundaries while keeping
 // everything in a single process.
 type ConsentAdapter struct {
-	consent *consentService.Service
+	consent consentcontracts.Requirer
 }
 
 // NewConsentAdapter creates a new consent adapter.
-func NewConsentAdapter(consent *consentService.Service) ports.ConsentPort {
+func NewConsentAdapter(consent consentcontracts.Requirer) ports.ConsentPort {
 	return &ConsentAdapter{consent: consent}
 }
 

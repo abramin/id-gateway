@@ -28,7 +28,9 @@ import (
 	"credo/internal/evidence/registry/providers"
 	registryservice "credo/internal/evidence/registry/service"
 	registrystore "credo/internal/evidence/registry/store"
+	vcadapters "credo/internal/evidence/vc/adapters"
 	vcmodels "credo/internal/evidence/vc/models"
+	vcservice "credo/internal/evidence/vc/service"
 	vcstore "credo/internal/evidence/vc/store"
 	tenantmodels "credo/internal/tenant/models"
 	tenantstore "credo/internal/tenant/store/tenant"
@@ -47,6 +49,7 @@ type decisionIntegrationSuite struct {
 	logger      *slog.Logger
 	consentSvc  *consentservice.Service
 	vcStore     *vcstore.PostgresStore
+	vcSvc       *vcservice.Service
 	decisionSvc *decision.Service
 
 	userID      id.UserID
@@ -100,7 +103,11 @@ func (s *decisionIntegrationSuite) SetupTest() {
 	consentAdapter := decisionadapters.NewConsentAdapter(s.consentSvc)
 
 	s.vcStore = vcstore.NewPostgres(s.pg.DB)
-	vcAdapter := decisionadapters.NewVCAdapter(s.vcStore)
+	// Create a minimal registry adapter for VC service (not used in decision tests, but required)
+	vcRegistryAdapter := vcadapters.NewRegistryAdapter(registrySvc)
+	vcConsentAdapter := vcadapters.NewConsentAdapter(s.consentSvc)
+	s.vcSvc = vcservice.NewService(s.vcStore, vcRegistryAdapter, vcConsentAdapter, false)
+	vcAdapter := decisionadapters.NewVCAdapter(s.vcSvc)
 
 	var err error
 	s.decisionSvc, err = decision.New(

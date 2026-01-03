@@ -243,6 +243,26 @@ var testCitizens = map[string]func() *CitizenResponse{
 			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
 		}
 	},
+	"SANCTIONED99": func() *CitizenResponse {
+		return &CitizenResponse{
+			NationalID:  "SANCTIONED99",
+			FullName:    "Sanctions Listed User",
+			DateOfBirth: "1982-08-15",
+			Address:     "202 Watchlist Way, Flagged, NV 89001",
+			Valid:       true,
+			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
+		}
+	},
+	"INVALID99999": func() *CitizenResponse {
+		return &CitizenResponse{
+			NationalID:  "INVALID99999",
+			FullName:    "Invalid Status User",
+			DateOfBirth: "1978-03-22",
+			Address:     "303 Inactive St, Expired, OR 97001",
+			Valid:       false, // Invalid citizen record
+			CheckedAt:   time.Now().UTC().Format(time.RFC3339),
+		}
+	},
 }
 
 // notFoundCitizens contains national IDs that should return 404
@@ -250,6 +270,7 @@ var notFoundCitizens = map[string]bool{
 	"UNKNOWN999":   true,
 	"NOCONSENT123": true, // Used for consent tests - no citizen data needed
 	"REVOKED123":   true, // Used for consent revocation tests
+	"NOTFOUND999":  true, // Used for registry not-found tests
 }
 
 func handleCitizenLookup(w http.ResponseWriter, r *http.Request) {
@@ -318,35 +339,34 @@ func generateCitizen(nationalID string) CitizenResponse {
 	// Use hash to generate deterministic but pseudo-random data
 	hash := sha256.Sum256([]byte(nationalID))
 	hashStr := hex.EncodeToString(hash[:])
-	hashInt := int(hash[0])
 
-	// Generate deterministic name
+	// Generate deterministic name using different hash bytes for better distribution
 	firstNames := []string{"Alice", "Bob", "Carol", "David", "Emma", "Frank", "Grace", "Henry", "Isabel", "Jack"}
 	lastNames := []string{"Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez"}
 	middleNames := []string{"Marie", "James", "Lynn", "Michael", "Ann", "Robert", "Elizabeth", "William", "Rose", "Joseph"}
 
-	firstName := firstNames[hashInt%len(firstNames)]
-	middleName := middleNames[(hashInt*2)%len(middleNames)]
-	lastName := lastNames[(hashInt*3)%len(lastNames)]
+	firstName := firstNames[int(hash[0])%len(firstNames)]
+	middleName := middleNames[int(hash[1])%len(middleNames)]
+	lastName := lastNames[int(hash[2])%len(lastNames)]
 	fullName := fmt.Sprintf("%s %s %s", firstName, middleName, lastName)
 
 	// Generate deterministic date of birth (age between 18-80)
-	age := 18 + (hashInt % 62)
+	age := 18 + (int(hash[3]) % 62)
 	birthYear := time.Now().Year() - age
-	birthMonth := 1 + (hashInt % 12)
-	birthDay := 1 + (hashInt % 28)
+	birthMonth := 1 + (int(hash[4]) % 12)
+	birthDay := 1 + (int(hash[5]) % 28)
 	dateOfBirth := fmt.Sprintf("%04d-%02d-%02d", birthYear, birthMonth, birthDay)
 
 	// Generate deterministic address
-	streetNumber := 100 + (hashInt % 900)
+	streetNumber := 100 + (int(hash[6]) % 900)
 	streets := []string{"Main St", "Oak Ave", "Maple Dr", "Pine Rd", "Elm St", "Cedar Ln", "Birch Way", "Willow Ct", "Cherry Blvd", "Ash Pl"}
 	cities := []string{"Springfield", "Riverside", "Fairview", "Clinton", "Georgetown", "Franklin", "Madison", "Salem", "Arlington", "Lexington"}
 	states := []string{"CA", "TX", "FL", "NY", "IL", "PA", "OH", "GA", "NC", "MI"}
-	zipCode := 10000 + (hashInt * 123 % 90000)
+	zipCode := 10000 + (int(hash[7])*123 + int(hash[8])*31) % 90000
 
-	street := streets[hashInt%len(streets)]
-	city := cities[(hashInt*2)%len(cities)]
-	state := states[(hashInt*3)%len(states)]
+	street := streets[int(hash[9])%len(streets)]
+	city := cities[int(hash[10])%len(cities)]
+	state := states[int(hash[11])%len(states)]
 	address := fmt.Sprintf("%d %s, %s, %s %05d", streetNumber, street, city, state, zipCode)
 
 	// Determine validity (95% valid, use last 4 chars of hash)

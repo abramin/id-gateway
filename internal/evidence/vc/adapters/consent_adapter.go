@@ -3,18 +3,18 @@ package adapters
 import (
 	"context"
 
-	"credo/internal/consent/service"
+	consentcontracts "credo/contracts/consent"
 	"credo/internal/evidence/vc/ports"
 	id "credo/pkg/domain"
 )
 
 // ConsentAdapter bridges the consent service into the VC consent port.
 type ConsentAdapter struct {
-	consentService *service.Service
+	consentService consentcontracts.Requirer
 }
 
 // NewConsentAdapter creates a new in-process consent adapter.
-func NewConsentAdapter(consentService *service.Service) ports.ConsentPort {
+func NewConsentAdapter(consentService consentcontracts.Requirer) ports.ConsentPort {
 	return &ConsentAdapter{consentService: consentService}
 }
 

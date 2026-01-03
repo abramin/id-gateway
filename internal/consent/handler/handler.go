@@ -2,9 +2,9 @@ package handler
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -230,64 +230,34 @@ func (h *Handler) HandleGetConsents(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, toListResponse(records, requestcontext.Now(ctx)))
 }
 
-// Response mapping functions - convert domain objects to HTTP DTOs
+// parseRecordFilter converts query parameters into a domain RecordFilter.
+// Returns nil if no filters are specified.
+// Returns validation error if status or purpose values are invalid.
+func parseRecordFilter(status, purpose string) (*models.RecordFilter, error) {
+	status = strings.TrimSpace(status)
+	purpose = strings.TrimSpace(purpose)
 
-func toGrantResponse(records []*models.Record, now time.Time) *GrantResponse {
-	granted := make([]*Grant, 0, len(records))
-	for _, record := range records {
-		granted = append(granted, &Grant{
-			Purpose:   record.Purpose,
-			GrantedAt: record.GrantedAt,
-			ExpiresAt: record.ExpiresAt,
-			Status:    record.ComputeStatus(now),
-		})
-	}
-	return &GrantResponse{
-		Granted: granted,
-		Message: formatActionMessage("Consent granted for %d purpose", len(records)),
-	}
-}
+	filter := &models.RecordFilter{}
 
-func toRevokeResponse(records []*models.Record, now time.Time) *RevokeResponse {
-	revoked := make([]*Revoked, 0, len(records))
-	for _, record := range records {
-		if record.RevokedAt != nil {
-			revoked = append(revoked, &Revoked{
-				Purpose:   record.Purpose,
-				RevokedAt: *record.RevokedAt,
-				Status:    record.ComputeStatus(now),
-			})
+	if status != "" {
+		parsedStatus, err := models.ParseStatus(status)
+		if err != nil {
+			return nil, dErrors.New(dErrors.CodeValidation, "invalid status filter")
 		}
+		filter.Status = &parsedStatus
 	}
-	return &RevokeResponse{
-		Revoked: revoked,
-		Message: formatActionMessage("Consent revoked for %d purpose", len(revoked)),
-	}
-}
 
-func toListResponse(records []*models.Record, now time.Time) *ListResponse {
-	consents := make([]*ConsentWithStatus, 0, len(records))
-	for _, record := range records {
-		consents = append(consents, &ConsentWithStatus{
-			Consent: Consent{
-				ID:        record.ID.String(),
-				Purpose:   record.Purpose,
-				GrantedAt: record.GrantedAt,
-				ExpiresAt: record.ExpiresAt,
-				RevokedAt: record.RevokedAt,
-			},
-			Status: record.ComputeStatus(now),
-		})
+	if purpose != "" {
+		parsedPurpose, err := models.ParsePurpose(purpose)
+		if err != nil {
+			return nil, dErrors.New(dErrors.CodeValidation, "invalid purpose filter")
+		}
+		filter.Purpose = &parsedPurpose
 	}
-	return &ListResponse{Consents: consents}
-}
 
-// Helper functions
-
-func formatActionMessage(template string, count int) string {
-	suffix := "s"
-	if count == 1 {
-		suffix = ""
+	if filter.Status == nil && filter.Purpose == nil {
+		return nil, nil
 	}
-	return fmt.Sprintf(template+"%s", count, suffix)
+
+	return filter, nil
 }

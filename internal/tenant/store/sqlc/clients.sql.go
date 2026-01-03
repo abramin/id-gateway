@@ -147,6 +147,33 @@ func (q *Queries) GetClientByTenantAndID(ctx context.Context, arg GetClientByTen
 	return i, err
 }
 
+const getClientForUpdate = `-- name: GetClientForUpdate :one
+SELECT id, tenant_id, name, oauth_client_id, client_secret_hash, redirect_uris,
+    allowed_grants, allowed_scopes, status, created_at, updated_at
+FROM clients
+WHERE id = $1
+FOR UPDATE
+`
+
+func (q *Queries) GetClientForUpdate(ctx context.Context, id uuid.UUID) (Client, error) {
+	row := q.db.QueryRowContext(ctx, getClientForUpdate, id)
+	var i Client
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Name,
+		&i.OauthClientID,
+		&i.ClientSecretHash,
+		&i.RedirectUris,
+		&i.AllowedGrants,
+		&i.AllowedScopes,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateClient = `-- name: UpdateClient :execresult
 UPDATE clients
 SET name = $2,

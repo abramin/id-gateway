@@ -47,6 +47,7 @@ var (
 var listedSanctions = map[string]bool{
 	"SANCTIONED123":  true, // Used for decision rule chain tests
 	"SANCTIONED999":  true, // Used for sanctions screening tests
+	"SANCTIONED99":   true, // Used for registry sanctions-listed tests
 	"SANCTIONED_PEP": true, // Politically exposed person
 	"WATCHLIST001":   true, // Watchlist entry
 }

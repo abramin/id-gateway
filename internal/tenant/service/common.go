@@ -20,6 +20,7 @@ import (
 type TenantStore interface {
 	CreateIfNameAvailable(ctx context.Context, tenant *models.Tenant) error
 	Update(ctx context.Context, tenant *models.Tenant) error
+	Execute(ctx context.Context, tenantID id.TenantID, validate func(*models.Tenant) error, mutate func(*models.Tenant)) (*models.Tenant, error)
 	FindByID(ctx context.Context, tenantID id.TenantID) (*models.Tenant, error)
 	FindByName(ctx context.Context, name string) (*models.Tenant, error)
 	Count(ctx context.Context) (int, error)
@@ -28,6 +29,7 @@ type TenantStore interface {
 type ClientStore interface {
 	Create(ctx context.Context, client *models.Client) error
 	Update(ctx context.Context, client *models.Client) error
+	Execute(ctx context.Context, clientID id.ClientID, validate func(*models.Client) error, mutate func(*models.Client)) (*models.Client, error)
 	FindByID(ctx context.Context, clientID id.ClientID) (*models.Client, error)
 	FindByTenantAndID(ctx context.Context, tenantID id.TenantID, clientID id.ClientID) (*models.Client, error)
 	FindByOAuthClientID(ctx context.Context, oauthClientID string) (*models.Client, error)

@@ -5,13 +5,13 @@ import (
 	"log/slog"
 	"time"
 
-	"credo/internal/tenant/models"
+	"credo/internal/auth/types"
 	"credo/pkg/platform/circuit"
 )
 
 // ClientResolver resolves client metadata and tenant ownership.
 type ClientResolver interface {
-	ResolveClient(ctx context.Context, clientID string) (*models.Client, *models.Tenant, error)
+	ResolveClient(ctx context.Context, clientID string) (*types.ResolvedClient, *types.ResolvedTenant, error)
 }
 
 // ResilientClientResolver wraps a ClientResolver with circuit breaker protection.
@@ -88,7 +88,7 @@ func NewResilientClientResolver(
 // ResolveClient resolves a client with circuit breaker protection.
 // On success: caches the result and records success.
 // On failure: records failure, returns cached data if circuit is open.
-func (r *ResilientClientResolver) ResolveClient(ctx context.Context, clientID string) (*models.Client, *models.Tenant, error) {
+func (r *ResilientClientResolver) ResolveClient(ctx context.Context, clientID string) (*types.ResolvedClient, *types.ResolvedTenant, error) {
 	// If circuit is open, try cache first
 	if r.cb.IsOpen() {
 		if client, tenant, ok := r.cache.Get(clientID); ok {
@@ -140,5 +140,5 @@ func (r *ResilientClientResolver) ResolveClient(ctx context.Context, clientID st
 
 // Ensure ResilientClientResolver implements the interface expected by auth service.
 var _ interface {
-	ResolveClient(ctx context.Context, clientID string) (*models.Client, *models.Tenant, error)
+	ResolveClient(ctx context.Context, clientID string) (*types.ResolvedClient, *types.ResolvedTenant, error)
 } = (*ResilientClientResolver)(nil)

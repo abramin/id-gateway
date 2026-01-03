@@ -7,7 +7,7 @@ import (
 	"time"
 
 	registrycontracts "credo/contracts/registry"
-	vcmodels "credo/internal/evidence/vc/models"
+	vccontracts "credo/contracts/vc"
 	id "credo/pkg/domain"
 	"credo/pkg/platform/audit"
 	"credo/pkg/platform/audit/publishers/compliance"
@@ -131,8 +131,9 @@ func (s *RuleEvaluationSuite) TestAgeVerificationRuleChain() {
 			DateOfBirth: "1990-01-15",
 		}
 		s.registry.sanctions = &registrycontracts.SanctionsRecord{Listed: false}
-		s.vc.credential = &vcmodels.CredentialRecord{
-			Claims: vcmodels.Claims{"is_over_18": true},
+		s.vc.credential = &vccontracts.CredentialPresence{
+			Exists: true,
+			Claims: map[string]interface{}{"is_over_18": true},
 		}
 
 		result, err := s.service.Evaluate(context.Background(), EvaluateRequest{
@@ -418,15 +419,18 @@ func (m *mockRegistryPort) CheckSanctions(ctx context.Context, userID id.UserID,
 }
 
 type mockVCPort struct {
-	credential *vcmodels.CredentialRecord
+	credential *vccontracts.CredentialPresence
 	err        error
 	calls      int
 }
 
-func (m *mockVCPort) FindBySubjectAndType(ctx context.Context, userID id.UserID, credType vcmodels.CredentialType) (*vcmodels.CredentialRecord, error) {
+func (m *mockVCPort) FindCredentialPresence(ctx context.Context, userID id.UserID, credType vccontracts.CredentialType) (*vccontracts.CredentialPresence, error) {
 	m.calls++
 	if m.err != nil {
 		return nil, m.err
+	}
+	if m.credential == nil {
+		return &vccontracts.CredentialPresence{Exists: false}, nil
 	}
 	return m.credential, nil
 }

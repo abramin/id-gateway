@@ -1,36 +1,11 @@
 package models
 
 import (
+	"fmt"
 	"time"
 
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
-)
-
-// Audit event actions
-const (
-	AuditActionConsentGranted     = "consent_granted"
-	AuditActionConsentRevoked     = "consent_revoked"
-	AuditActionConsentDeleted     = "consent_deleted"
-	AuditActionConsentCheckPassed = "consent_check_passed"
-	AuditActionConsentCheckFailed = "consent_check_failed"
-)
-
-// Audit event decisions
-const (
-	AuditDecisionGranted = "granted"
-	AuditDecisionRevoked = "revoked"
-	AuditDecisionDeleted = "deleted"
-	AuditDecisionDenied  = "denied"
-)
-
-// Audit event reasons
-const (
-	AuditReasonUserInitiated      = "user_initiated"
-	AuditReasonUserBulkRevocation = "user_bulk_revocation"
-	AuditReasonSecurityConcern    = "security_concern"
-	AuditReasonGdprSelfService    = "gdpr_self_service"
-	AuditReasonGdprErasureRequest = "gdpr_erasure_request"
 )
 
 // Record captures a user's decision for a specific purpose.
@@ -127,6 +102,49 @@ func (c Record) CanReGrant(now time.Time, cooldown time.Duration) bool {
 	return now.Sub(*c.RevokedAt) >= cooldown
 }
 
+// GrantEvaluation captures the result of evaluating a grant request against an existing record.
+type GrantEvaluation struct {
+	// Updated contains the renewed record if Changed is true.
+	Updated Record
+	// Changed indicates whether the record was modified.
+	Changed bool
+	// WasActive indicates whether the record was active before evaluation.
+	// Used by callers to track metrics (e.g., new active consent vs renewal).
+	WasActive bool
+}
+
+// EvaluateGrant applies idempotency and re-grant cooldown rules to determine if a grant should proceed.
+// Returns a GrantEvaluation describing the outcome:
+//   - If active and within idempotencyWindow: no change (idempotent)
+//   - If recently revoked (within cooldown): returns error
+//   - Otherwise: returns renewed record with Changed=true
+//
+// This is pure domain logic with no side effects.
+func (c Record) EvaluateGrant(now time.Time, idempotencyWindow, reGrantCooldown, ttl time.Duration) (GrantEvaluation, error) {
+	eval := GrantEvaluation{WasActive: c.IsActive(now)}
+
+	// Idempotency: if active and recently granted, skip update
+	if eval.WasActive && now.Sub(c.GrantedAt) < idempotencyWindow {
+		return eval, nil
+	}
+
+	// Re-grant cooldown: prevent rapid revoke→grant cycles
+	if !c.CanReGrant(now, reGrantCooldown) {
+		return GrantEvaluation{}, dErrors.New(dErrors.CodeBadRequest,
+			fmt.Sprintf("consent was recently revoked; please wait before re-granting (cooldown: %v)", reGrantCooldown))
+	}
+
+	// Renew the consent
+	updated, err := c.RenewAt(now, ttl)
+	if err != nil {
+		return GrantEvaluation{}, err
+	}
+
+	eval.Updated = updated
+	eval.Changed = true
+	return eval, nil
+}
+
 // RenewAt returns an updated record with a new grant window applied.
 // It clears RevokedAt and sets ExpiresAt based on the provided TTL.
 func (c Record) RenewAt(now time.Time, ttl time.Duration) (Record, error) {
@@ -163,12 +181,6 @@ func (c Record) ComputeStatus(now time.Time) Status {
 		return StatusExpired
 	}
 	return StatusActive
-}
-
-// RecordFilter allows filtering consent records by purpose and status.
-type RecordFilter struct {
-	Purpose *Purpose
-	Status  *Status
 }
 
 // Ensure enforces that consent exists and is active for the given purpose.

@@ -5,7 +5,6 @@ import (
 
 	registrycontracts "credo/contracts/registry"
 	"credo/internal/decision/ports"
-	registryService "credo/internal/evidence/registry/service"
 	id "credo/pkg/domain"
 )
 
@@ -15,14 +14,14 @@ import (
 // When splitting into microservices, this can be replaced with a gRPC adapter
 // without changing the decision domain layer.
 //
-// The adapter maps registry service models to contract types, ensuring
-// the decision module only receives PII-light data at the boundary.
+// The adapter uses registry service contract methods, ensuring the decision
+// module depends only on stable contract types, not internal registry models.
 type RegistryAdapter struct {
-	registryService *registryService.Service
+	registryService registrycontracts.FullProvider
 }
 
 // NewRegistryAdapter creates a new in-process registry adapter.
-func NewRegistryAdapter(registryService *registryService.Service) ports.RegistryPort {
+func NewRegistryAdapter(registryService registrycontracts.FullProvider) ports.RegistryPort {
 	return &RegistryAdapter{
 		registryService: registryService,
 	}
@@ -30,30 +29,12 @@ func NewRegistryAdapter(registryService *registryService.Service) ports.Registry
 
 // CheckCitizen retrieves citizen record by national ID.
 // Side effects: calls the registry service and may perform external I/O.
-// Uses CitizenWithDetails to get DOB for age derivation, then maps to contract type.
 func (a *RegistryAdapter) CheckCitizen(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registrycontracts.CitizenRecord, error) {
-	record, err := a.registryService.CitizenWithDetails(ctx, userID, nationalID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Map to contract type - only DateOfBirth and Valid cross the boundary
-	return &registrycontracts.CitizenRecord{
-		DateOfBirth: record.DateOfBirth,
-		Valid:       record.Valid,
-	}, nil
+	return a.registryService.CitizenContract(ctx, userID, nationalID)
 }
 
 // CheckSanctions retrieves sanctions record by national ID.
 // Side effects: calls the registry service and may perform external I/O.
 func (a *RegistryAdapter) CheckSanctions(ctx context.Context, userID id.UserID, nationalID id.NationalID) (*registrycontracts.SanctionsRecord, error) {
-	record, err := a.registryService.Sanctions(ctx, userID, nationalID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Map to contract type - only Listed crosses the boundary
-	return &registrycontracts.SanctionsRecord{
-		Listed: record.Listed,
-	}, nil
+	return a.registryService.SanctionsContract(ctx, userID, nationalID)
 }

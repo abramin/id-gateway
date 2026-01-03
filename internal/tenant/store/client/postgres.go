@@ -83,6 +83,48 @@ func (s *PostgresStore) Update(ctx context.Context, client *models.Client) error
 	if client == nil {
 		return fmt.Errorf("client is required")
 	}
+	return s.updateClient(ctx, s.queriesFor(ctx), client)
+}
+
+// Execute atomically validates and mutates a client under lock.
+func (s *PostgresStore) Execute(ctx context.Context, clientID id.ClientID, validate func(*models.Client) error, mutate func(*models.Client)) (*models.Client, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin client execute tx: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	qtx := s.queries.WithTx(tx)
+	row, err := qtx.GetClientForUpdate(ctx, uuid.UUID(clientID))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, sentinel.ErrNotFound
+		}
+		return nil, fmt.Errorf("find client for execute: %w", err)
+	}
+
+	client, err := toClient(row)
+	if err != nil {
+		return nil, fmt.Errorf("scan client: %w", err)
+	}
+	if err := validate(client); err != nil {
+		return nil, err
+	}
+
+	mutate(client)
+	if err := s.updateClient(ctx, qtx, client); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit client execute: %w", err)
+	}
+	return client, nil
+}
+
+func (s *PostgresStore) updateClient(ctx context.Context, queries *tenantsqlc.Queries, client *models.Client) error {
 	redirectURIs, err := json.Marshal(client.RedirectURIs)
 	if err != nil {
 		return fmt.Errorf("marshal redirect uris: %w", err)
@@ -96,7 +138,7 @@ func (s *PostgresStore) Update(ctx context.Context, client *models.Client) error
 		return fmt.Errorf("marshal allowed scopes: %w", err)
 	}
 
-	res, err := s.queriesFor(ctx).UpdateClient(ctx, tenantsqlc.UpdateClientParams{
+	res, err := queries.UpdateClient(ctx, tenantsqlc.UpdateClientParams{
 		ID:               uuid.UUID(client.ID),
 		Name:             client.Name,
 		OauthClientID:    client.OAuthClientID,

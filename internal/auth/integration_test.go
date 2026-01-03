@@ -19,8 +19,8 @@ import (
 	refreshTokenStore "credo/internal/auth/store/refresh-token"
 	sessionStore "credo/internal/auth/store/session"
 	userStore "credo/internal/auth/store/user"
+	"credo/internal/auth/types"
 	jwttoken "credo/internal/jwt_token"
-	tenantModels "credo/internal/tenant/models"
 	id "credo/pkg/domain"
 	"credo/pkg/platform/audit/publishers/security"
 	auditstore "credo/pkg/platform/audit/store/memory"
@@ -40,18 +40,16 @@ type stubClientResolver struct {
 	defaultClientID id.ClientID
 }
 
-func (r *stubClientResolver) ResolveClient(ctx context.Context, clientID string) (*tenantModels.Client, *tenantModels.Tenant, error) {
-	return &tenantModels.Client{
+func (r *stubClientResolver) ResolveClient(ctx context.Context, clientID string) (*types.ResolvedClient, *types.ResolvedTenant, error) {
+	return &types.ResolvedClient{
 			ID:            r.defaultClientID,
 			TenantID:      r.defaultTenantID,
 			OAuthClientID: clientID,
-			Name:          "Test Client",
-			Status:        "active",
 			RedirectURIs:  []string{"https://client.app/callback"},
-		}, &tenantModels.Tenant{
+			Active:        true,
+		}, &types.ResolvedTenant{
 			ID:     r.defaultTenantID,
-			Name:   "Test Tenant",
-			Status: "active",
+			Active: true,
 		}, nil
 }
 

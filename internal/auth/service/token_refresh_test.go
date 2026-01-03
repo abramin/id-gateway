@@ -6,7 +6,6 @@ import (
 
 	"credo/internal/auth/device"
 	"credo/internal/auth/models"
-	tenantModels "credo/internal/tenant/models"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 	"credo/pkg/requestcontext"
@@ -98,7 +97,7 @@ func (s *ServiceSuite) TestTokenRefreshFlow() {
 		refreshRec := *validRefreshToken
 		sess := *validSession
 		inactiveClient := *mockClient
-		inactiveClient.Status = tenantModels.ClientStatusInactive
+		inactiveClient.Active = false
 
 		// Validation happens before transaction
 		s.mockRefreshStore.EXPECT().Find(gomock.Any(), refreshTokenString).Return(&refreshRec, nil)

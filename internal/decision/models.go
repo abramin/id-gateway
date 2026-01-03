@@ -4,8 +4,7 @@ import (
 	"time"
 
 	registrycontracts "credo/contracts/registry"
-	authModel "credo/internal/auth/models"
-	vcmodels "credo/internal/evidence/vc/models"
+	vccontracts "credo/contracts/vc"
 	id "credo/pkg/domain"
 	dErrors "credo/pkg/domain-errors"
 )
@@ -32,7 +31,7 @@ type DerivedIdentity struct {
 type DecisionInput struct {
 	Identity   DerivedIdentity
 	Sanctions  registrycontracts.SanctionsRecord
-	Credential vcmodels.Claims
+	Credential map[string]interface{}
 }
 
 // IsSanctioned returns true if the subject is on a sanctions list.
@@ -46,10 +45,10 @@ func (di DecisionInput) IsOfLegalAge() bool { return di.Identity.IsOver18 }
 
 // DerivedIdentityFromCitizen strips PII while producing attributes required for
 // decisions in regulated mode. Time is injected for deterministic testing.
-func DerivedIdentityFromCitizen(user authModel.User, citizen registrycontracts.CitizenRecord, now time.Time) DerivedIdentity {
+func DerivedIdentityFromCitizen(userID id.UserID, citizen registrycontracts.CitizenRecord, now time.Time) DerivedIdentity {
 	isOver18 := deriveIsOver18(citizen.DateOfBirth, now)
 	return DerivedIdentity{
-		PseudonymousID: user.ID, // treat as pseudonymous identifier; avoid emails/names.
+		PseudonymousID: userID, // treat as pseudonymous identifier; avoid emails/names.
 		IsOver18:       isOver18,
 		CitizenValid:   citizen.Valid,
 	}
@@ -130,7 +129,7 @@ type EvidenceSummary struct {
 type GatheredEvidence struct {
 	Citizen    *registrycontracts.CitizenRecord
 	Sanctions  *registrycontracts.SanctionsRecord
-	Credential *vcmodels.CredentialRecord
+	Credential *vccontracts.CredentialPresence
 	FetchedAt  time.Time
 	Latencies  EvidenceLatencies
 }

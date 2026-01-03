@@ -90,3 +90,23 @@ func (s *InMemory) CountByTenant(_ context.Context, tenantID id.TenantID) (int, 
 	defer s.mu.RUnlock()
 	return s.tenantCount[tenantID], nil
 }
+
+// Execute atomically validates and mutates a client under lock.
+func (s *InMemory) Execute(_ context.Context, clientID id.ClientID, validate func(*models.Client) error, mutate func(*models.Client)) (*models.Client, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	client, exists := s.clients[clientID]
+	if !exists {
+		return nil, sentinel.ErrNotFound
+	}
+
+	if err := validate(client); err != nil {
+		return nil, err
+	}
+
+	mutate(client)
+	s.clients[clientID] = client
+	s.byCode[client.OAuthClientID] = client
+	return client, nil
+}

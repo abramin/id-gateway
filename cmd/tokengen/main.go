@@ -12,6 +12,7 @@ import (
 	"time"
 
 	jwttoken "credo/internal/jwt_token"
+	id "credo/pkg/domain"
 
 	"github.com/google/uuid"
 )
@@ -128,7 +129,7 @@ Examples:
 Use "tokengen <command> -h" for more information about a command.`)
 }
 
-func generateAccessToken(userID, sessionID, clientID, tenantID, scopes string, ttl time.Duration, demo, jsonOutput bool) {
+func generateAccessToken(userIDStr, sessionIDStr, clientIDStr, tenantIDStr, scopes string, ttl time.Duration, demo, jsonOutput bool) {
 	signingKey := devSigningKey
 	keyType := "dev"
 	if demo {
@@ -136,13 +137,16 @@ func generateAccessToken(userID, sessionID, clientID, tenantID, scopes string, t
 		keyType = "demo"
 	}
 
-	uid := parseOrGenerateUUID(userID, "user-id")
-	sid := parseOrGenerateUUID(sessionID, "session-id")
+	// Parse or generate typed IDs
+	userID := parseOrGenerateUserID(userIDStr, "user-id")
+	sessionID := parseOrGenerateSessionID(sessionIDStr, "session-id")
+	clientID := parseClientID(clientIDStr)
+	tenantID := parseOrGenerateTenantID(tenantIDStr)
 	scopeList := parseScopes(scopes)
 
 	svc := jwttoken.NewJWTService(signingKey, defaultIssuerBaseURL, defaultAudience, ttl)
 
-	token, jti, err := svc.GenerateAccessTokenWithJTI(context.Background(), uid, sid, clientID, tenantID, scopeList)
+	token, jti, err := svc.GenerateAccessTokenWithJTI(context.Background(), userID, sessionID, clientID, tenantID, scopeList)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating token: %v\n", err)
 		os.Exit(1)
@@ -154,10 +158,10 @@ func generateAccessToken(userID, sessionID, clientID, tenantID, scopes string, t
 			Type:      "access_token",
 			ExpiresIn: ttl.String(),
 			Claims: map[string]any{
-				"user_id":    uid.String(),
-				"session_id": sid.String(),
-				"client_id":  clientID,
-				"tenant_id":  tenantID,
+				"user_id":    userID.String(),
+				"session_id": sessionID.String(),
+				"client_id":  clientID.String(),
+				"tenant_id":  tenantID.String(),
 				"scope":      scopeList,
 				"jti":        jti,
 			},
@@ -172,11 +176,11 @@ func generateAccessToken(userID, sessionID, clientID, tenantID, scopes string, t
 		fmt.Println("==================")
 		fmt.Printf("Signing Key: %s\n", keyType)
 		fmt.Printf("Expires In:  %s\n", ttl)
-		fmt.Printf("User ID:     %s\n", uid)
-		fmt.Printf("Session ID:  %s\n", sid)
-		fmt.Printf("Client ID:   %s\n", clientID)
-		if tenantID != "" {
-			fmt.Printf("Tenant ID:   %s\n", tenantID)
+		fmt.Printf("User ID:     %s\n", userID.String())
+		fmt.Printf("Session ID:  %s\n", sessionID.String())
+		fmt.Printf("Client ID:   %s\n", clientID.String())
+		if !tenantID.IsNil() {
+			fmt.Printf("Tenant ID:   %s\n", tenantID.String())
 		}
 		fmt.Printf("Scopes:      %v\n", scopeList)
 		fmt.Printf("JTI:         %s\n", jti)
@@ -189,7 +193,7 @@ func generateAccessToken(userID, sessionID, clientID, tenantID, scopes string, t
 	}
 }
 
-func generateIDToken(userID, sessionID, clientID, tenantID string, ttl time.Duration, demo, jsonOutput bool) {
+func generateIDToken(userIDStr, sessionIDStr, clientIDStr, tenantIDStr string, ttl time.Duration, demo, jsonOutput bool) {
 	signingKey := devSigningKey
 	keyType := "dev"
 	if demo {
@@ -197,12 +201,15 @@ func generateIDToken(userID, sessionID, clientID, tenantID string, ttl time.Dura
 		keyType = "demo"
 	}
 
-	uid := parseOrGenerateUUID(userID, "user-id")
-	sid := parseOrGenerateUUID(sessionID, "session-id")
+	// Parse or generate typed IDs
+	userID := parseOrGenerateUserID(userIDStr, "user-id")
+	sessionID := parseOrGenerateSessionID(sessionIDStr, "session-id")
+	clientID := parseClientID(clientIDStr)
+	tenantID := parseOrGenerateTenantID(tenantIDStr)
 
 	svc := jwttoken.NewJWTService(signingKey, defaultIssuerBaseURL, defaultAudience, ttl)
 
-	token, err := svc.GenerateIDToken(context.Background(), uid, sid, clientID, tenantID)
+	token, err := svc.GenerateIDToken(context.Background(), userID, sessionID, clientID, tenantID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating token: %v\n", err)
 		os.Exit(1)
@@ -214,10 +221,10 @@ func generateIDToken(userID, sessionID, clientID, tenantID string, ttl time.Dura
 			Type:      "id_token",
 			ExpiresIn: ttl.String(),
 			Claims: map[string]any{
-				"sub":       uid.String(),
-				"sid":       sid.String(),
-				"azp":       clientID,
-				"tenant_id": tenantID,
+				"sub":       userID.String(),
+				"sid":       sessionID.String(),
+				"azp":       clientID.String(),
+				"tenant_id": tenantID.String(),
 			},
 			Usage: map[string]string{
 				"signing_key": keyType,
@@ -229,11 +236,11 @@ func generateIDToken(userID, sessionID, clientID, tenantID string, ttl time.Dura
 		fmt.Println("===============")
 		fmt.Printf("Signing Key: %s\n", keyType)
 		fmt.Printf("Expires In:  %s\n", ttl)
-		fmt.Printf("Subject:     %s\n", uid)
-		fmt.Printf("Session ID:  %s\n", sid)
-		fmt.Printf("Client ID:   %s\n", clientID)
-		if tenantID != "" {
-			fmt.Printf("Tenant ID:   %s\n", tenantID)
+		fmt.Printf("Subject:     %s\n", userID.String())
+		fmt.Printf("Session ID:  %s\n", sessionID.String())
+		fmt.Printf("Client ID:   %s\n", clientID.String())
+		if !tenantID.IsNil() {
+			fmt.Printf("Tenant ID:   %s\n", tenantID.String())
 		}
 		fmt.Println()
 		fmt.Println("Token:")
@@ -264,16 +271,48 @@ func showAdminToken(jsonOutput bool) {
 	}
 }
 
-func parseOrGenerateUUID(input, fieldName string) uuid.UUID {
+func parseOrGenerateUserID(input, fieldName string) id.UserID {
 	if input == "" {
-		return uuid.New()
+		return id.UserID(uuid.New())
 	}
 	parsed, err := uuid.Parse(input)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Invalid %s UUID: %s\n", fieldName, input)
+		fmt.Fprintf(os.Stderr, "Invalid %s: %s\n", fieldName, input)
 		os.Exit(1)
 	}
-	return parsed
+	return id.UserID(parsed)
+}
+func parseOrGenerateSessionID(input, fieldName string) id.SessionID {
+	if input == "" {
+		return id.SessionID(uuid.New())
+	}
+	parsed, err := uuid.Parse(input)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid %s: %s\n", fieldName, input)
+		os.Exit(1)
+	}
+	return id.SessionID(parsed)
+}
+
+func parseClientID(input string) id.ClientID {
+	clientID, err := id.ParseClientID(input)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid client-id: %s\n", input)
+		os.Exit(1)
+	}
+	return clientID
+}
+
+func parseOrGenerateTenantID(input string) id.TenantID {
+	if input == "" {
+		return id.TenantID(uuid.Nil)
+	}
+	parsed, err := uuid.Parse(input)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid tenant-id: %s\n", input)
+		os.Exit(1)
+	}
+	return id.TenantID(parsed)
 }
 
 func parseScopes(scopes string) []string {

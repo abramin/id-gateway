@@ -76,3 +76,22 @@ func (s *InMemory) Update(_ context.Context, t *models.Tenant) error {
 	s.tenants[t.ID] = t
 	return nil
 }
+
+// Execute atomically validates and mutates a tenant under lock.
+func (s *InMemory) Execute(_ context.Context, tenantID id.TenantID, validate func(*models.Tenant) error, mutate func(*models.Tenant)) (*models.Tenant, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tenant, exists := s.tenants[tenantID]
+	if !exists {
+		return nil, sentinel.ErrNotFound
+	}
+
+	if err := validate(tenant); err != nil {
+		return nil, err
+	}
+
+	mutate(tenant)
+	s.tenants[tenantID] = tenant
+	return tenant, nil
+}

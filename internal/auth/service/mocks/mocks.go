@@ -12,14 +12,12 @@ package mocks
 import (
 	context "context"
 	models "credo/internal/auth/models"
+	types "credo/internal/auth/types"
 	jwttoken "credo/internal/jwt_token"
-	models0 "credo/internal/tenant/models"
 	domain "credo/pkg/domain"
-	audit "credo/pkg/platform/audit"
 	reflect "reflect"
 	time "time"
 
-	uuid "github.com/google/uuid"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -545,8 +543,22 @@ func (mr *MockTokenGeneratorMockRecorder) CreateRefreshToken() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRefreshToken", reflect.TypeOf((*MockTokenGenerator)(nil).CreateRefreshToken))
 }
 
+// TokenType mocks base method.
+func (m *MockTokenGenerator) TokenType() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TokenType")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// TokenType indicates an expected call of TokenType.
+func (mr *MockTokenGeneratorMockRecorder) TokenType() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TokenType", reflect.TypeOf((*MockTokenGenerator)(nil).TokenType))
+}
+
 // GenerateAccessToken mocks base method.
-func (m *MockTokenGenerator) GenerateAccessToken(ctx context.Context, userID, sessionID uuid.UUID, clientID, tenantID string, scopes []string) (string, error) {
+func (m *MockTokenGenerator) GenerateAccessToken(ctx context.Context, userID domain.UserID, sessionID domain.SessionID, clientID domain.ClientID, tenantID domain.TenantID, scopes []string) (string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GenerateAccessToken", ctx, userID, sessionID, clientID, tenantID, scopes)
 	ret0, _ := ret[0].(string)
@@ -561,7 +573,7 @@ func (mr *MockTokenGeneratorMockRecorder) GenerateAccessToken(ctx, userID, sessi
 }
 
 // GenerateAccessTokenWithJTI mocks base method.
-func (m *MockTokenGenerator) GenerateAccessTokenWithJTI(ctx context.Context, userID, sessionID uuid.UUID, clientID, tenantID string, scopes []string) (string, string, error) {
+func (m *MockTokenGenerator) GenerateAccessTokenWithJTI(ctx context.Context, userID domain.UserID, sessionID domain.SessionID, clientID domain.ClientID, tenantID domain.TenantID, scopes []string) (string, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GenerateAccessTokenWithJTI", ctx, userID, sessionID, clientID, tenantID, scopes)
 	ret0, _ := ret[0].(string)
@@ -577,7 +589,7 @@ func (mr *MockTokenGeneratorMockRecorder) GenerateAccessTokenWithJTI(ctx, userID
 }
 
 // GenerateIDToken mocks base method.
-func (m *MockTokenGenerator) GenerateIDToken(ctx context.Context, userID, sessionID uuid.UUID, clientID, tenantID string) (string, error) {
+func (m *MockTokenGenerator) GenerateIDToken(ctx context.Context, userID domain.UserID, sessionID domain.SessionID, clientID domain.ClientID, tenantID domain.TenantID) (string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GenerateIDToken", ctx, userID, sessionID, clientID, tenantID)
 	ret0, _ := ret[0].(string)
@@ -606,44 +618,6 @@ func (mr *MockTokenGeneratorMockRecorder) ParseTokenSkipClaimsValidation(token a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ParseTokenSkipClaimsValidation", reflect.TypeOf((*MockTokenGenerator)(nil).ParseTokenSkipClaimsValidation), token)
 }
 
-// MockAuditPublisher is a mock of AuditPublisher interface.
-type MockAuditPublisher struct {
-	ctrl     *gomock.Controller
-	recorder *MockAuditPublisherMockRecorder
-	isgomock struct{}
-}
-
-// MockAuditPublisherMockRecorder is the mock recorder for MockAuditPublisher.
-type MockAuditPublisherMockRecorder struct {
-	mock *MockAuditPublisher
-}
-
-// NewMockAuditPublisher creates a new mock instance.
-func NewMockAuditPublisher(ctrl *gomock.Controller) *MockAuditPublisher {
-	mock := &MockAuditPublisher{ctrl: ctrl}
-	mock.recorder = &MockAuditPublisherMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockAuditPublisher) EXPECT() *MockAuditPublisherMockRecorder {
-	return m.recorder
-}
-
-// Emit mocks base method.
-func (m *MockAuditPublisher) Emit(ctx context.Context, base audit.Event) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Emit", ctx, base)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Emit indicates an expected call of Emit.
-func (mr *MockAuditPublisherMockRecorder) Emit(ctx, base any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Emit", reflect.TypeOf((*MockAuditPublisher)(nil).Emit), ctx, base)
-}
-
 // MockClientResolver is a mock of ClientResolver interface.
 type MockClientResolver struct {
 	ctrl     *gomock.Controller
@@ -669,11 +643,11 @@ func (m *MockClientResolver) EXPECT() *MockClientResolverMockRecorder {
 }
 
 // ResolveClient mocks base method.
-func (m *MockClientResolver) ResolveClient(ctx context.Context, clientID string) (*models0.Client, *models0.Tenant, error) {
+func (m *MockClientResolver) ResolveClient(ctx context.Context, clientID string) (*types.ResolvedClient, *types.ResolvedTenant, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ResolveClient", ctx, clientID)
-	ret0, _ := ret[0].(*models0.Client)
-	ret1, _ := ret[1].(*models0.Tenant)
+	ret0, _ := ret[0].(*types.ResolvedClient)
+	ret1, _ := ret[1].(*types.ResolvedTenant)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }

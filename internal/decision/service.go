@@ -183,7 +183,7 @@ func (s *Service) buildInput(evidence *GatheredEvidence, derived DerivedIdentity
 		}
 	}
 
-	if evidence.Credential != nil {
+	if evidence.Credential != nil && evidence.Credential.Exists {
 		input.Credential = evidence.Credential.Claims
 	}
 

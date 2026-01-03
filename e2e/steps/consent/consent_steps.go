@@ -32,6 +32,7 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc TestContext) {
 	// Consent management steps
 	ctx.Step(`^I am authenticated as "([^"]*)"$`, steps.authenticateAs)
 	ctx.Step(`^I grant consent for purposes "([^"]*)"$`, steps.grantConsentForPurposes)
+	ctx.Step(`^I have granted consent for purposes "([^"]*)"$`, steps.grantConsentForPurposes)
 	ctx.Step(`^I revoke consent for purposes "([^"]*)"$`, steps.revokeConsentForPurposes)
 	ctx.Step(`^I revoke all my consents$`, steps.revokeAllConsents)
 	ctx.Step(`^I delete all my consents$`, steps.deleteAllConsents)

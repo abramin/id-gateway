@@ -86,6 +86,26 @@ func (q *Queries) GetTenantByName(ctx context.Context, lower string) (Tenant, er
 	return i, err
 }
 
+const getTenantForUpdate = `-- name: GetTenantForUpdate :one
+SELECT id, name, status, created_at, updated_at
+FROM tenants
+WHERE id = $1
+FOR UPDATE
+`
+
+func (q *Queries) GetTenantForUpdate(ctx context.Context, id uuid.UUID) (Tenant, error) {
+	row := q.db.QueryRowContext(ctx, getTenantForUpdate, id)
+	var i Tenant
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateTenant = `-- name: UpdateTenant :execresult
 UPDATE tenants
 SET name = $2, status = $3, updated_at = $4
