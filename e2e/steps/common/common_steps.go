@@ -35,6 +35,8 @@ func RegisterSteps(ctx *godog.ScenarioContext, tc TestContext) {
 	ctx.Step(`^the response should contain "([^"]*)"$`, steps.responseShouldContain)
 	ctx.Step(`^the response should contain an authorization code$`, steps.responseShouldContainAuthCode)
 	ctx.Step(`^the response field "([^"]*)" should equal "([^"]*)"$`, steps.responseFieldShouldEqual)
+	ctx.Step(`^the response field "([^"]*)" should equal true$`, steps.responseFieldShouldEqualTrue)
+	ctx.Step(`^the response field "([^"]*)" should equal false$`, steps.responseFieldShouldEqualFalse)
 	ctx.Step(`^the response field "([^"]*)" should contain "([^"]*)"$`, steps.responseFieldShouldContain)
 	ctx.Step(`^the response should contain header "([^"]*)"$`, steps.responseShouldContainHeader)
 	ctx.Step(`^the response should not contain "([^"]*)"$`, steps.responseShouldNotContain)
@@ -102,6 +104,40 @@ func (s *commonSteps) responseFieldShouldEqual(ctx context.Context, field, expec
 
 	if fmt.Sprint(actualValue) != expectedValue {
 		return fmt.Errorf("field %s: expected %s but got %v", field, expectedValue, actualValue)
+	}
+	return nil
+}
+
+func (s *commonSteps) responseFieldShouldEqualTrue(ctx context.Context, field string) error {
+	var data map[string]interface{}
+	if err := json.Unmarshal(s.tc.GetLastResponseBody(), &data); err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	actualValue, ok := data[field]
+	if !ok {
+		return fmt.Errorf("field %s not found in response", field)
+	}
+
+	if actualValue != true {
+		return fmt.Errorf("field %s: expected true but got %v", field, actualValue)
+	}
+	return nil
+}
+
+func (s *commonSteps) responseFieldShouldEqualFalse(ctx context.Context, field string) error {
+	var data map[string]interface{}
+	if err := json.Unmarshal(s.tc.GetLastResponseBody(), &data); err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	actualValue, ok := data[field]
+	if !ok {
+		return fmt.Errorf("field %s not found in response", field)
+	}
+
+	if actualValue != false {
+		return fmt.Errorf("field %s: expected false but got %v", field, actualValue)
 	}
 	return nil
 }
