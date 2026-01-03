@@ -137,6 +137,9 @@ const (
 	revokeSessionOutcomeAlreadyRevoked
 )
 
+// revokeSessionInternal revokes the session and associated tokens.
+// If jti is provided, only that token is revoked; otherwise, the last access token is revoked.
+// Returns whether the session was already revoked.
 func (s *Service) revokeSessionInternal(ctx context.Context, session *models.Session, jti string, reason models.RevocationReason) (revokeSessionOutcome, error) {
 	if err := s.sessions.RevokeSessionIfActive(ctx, session.ID, requestcontext.Now(ctx)); err != nil {
 		if errors.Is(err, sessionStore.ErrSessionRevoked) {

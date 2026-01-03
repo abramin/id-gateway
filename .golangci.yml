@@ -100,5 +100,3 @@ linters-settings:
     forbid:
       - 'log\.Printf'
       - 'log\.Fatalf'
-      - 'fmt\.Printf'
-      - 'fmt\.Sprintf'

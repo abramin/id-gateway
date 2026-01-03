@@ -351,9 +351,13 @@ func (s *Service) checkAllowlistStatus(ctx context.Context, ip, userID string) (
 }
 
 // buildBypassResult constructs the bypass result for allowlisted requests.
+// Records audit log and metrics.
+// Returns the more restrictive limit info for consistency.
+// Used when either IP or user is allowlisted.
+// Bypass type is "ip" if IP is allowlisted, else "user".
 func (s *Service) buildBypassResult(ctx context.Context, ip, userID string, class models.EndpointClass, ipLimit, userLimit *limitParams, now time.Time, ipAllowlisted, userAllowlisted bool) *models.RateLimitResult {
 	bypassType := "ip"
-	if userAllowlisted {
+	if !ipAllowlisted && userAllowlisted {
 		bypassType = "user"
 	}
 	if s.metrics != nil {
