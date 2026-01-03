@@ -177,29 +177,18 @@ func (s *PostgresStoreSuite) TestTransactionRollbackOnValidationFailure() {
 	scope := models.ConsentScope{UserID: userID, Purpose: models.PurposeVCIssuance}
 
 	// Run multiple concurrent Execute calls that fail validation
-	const goroutines = 30
-	var wg sync.WaitGroup
-
-	for i := 0; i < goroutines; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			_, _ = s.store.Execute(ctx, scope,
-				func(r *models.Record) error {
-					// Always fail validation
-					return dErrors.New(dErrors.CodeForbidden, "always fail")
-				},
-				func(r *models.Record) bool {
-					// Mutate that should never be persisted
-					r.GrantedAt = time.Now().Add(100 * time.Hour)
-					return true
-				},
-			)
-		}()
-	}
-
-	wg.Wait()
+	testutil.RunConcurrent(30, func(_ int) error {
+		_, err := s.store.Execute(ctx, scope,
+			func(r *models.Record) error {
+				return dErrors.New(dErrors.CodeForbidden, "always fail")
+			},
+			func(r *models.Record) bool {
+				r.GrantedAt = time.Now().Add(100 * time.Hour)
+				return true
+			},
+		)
+		return err
+	})
 
 	// Verify original state is preserved
 	found, err := s.store.FindByScope(ctx, scope)
@@ -224,37 +213,17 @@ func (s *PostgresStoreSuite) TestDeadlockDetection() {
 		s.Require().NoError(err)
 	}
 
-	const goroutines = 50
-	var wg sync.WaitGroup
-	var errors atomic.Int32
+	result := testutil.RunConcurrentCtx(ctx, 50, func(ctx context.Context, idx int) error {
+		userID := userIDs[idx%users]
+		scope := models.ConsentScope{UserID: userID, Purpose: models.PurposeLogin}
+		_, err := s.store.Execute(ctx, scope,
+			func(r *models.Record) error { return nil },
+			func(r *models.Record) bool { r.GrantedAt = time.Now(); return true },
+		)
+		return err
+	})
 
-	for i := 0; i < goroutines; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-
-			// Each goroutine operates on a different user (no lock contention)
-			userID := userIDs[idx%users]
-			scope := models.ConsentScope{UserID: userID, Purpose: models.PurposeLogin}
-
-			_, err := s.store.Execute(ctx, scope,
-				func(r *models.Record) error {
-					return nil
-				},
-				func(r *models.Record) bool {
-					r.GrantedAt = time.Now()
-					return true
-				},
-			)
-			if err != nil {
-				errors.Add(1)
-			}
-		}(i)
-	}
-
-	wg.Wait()
-
-	s.Equal(int32(0), errors.Load(), "no errors expected when operating on different users")
+	s.Equal(int32(0), result.Errors, "no errors expected when operating on different users")
 }
 
 // TestConcurrentSaveConflict verifies Save conflict handling under concurrency.
@@ -291,24 +260,16 @@ func (s *PostgresStoreSuite) TestRevokeAllByUserConcurrency() {
 		s.Require().NoError(err)
 	}
 
-	const goroutines = 10
-	var wg sync.WaitGroup
 	var totalRevoked atomic.Int32
+	result := testutil.RunConcurrent(10, func(_ int) error {
+		count, err := s.store.RevokeAllByUser(ctx, userID, time.Now())
+		if err == nil {
+			totalRevoked.Add(int32(count))
+		}
+		return err
+	})
 
-	for i := 0; i < goroutines; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			count, err := s.store.RevokeAllByUser(ctx, userID, time.Now())
-			if err == nil {
-				totalRevoked.Add(int32(count))
-			}
-		}()
-	}
-
-	wg.Wait()
-
+	s.Equal(int32(0), result.Errors, "no errors expected")
 	// Total revoked should equal the number of consents (each revoked exactly once)
 	s.Equal(int32(len(purposes)), totalRevoked.Load(),
 		"total revoked should equal number of consents")

@@ -29,7 +29,7 @@ func RunConcurrent(goroutines int, fn func(idx int) error) *ConcurrentResult {
 	var wg sync.WaitGroup
 	var successes, errs, conflicts, notFounds atomic.Int32
 
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
@@ -65,15 +65,15 @@ func RunConcurrentCtx(ctx context.Context, goroutines int, fn func(ctx context.C
 	})
 }
 
-// RunConcurrentCollect executes fn in parallel and collects all errors.
+// RunConcurrentCollectErrors executes fn in parallel and collects all errors.
 // Use this when you need to inspect individual error types beyond the standard categories.
-func RunConcurrentCollect(goroutines int, fn func(idx int) error) (successes int32, errs []error) {
+func RunConcurrentCollectErrors(goroutines int, fn func(idx int) error) (successes int32, errs []error) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var successCount atomic.Int32
 	collectedErrs := make([]error, 0)
 
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
