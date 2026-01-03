@@ -46,7 +46,15 @@ func (s *Store) Append(ctx context.Context, entry *outbox.Entry) error {
 // FetchUnprocessed returns up to limit entries that haven't been processed.
 // Uses FOR UPDATE SKIP LOCKED to support concurrent workers without blocking.
 func (s *Store) FetchUnprocessed(ctx context.Context, limit int) ([]*outbox.Entry, error) {
-	rows, err := s.queries.ListUnprocessedOutboxEntries(ctx, int32(limit))
+	if limit <= 0 {
+		return nil, nil
+	}
+	// Cap to reasonable batch size (gosec G115: prevent int->int32 overflow)
+	const maxBatch = 1000
+	if limit > maxBatch {
+		limit = maxBatch
+	}
+	rows, err := s.queries.ListUnprocessedOutboxEntries(ctx, int32(limit)) // #nosec G115
 	if err != nil {
 		return nil, fmt.Errorf("fetch unprocessed entries: %w", err)
 	}

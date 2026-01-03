@@ -107,8 +107,8 @@ func wrapClientErr(err error, action string) error {
 }
 
 // wrapTenantErr translates store errors into tenant-specific domain errors.
-func wrapTenantErr(err error, action string) error {
-	return wrapStoreErr(err, action, func(m storeErrorMapping) string { return m.tenantMsg })
+func wrapTenantErr(err error) error {
+	return wrapStoreErr(err, "failed to load tenant", func(m storeErrorMapping) string { return m.tenantMsg })
 }
 
 // auditEmitter handles audit logging and event emission.

@@ -76,7 +76,7 @@ func (s *TenantService) GetTenant(ctx context.Context, tenantID id.TenantID) (*m
 	}
 	tenant, err := s.tenants.FindByID(ctx, tenantID)
 	if err != nil {
-		return nil, wrapTenantErr(err, "failed to load tenant")
+		return nil, wrapTenantErr(err)
 	}
 	return tenant, nil
 }
@@ -89,7 +89,7 @@ func (s *TenantService) GetTenantByName(ctx context.Context, name string) (*mode
 	}
 	tenant, err := s.tenants.FindByName(ctx, name)
 	if err != nil {
-		return nil, wrapTenantErr(err, "failed to load tenant")
+		return nil, wrapTenantErr(err)
 	}
 	return tenant, nil
 }
@@ -104,7 +104,7 @@ func (s *TenantService) DeactivateTenant(ctx context.Context, tenantID id.Tenant
 	err := s.tx.RunInTx(ctx, func(txCtx context.Context) error {
 		t, err := s.tenants.FindByID(txCtx, tenantID)
 		if err != nil {
-			return wrapTenantErr(err, "failed to load tenant")
+			return wrapTenantErr(err)
 		}
 
 		if err := t.Deactivate(requestcontext.Now(txCtx)); err != nil {
@@ -142,7 +142,7 @@ func (s *TenantService) ReactivateTenant(ctx context.Context, tenantID id.Tenant
 	err := s.tx.RunInTx(ctx, func(txCtx context.Context) error {
 		t, err := s.tenants.FindByID(txCtx, tenantID)
 		if err != nil {
-			return wrapTenantErr(err, "failed to load tenant")
+			return wrapTenantErr(err)
 		}
 
 		if err := t.Reactivate(requestcontext.Now(txCtx)); err != nil {

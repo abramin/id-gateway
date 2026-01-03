@@ -59,7 +59,7 @@ func (s *ClientService) CreateClient(ctx context.Context, cmd *CreateClientComma
 	err := s.tx.RunInTx(ctx, func(txCtx context.Context) error {
 		tenant, err := s.tenants.FindByID(txCtx, cmd.TenantID)
 		if err != nil {
-			return wrapTenantErr(err, "failed to load tenant")
+			return wrapTenantErr(err)
 		}
 		if !tenant.IsActive() {
 			return dErrors.New(dErrors.CodeValidation, "cannot create client under inactive tenant")
