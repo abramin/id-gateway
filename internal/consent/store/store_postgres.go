@@ -241,13 +241,15 @@ type consentRow interface {
 
 func scanConsent(row consentRow) (*models.Record, error) {
 	var record models.Record
+	var consentID uuid.UUID
 	var userID uuid.UUID
 	var purpose string
 	var expiresAt sql.NullTime
 	var revokedAt sql.NullTime
-	if err := row.Scan(&record.ID, &userID, &purpose, &record.GrantedAt, &expiresAt, &revokedAt); err != nil {
+	if err := row.Scan(&consentID, &userID, &purpose, &record.GrantedAt, &expiresAt, &revokedAt); err != nil {
 		return nil, err
 	}
+	record.ID = id.ConsentID(consentID)
 	record.UserID = id.UserID(userID)
 	record.Purpose = models.Purpose(purpose)
 	if expiresAt.Valid {
