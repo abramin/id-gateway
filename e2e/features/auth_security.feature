@@ -10,7 +10,7 @@ Feature: OAuth2 Security - Client and Tenant Validation
   Scenario: Unknown client_id rejected (RFC 6749 §4.1.2.1)
     When I request authorization with unknown client_id "unknown-client-xyz"
     Then the response status should be 400
-    And the response field "error" should equal "bad_request"
+    And the response field "error" should equal "invalid_client"
 
     @security @client-validation
   Scenario: Empty client_id rejected
