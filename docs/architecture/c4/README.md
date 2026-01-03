@@ -97,16 +97,25 @@ Each module has a dedicated component view showing internal structure:
 | `Components_PublicAPI` | Middleware stack (Request, Device, Metadata, RateLimit, Auth) |
 | `Components_AdminAPI` | Middleware stack (Request, AdminToken, RateLimit) |
 
-### Level 4: Code Views (Ports & Adapters)
+### Level 4: Code Views (Ports & Adapters with Key Methods)
 
-These views highlight the hexagonal architecture boundaries:
+These views highlight the hexagonal architecture boundaries, showing port interfaces with their key method signatures, adapter implementations, and domain aggregates:
 
 | View | Focus |
 |------|-------|
-| `Code_PortsAdapters_Registry` | ConsentPort adapter, HTTP adapters for external registries |
-| `Code_PortsAdapters_VC` | ConsentPort and RegistryPort adapters |
-| `Code_PortsAdapters_Auth` | RateLimitPort adapter |
-| `Code_PortsAdapters_RateLimit` | Store interfaces (BucketStore, AllowlistStore, etc.) |
+| `Code_Auth_Ports` | RateLimitPort, ClientResolver, AuditPublisher - auth service dependencies |
+| `Code_Registry_Ports` | ConsentPort adapter, HTTP adapters for external citizen/sanctions registries |
+| `Code_VC_Ports` | Dual-port architecture: ConsentPort and RegistryPort for credential issuance |
+| `Code_Decision_Ports` | Triple-port rules engine: Consent, Registry, and VC dependencies |
+| `Code_RateLimit_Ports` | Five store interfaces: BucketStore, AllowlistStore, AuthLockoutStore, GlobalThrottleStore, ClientLookup |
+| `Code_Tenant_Ports` | TenantStore, ClientStore, UserCounter - multi-tenancy persistence |
+| `Code_Platform_Audit` | AuditPublisher interface with tri-publisher implementation |
+
+**What's shown in Level 4 views:**
+- Port interfaces with key method signatures (e.g., `RequireConsent(userID, purpose)`)
+- Adapters that implement each port
+- Domain aggregates with state-transition methods
+- Cross-module call relationships
 
 ## Key Architectural Patterns Visualized
 
@@ -142,22 +151,29 @@ All domain modules depend on `platformModule` for:
 - Audit event publishing
 - Prometheus metrics
 
-## Color Legend
+## Color Legend (Modern Design System)
 
-| Color | Element Type |
-|-------|--------------|
-| Dark Blue | Persons |
-| Blue | Software Systems |
-| Gray | External Systems |
-| Green | API Gateways (HTTP servers) |
-| Hexagon Blue | Domain Modules |
-| Purple | Infrastructure |
-| Salmon | Handlers |
-| Light Blue | Services |
-| Light Purple (Cylinder) | Stores |
-| Light Green | Adapters |
-| Yellow | Middleware |
-| Orange | Workers |
+| Color | Hex | Element Type |
+|-------|-----|--------------|
+| Indigo | `#4F46E5` | Persons |
+| Purple | `#6366F1` | Software Systems |
+| Slate | `#64748B` | External Systems |
+| Emerald | `#059669` | API Gateways (HTTP servers) |
+| Violet | `#7C3AED` | Domain Modules (Hexagon) |
+| Slate | `#475569` | Infrastructure |
+| Rose | `#FB7185` | Handlers |
+| Sky | `#38BDF8` | Services |
+| Lavender | `#C4B5FD` | Stores (Cylinder) |
+| Mint | `#34D399` | Adapters |
+| Amber | `#FCD34D` | Middleware |
+| Orange | `#FB923C` | Workers |
+| Cream | `#FEF3C7` | Ports (Interfaces, dashed border) |
+| Light Blue | `#DBEAFE` | Domain Aggregates |
+
+**Relationship Colors:**
+- `#10B981` (green) - "implements" relationships
+- `#8B5CF6` (purple, dashed) - "depends on" relationships
+- `#3B82F6` (blue) - "calls" relationships
 
 ## File Structure
 
