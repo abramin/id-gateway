@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lib/pq"
+	authsqlc "credo/internal/auth/store/sqlc"
 )
 
 // PostgresTRL persists revoked token JTIs in PostgreSQL.
 type PostgresTRL struct {
-	db    *sql.DB
-	clock Clock // injected clock for testability (defaults to time.Now)
+	db      *sql.DB
+	queries *authsqlc.Queries
+	clock   Clock // injected clock for testability (defaults to time.Now)
 }
 
 // PostgresTRLOption configures a PostgresTRL instance.
@@ -30,8 +31,9 @@ func WithPostgresClock(clock Clock) PostgresTRLOption {
 // NewPostgresTRL constructs a PostgreSQL-backed token revocation list.
 func NewPostgresTRL(db *sql.DB, opts ...PostgresTRLOption) *PostgresTRL {
 	trl := &PostgresTRL{
-		db:    db,
-		clock: time.Now, // default to real time
+		db:      db,
+		queries: authsqlc.New(db),
+		clock:   time.Now, // default to real time
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -47,13 +49,10 @@ func (t *PostgresTRL) RevokeToken(ctx context.Context, jti string, ttl time.Dura
 		return err
 	}
 	expiresAt := t.clock().Add(ttl)
-	query := `
-		INSERT INTO token_revocations (jti, expires_at)
-		VALUES ($1, $2)
-		ON CONFLICT (jti) DO UPDATE SET
-			expires_at = EXCLUDED.expires_at
-	`
-	_, err := t.db.ExecContext(ctx, query, jti, expiresAt)
+	err := t.queries.UpsertTokenRevocation(ctx, authsqlc.UpsertTokenRevocationParams{
+		Jti:       jti,
+		ExpiresAt: expiresAt,
+	})
 	if err != nil {
 		return fmt.Errorf("revoke token: %w", err)
 	}
@@ -62,8 +61,7 @@ func (t *PostgresTRL) RevokeToken(ctx context.Context, jti string, ttl time.Dura
 
 // IsRevoked checks if a token is in the revocation list.
 func (t *PostgresTRL) IsRevoked(ctx context.Context, jti string) (bool, error) {
-	var expiresAt time.Time
-	err := t.db.QueryRowContext(ctx, `SELECT expires_at FROM token_revocations WHERE jti = $1`, jti).Scan(&expiresAt)
+	expiresAt, err := t.queries.GetTokenRevocationExpiresAt(ctx, jti)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return false, nil
@@ -100,13 +98,10 @@ func (t *PostgresTRL) RevokeSessionTokens(ctx context.Context, sessionID string,
 	expiresAt := t.clock().Add(ttl)
 
 	// Batch insert using unnest for O(1) round trips instead of O(n)
-	query := `
-		INSERT INTO token_revocations (jti, expires_at)
-		SELECT unnest($1::text[]), $2
-		ON CONFLICT (jti) DO UPDATE SET
-			expires_at = EXCLUDED.expires_at
-	`
-	_, err := t.db.ExecContext(ctx, query, pq.Array(validJTIs), expiresAt)
+	err := t.queries.UpsertTokenRevocations(ctx, authsqlc.UpsertTokenRevocationsParams{
+		Column1:   validJTIs,
+		ExpiresAt: expiresAt,
+	})
 	if err != nil {
 		return fmt.Errorf("revoke session tokens batch: %w", err)
 	}

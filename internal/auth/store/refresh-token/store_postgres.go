@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"credo/internal/auth/models"
+	authsqlc "credo/internal/auth/store/sqlc"
 	id "credo/pkg/domain"
 	"credo/pkg/platform/sentinel"
 
@@ -16,31 +17,31 @@ import (
 
 // PostgresStore persists refresh tokens in PostgreSQL.
 type PostgresStore struct {
-	db *sql.DB
+	db      *sql.DB
+	queries *authsqlc.Queries
 }
 
 // NewPostgres constructs a PostgreSQL-backed refresh token store.
 func NewPostgres(db *sql.DB) *PostgresStore {
-	return &PostgresStore{db: db}
+	return &PostgresStore{
+		db:      db,
+		queries: authsqlc.New(db),
+	}
 }
 
 func (s *PostgresStore) Create(ctx context.Context, token *models.RefreshTokenRecord) error {
 	if token == nil {
 		return fmt.Errorf("refresh token is required")
 	}
-	query := `
-		INSERT INTO refresh_tokens (id, token, session_id, expires_at, used, last_refreshed_at, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-	`
-	_, err := s.db.ExecContext(ctx, query,
-		token.ID,
-		token.Token,
-		uuid.UUID(token.SessionID),
-		token.ExpiresAt,
-		token.Used,
-		nullTime(token.LastRefreshedAt),
-		token.CreatedAt,
-	)
+	err := s.queries.CreateRefreshToken(ctx, authsqlc.CreateRefreshTokenParams{
+		ID:              token.ID,
+		Token:           token.Token,
+		SessionID:       uuid.UUID(token.SessionID),
+		ExpiresAt:       token.ExpiresAt,
+		Used:            token.Used,
+		LastRefreshedAt: nullTime(token.LastRefreshedAt),
+		CreatedAt:       token.CreatedAt,
+	})
 	if err != nil {
 		return fmt.Errorf("create refresh token: %w", err)
 	}
@@ -48,41 +49,32 @@ func (s *PostgresStore) Create(ctx context.Context, token *models.RefreshTokenRe
 }
 
 func (s *PostgresStore) Find(ctx context.Context, token string) (*models.RefreshTokenRecord, error) {
-	query := `
-		SELECT id, token, session_id, expires_at, used, last_refreshed_at, created_at
-		FROM refresh_tokens
-		WHERE token = $1
-	`
-	record, err := scanRefreshToken(s.db.QueryRowContext(ctx, query, token))
+	record, err := s.queries.GetRefreshTokenByToken(ctx, token)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("refresh token not found: %w", sentinel.ErrNotFound)
 		}
 		return nil, fmt.Errorf("find refresh token: %w", err)
 	}
-	return record, nil
+	return toRefreshToken(record), nil
 }
 
 func (s *PostgresStore) FindBySessionID(ctx context.Context, sessionID id.SessionID, now time.Time) (*models.RefreshTokenRecord, error) {
-	query := `
-		SELECT id, token, session_id, expires_at, used, last_refreshed_at, created_at
-		FROM refresh_tokens
-		WHERE session_id = $1 AND used = FALSE AND expires_at > $2
-		ORDER BY created_at DESC
-		LIMIT 1
-	`
-	record, err := scanRefreshToken(s.db.QueryRowContext(ctx, query, uuid.UUID(sessionID), now))
+	record, err := s.queries.GetRefreshTokenBySession(ctx, authsqlc.GetRefreshTokenBySessionParams{
+		SessionID: uuid.UUID(sessionID),
+		ExpiresAt: now,
+	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("refresh token not found: %w", sentinel.ErrNotFound)
 		}
 		return nil, fmt.Errorf("find refresh token by session: %w", err)
 	}
-	return record, nil
+	return toRefreshToken(record), nil
 }
 
 func (s *PostgresStore) DeleteBySessionID(ctx context.Context, sessionID id.SessionID) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM refresh_tokens WHERE session_id = $1`, uuid.UUID(sessionID))
+	res, err := s.queries.DeleteRefreshTokensBySession(ctx, uuid.UUID(sessionID))
 	if err != nil {
 		return fmt.Errorf("delete refresh tokens by session: %w", err)
 	}
@@ -98,7 +90,7 @@ func (s *PostgresStore) DeleteBySessionID(ctx context.Context, sessionID id.Sess
 
 // DeleteExpiredTokens removes all refresh tokens that have expired as of the given time.
 func (s *PostgresStore) DeleteExpiredTokens(ctx context.Context, now time.Time) (int, error) {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM refresh_tokens WHERE expires_at < $1`, now)
+	res, err := s.queries.DeleteExpiredRefreshTokens(ctx, now)
 	if err != nil {
 		return 0, fmt.Errorf("delete expired refresh tokens: %w", err)
 	}
@@ -110,7 +102,7 @@ func (s *PostgresStore) DeleteExpiredTokens(ctx context.Context, now time.Time) 
 }
 
 func (s *PostgresStore) DeleteUsedTokens(ctx context.Context) (int, error) {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM refresh_tokens WHERE used = TRUE`)
+	res, err := s.queries.DeleteUsedRefreshTokens(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("delete used refresh tokens: %w", err)
 	}
@@ -131,13 +123,8 @@ func (s *PostgresStore) Execute(ctx context.Context, token string, validate func
 		_ = tx.Rollback()
 	}()
 
-	query := `
-		SELECT id, token, session_id, expires_at, used, last_refreshed_at, created_at
-		FROM refresh_tokens
-		WHERE token = $1
-		FOR UPDATE
-	`
-	record, err := scanRefreshToken(tx.QueryRowContext(ctx, query, token))
+	qtx := s.queries.WithTx(tx)
+	row, err := qtx.GetRefreshTokenForUpdate(ctx, token)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, sentinel.ErrNotFound
@@ -145,17 +132,17 @@ func (s *PostgresStore) Execute(ctx context.Context, token string, validate func
 		return nil, fmt.Errorf("find refresh token for execute: %w", err)
 	}
 
+	record := toRefreshToken(row)
 	if err := validate(record); err != nil {
 		return record, err
 	}
 
 	mutate(record)
-	_, err = tx.ExecContext(ctx, `
-		UPDATE refresh_tokens
-		SET used = $2, last_refreshed_at = $3
-		WHERE token = $1
-	`, record.Token, record.Used, nullTime(record.LastRefreshedAt))
-	if err != nil {
+	if err := qtx.UpdateRefreshTokenUsage(ctx, authsqlc.UpdateRefreshTokenUsageParams{
+		Token:           record.Token,
+		Used:            record.Used,
+		LastRefreshedAt: nullTime(record.LastRefreshedAt),
+	}); err != nil {
 		return nil, fmt.Errorf("update refresh token: %w", err)
 	}
 
@@ -165,22 +152,19 @@ func (s *PostgresStore) Execute(ctx context.Context, token string, validate func
 	return record, nil
 }
 
-type refreshTokenRow interface {
-	Scan(dest ...any) error
-}
-
-func scanRefreshToken(row refreshTokenRow) (*models.RefreshTokenRecord, error) {
-	var record models.RefreshTokenRecord
-	var sessionID uuid.UUID
-	var lastRefreshed sql.NullTime
-	if err := row.Scan(&record.ID, &record.Token, &sessionID, &record.ExpiresAt, &record.Used, &lastRefreshed, &record.CreatedAt); err != nil {
-		return nil, err
+func toRefreshToken(record authsqlc.RefreshToken) *models.RefreshTokenRecord {
+	token := &models.RefreshTokenRecord{
+		ID:        record.ID,
+		Token:     record.Token,
+		SessionID: id.SessionID(record.SessionID),
+		ExpiresAt: record.ExpiresAt,
+		Used:      record.Used,
+		CreatedAt: record.CreatedAt,
 	}
-	record.SessionID = id.SessionID(sessionID)
-	if lastRefreshed.Valid {
-		record.LastRefreshedAt = &lastRefreshed.Time
+	if record.LastRefreshedAt.Valid {
+		token.LastRefreshedAt = &record.LastRefreshedAt.Time
 	}
-	return &record, nil
+	return token
 }
 
 func nullTime(t *time.Time) sql.NullTime {

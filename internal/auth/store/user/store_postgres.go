@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"credo/internal/auth/models"
+	authsqlc "credo/internal/auth/store/sqlc"
 	id "credo/pkg/domain"
 	"credo/pkg/platform/sentinel"
 
@@ -16,12 +17,16 @@ import (
 
 // PostgresStore persists users in PostgreSQL.
 type PostgresStore struct {
-	db *sql.DB
+	db      *sql.DB
+	queries *authsqlc.Queries
 }
 
 // NewPostgres constructs a PostgreSQL-backed user store.
 func NewPostgres(db *sql.DB) *PostgresStore {
-	return &PostgresStore{db: db}
+	return &PostgresStore{
+		db:      db,
+		queries: authsqlc.New(db),
+	}
 }
 
 func (s *PostgresStore) Save(ctx context.Context, user *models.User) error {
@@ -29,28 +34,15 @@ func (s *PostgresStore) Save(ctx context.Context, user *models.User) error {
 		return fmt.Errorf("user is required")
 	}
 
-	query := `
-		INSERT INTO users (id, tenant_id, email, first_name, last_name, verified, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		ON CONFLICT (id) DO UPDATE SET
-			tenant_id = EXCLUDED.tenant_id,
-			email = EXCLUDED.email,
-			first_name = EXCLUDED.first_name,
-			last_name = EXCLUDED.last_name,
-			verified = EXCLUDED.verified,
-			status = EXCLUDED.status,
-			updated_at = NOW()
-	`
-
-	_, err := s.db.ExecContext(ctx, query,
-		uuid.UUID(user.ID),
-		uuid.UUID(user.TenantID),
-		user.Email,
-		user.FirstName,
-		user.LastName,
-		user.Verified,
-		string(user.Status),
-	)
+	err := s.queries.UpsertUser(ctx, authsqlc.UpsertUserParams{
+		ID:        uuid.UUID(user.ID),
+		TenantID:  uuid.UUID(user.TenantID),
+		Email:     user.Email,
+		FirstName: user.FirstName,
+		LastName:  user.LastName,
+		Verified:  user.Verified,
+		Status:    string(user.Status),
+	})
 	if err != nil {
 		if isUniqueViolation(err) {
 			return fmt.Errorf("user already exists: %w", sentinel.ErrAlreadyUsed)
@@ -61,37 +53,25 @@ func (s *PostgresStore) Save(ctx context.Context, user *models.User) error {
 }
 
 func (s *PostgresStore) FindByID(ctx context.Context, userID id.UserID) (*models.User, error) {
-	query := `
-		SELECT id, tenant_id, email, first_name, last_name, verified, status
-		FROM users
-		WHERE id = $1
-	`
-	user, err := scanUser(s.db.QueryRowContext(ctx, query, uuid.UUID(userID)))
+	row, err := s.queries.GetUserByID(ctx, uuid.UUID(userID))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("user not found: %w", sentinel.ErrNotFound)
 		}
 		return nil, fmt.Errorf("find user by id: %w", err)
 	}
-	return user, nil
+	return newUser(row.ID, row.TenantID, row.Email, row.FirstName, row.LastName, row.Verified, row.Status), nil
 }
 
 func (s *PostgresStore) FindByEmail(ctx context.Context, email string) (*models.User, error) {
-	query := `
-		SELECT id, tenant_id, email, first_name, last_name, verified, status
-		FROM users
-		WHERE email = $1
-		ORDER BY created_at ASC
-		LIMIT 1
-	`
-	user, err := scanUser(s.db.QueryRowContext(ctx, query, email))
+	row, err := s.queries.GetUserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("user not found: %w", sentinel.ErrNotFound)
 		}
 		return nil, fmt.Errorf("find user by email: %w", err)
 	}
-	return user, nil
+	return newUser(row.ID, row.TenantID, row.Email, row.FirstName, row.LastName, row.Verified, row.Status), nil
 }
 
 // FindOrCreateByTenantAndEmail atomically finds a user by tenant and email or creates it if not found.
@@ -108,30 +88,24 @@ func (s *PostgresStore) FindOrCreateByTenantAndEmail(ctx context.Context, tenant
 		_ = tx.Rollback()
 	}()
 
-	insert := `
-		INSERT INTO users (id, tenant_id, email, first_name, last_name, verified, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		ON CONFLICT (tenant_id, email) DO NOTHING
-	`
-	_, err = tx.ExecContext(ctx, insert,
-		uuid.UUID(user.ID),
-		uuid.UUID(tenantID),
-		email,
-		user.FirstName,
-		user.LastName,
-		user.Verified,
-		string(user.Status),
-	)
+	qtx := s.queries.WithTx(tx)
+	err = qtx.InsertUserIfNotExists(ctx, authsqlc.InsertUserIfNotExistsParams{
+		ID:        uuid.UUID(user.ID),
+		TenantID:  uuid.UUID(tenantID),
+		Email:     email,
+		FirstName: user.FirstName,
+		LastName:  user.LastName,
+		Verified:  user.Verified,
+		Status:    string(user.Status),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("insert user: %w", err)
 	}
 
-	query := `
-		SELECT id, tenant_id, email, first_name, last_name, verified, status
-		FROM users
-		WHERE tenant_id = $1 AND email = $2
-	`
-	found, err := scanUser(tx.QueryRowContext(ctx, query, uuid.UUID(tenantID), email))
+	row, err := qtx.GetUserByTenantEmail(ctx, authsqlc.GetUserByTenantEmailParams{
+		TenantID: uuid.UUID(tenantID),
+		Email:    email,
+	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("user not found: %w", sentinel.ErrNotFound)
@@ -142,11 +116,11 @@ func (s *PostgresStore) FindOrCreateByTenantAndEmail(ctx context.Context, tenant
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit user upsert: %w", err)
 	}
-	return found, nil
+	return newUser(row.ID, row.TenantID, row.Email, row.FirstName, row.LastName, row.Verified, row.Status), nil
 }
 
 func (s *PostgresStore) Delete(ctx context.Context, userID id.UserID) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, uuid.UUID(userID))
+	res, err := s.queries.DeleteUserByID(ctx, uuid.UUID(userID))
 	if err != nil {
 		return fmt.Errorf("delete user: %w", err)
 	}
@@ -161,57 +135,38 @@ func (s *PostgresStore) Delete(ctx context.Context, userID id.UserID) error {
 }
 
 func (s *PostgresStore) ListAll(ctx context.Context) (map[id.UserID]*models.User, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, tenant_id, email, first_name, last_name, verified, status
-		FROM users
-	`)
+	rows, err := s.queries.ListUsers(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list users: %w", err)
 	}
-	defer rows.Close()
 
-	users := make(map[id.UserID]*models.User)
-	for rows.Next() {
-		user, err := scanUser(rows)
-		if err != nil {
-			return nil, fmt.Errorf("scan user: %w", err)
-		}
+	users := make(map[id.UserID]*models.User, len(rows))
+	for _, row := range rows {
+		user := newUser(row.ID, row.TenantID, row.Email, row.FirstName, row.LastName, row.Verified, row.Status)
 		users[user.ID] = user
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate users: %w", err)
 	}
 	return users, nil
 }
 
 // CountByTenant returns the number of users for a tenant.
 func (s *PostgresStore) CountByTenant(ctx context.Context, tenantID id.TenantID) (int, error) {
-	var count int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE tenant_id = $1`, uuid.UUID(tenantID)).Scan(&count)
+	count, err := s.queries.CountUsersByTenant(ctx, uuid.UUID(tenantID))
 	if err != nil {
 		return 0, fmt.Errorf("count users by tenant: %w", err)
 	}
-	return count, nil
+	return int(count), nil
 }
 
-type userRow interface {
-	Scan(dest ...any) error
-}
-
-func scanUser(row userRow) (*models.User, error) {
-	var userID uuid.UUID
-	var tenantID uuid.UUID
-	var status string
-	user := &models.User{}
-
-	if err := row.Scan(&userID, &tenantID, &user.Email, &user.FirstName, &user.LastName, &user.Verified, &status); err != nil {
-		return nil, err
+func newUser(userID uuid.UUID, tenantID uuid.UUID, email, firstName, lastName string, verified bool, status string) *models.User {
+	return &models.User{
+		ID:        id.UserID(userID),
+		TenantID:  id.TenantID(tenantID),
+		Email:     email,
+		FirstName: firstName,
+		LastName:  lastName,
+		Verified:  verified,
+		Status:    models.UserStatus(status),
 	}
-
-	user.ID = id.UserID(userID)
-	user.TenantID = id.TenantID(tenantID)
-	user.Status = models.UserStatus(status)
-	return user, nil
 }
 
 func isUniqueViolation(err error) bool {

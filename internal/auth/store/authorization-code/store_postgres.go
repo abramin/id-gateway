@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"credo/internal/auth/models"
+	authsqlc "credo/internal/auth/store/sqlc"
 	id "credo/pkg/domain"
 	"credo/pkg/platform/sentinel"
 
@@ -16,31 +17,31 @@ import (
 
 // PostgresStore persists authorization codes in PostgreSQL.
 type PostgresStore struct {
-	db *sql.DB
+	db      *sql.DB
+	queries *authsqlc.Queries
 }
 
 // NewPostgres constructs a PostgreSQL-backed authorization code store.
 func NewPostgres(db *sql.DB) *PostgresStore {
-	return &PostgresStore{db: db}
+	return &PostgresStore{
+		db:      db,
+		queries: authsqlc.New(db),
+	}
 }
 
 func (s *PostgresStore) Create(ctx context.Context, authCode *models.AuthorizationCodeRecord) error {
 	if authCode == nil {
 		return fmt.Errorf("authorization code is required")
 	}
-	query := `
-		INSERT INTO authorization_codes (id, code, session_id, redirect_uri, expires_at, used, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-	`
-	_, err := s.db.ExecContext(ctx, query,
-		authCode.ID,
-		authCode.Code,
-		uuid.UUID(authCode.SessionID),
-		authCode.RedirectURI,
-		authCode.ExpiresAt,
-		authCode.Used,
-		authCode.CreatedAt,
-	)
+	err := s.queries.CreateAuthorizationCode(ctx, authsqlc.CreateAuthorizationCodeParams{
+		ID:          authCode.ID,
+		Code:        authCode.Code,
+		SessionID:   uuid.UUID(authCode.SessionID),
+		RedirectUri: authCode.RedirectURI,
+		ExpiresAt:   authCode.ExpiresAt,
+		Used:        authCode.Used,
+		CreatedAt:   authCode.CreatedAt,
+	})
 	if err != nil {
 		return fmt.Errorf("create authorization code: %w", err)
 	}
@@ -48,23 +49,18 @@ func (s *PostgresStore) Create(ctx context.Context, authCode *models.Authorizati
 }
 
 func (s *PostgresStore) FindByCode(ctx context.Context, code string) (*models.AuthorizationCodeRecord, error) {
-	query := `
-		SELECT id, code, session_id, redirect_uri, expires_at, used, created_at
-		FROM authorization_codes
-		WHERE code = $1
-	`
-	record, err := scanAuthorizationCode(s.db.QueryRowContext(ctx, query, code))
+	record, err := s.queries.GetAuthorizationCodeByCode(ctx, code)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("authorization code not found: %w", sentinel.ErrNotFound)
 		}
 		return nil, fmt.Errorf("find authorization code: %w", err)
 	}
-	return record, nil
+	return toAuthorizationCode(record), nil
 }
 
 func (s *PostgresStore) MarkUsed(ctx context.Context, code string) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE authorization_codes SET used = TRUE WHERE code = $1`, code)
+	res, err := s.queries.MarkAuthorizationCodeUsed(ctx, code)
 	if err != nil {
 		return fmt.Errorf("mark authorization code used: %w", err)
 	}
@@ -80,7 +76,7 @@ func (s *PostgresStore) MarkUsed(ctx context.Context, code string) error {
 
 // DeleteExpiredCodes removes all authorization codes that have expired as of the given time.
 func (s *PostgresStore) DeleteExpiredCodes(ctx context.Context, now time.Time) (int, error) {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM authorization_codes WHERE expires_at < $1`, now)
+	res, err := s.queries.DeleteExpiredAuthorizationCodes(ctx, now)
 	if err != nil {
 		return 0, fmt.Errorf("delete expired authorization codes: %w", err)
 	}
@@ -101,13 +97,8 @@ func (s *PostgresStore) Execute(ctx context.Context, code string, validate func(
 		_ = tx.Rollback()
 	}()
 
-	query := `
-		SELECT id, code, session_id, redirect_uri, expires_at, used, created_at
-		FROM authorization_codes
-		WHERE code = $1
-		FOR UPDATE
-	`
-	record, err := scanAuthorizationCode(tx.QueryRowContext(ctx, query, code))
+	qtx := s.queries.WithTx(tx)
+	row, err := qtx.GetAuthorizationCodeForUpdate(ctx, code)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, sentinel.ErrNotFound
@@ -115,12 +106,16 @@ func (s *PostgresStore) Execute(ctx context.Context, code string, validate func(
 		return nil, fmt.Errorf("find authorization code for execute: %w", err)
 	}
 
+	record := toAuthorizationCode(row)
 	if err := validate(record); err != nil {
 		return record, err
 	}
 
 	mutate(record)
-	if _, err := tx.ExecContext(ctx, `UPDATE authorization_codes SET used = $2 WHERE code = $1`, record.Code, record.Used); err != nil {
+	if err := qtx.UpdateAuthorizationCodeUsed(ctx, authsqlc.UpdateAuthorizationCodeUsedParams{
+		Code: record.Code,
+		Used: record.Used,
+	}); err != nil {
 		return nil, fmt.Errorf("update authorization code: %w", err)
 	}
 
@@ -130,16 +125,14 @@ func (s *PostgresStore) Execute(ctx context.Context, code string, validate func(
 	return record, nil
 }
 
-type authCodeRow interface {
-	Scan(dest ...any) error
-}
-
-func scanAuthorizationCode(row authCodeRow) (*models.AuthorizationCodeRecord, error) {
-	var record models.AuthorizationCodeRecord
-	var sessionID uuid.UUID
-	if err := row.Scan(&record.ID, &record.Code, &sessionID, &record.RedirectURI, &record.ExpiresAt, &record.Used, &record.CreatedAt); err != nil {
-		return nil, err
+func toAuthorizationCode(record authsqlc.AuthorizationCode) *models.AuthorizationCodeRecord {
+	return &models.AuthorizationCodeRecord{
+		ID:          record.ID,
+		Code:        record.Code,
+		SessionID:   id.SessionID(record.SessionID),
+		RedirectURI: record.RedirectUri,
+		ExpiresAt:   record.ExpiresAt,
+		Used:        record.Used,
+		CreatedAt:   record.CreatedAt,
 	}
-	record.SessionID = id.SessionID(sessionID)
-	return &record, nil
 }
