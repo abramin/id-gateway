@@ -423,7 +423,6 @@ func (s *Service) RevokeAll(ctx context.Context, userID id.UserID) (int, error) 
 	now := requestcontext.Now(ctx)
 	revokedCount := 0
 
-	// Wrap bulk revoke in transaction to ensure atomicity
 	txErr := s.withUserTx(ctx, userID, func(txCtx context.Context, txStore Store) error {
 		count, err := txStore.RevokeAllByUser(txCtx, userID, now)
 		if err != nil {

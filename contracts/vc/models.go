@@ -21,5 +21,5 @@ const (
 // exposing the full CredentialRecord.
 type CredentialPresence struct {
 	Exists bool
-	Claims map[string]interface{}
+	Claims map[string]any
 }

@@ -425,8 +425,9 @@ func (s *Service) buildTokenResult(artifacts *tokenArtifacts, scope []string) *m
 		AccessToken:  artifacts.accessToken,
 		IDToken:      artifacts.idToken,
 		RefreshToken: artifacts.refreshToken,
-		TokenType:    "Bearer",
-		ExpiresIn:    int(s.TokenTTL.Seconds()),
-		Scope:        strings.Join(scope, " "),
+		// Todo: token type should be set by jwt package not service, reeturned in artifacts
+		TokenType: models.TokenTypeBearer,
+		ExpiresIn: int(s.TokenTTL.Seconds()),
+		Scope:     strings.Join(scope, " "),
 	}
 }
