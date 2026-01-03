@@ -349,16 +349,16 @@ jobs:
           key: ${{ runner.os }}-openapi-npm-${{ hashFiles('docs/openapi/package.json') }}
 
       - name: Install Redocly CLI
-        run: npm install --prefix docs/openapi --no-package-lock @redocly/cli@1.12.0
+        run: npm --prefix docs/openapi install --no-package-lock
 
       - name: Lint OpenAPI specs
-        run: npx --prefix docs/openapi @redocly/cli@1.12.0 lint 'docs/openapi/*.yaml'
+        run: npm --prefix docs/openapi exec -- redocly lint "docs/openapi/*.yaml"
 
       - name: Build OpenAPI docs
         run: |
           for file in docs/openapi/*.yaml; do
             basename=$(basename "$file" .yaml)
-            npx --prefix docs/openapi @redocly/cli@1.12.0 build-docs "$file" -o "docs/openapi/${basename}.html"
+            npm --prefix docs/openapi exec -- redocly build-docs "$file" -o "docs/openapi/${basename}.html"
           done
 
       - name: Upload OpenAPI artifacts for PR review
