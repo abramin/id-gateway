@@ -60,7 +60,7 @@ func (s *PostgresStoreSuite) SetupTest() {
 	s.clientID = id.ClientID(uuid.New())
 	_, err = s.postgres.Exec(ctx, `
 		INSERT INTO clients (id, tenant_id, name, oauth_client_id, redirect_uris, allowed_grants, allowed_scopes, status, created_at, updated_at)
-		VALUES ($1, $2, 'Test Client', $3, '[]', '["authorization_code"]', '["openid"]', 'active', NOW(), NOW())
+		VALUES ($1, $2, 'Test Client', $3, '["https://example.com/callback"]', '["authorization_code"]', '["openid"]', 'active', NOW(), NOW())
 	`, uuid.UUID(s.clientID), uuid.UUID(s.tenantID), "client-"+uuid.NewString())
 	s.Require().NoError(err)
 
