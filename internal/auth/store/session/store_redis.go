@@ -335,13 +335,13 @@ func (s *RedisStore) DeleteSessionsByUser(ctx context.Context, userID id.UserID)
 func (s *RedisStore) RevokeSessionIfActive(ctx context.Context, sessionID id.SessionID, now time.Time) error {
 	_, err := s.Execute(ctx, sessionID,
 		func(session *models.Session) error {
-			if session.IsRevoked() {
+			if err := session.CanRevoke(); err != nil {
 				return ErrSessionRevoked
 			}
 			return nil
 		},
 		func(session *models.Session) {
-			session.Revoke(now)
+			session.ApplyRevocation(now)
 		},
 	)
 	return err

@@ -44,9 +44,6 @@ func (s *Service) executeTokenFlowTx(
 	deviceState := *params.Session
 	s.applyDeviceBinding(ctx, &deviceState)
 
-	// Determine if session should be activated (code exchange only)
-	activate := params.ActivateOnFirstUse && params.Session.IsPendingConsent()
-
 	clientID := params.TokenContext.Client.ID
 	artifacts := params.Artifacts
 
@@ -63,8 +60,9 @@ func (s *Service) executeTokenFlowTx(
 		func(sess *models.Session) {
 			if params.ActivateOnFirstUse {
 				sess.RecordActivity(params.Now)
-				if activate {
-					sess.Activate()
+				// Activate pending sessions (checked under lock to avoid TOCTOU)
+				if sess.IsPendingConsent() {
+					sess.ApplyActivation()
 				}
 			} else {
 				sess.RecordRefresh(params.Now)

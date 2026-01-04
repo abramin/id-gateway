@@ -139,9 +139,10 @@ func (s *PostgresStore) RevokeSessionIfActive(ctx context.Context, sessionID id.
 	if err != nil {
 		return fmt.Errorf("scan session: %w", err)
 	}
-	if !session.Revoke(now) {
+	if err := session.CanRevoke(); err != nil {
 		return ErrSessionRevoked
 	}
+	session.ApplyRevocation(now)
 
 	if err := s.updateSession(ctx, qtx, session); err != nil {
 		return err

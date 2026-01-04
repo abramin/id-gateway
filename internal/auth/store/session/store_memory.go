@@ -98,10 +98,11 @@ func (s *InMemorySessionStore) RevokeSessionIfActive(_ context.Context, sessionI
 		return sentinel.ErrNotFound
 	}
 
-	if !session.Revoke(now) {
+	if err := session.CanRevoke(); err != nil {
 		return ErrSessionRevoked
 	}
 
+	session.ApplyRevocation(now)
 	s.sessions[sessionID] = session
 	return nil
 }

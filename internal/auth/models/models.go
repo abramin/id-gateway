@@ -91,14 +91,29 @@ func (s *Session) IsRevoked() bool {
 	return s.Status == SessionStatusRevoked
 }
 
-// Activate transitions the session from pending_consent to active.
-// Returns true if the transition occurred, false if the session was already active or revoked.
-func (s *Session) Activate() bool {
-	if s.IsPendingConsent() {
-		s.Status = SessionStatusActive
-		return true
+// CanActivate checks if the session can transition to active status.
+// Returns nil if the transition is valid, or an error if not allowed.
+func (s *Session) CanActivate() error {
+	if !s.IsPendingConsent() {
+		return dErrors.New(dErrors.CodeInvariantViolation, "session is not pending consent")
 	}
-	return false
+	return nil
+}
+
+// ApplyActivation transitions the session to active status.
+// Must only be called after CanActivate returns nil.
+func (s *Session) ApplyActivation() {
+	s.Status = SessionStatusActive
+}
+
+// Activate validates and applies activation in one call.
+// Prefer CanActivate + ApplyActivation for Execute callback pattern.
+func (s *Session) Activate() error {
+	if err := s.CanActivate(); err != nil {
+		return err
+	}
+	s.ApplyActivation()
+	return nil
 }
 
 // CanAdvance returns true if the session is in a state that allows token operations.
@@ -111,18 +126,33 @@ func (s *Session) CanAdvance(allowPending bool) bool {
 	return allowPending && s.IsPendingConsent()
 }
 
-// Revoke transitions the session to revoked state.
-// Returns true if the transition occurred, false if already revoked.
-// The revokedAt time is only updated if it's after any existing RevokedAt value.
-func (s *Session) Revoke(at time.Time) bool {
+// CanRevoke checks if the session can transition to revoked status.
+// Returns nil if the transition is valid, or an error if not allowed.
+func (s *Session) CanRevoke() error {
 	if s.IsRevoked() {
-		return false
+		return dErrors.New(dErrors.CodeInvariantViolation, "session is already revoked")
 	}
+	return nil
+}
+
+// ApplyRevocation transitions the session to revoked status.
+// Must only be called after CanRevoke returns nil.
+// The revokedAt time is only updated if it's after any existing RevokedAt value.
+func (s *Session) ApplyRevocation(at time.Time) {
 	s.Status = SessionStatusRevoked
 	if s.RevokedAt == nil || at.After(*s.RevokedAt) {
 		s.RevokedAt = &at
 	}
-	return true
+}
+
+// Revoke validates and applies revocation in one call.
+// Prefer CanRevoke + ApplyRevocation for Execute callback pattern.
+func (s *Session) Revoke(at time.Time) error {
+	if err := s.CanRevoke(); err != nil {
+		return err
+	}
+	s.ApplyRevocation(at)
+	return nil
 }
 
 // RecordActivity updates the session's last seen time if the given time is after the current value.
