@@ -169,13 +169,13 @@ func (s *shard) get(key string) (*slidingWindow, bool) {
 	}
 	// Move to front (most recently used)
 	s.lruList.MoveToFront(elem)
-	return elem.Value.(*lruEntry).window, true
+	return elem.Value.(*lruEntry).window, true //nolint:errcheck // type-safe: lruList only stores *lruEntry
 }
 
 func (s *shard) set(key string, window *slidingWindow) {
 	if elem, ok := s.buckets[key]; ok {
 		s.lruList.MoveToFront(elem)
-		elem.Value.(*lruEntry).window = window
+		elem.Value.(*lruEntry).window = window //nolint:errcheck // type-safe: lruList only stores *lruEntry
 		return
 	}
 
@@ -183,7 +183,7 @@ func (s *shard) set(key string, window *slidingWindow) {
 	if s.lruList.Len() >= s.maxSize {
 		oldest := s.lruList.Back()
 		if oldest != nil {
-			entry := oldest.Value.(*lruEntry)
+			entry := oldest.Value.(*lruEntry) //nolint:errcheck // type-safe: lruList only stores *lruEntry
 			delete(s.buckets, entry.key)
 			s.lruList.Remove(oldest)
 		}
@@ -217,7 +217,7 @@ type Option func(*InMemoryBucketStore)
 func WithShardCount(count int) Option {
 	return func(s *InMemoryBucketStore) {
 		if count > 0 {
-			s.shardCount = uint32(count)
+			s.shardCount = uint32(count) //nolint:gosec // guarded by if count > 0; typical values 16-512
 		}
 	}
 }
@@ -312,7 +312,7 @@ func (s *InMemoryBucketStore) GetCurrentCount(ctx context.Context, key string) (
 		return 0, nil
 	}
 
-	return elem.Value.(*lruEntry).window.currentCount(requestcontext.Now(ctx)), nil
+	return elem.Value.(*lruEntry).window.currentCount(requestcontext.Now(ctx)), nil //nolint:errcheck // type-safe: lruList only stores *lruEntry
 }
 
 // Stats returns store statistics for monitoring.

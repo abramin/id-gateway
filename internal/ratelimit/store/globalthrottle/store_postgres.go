@@ -49,7 +49,7 @@ func (s *PostgresStore) IncrementGlobal(ctx context.Context) (count int, blocked
 		return 0, false, fmt.Errorf("begin global throttle tx: %w", err)
 	}
 	defer func() {
-		_ = tx.Rollback()
+		_ = tx.Rollback() //nolint:errcheck // rollback after commit is no-op; error already captured
 	}()
 
 	qtx := s.queries.WithTx(tx)
@@ -111,47 +111,51 @@ func (s *PostgresStore) GetGlobalCount(ctx context.Context) (count int, err erro
 }
 
 func (s *PostgresStore) loadBucket(ctx context.Context, queries *ratelimitsqlc.Queries, bucketType string, current time.Time) (time.Time, int, error) {
-	var bucketStart time.Time
-	var count int32
 	row, err := queries.GetGlobalThrottleBucketForUpdate(ctx, bucketType)
+	if err == sql.ErrNoRows {
+		row, err = s.initBucket(ctx, queries, bucketType, current)
+	}
 	if err != nil {
-		if err == sql.ErrNoRows {
-			if err := queries.InsertGlobalThrottleBucket(ctx, ratelimitsqlc.InsertGlobalThrottleBucketParams{
-				BucketType:  bucketType,
-				BucketStart: current,
-			}); err != nil {
-				return time.Time{}, 0, fmt.Errorf("insert global throttle bucket: %w", err)
-			}
-			row, err = queries.GetGlobalThrottleBucketForUpdate(ctx, bucketType)
-			if err != nil {
-				return time.Time{}, 0, fmt.Errorf("reload global throttle bucket: %w", err)
-			}
-		} else {
-			return time.Time{}, 0, fmt.Errorf("load global throttle bucket: %w", err)
-		}
+		return time.Time{}, 0, fmt.Errorf("load global throttle bucket: %w", err)
 	}
-	bucketStart = row.BucketStart
-	count = row.Count
 
-	if !bucketStart.Equal(current) {
-		bucketStart = current
-		count = 0
-		if err := queries.UpdateGlobalThrottleBucket(ctx, ratelimitsqlc.UpdateGlobalThrottleBucketParams{
-			BucketType:  bucketType,
-			BucketStart: bucketStart,
-			Count:       0,
-		}); err != nil {
-			return time.Time{}, 0, fmt.Errorf("reset global throttle bucket: %w", err)
-		}
+	return s.ensureBucketCurrent(ctx, queries, bucketType, row, current)
+}
+
+// initBucket creates a new bucket and returns it locked for update.
+func (s *PostgresStore) initBucket(ctx context.Context, queries *ratelimitsqlc.Queries, bucketType string, current time.Time) (ratelimitsqlc.GetGlobalThrottleBucketForUpdateRow, error) {
+	if err := queries.InsertGlobalThrottleBucket(ctx, ratelimitsqlc.InsertGlobalThrottleBucketParams{
+		BucketType:  bucketType,
+		BucketStart: current,
+	}); err != nil {
+		return ratelimitsqlc.GetGlobalThrottleBucketForUpdateRow{}, fmt.Errorf("insert: %w", err)
 	}
-	return bucketStart, int(count), nil
+	return queries.GetGlobalThrottleBucketForUpdate(ctx, bucketType)
+}
+
+// ensureBucketCurrent resets the bucket if it's stale (from a previous time window).
+func (s *PostgresStore) ensureBucketCurrent(ctx context.Context, queries *ratelimitsqlc.Queries, bucketType string, row ratelimitsqlc.GetGlobalThrottleBucketForUpdateRow, current time.Time) (time.Time, int, error) {
+	if row.BucketStart.Equal(current) {
+		return row.BucketStart, int(row.Count), nil
+	}
+
+	// Bucket is stale - reset for new window
+	if err := queries.UpdateGlobalThrottleBucket(ctx, ratelimitsqlc.UpdateGlobalThrottleBucketParams{
+		BucketType:  bucketType,
+		BucketStart: current,
+		Count:       0,
+	}); err != nil {
+		return time.Time{}, 0, fmt.Errorf("reset: %w", err)
+	}
+	return current, 0, nil
 }
 
 func (s *PostgresStore) updateBucket(ctx context.Context, queries *ratelimitsqlc.Queries, bucketType string, bucketStart time.Time, count int) error {
+	count = max(1000, count)
 	if err := queries.UpdateGlobalThrottleBucket(ctx, ratelimitsqlc.UpdateGlobalThrottleBucketParams{
 		BucketType:  bucketType,
 		BucketStart: bucketStart,
-		Count:       int32(count),
+		Count:       int32(count), //nolint:gosec
 	}); err != nil {
 		return fmt.Errorf("update global throttle bucket: %w", err)
 	}

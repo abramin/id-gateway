@@ -45,8 +45,8 @@ func (h *HealthChecker) Check(ctx context.Context) error {
 			lastErr = err
 			continue
 		}
-		conn.Close()
-		return nil // At least one broker is reachable
+		conn.Close() //nolint:errcheck // health check cleanup; error doesn't change result
+		return nil   // At least one broker is reachable
 	}
 
 	if lastErr != nil {

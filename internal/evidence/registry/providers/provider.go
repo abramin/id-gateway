@@ -50,8 +50,8 @@ type Capabilities struct {
 type Evidence struct {
 	ProviderID   string // Which provider produced this
 	ProviderType ProviderType
-	Confidence   float64                // 0.0-1.0 confidence score (1.0 = authoritative source)
-	Data         map[string]interface{} // Provider-specific structured data
+	Confidence   float64        // 0.0-1.0 confidence score (1.0 = authoritative source)
+	Data         map[string]any // Provider-specific structured data
 	CheckedAt    time.Time
 	Metadata     map[string]string // Provider metadata, trace IDs, correlation IDs, etc.
 }

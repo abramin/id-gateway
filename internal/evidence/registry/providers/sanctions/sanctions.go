@@ -51,13 +51,13 @@ func parseSanctionsResponse(statusCode int, body []byte) (*providers.Evidence, e
 
 	// Parse timestamp from response. If parsing fails, leave zero and let the
 	// adapter set it from context (maintains domain purity - no time.Now() here).
-	checkedAt, _ := time.Parse(time.RFC3339, resp.CheckedAt)
+	checkedAt, _ := time.Parse(time.RFC3339, resp.CheckedAt) //nolint:errcheck // intentional: zero fallback, adapter sets from context
 
 	// Convert to generic Evidence structure
 	evidence := &providers.Evidence{
 		ProviderType: providers.ProviderTypeSanctions,
 		Confidence:   1.0, // Full confidence from authoritative source
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"national_id": resp.NationalID,
 			"listed":      resp.Listed,
 			"source":      resp.Source,

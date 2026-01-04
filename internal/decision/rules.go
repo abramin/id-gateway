@@ -70,7 +70,7 @@ func BuildResult(purpose Purpose, outcome DecisionOutcome, evidence *GatheredEvi
 	case PurposeAgeVerification:
 		return buildAgeVerificationResult(result, outcome, evidence, derived)
 	case PurposeSanctionsScreening:
-		return buildSanctionsResult(result, outcome, evidence)
+		return buildSanctionsResult(result, outcome)
 	}
 
 	return result
@@ -118,7 +118,7 @@ func reasonForAgeVerification(outcome DecisionOutcome, evidence *GatheredEvidenc
 	return "", nil
 }
 
-func buildSanctionsResult(result *EvaluateResult, outcome DecisionOutcome, evidence *GatheredEvidence) *EvaluateResult {
+func buildSanctionsResult(result *EvaluateResult, outcome DecisionOutcome) *EvaluateResult {
 	switch outcome {
 	case DecisionFail:
 		result.Reason = ReasonSanctioned

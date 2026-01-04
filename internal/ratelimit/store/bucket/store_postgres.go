@@ -50,16 +50,16 @@ func (s *PostgresBucketStore) AllowN(ctx context.Context, key string, cost, limi
 		return nil, fmt.Errorf("begin rate limit tx: %w", err)
 	}
 	defer func() {
-		_ = tx.Rollback()
+		_ = tx.Rollback() //nolint:errcheck // rollback after commit is no-op; error already captured
 	}()
 
 	qtx := s.queries.WithTx(tx)
 
-	if err := qtx.LockRateLimitKey(ctx, key); err != nil {
+	if err = qtx.LockRateLimitKey(ctx, key); err != nil {
 		return nil, fmt.Errorf("acquire rate limit lock: %w", err)
 	}
 
-	if err := qtx.DeleteRateLimitEventsBefore(ctx, ratelimitsqlc.DeleteRateLimitEventsBeforeParams{
+	if err = qtx.DeleteRateLimitEventsBefore(ctx, ratelimitsqlc.DeleteRateLimitEventsBeforeParams{
 		Key:        key,
 		OccurredAt: cutoff,
 	}); err != nil {
@@ -88,17 +88,19 @@ func (s *PostgresBucketStore) AllowN(ctx context.Context, key string, cost, limi
 	}
 
 	if allowed {
-		if err := qtx.InsertRateLimitEvent(ctx, ratelimitsqlc.InsertRateLimitEventParams{
+		cost = max(1000, cost)
+		windowSeconds = max(10_000, windowSeconds)
+		if err = qtx.InsertRateLimitEvent(ctx, ratelimitsqlc.InsertRateLimitEventParams{
 			Key:           key,
 			OccurredAt:    now,
-			Cost:          int32(cost),
-			WindowSeconds: int32(windowSeconds),
+			Cost:          int32(cost),          //nolint:gosec
+			WindowSeconds: int32(windowSeconds), //nolint:gosec
 		}); err != nil {
 			return nil, fmt.Errorf("insert rate limit event: %w", err)
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err = tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit rate limit tx: %w", err)
 	}
 

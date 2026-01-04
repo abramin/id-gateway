@@ -105,7 +105,7 @@ func (h *Handler) HandleGetRecentAuditEvents(w http.ResponseWriter, r *http.Requ
 		"count", len(events),
 	)
 
-	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"events": events,
 		"total":  len(events),
 	})

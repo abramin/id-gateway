@@ -49,7 +49,7 @@ type authFailureAttrs struct {
 // parseAuthFailureAttrs extracts common attributes from the variadic list.
 func parseAuthFailureAttrs(ctx context.Context, attributes []any) authFailureAttrs {
 	userIDStr := attrs.ExtractString(attributes, "user_id")
-	userID, _ := id.ParseUserID(userIDStr)
+	userID, _ := id.ParseUserID(userIDStr) //nolint:errcheck // best-effort extraction for observability
 	return authFailureAttrs{
 		requestID: requestcontext.RequestID(ctx),
 		userIDStr: userIDStr,

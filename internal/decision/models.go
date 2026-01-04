@@ -21,6 +21,7 @@ const (
 // DerivedIdentity holds non-PII attributes used in decision making.
 type DerivedIdentity struct {
 	// Derived fields only; no raw PII.
+	// PseudonymousID must not be reversible to real-world identity.
 	PseudonymousID id.UserID
 	IsOver18       bool
 	CitizenValid   bool
@@ -31,7 +32,7 @@ type DerivedIdentity struct {
 type DecisionInput struct {
 	Identity   DerivedIdentity
 	Sanctions  registrycontracts.SanctionsRecord
-	Credential map[string]interface{}
+	Credential map[string]any
 }
 
 // IsSanctioned returns true if the subject is on a sanctions list.

@@ -34,7 +34,7 @@ func (a *SessionStoreAdapter) ListAll(ctx context.Context) (map[id.SessionID]*ty
 
 	result := make(map[id.SessionID]*types.AdminSession, len(sessions))
 	for k, s := range sessions {
-		sessionID, _ := id.ParseSessionID(k)
+		sessionID, _ := id.ParseSessionID(k) //nolint:errcheck // IDs from validated source
 		result[sessionID] = mapSession(s)
 	}
 	return result, nil
@@ -56,8 +56,8 @@ func (a *SessionStoreAdapter) ListByUser(ctx context.Context, userID id.UserID) 
 
 func mapSession(s *authcontracts.AdminSessionView) *types.AdminSession {
 	// IDs come from auth store which validates them, so parsing should never fail.
-	sessionID, _ := id.ParseSessionID(s.ID)
-	userID, _ := id.ParseUserID(s.UserID)
+	sessionID, _ := id.ParseSessionID(s.ID) //nolint:errcheck // IDs from validated source
+	userID, _ := id.ParseUserID(s.UserID)   //nolint:errcheck // IDs from validated source
 
 	return &types.AdminSession{
 		ID:        sessionID,

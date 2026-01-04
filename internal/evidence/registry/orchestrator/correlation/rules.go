@@ -93,7 +93,7 @@ func (r *CitizenNameRule) Merge(evidence []*providers.Evidence) (*providers.Evid
 		ProviderID:   "correlation:citizen_name",
 		ProviderType: providers.ProviderTypeCitizen,
 		Confidence:   best.Confidence,
-		Data:         make(map[string]interface{}),
+		Data:         make(map[string]any),
 		CheckedAt:    best.CheckedAt,
 		Metadata: map[string]string{
 			"merge_strategy": "highest_confidence",
@@ -200,7 +200,7 @@ func (r *WeightedAverageRule) Merge(evidence []*providers.Evidence) (*providers.
 		ProviderID:   "correlation:weighted_average",
 		ProviderType: evidence[0].ProviderType, // Use first type as representative
 		Confidence:   avgConfidence,
-		Data:         make(map[string]interface{}),
+		Data:         make(map[string]any),
 		CheckedAt:    evidence[0].CheckedAt,
 		Metadata: map[string]string{
 			"merge_strategy": "weighted_average",

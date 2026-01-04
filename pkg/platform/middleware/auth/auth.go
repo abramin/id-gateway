@@ -33,7 +33,7 @@ type JWTClaims struct {
 func writeJSONError(w http.ResponseWriter, status int, errCode, errDesc string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_, _ = w.Write(fmt.Appendf(nil, `{"error":"%s","error_description":"%s"}`, errCode, errDesc))
+	_, _ = w.Write(fmt.Appendf(nil, `{"error":"%s","error_description":"%s"}`, errCode, errDesc)) //nolint:errcheck // headers already sent
 }
 
 // revocationResult represents the outcome of a token revocation check.

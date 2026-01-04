@@ -41,7 +41,7 @@ func (t *consentPostgresTx) RunInTx(ctx context.Context, fn func(ctx context.Con
 		return err
 	}
 	defer func() {
-		_ = tx.Rollback()
+		_ = tx.Rollback() //nolint:errcheck // rollback after commit is no-op; error already captured
 	}()
 
 	if err := fn(ctx, consentstore.NewPostgresTx(tx)); err != nil {

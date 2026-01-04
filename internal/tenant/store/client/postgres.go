@@ -93,7 +93,7 @@ func (s *PostgresStore) Execute(ctx context.Context, clientID id.ClientID, valid
 		return nil, fmt.Errorf("begin client execute tx: %w", err)
 	}
 	defer func() {
-		_ = tx.Rollback()
+		_ = tx.Rollback() //nolint:errcheck // rollback after commit is no-op; error already captured
 	}()
 
 	qtx := s.queries.WithTx(tx)

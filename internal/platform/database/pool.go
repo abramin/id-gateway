@@ -52,7 +52,7 @@ func New(cfg Config) (*Pool, error) {
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		db.Close() //nolint:errcheck // best-effort cleanup on init failure
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
 

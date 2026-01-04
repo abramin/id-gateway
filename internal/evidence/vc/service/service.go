@@ -202,7 +202,7 @@ func (s *Service) FindCredentialPresence(ctx context.Context, userID id.UserID, 
 	}
 	return &vccontracts.CredentialPresence{
 		Exists: true,
-		Claims: map[string]interface{}(record.Claims),
+		Claims: map[string]any(record.Claims),
 	}, nil
 }
 
@@ -230,7 +230,7 @@ func (s *Service) emitAudit(ctx context.Context, credential models.CredentialRec
 	}
 
 	// Fire-and-forget via ops publisher - no error handling needed
-	s.auditor.Track(ctx, event)
+	s.auditor.Track(event)
 }
 
 func (s *Service) emitVerifyAudit(ctx context.Context, credential models.CredentialRecord) {
@@ -245,7 +245,7 @@ func (s *Service) emitVerifyAudit(ctx context.Context, credential models.Credent
 	}
 
 	// Fire-and-forget via ops publisher - no error handling needed
-	s.auditor.Track(ctx, event)
+	s.auditor.Track(event)
 }
 
 func isOver18(birthDate, now time.Time) bool {

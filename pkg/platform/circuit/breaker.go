@@ -26,8 +26,8 @@ type StateChange struct {
 // while open, the circuit closes again.
 type Breaker struct {
 	mu               sync.Mutex
-	name             string
 	state            State
+	name             string
 	failureCount     int
 	successCount     int
 	failureThreshold int

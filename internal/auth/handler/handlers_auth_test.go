@@ -457,7 +457,7 @@ func (s *AuthHandlerSuite) doTokenRequest(router *chi.Mux, body string) (int, *m
 	}
 }
 
-func (s *AuthHandlerSuite) doTokenRequestRaw(router *chi.Mux, body string) (int, *models.TokenResult, map[string]string, map[string]any) {
+func (s *AuthHandlerSuite) doTokenRequestRaw(router *chi.Mux, body string) (int, *models.TokenResult, map[string]string, map[string]any) { //nolint:unparam // returns nil TokenResult for error cases
 	s.T().Helper()
 	httpReq := httptest.NewRequest(http.MethodPost, "/auth/token", strings.NewReader(body))
 	httpReq.Header.Set("Content-Type", "application/json")

@@ -52,10 +52,10 @@ type decisionIntegrationSuite struct {
 	vcSvc       *vcservice.Service
 	decisionSvc *decision.Service
 
-	userID      id.UserID
-	nationalID  id.NationalID
-	now         time.Time
-	citizenProv *staticProvider
+	userID       id.UserID
+	nationalID   id.NationalID
+	now          time.Time
+	citizenProv  *staticProvider
 	sanctionProv *staticProvider
 }
 
@@ -311,7 +311,7 @@ func newStaticCitizenProvider(nationalID string, now time.Time) *staticProvider 
 		evidence: &providers.Evidence{
 			Confidence: 1.0,
 			CheckedAt:  now,
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"national_id":   nationalID,
 				"full_name":     "Decision Citizen",
 				"date_of_birth": "1990-01-15",
@@ -329,7 +329,7 @@ func newStaticSanctionsProvider(nationalID string, listed bool, now time.Time) *
 		evidence: &providers.Evidence{
 			Confidence: 1.0,
 			CheckedAt:  now,
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"national_id": nationalID,
 				"listed":      listed,
 				"source":      "test-source",

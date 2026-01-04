@@ -194,7 +194,7 @@ func (p *Publisher) flushLoop() {
 		case <-p.ctx.Done():
 			return
 		case <-ticker.C:
-			_ = p.flushBatch(p.ctx)
+			_ = p.flushBatch(p.ctx) //nolint:errcheck // periodic flush; errors logged internally
 		}
 	}
 }

@@ -118,7 +118,7 @@ func (h *consentTestHarness) Close() {
 
 func (h *consentTestHarness) grantConsent(t *testing.T, purposes []string) *handler.GrantResponse {
 	body, _ := json.Marshal(map[string]any{"purposes": purposes})
-	resp, err := http.Post(h.server.URL+"/auth/consent", "application/json", bytes.NewReader(body))
+	resp, err := http.Post(h.server.URL+"/auth/consent", "application/json", bytes.NewReader(body)) //nolint:noctx // test helper against httptest.Server
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -130,7 +130,7 @@ func (h *consentTestHarness) grantConsent(t *testing.T, purposes []string) *hand
 }
 
 func (h *consentTestHarness) listConsents(t *testing.T) *handler.ListResponse {
-	resp, err := http.Get(h.server.URL + "/auth/consent")
+	resp, err := http.Get(h.server.URL + "/auth/consent") //nolint:noctx // test helper against httptest.Server
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -141,21 +141,16 @@ func (h *consentTestHarness) listConsents(t *testing.T) *handler.ListResponse {
 	return &data
 }
 
-func (h *consentTestHarness) revokeConsent(t *testing.T, purposes []string) *handler.RevokeResponse {
+func (h *consentTestHarness) revokeConsent(t *testing.T, purposes []string) {
 	body, _ := json.Marshal(map[string]any{"purposes": purposes})
-	resp, err := http.Post(h.server.URL+"/auth/consent/revoke", "application/json", bytes.NewReader(body))
+	resp, err := http.Post(h.server.URL+"/auth/consent/revoke", "application/json", bytes.NewReader(body)) //nolint:noctx // test helper against httptest.Server
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-
-	respBody, _ := io.ReadAll(resp.Body)
-	var data handler.RevokeResponse
-	require.NoError(t, json.Unmarshal(respBody, &data))
-	return &data
 }
 
 func (h *consentTestHarness) revokeAllConsents(t *testing.T) *handler.RevokeResponse {
-	resp, err := http.Post(h.server.URL+"/auth/consent/revoke-all", "application/json", nil)
+	resp, err := http.Post(h.server.URL+"/auth/consent/revoke-all", "application/json", nil) //nolint:noctx // test helper against httptest.Server
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -167,7 +162,7 @@ func (h *consentTestHarness) revokeAllConsents(t *testing.T) *handler.RevokeResp
 }
 
 func (h *consentTestHarness) adminRevokeAllConsents(t *testing.T, userID id.UserID) *handler.RevokeResponse {
-	req, err := http.NewRequest(http.MethodPost, h.server.URL+"/admin/consent/users/"+userID.String()+"/revoke-all", nil)
+	req, err := http.NewRequest(http.MethodPost, h.server.URL+"/admin/consent/users/"+userID.String()+"/revoke-all", nil) //nolint:noctx // test helper against httptest.Server
 	require.NoError(t, err)
 	req.Header.Set("X-Admin-Token", h.adminToken)
 	resp, err := http.DefaultClient.Do(req)
@@ -414,7 +409,7 @@ func TestConcurrentGrantRevoke(t *testing.T) {
 	for range numGoroutines {
 		go func() {
 			body, _ := json.Marshal(map[string]any{"purposes": []string{"login"}})
-			resp, err := http.Post(h.server.URL+"/auth/consent", "application/json", bytes.NewReader(body))
+			resp, err := http.Post(h.server.URL+"/auth/consent", "application/json", bytes.NewReader(body)) //nolint:noctx // test against httptest.Server
 			if err != nil {
 				errChan <- err
 				return
@@ -428,7 +423,7 @@ func TestConcurrentGrantRevoke(t *testing.T) {
 	for range numGoroutines {
 		go func() {
 			body, _ := json.Marshal(map[string]any{"purposes": []string{"login"}})
-			resp, err := http.Post(h.server.URL+"/auth/consent/revoke", "application/json", bytes.NewReader(body))
+			resp, err := http.Post(h.server.URL+"/auth/consent/revoke", "application/json", bytes.NewReader(body)) //nolint:noctx // test against httptest.Server
 			if err != nil {
 				errChan <- err
 				return

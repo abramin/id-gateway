@@ -121,7 +121,7 @@ func (a *HTTPAdapter) Lookup(ctx context.Context, filters map[string]string) (ev
 		return nil, err
 	}
 
-	resp, body, err := a.executeRequest(ctx, req)
+	resp, body, err := a.executeRequest(ctx, req) //nolint:bodyclose // executeRequest closes body internally
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +184,7 @@ func (a *HTTPAdapter) executeRequest(ctx context.Context, req *http.Request) (*h
 			err,
 		)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // best-effort cleanup
 
 	// Limit response size to prevent memory exhaustion from malicious providers
 	limitedReader := io.LimitReader(resp.Body, MaxResponseSize+1)
@@ -300,7 +300,7 @@ func (a *HTTPAdapter) Health(ctx context.Context) error {
 			err,
 		)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // best-effort cleanup
 
 	if resp.StatusCode != http.StatusOK {
 		return providers.NewProviderError(

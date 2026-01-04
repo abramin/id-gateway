@@ -100,7 +100,7 @@ func (s *ServiceSuite) newTestUser(userID id.UserID, tenantID id.TenantID) *mode
 	}
 }
 
-func (s *ServiceSuite) newTestSession(sessionID id.SessionID, userID id.UserID, clientUUID id.ClientID, tenantID id.TenantID) *models.Session {
+func (s *ServiceSuite) newTestSession(sessionID id.SessionID, userID id.UserID, clientUUID id.ClientID, tenantID id.TenantID) *models.Session { //nolint:unused // test scaffolding for future use
 	return &models.Session{
 		ID:             sessionID,
 		UserID:         userID,

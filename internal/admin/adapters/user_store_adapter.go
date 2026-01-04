@@ -34,7 +34,7 @@ func (a *UserStoreAdapter) ListAll(ctx context.Context) (map[id.UserID]*types.Ad
 
 	result := make(map[id.UserID]*types.AdminUser, len(users))
 	for k, u := range users {
-		userID, _ := id.ParseUserID(k)
+		userID, _ := id.ParseUserID(k) //nolint:errcheck // IDs from validated source
 		result[userID] = mapUser(u)
 	}
 	return result, nil
@@ -51,8 +51,8 @@ func (a *UserStoreAdapter) FindByID(ctx context.Context, userID id.UserID) (*typ
 
 func mapUser(u *authcontracts.AdminUserView) *types.AdminUser {
 	// IDs come from auth store which validates them, so parsing should never fail.
-	userID, _ := id.ParseUserID(u.ID)
-	tenantID, _ := id.ParseTenantID(u.TenantID)
+	userID, _ := id.ParseUserID(u.ID)       //nolint:errcheck // IDs from validated source
+	tenantID, _ := id.ParseTenantID(u.TenantID) //nolint:errcheck // IDs from validated source
 
 	return &types.AdminUser{
 		ID:        userID,

@@ -133,7 +133,7 @@ func (s *RuleEvaluationSuite) TestAgeVerificationRuleChain() {
 		s.registry.sanctions = &registrycontracts.SanctionsRecord{Listed: false}
 		s.vc.credential = &vccontracts.CredentialPresence{
 			Exists: true,
-			Claims: map[string]interface{}{"is_over_18": true},
+			Claims: map[string]any{"is_over_18": true},
 		}
 
 		result, err := s.service.Evaluate(context.Background(), EvaluateRequest{
@@ -436,8 +436,8 @@ func (m *mockVCPort) FindCredentialPresence(ctx context.Context, userID id.UserI
 }
 
 type mockConsentPort struct {
-	err        error
-	calls      int
+	err   error
+	calls int
 }
 
 func (m *mockConsentPort) RequireConsent(ctx context.Context, userID id.UserID, purpose id.ConsentPurpose) error {

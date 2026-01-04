@@ -16,12 +16,6 @@ type StoreTx interface {
 
 const defaultTxTimeout = 5 * time.Second
 
-type noopStoreTx struct{}
-
-func (t noopStoreTx) RunInTx(ctx context.Context, fn func(ctx context.Context) error) error {
-	return fn(ctx)
-}
-
 // inMemoryStoreTx serializes mutations for in-memory stores.
 type inMemoryStoreTx struct {
 	mu      sync.Mutex

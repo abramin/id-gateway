@@ -82,7 +82,7 @@ func EvidenceToSanctionsCheck(ev *providers.Evidence) (*sanctions.SanctionsCheck
 		return nil, dErrors.New(dErrors.CodeBadRequest,
 			fmt.Sprintf("wrong provider type: expected %s, got %s", providers.ProviderTypeSanctions, ev.ProviderType))
 	}
-
+	var err error
 	// Required field: national_id
 	nationalIDStr, err := getRequiredString(ev.Data, "national_id")
 	if err != nil {
@@ -109,7 +109,7 @@ func EvidenceToSanctionsCheck(ev *providers.Evidence) (*sanctions.SanctionsCheck
 	source := sanctions.NewSource(getString(ev.Data, "source"))
 
 	if listed {
-		check, err := sanctions.NewListedSanctionsCheck(
+		check, err := sanctions.NewListedSanctionsCheck( //nolint:govet // intentional shadow - sequential error checks with early return
 			nationalID,
 			sanctions.ListTypeSanctions,
 			"",
@@ -188,7 +188,7 @@ func EvidenceToSanctionsRecord(ev *providers.Evidence) (*models.SanctionsRecord,
 // getRequiredString extracts a required string field from provider data.
 // Returns an error if the field is missing or has the wrong type.
 // This prevents silent defaults that could create invalid domain state.
-func getRequiredString(data map[string]interface{}, key string) (string, error) {
+func getRequiredString(data map[string]any, key string) (string, error) {
 	v, ok := data[key]
 	if !ok {
 		return "", dErrors.New(dErrors.CodeBadRequest, fmt.Sprintf("required field missing: %s", key))
@@ -203,7 +203,7 @@ func getRequiredString(data map[string]interface{}, key string) (string, error) 
 // getRequiredBool extracts a required boolean field from provider data.
 // Returns an error if the field is missing or has the wrong type.
 // This prevents silent defaults that could create false-negative results.
-func getRequiredBool(data map[string]interface{}, key string) (bool, error) {
+func getRequiredBool(data map[string]any, key string) (bool, error) {
 	v, ok := data[key]
 	if !ok {
 		return false, dErrors.New(dErrors.CodeBadRequest, fmt.Sprintf("required field missing: %s", key))
@@ -217,7 +217,7 @@ func getRequiredBool(data map[string]interface{}, key string) (bool, error) {
 
 // getString extracts an optional string field from provider data.
 // Returns empty string if missing or wrong type (for optional fields only).
-func getString(data map[string]interface{}, key string) string {
+func getString(data map[string]any, key string) string {
 	if v, ok := data[key].(string); ok {
 		return v
 	}

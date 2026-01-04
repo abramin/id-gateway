@@ -39,8 +39,8 @@ func (a *TenantClientResolver) ResolveClient(ctx context.Context, clientID strin
 func mapClient(c *tenantcontracts.ResolvedClient) *types.ResolvedClient {
 	// IDs come from tenant service which validates them, so parsing should never fail.
 	// If it does, it indicates a bug in the contract producer.
-	clientID, _ := id.ParseClientID(c.ID)
-	tenantID, _ := id.ParseTenantID(c.TenantID)
+	clientID, _ := id.ParseClientID(c.ID)   //nolint:errcheck // IDs from validated source
+	tenantID, _ := id.ParseTenantID(c.TenantID) //nolint:errcheck // IDs from validated source
 
 	return &types.ResolvedClient{
 		ID:            clientID,
@@ -54,7 +54,7 @@ func mapClient(c *tenantcontracts.ResolvedClient) *types.ResolvedClient {
 
 func mapTenant(t *tenantcontracts.ResolvedTenant) *types.ResolvedTenant {
 	// ID comes from tenant service which validates it, so parsing should never fail.
-	tenantID, _ := id.ParseTenantID(t.ID)
+	tenantID, _ := id.ParseTenantID(t.ID) //nolint:errcheck // ID from validated source
 
 	return &types.ResolvedTenant{
 		ID:     tenantID,

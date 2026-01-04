@@ -68,7 +68,7 @@ func New(cfg config.RedisConfig) (*Client, error) {
 	// Test connection
 	ctx := context.Background()
 	if err := client.Ping(ctx).Err(); err != nil {
-		client.Close()
+		client.Close() //nolint:errcheck // best-effort cleanup on init failure
 		return nil, fmt.Errorf("redis ping failed: %w", err)
 	}
 

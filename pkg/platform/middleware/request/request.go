@@ -128,7 +128,7 @@ func ContentTypeJSON(next http.Handler) http.Handler {
 				if mediaType, _, err := mime.ParseMediaType(ct); err != nil || mediaType != "application/json" {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusUnsupportedMediaType)
-					w.Write([]byte(`{"error":"invalid_content_type","error_description":"Content-Type must be application/json"}`))
+					_, _ = w.Write([]byte(`{"error":"invalid_content_type","error_description":"Content-Type must be application/json"}`)) //nolint:errcheck // headers already sent
 					return
 				}
 			}

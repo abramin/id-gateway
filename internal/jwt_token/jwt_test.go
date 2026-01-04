@@ -207,8 +207,8 @@ func Test_BuildIssuer(t *testing.T) {
 	service := NewJWTService("key", "https://auth.example.com", "audience", time.Hour)
 
 	t.Run("builds per-tenant issuer", func(t *testing.T) {
-		tenantID := id.TenantID(uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"))
-		issuer := service.BuildIssuer(tenantID)
+		newTenantID := id.TenantID(uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"))
+		issuer := service.BuildIssuer(newTenantID)
 		assert.Equal(t, "https://auth.example.com/tenants/550e8400-e29b-41d4-a716-446655440000", issuer)
 	})
 

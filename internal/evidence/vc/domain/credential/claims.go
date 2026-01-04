@@ -58,8 +58,8 @@ func (c AgeOver18Claims) ToMap() map[string]any {
 // AgeOver18ClaimsFromMap reconstructs AgeOver18Claims from an untyped map.
 // Used when loading credentials from persistence.
 func AgeOver18ClaimsFromMap(m map[string]any) AgeOver18Claims {
-	isOver18, _ := m["is_over_18"].(bool)
-	verifiedVia, _ := m["verified_via"].(string)
+	isOver18, _ := m["is_over_18"].(bool)       //nolint:errcheck // type assertion returns zero on failure
+	verifiedVia, _ := m["verified_via"].(string) //nolint:errcheck // type assertion returns zero on failure
 	return AgeOver18Claims{
 		isOver18:    isOver18,
 		verifiedVia: verifiedVia,

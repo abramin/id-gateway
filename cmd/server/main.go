@@ -185,7 +185,7 @@ func main() {
 		infra.Log.Error("failed to initialize tenant module", "error", err)
 		os.Exit(1)
 	}
-	authMod, err := buildAuthModule(appCtx, infra, tenantMod.Service, rlBundle.authLockoutSvc, rlBundle.requestSvc)
+	authMod, err := buildAuthModule(infra, tenantMod.Service, rlBundle.authLockoutSvc, rlBundle.requestSvc)
 	if err != nil {
 		infra.Log.Error("failed to initialize auth module", "error", err)
 		os.Exit(1)
@@ -195,21 +195,9 @@ func main() {
 		infra.Log.Error("failed to initialize client rate limit middleware", "error", err)
 		os.Exit(1)
 	}
-	consentMod, err := buildConsentModule(infra)
-	if err != nil {
-		infra.Log.Error("failed to initialize consent module", "error", err)
-		os.Exit(1)
-	}
-	registryMod, err := buildRegistryModule(infra, consentMod.Service)
-	if err != nil {
-		infra.Log.Error("failed to initialize registry module", "error", err)
-		os.Exit(1)
-	}
-	vcMod, err := buildVCModule(infra, consentMod.Service, registryMod.Service)
-	if err != nil {
-		infra.Log.Error("failed to initialize vc module", "error", err)
-		os.Exit(1)
-	}
+	consentMod := buildConsentModule(infra)
+	registryMod := buildRegistryModule(infra, consentMod.Service)
+	vcMod := buildVCModule(infra, consentMod.Service, registryMod.Service)
 	decisionMod, err := buildDecisionModule(infra, registryMod.Service, vcMod.Service, consentMod.Service)
 	if err != nil {
 		infra.Log.Error("failed to initialize decision module", "error", err)
@@ -499,7 +487,7 @@ func initPhase2Infra(bundle *infraBundle, cfg *config.Server, log *slog.Logger) 
 	return nil
 }
 
-func buildAuthModule(ctx context.Context, infra *infraBundle, tenantService *tenantService.Service, authLockoutSvc *authlockout.Service, requestSvc *requestlimit.Service) (*authModule, error) {
+func buildAuthModule(infra *infraBundle, tenantService *tenantService.Service, authLockoutSvc *authlockout.Service, requestSvc *requestlimit.Service) (*authModule, error) {
 	authCfg := &authService.Config{
 		SessionTTL:             infra.Cfg.Auth.SessionTTL,
 		TokenTTL:               infra.Cfg.Auth.TokenTTL,
@@ -635,7 +623,7 @@ func buildAuthModuleInMemory(infra *infraBundle, clientResolver authService.Clie
 	}, nil
 }
 
-func buildConsentModule(infra *infraBundle) (*consentModule, error) {
+func buildConsentModule(infra *infraBundle) *consentModule {
 	var store consentService.Store
 	var auditSt audit.Store
 	var opts []consentService.Option
@@ -671,7 +659,7 @@ func buildConsentModule(infra *infraBundle) (*consentModule, error) {
 	return &consentModule{
 		Service: consentSvc,
 		Handler: consentHandler.New(consentSvc, infra.Log, infra.ConsentMetrics),
-	}, nil
+	}
 }
 
 func buildTenantModule(infra *infraBundle) (*tenantModule, error) {
@@ -719,7 +707,7 @@ func buildTenantModule(infra *infraBundle) (*tenantModule, error) {
 	}, nil
 }
 
-func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service) (*registryModule, error) {
+func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service) *registryModule {
 	// Create provider registry
 	registry := providers.NewProviderRegistry()
 
@@ -792,10 +780,10 @@ func buildRegistryModule(infra *infraBundle, consentSvc *consentService.Service)
 	return &registryModule{
 		Service: svc,
 		Handler: handler,
-	}, nil
+	}
 }
 
-func buildVCModule(infra *infraBundle, consentSvc *consentService.Service, registrySvc *registryService.Service) (*vcModule, error) {
+func buildVCModule(infra *infraBundle, consentSvc *consentService.Service, registrySvc *registryService.Service) *vcModule {
 	var store vcStore.Store
 	var auditSt audit.Store
 
@@ -827,7 +815,7 @@ func buildVCModule(infra *infraBundle, consentSvc *consentService.Service, regis
 		Service: svc,
 		Handler: vcHandler.New(svc, infra.Log),
 		Store:   store,
-	}, nil
+	}
 }
 
 func buildDecisionModule(infra *infraBundle, registrySvc *registryService.Service, vcSvc *vcService.Service, consentSvc *consentService.Service) (*decisionModule, error) {
@@ -966,7 +954,7 @@ func registerRoutes(r *chi.Mux, infra *infraBundle, authMod *authModule, consent
 				"data_store":      "postgres",
 			}
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp) //nolint:errcheck // headers already sent
 		})
 	}
 

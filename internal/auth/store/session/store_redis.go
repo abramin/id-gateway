@@ -163,7 +163,7 @@ func deserializeSessionCmd(cmd *redis.StringCmd) *models.Session {
 		return nil
 	}
 	var j sessionJSON
-	if err := json.Unmarshal([]byte(data), &j); err != nil {
+	if err = json.Unmarshal([]byte(data), &j); err != nil {
 		return nil
 	}
 	session, err := sessionFromJSON(&j)
@@ -246,7 +246,7 @@ func (s *RedisStore) ListByUser(ctx context.Context, userID id.UserID) ([]*model
 	for i, sidStr := range sessionIDs {
 		cmds[i] = pipe.Get(ctx, sessionKeyPrefix+sidStr)
 	}
-	_, err = pipe.Exec(ctx)
+	_, _ = pipe.Exec(ctx) //nolint:errcheck // individual cmd errors checked below
 	// Ignore errors here since some sessions may have expired
 	// We'll filter those out below
 
@@ -412,7 +412,7 @@ func (s *RedisStore) Execute(ctx context.Context, sessionID id.SessionID, valida
 		}
 
 		var j sessionJSON
-		if err := json.Unmarshal([]byte(data), &j); err != nil {
+		if err = json.Unmarshal([]byte(data), &j); err != nil {
 			return fmt.Errorf("unmarshal session: %w", err)
 		}
 
@@ -421,7 +421,7 @@ func (s *RedisStore) Execute(ctx context.Context, sessionID id.SessionID, valida
 			return err
 		}
 
-		if err := validate(session); err != nil {
+		if err = validate(session); err != nil {
 			return err // Domain error from callback - passed through unchanged
 		}
 

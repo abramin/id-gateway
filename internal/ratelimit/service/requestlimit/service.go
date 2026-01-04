@@ -345,8 +345,8 @@ func (s *Service) getBothLimits(ctx context.Context, ip, userID string, class mo
 // checkAllowlistStatus checks if IP or user is allowlisted.
 // Errors are swallowed and treated as not-allowlisted to maintain constant-time behavior.
 func (s *Service) checkAllowlistStatus(ctx context.Context, ip, userID string) (ipAllowlisted, userAllowlisted bool) {
-	ipAllowlisted, _ = s.allowlist.IsAllowlisted(ctx, ip)
-	userAllowlisted, _ = s.allowlist.IsAllowlisted(ctx, userID)
+	ipAllowlisted, _ = s.allowlist.IsAllowlisted(ctx, ip)     //nolint:errcheck // errors treated as not-allowlisted
+	userAllowlisted, _ = s.allowlist.IsAllowlisted(ctx, userID) //nolint:errcheck // errors treated as not-allowlisted
 	return ipAllowlisted, userAllowlisted
 }
 

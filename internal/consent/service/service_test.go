@@ -205,7 +205,7 @@ func (s *ServiceSuite) TestGrant_IdempotentSkip() {
 	s.mockStore.EXPECT().
 		Execute(gomock.Any(), scope, gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, _ models.ConsentScope, validate func(*models.Record) error, mutate func(*models.Record) bool) (*models.Record, error) {
-			if err := validate(existing); err != nil {
+			if err := validate(existing); err != nil { //nolint:govet // callback scope, not shadowing outer err
 				return nil, err
 			}
 			mutate(existing)

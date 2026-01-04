@@ -115,7 +115,7 @@ func (h *QuotaHandler) HandleResetQuota(w http.ResponseWriter, r *http.Request) 
 	// Parse optional reason from body (don't require body)
 	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
 	var req models.ResetQuotaRequest
-	_ = json.NewDecoder(r.Body).Decode(&req) // Ignore errors - reason is optional
+	_ = json.NewDecoder(r.Body).Decode(&req) //nolint:errcheck // reason is optional
 
 	if err := h.service.Reset(ctx, apiKeyID); err != nil {
 		h.logger.ErrorContext(ctx, "failed to reset quota",

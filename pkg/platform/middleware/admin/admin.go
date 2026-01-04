@@ -45,7 +45,7 @@ func RequireAdminToken(expectedToken string, logger *slog.Logger) func(http.Hand
 					"request_id", requestID,
 				)
 				w.WriteHeader(http.StatusUnauthorized)
-				_, _ = w.Write([]byte(`{"error":"unauthorized","error_description":"admin token required"}`))
+				_, _ = w.Write([]byte(`{"error":"unauthorized","error_description":"admin token required"}`)) //nolint:errcheck // headers already sent
 				return
 			}
 

@@ -261,7 +261,7 @@ func (c *InMemoryCache) SaveCitizen(_ context.Context, key id.NationalID, record
 
 	// If key already exists, update and move to front
 	if elem, ok := c.citizens[keyStr]; ok {
-		cached := elem.Value.(*cachedCitizen)
+		cached := elem.Value.(*cachedCitizen) //nolint:errcheck // type-safe: citizenLRU only stores *cachedCitizen
 		cached.record = *record
 		cached.storedAt = time.Now()
 		cached.regulated = regulated
@@ -304,7 +304,7 @@ func (c *InMemoryCache) FindCitizen(_ context.Context, nationalID id.NationalID,
 		return nil, ErrNotFound
 	}
 
-	cached := elem.Value.(*cachedCitizen)
+	cached := elem.Value.(*cachedCitizen) //nolint:errcheck // type-safe: citizenLRU only stores *cachedCitizen
 
 	// Check TTL expiration
 	if time.Since(cached.storedAt) >= c.cacheTTL {
@@ -345,7 +345,7 @@ func (c *InMemoryCache) SaveSanction(_ context.Context, key id.NationalID, recor
 
 	// If key already exists, update and move to front
 	if elem, ok := c.sanctions[keyStr]; ok {
-		cached := elem.Value.(*cachedSanction)
+		cached := elem.Value.(*cachedSanction) //nolint:errcheck // type-safe: sanctionLRU only stores *cachedSanction
 		cached.record = *record
 		cached.storedAt = time.Now()
 		c.sanctionLRU.MoveToFront(elem)
@@ -383,7 +383,7 @@ func (c *InMemoryCache) FindSanction(_ context.Context, nationalID id.NationalID
 		return nil, ErrNotFound
 	}
 
-	cached := elem.Value.(*cachedSanction)
+	cached := elem.Value.(*cachedSanction) //nolint:errcheck // type-safe: sanctionLRU only stores *cachedSanction
 
 	// Check TTL expiration
 	if time.Since(cached.storedAt) >= c.cacheTTL {
@@ -409,7 +409,7 @@ func (c *InMemoryCache) evictOldestCitizenLocked() {
 	if elem == nil {
 		return
 	}
-	cached := elem.Value.(*cachedCitizen)
+	cached := elem.Value.(*cachedCitizen) //nolint:errcheck // type-safe: citizenLRU only stores *cachedCitizen
 	c.citizenLRU.Remove(elem)
 	delete(c.citizens, cached.key)
 }
@@ -422,7 +422,7 @@ func (c *InMemoryCache) evictOldestSanctionLocked() {
 	if elem == nil {
 		return
 	}
-	cached := elem.Value.(*cachedSanction)
+	cached := elem.Value.(*cachedSanction) //nolint:errcheck // type-safe: sanctionLRU only stores *cachedSanction
 	c.sanctionLRU.Remove(elem)
 	delete(c.sanctions, cached.key)
 }

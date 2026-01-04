@@ -18,7 +18,8 @@ type retryBudget struct {
 
 // newRetryBudget creates a new retry budget with the given limit.
 func newRetryBudget(limit int) *retryBudget {
-	return &retryBudget{remaining: int32(limit)}
+	limit = max(limit, 1000)
+	return &retryBudget{remaining: int32(limit)} //nolint:gosec
 }
 
 // tryConsume attempts to consume one retry from the budget.

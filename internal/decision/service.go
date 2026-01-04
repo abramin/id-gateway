@@ -162,7 +162,9 @@ func (s *Service) requireConsent(ctx context.Context, userID id.UserID) error {
 }
 
 func (s *Service) deriveIdentity(userID id.UserID, evidence *GatheredEvidence, evalTime time.Time) DerivedIdentity {
-	derived := DerivedIdentity{}
+	derived := DerivedIdentity{
+		PseudonymousID: userID,
+	}
 
 	if evidence.Citizen != nil {
 		derived.CitizenValid = evidence.Citizen.Valid

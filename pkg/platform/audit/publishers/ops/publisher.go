@@ -92,7 +92,7 @@ func New(store audit.Store, opts ...Option) *Publisher {
 // Track emits an operational event with sampling.
 // This is fire-and-forget - never blocks, no guarantees.
 // Events may be sampled based on configuration.
-func (p *Publisher) Track(ctx context.Context, event audit.OpsEvent) {
+func (p *Publisher) Track(event audit.OpsEvent) {
 	// Sampling check
 	if !p.sampler.ShouldSample(event.Action) {
 		atomic.AddInt64(&p.sampled, 1)
@@ -102,16 +102,10 @@ func (p *Publisher) Track(ctx context.Context, event audit.OpsEvent) {
 		return
 	}
 
-	p.trackInternal(ctx, event)
+	p.trackInternal(event)
 }
 
-// TrackForced emits an event bypassing sampling.
-// Use for important operational events that should always be recorded.
-func (p *Publisher) TrackForced(ctx context.Context, event audit.OpsEvent) {
-	p.trackInternal(ctx, event)
-}
-
-func (p *Publisher) trackInternal(ctx context.Context, event audit.OpsEvent) {
+func (p *Publisher) trackInternal(event audit.OpsEvent) {
 	// Circuit breaker check
 	if !p.circuitBreaker.Allow() {
 		atomic.AddInt64(&p.circuitBreakerDropped, 1)

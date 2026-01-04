@@ -22,7 +22,7 @@ type stubProvider struct {
 	callTimesMu chan struct{} // mutex for callTimes
 }
 
-func newStubProvider(id string, provType providers.ProviderType) *stubProvider {
+func newStubProvider(id string, provType providers.ProviderType) *stubProvider { //nolint:unparam // provType allows future test scenarios with heterogeneous providers
 	return &stubProvider{
 		id:          id,
 		provType:    provType,
@@ -59,7 +59,7 @@ func (p *stubProvider) Lookup(ctx context.Context, filters map[string]string) (*
 		ProviderID:   p.id,
 		ProviderType: p.provType,
 		Confidence:   1.0,
-		Data:         map[string]interface{}{"national_id": filters["national_id"]},
+		Data:         map[string]any{"national_id": filters["national_id"]},
 		CheckedAt:    time.Now(),
 	}, nil
 }
@@ -79,157 +79,135 @@ func TestOrchestratorSuite(t *testing.T) {
 	suite.Run(t, new(OrchestratorSuite))
 }
 
+// --- Test Helpers ---
+
+func (s *OrchestratorSuite) evidence(providerID string, confidence float64) *providers.Evidence {
+	return &providers.Evidence{
+		ProviderID:   providerID,
+		ProviderType: providers.ProviderTypeCitizen,
+		Confidence:   confidence,
+		Data:         map[string]any{"valid": true},
+		CheckedAt:    time.Now(),
+	}
+}
+
+func (s *OrchestratorSuite) evidenceWithData(providerID string, confidence float64, data map[string]any) *providers.Evidence {
+	return &providers.Evidence{
+		ProviderID:   providerID,
+		ProviderType: providers.ProviderTypeCitizen,
+		Confidence:   confidence,
+		Data:         data,
+		CheckedAt:    time.Now(),
+	}
+}
+
+func (s *OrchestratorSuite) citizenRequest() LookupRequest {
+	return LookupRequest{
+		Types:   []providers.ProviderType{providers.ProviderTypeCitizen},
+		Filters: map[string]string{"national_id": "ABC123"},
+	}
+}
+
+func (s *OrchestratorSuite) citizenRequestWithStrategy(strategy LookupStrategy) LookupRequest {
+	return LookupRequest{
+		Types:    []providers.ProviderType{providers.ProviderTypeCitizen},
+		Strategy: strategy,
+		Filters:  map[string]string{"national_id": "ABC123"},
+	}
+}
+
+func (s *OrchestratorSuite) newOrchestrator(provs []*stubProvider, cfg OrchestratorConfig) *Orchestrator {
+	registry := providers.NewProviderRegistry()
+	for _, p := range provs {
+		_ = registry.Register(p)
+	}
+	cfg.Registry = registry
+	return New(cfg)
+}
+
+func providerError(errType providers.ErrorCategory, provID string) error {
+	return providers.NewProviderError(errType, provID, string(errType), nil)
+}
+
 func (s *OrchestratorSuite) TestBackoffBehavior() {
-	s.Run("retries with exponential backoff on retryable errors", func() {
-		attempts := atomic.Int32{}
-		prov := newStubProvider("test-citizen", providers.ProviderTypeCitizen)
-		prov.lookupFn = func(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
-			count := attempts.Add(1)
-			if count < 3 {
-				return nil, providers.NewProviderError(
-					providers.ErrorTimeout,
-					"test-citizen",
-					"timeout",
-					nil,
-				)
+	tests := []struct {
+		name         string
+		errorType    providers.ErrorCategory
+		maxRetries   int
+		failUntil    int32 // fail until this attempt number (0 = always fail)
+		wantAttempts int32
+		wantErr      bool
+	}{
+		{
+			name:         "retries with backoff on retryable errors",
+			errorType:    providers.ErrorTimeout,
+			maxRetries:   3,
+			failUntil:    3,
+			wantAttempts: 3,
+			wantErr:      false,
+		},
+		{
+			name:         "does not retry non-retryable errors",
+			errorType:    providers.ErrorNotFound,
+			maxRetries:   3,
+			failUntil:    0, // always fail
+			wantAttempts: 1,
+			wantErr:      true,
+		},
+		{
+			name:         "respects max retries limit",
+			errorType:    providers.ErrorTimeout,
+			maxRetries:   2,
+			failUntil:    0, // always fail
+			wantAttempts: 3, // initial + 2 retries
+			wantErr:      true,
+		},
+	}
+
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			attempts := atomic.Int32{}
+			prov := newStubProvider("test-citizen", providers.ProviderTypeCitizen)
+			prov.lookupFn = func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				count := attempts.Add(1)
+				if tc.failUntil == 0 || count < tc.failUntil {
+					return nil, providerError(tc.errorType, "test-citizen")
+				}
+				return s.evidence("test-citizen", 1.0), nil
 			}
-			return &providers.Evidence{
-				ProviderID:   "test-citizen",
-				ProviderType: providers.ProviderTypeCitizen,
-				Confidence:   1.0,
-				Data:         map[string]interface{}{"valid": true},
-				CheckedAt:    time.Now(),
-			}, nil
-		}
 
-		registry := providers.NewProviderRegistry()
-		_ = registry.Register(prov)
+			orch := s.newOrchestrator([]*stubProvider{prov}, OrchestratorConfig{
+				DefaultStrategy: StrategyFallback,
+				DefaultTimeout:  5 * time.Second,
+				Backoff: BackoffConfig{
+					InitialDelay: 1 * time.Millisecond,
+					MaxRetries:   tc.maxRetries,
+				},
+			})
 
-		orch := New(OrchestratorConfig{
-			Registry:        registry,
-			DefaultStrategy: StrategyFallback,
-			DefaultTimeout:  5 * time.Second,
-			Backoff: BackoffConfig{
-				InitialDelay: 10 * time.Millisecond,
-				MaxDelay:     100 * time.Millisecond,
-				MaxRetries:   3,
-				Multiplier:   2.0,
-			},
+			_, err := orch.Lookup(context.Background(), s.citizenRequest())
+
+			if tc.wantErr {
+				s.Require().Error(err)
+				s.Equal(providers.ErrAllProvidersFailed, err)
+			} else {
+				s.Require().NoError(err)
+			}
+			s.Equal(tc.wantAttempts, attempts.Load())
 		})
-
-		ctx := context.Background()
-		result, err := orch.Lookup(ctx, LookupRequest{
-			Types:   []providers.ProviderType{providers.ProviderTypeCitizen},
-			Filters: map[string]string{"national_id": "ABC123"},
-		})
-
-		s.Require().NoError(err)
-		s.Require().NotNil(result)
-		s.Len(result.Evidence, 1)
-		s.Equal(int32(3), attempts.Load(), "should have retried 3 times")
-	})
-
-	s.Run("does not retry non-retryable errors", func() {
-		attempts := atomic.Int32{}
-		prov := newStubProvider("test-citizen", providers.ProviderTypeCitizen)
-		prov.lookupFn = func(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
-			attempts.Add(1)
-			return nil, providers.NewProviderError(
-				providers.ErrorNotFound,
-				"test-citizen",
-				"citizen not found",
-				nil,
-			)
-		}
-
-		registry := providers.NewProviderRegistry()
-		_ = registry.Register(prov)
-
-		orch := New(OrchestratorConfig{
-			Registry:        registry,
-			DefaultStrategy: StrategyFallback,
-			DefaultTimeout:  5 * time.Second,
-			Backoff: BackoffConfig{
-				InitialDelay: 10 * time.Millisecond,
-				MaxRetries:   3,
-			},
-		})
-
-		ctx := context.Background()
-		result, err := orch.Lookup(ctx, LookupRequest{
-			Types:   []providers.ProviderType{providers.ProviderTypeCitizen},
-			Filters: map[string]string{"national_id": "ABC123"},
-		})
-
-		s.Require().Error(err)
-		s.Equal(providers.ErrAllProvidersFailed, err)
-		s.NotNil(result)
-		s.Equal(int32(1), attempts.Load(), "should not retry non-retryable errors")
-	})
-
-	s.Run("respects max retries limit", func() {
-		attempts := atomic.Int32{}
-		prov := newStubProvider("test-citizen", providers.ProviderTypeCitizen)
-		prov.lookupFn = func(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
-			attempts.Add(1)
-			return nil, providers.NewProviderError(
-				providers.ErrorTimeout,
-				"test-citizen",
-				"timeout",
-				nil,
-			)
-		}
-
-		registry := providers.NewProviderRegistry()
-		_ = registry.Register(prov)
-
-		orch := New(OrchestratorConfig{
-			Registry:        registry,
-			DefaultStrategy: StrategyFallback,
-			DefaultTimeout:  5 * time.Second,
-			Backoff: BackoffConfig{
-				InitialDelay: 1 * time.Millisecond,
-				MaxRetries:   2, // Only 2 retries (3 total attempts)
-			},
-		})
-
-		ctx := context.Background()
-		_, err := orch.Lookup(ctx, LookupRequest{
-			Types:   []providers.ProviderType{providers.ProviderTypeCitizen},
-			Filters: map[string]string{"national_id": "ABC123"},
-		})
-
-		s.Require().Error(err)
-		s.Equal(int32(3), attempts.Load(), "should attempt initial + 2 retries = 3 total")
-	})
+	}
 
 	s.Run("backoff delays increase exponentially", func() {
-		prov := newStubProvider("test-citizen", providers.ProviderTypeCitizen)
 		attempts := atomic.Int32{}
-		prov.lookupFn = func(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
-			count := attempts.Add(1)
-			if count < 4 {
-				return nil, providers.NewProviderError(
-					providers.ErrorTimeout,
-					"test-citizen",
-					"timeout",
-					nil,
-				)
+		prov := newStubProvider("test-citizen", providers.ProviderTypeCitizen)
+		prov.lookupFn = func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+			if attempts.Add(1) < 4 {
+				return nil, providerError(providers.ErrorTimeout, "test-citizen")
 			}
-			return &providers.Evidence{
-				ProviderID:   "test-citizen",
-				ProviderType: providers.ProviderTypeCitizen,
-				Confidence:   1.0,
-				Data:         map[string]interface{}{"valid": true},
-				CheckedAt:    time.Now(),
-			}, nil
+			return s.evidence("test-citizen", 1.0), nil
 		}
 
-		registry := providers.NewProviderRegistry()
-		_ = registry.Register(prov)
-
-		orch := New(OrchestratorConfig{
-			Registry:        registry,
+		orch := s.newOrchestrator([]*stubProvider{prov}, OrchestratorConfig{
 			DefaultStrategy: StrategyFallback,
 			DefaultTimeout:  5 * time.Second,
 			Backoff: BackoffConfig{
@@ -240,11 +218,7 @@ func (s *OrchestratorSuite) TestBackoffBehavior() {
 			},
 		})
 
-		ctx := context.Background()
-		_, err := orch.Lookup(ctx, LookupRequest{
-			Types:   []providers.ProviderType{providers.ProviderTypeCitizen},
-			Filters: map[string]string{"national_id": "ABC123"},
-		})
+		_, err := orch.Lookup(context.Background(), s.citizenRequest())
 
 		s.Require().NoError(err)
 		s.Require().Len(prov.callTimes, 4, "expected initial call plus 3 retries")
@@ -263,31 +237,23 @@ func (s *OrchestratorSuite) TestContextCancellation() {
 	s.Run("cancels lookup when context is cancelled", func() {
 		prov := newStubProvider("test-citizen", providers.ProviderTypeCitizen)
 		lookupStarted := make(chan struct{})
-		prov.lookupFn = func(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
+		prov.lookupFn = func(ctx context.Context, _ map[string]string) (*providers.Evidence, error) {
 			close(lookupStarted)
 			<-ctx.Done()
 			return nil, ctx.Err()
 		}
 
-		registry := providers.NewProviderRegistry()
-		_ = registry.Register(prov)
-
-		orch := New(OrchestratorConfig{
-			Registry:        registry,
+		orch := s.newOrchestrator([]*stubProvider{prov}, OrchestratorConfig{
 			DefaultStrategy: StrategyPrimary,
 			DefaultTimeout:  5 * time.Second,
 		})
 
 		ctx, cancel := context.WithCancel(context.Background())
-
 		done := make(chan struct{})
 		var lookupErr error
 		var result *LookupResult
 		go func() {
-			result, lookupErr = orch.Lookup(ctx, LookupRequest{
-				Types:   []providers.ProviderType{providers.ProviderTypeCitizen},
-				Filters: map[string]string{"national_id": "ABC123"},
-			})
+			result, lookupErr = orch.Lookup(ctx, s.citizenRequest())
 			close(done)
 		}()
 
@@ -296,9 +262,7 @@ func (s *OrchestratorSuite) TestContextCancellation() {
 		<-done
 
 		s.Require().Error(lookupErr)
-		// The orchestrator wraps provider errors in ErrAllProvidersFailed
 		s.Equal(providers.ErrAllProvidersFailed, lookupErr)
-		// The underlying context.Canceled error should be recorded in the provider errors
 		s.Require().NotNil(result)
 		s.ErrorIs(result.Errors["test-citizen"], context.Canceled)
 	})
@@ -306,21 +270,12 @@ func (s *OrchestratorSuite) TestContextCancellation() {
 	s.Run("cancels backoff wait when context is cancelled", func() {
 		attempts := atomic.Int32{}
 		prov := newStubProvider("test-citizen", providers.ProviderTypeCitizen)
-		prov.lookupFn = func(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
+		prov.lookupFn = func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
 			attempts.Add(1)
-			return nil, providers.NewProviderError(
-				providers.ErrorTimeout,
-				"test-citizen",
-				"timeout",
-				nil,
-			)
+			return nil, providerError(providers.ErrorTimeout, "test-citizen")
 		}
 
-		registry := providers.NewProviderRegistry()
-		_ = registry.Register(prov)
-
-		orch := New(OrchestratorConfig{
-			Registry:        registry,
+		orch := s.newOrchestrator([]*stubProvider{prov}, OrchestratorConfig{
 			DefaultStrategy: StrategyFallback,
 			DefaultTimeout:  10 * time.Second,
 			Backoff: BackoffConfig{
@@ -333,10 +288,7 @@ func (s *OrchestratorSuite) TestContextCancellation() {
 		defer cancel()
 
 		start := time.Now()
-		_, err := orch.Lookup(ctx, LookupRequest{
-			Types:   []providers.ProviderType{providers.ProviderTypeCitizen},
-			Filters: map[string]string{"national_id": "ABC123"},
-		})
+		_, err := orch.Lookup(ctx, s.citizenRequest())
 		elapsed := time.Since(start)
 
 		s.Require().Error(err)
@@ -347,55 +299,31 @@ func (s *OrchestratorSuite) TestContextCancellation() {
 
 func (s *OrchestratorSuite) TestParallelStrategy() {
 	s.Run("queries all providers in parallel", func() {
-		prov1Started := make(chan struct{})
-		prov2Started := make(chan struct{})
-		prov1Done := make(chan struct{})
-		prov2Done := make(chan struct{})
+		prov1Started, prov2Started := make(chan struct{}), make(chan struct{})
+		prov1Done, prov2Done := make(chan struct{}), make(chan struct{})
 
 		prov1 := newStubProvider("citizen-1", providers.ProviderTypeCitizen)
-		prov1.lookupFn = func(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
+		prov1.lookupFn = func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
 			close(prov1Started)
 			<-prov1Done
-			return &providers.Evidence{
-				ProviderID:   "citizen-1",
-				ProviderType: providers.ProviderTypeCitizen,
-				Confidence:   0.9,
-				Data:         map[string]interface{}{"valid": true},
-				CheckedAt:    time.Now(),
-			}, nil
+			return s.evidence("citizen-1", 0.9), nil
 		}
 
 		prov2 := newStubProvider("citizen-2", providers.ProviderTypeCitizen)
-		prov2.lookupFn = func(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
+		prov2.lookupFn = func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
 			close(prov2Started)
 			<-prov2Done
-			return &providers.Evidence{
-				ProviderID:   "citizen-2",
-				ProviderType: providers.ProviderTypeCitizen,
-				Confidence:   0.8,
-				Data:         map[string]interface{}{"valid": true},
-				CheckedAt:    time.Now(),
-			}, nil
+			return s.evidence("citizen-2", 0.8), nil
 		}
 
-		registry := providers.NewProviderRegistry()
-		_ = registry.Register(prov1)
-		_ = registry.Register(prov2)
-
-		orch := New(OrchestratorConfig{
-			Registry:        registry,
+		orch := s.newOrchestrator([]*stubProvider{prov1, prov2}, OrchestratorConfig{
 			DefaultStrategy: StrategyParallel,
 			DefaultTimeout:  5 * time.Second,
 		})
 
 		done := make(chan struct{})
 		go func() {
-			ctx := context.Background()
-			_, _ = orch.Lookup(ctx, LookupRequest{
-				Types:    []providers.ProviderType{providers.ProviderTypeCitizen},
-				Strategy: StrategyParallel,
-				Filters:  map[string]string{"national_id": "ABC123"},
-			})
+			_, _ = orch.Lookup(context.Background(), s.citizenRequestWithStrategy(StrategyParallel))
 			close(done)
 		}()
 
@@ -403,154 +331,89 @@ func (s *OrchestratorSuite) TestParallelStrategy() {
 		<-prov1Started
 		<-prov2Started
 
-		// Complete both
 		close(prov1Done)
 		close(prov2Done)
 		<-done
 	})
 
-	s.Run("returns partial results when some providers fail", func() {
-		prov1 := newStubProvider("citizen-1", providers.ProviderTypeCitizen)
-		prov1.lookupFn = func(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
-			return &providers.Evidence{
-				ProviderID:   "citizen-1",
-				ProviderType: providers.ProviderTypeCitizen,
-				Confidence:   0.9,
-				Data:         map[string]interface{}{"valid": true},
-				CheckedAt:    time.Now(),
-			}, nil
-		}
+	tests := []struct {
+		name          string
+		prov1Succeeds bool
+		prov2Succeeds bool
+		wantEvidence  int
+		wantErrors    int
+		wantErr       bool
+	}{
+		{"partial results when some fail", true, false, 1, 1, false},
+		{"error when all fail", false, false, 0, 2, true},
+	}
 
-		prov2 := newStubProvider("citizen-2", providers.ProviderTypeCitizen)
-		prov2.lookupFn = func(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
-			return nil, providers.NewProviderError(
-				providers.ErrorProviderOutage,
-				"citizen-2",
-				"service unavailable",
-				nil,
-			)
-		}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			prov1 := newStubProvider("citizen-1", providers.ProviderTypeCitizen)
+			if tc.prov1Succeeds {
+				prov1.lookupFn = func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+					return s.evidence("citizen-1", 0.9), nil
+				}
+			} else {
+				prov1.lookupFn = func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+					return nil, providerError(providers.ErrorTimeout, "citizen-1")
+				}
+			}
 
-		registry := providers.NewProviderRegistry()
-		_ = registry.Register(prov1)
-		_ = registry.Register(prov2)
+			prov2 := newStubProvider("citizen-2", providers.ProviderTypeCitizen)
+			if tc.prov2Succeeds {
+				prov2.lookupFn = func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+					return s.evidence("citizen-2", 0.8), nil
+				}
+			} else {
+				prov2.lookupFn = func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+					return nil, providerError(providers.ErrorProviderOutage, "citizen-2")
+				}
+			}
 
-		orch := New(OrchestratorConfig{
-			Registry:        registry,
-			DefaultStrategy: StrategyParallel,
-			DefaultTimeout:  5 * time.Second,
+			orch := s.newOrchestrator([]*stubProvider{prov1, prov2}, OrchestratorConfig{
+				DefaultStrategy: StrategyParallel,
+				DefaultTimeout:  5 * time.Second,
+			})
+
+			result, err := orch.Lookup(context.Background(), s.citizenRequestWithStrategy(StrategyParallel))
+
+			if tc.wantErr {
+				s.Require().Error(err)
+				s.Equal(providers.ErrAllProvidersFailed, err)
+			} else {
+				s.Require().NoError(err)
+			}
+			s.Len(result.Evidence, tc.wantEvidence)
+			s.Len(result.Errors, tc.wantErrors)
 		})
-
-		ctx := context.Background()
-		result, err := orch.Lookup(ctx, LookupRequest{
-			Types:    []providers.ProviderType{providers.ProviderTypeCitizen},
-			Strategy: StrategyParallel,
-			Filters:  map[string]string{"national_id": "ABC123"},
-		})
-
-		s.Require().NoError(err)
-		s.Len(result.Evidence, 1, "should return evidence from successful provider")
-		s.Equal("citizen-1", result.Evidence[0].ProviderID)
-		s.Len(result.Errors, 1, "should record error from failed provider")
-		s.Contains(result.Errors, "citizen-2")
-	})
-
-	s.Run("returns error when all providers fail", func() {
-		prov1 := newStubProvider("citizen-1", providers.ProviderTypeCitizen)
-		prov1.lookupFn = func(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
-			return nil, providers.NewProviderError(
-				providers.ErrorTimeout,
-				"citizen-1",
-				"timeout",
-				nil,
-			)
-		}
-
-		prov2 := newStubProvider("citizen-2", providers.ProviderTypeCitizen)
-		prov2.lookupFn = func(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
-			return nil, providers.NewProviderError(
-				providers.ErrorProviderOutage,
-				"citizen-2",
-				"service unavailable",
-				nil,
-			)
-		}
-
-		registry := providers.NewProviderRegistry()
-		_ = registry.Register(prov1)
-		_ = registry.Register(prov2)
-
-		orch := New(OrchestratorConfig{
-			Registry:        registry,
-			DefaultStrategy: StrategyParallel,
-			DefaultTimeout:  5 * time.Second,
-		})
-
-		ctx := context.Background()
-		result, err := orch.Lookup(ctx, LookupRequest{
-			Types:    []providers.ProviderType{providers.ProviderTypeCitizen},
-			Strategy: StrategyParallel,
-			Filters:  map[string]string{"national_id": "ABC123"},
-		})
-
-		s.Require().Error(err)
-		s.Equal(providers.ErrAllProvidersFailed, err)
-		s.Len(result.Errors, 2, "should record all errors")
-	})
+	}
 }
 
 func (s *OrchestratorSuite) TestVotingStrategy() {
 	s.Run("selects highest confidence evidence", func() {
 		prov1 := newStubProvider("citizen-1", providers.ProviderTypeCitizen)
-		prov1.lookupFn = func(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
-			return &providers.Evidence{
-				ProviderID:   "citizen-1",
-				ProviderType: providers.ProviderTypeCitizen,
-				Confidence:   0.7,
-				Data:         map[string]interface{}{"valid": true, "source": "gov"},
-				CheckedAt:    time.Now(),
-			}, nil
+		prov1.lookupFn = func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+			return s.evidenceWithData("citizen-1", 0.7, map[string]any{"valid": true, "source": "gov"}), nil
 		}
 
 		prov2 := newStubProvider("citizen-2", providers.ProviderTypeCitizen)
-		prov2.lookupFn = func(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
-			return &providers.Evidence{
-				ProviderID:   "citizen-2",
-				ProviderType: providers.ProviderTypeCitizen,
-				Confidence:   0.95,
-				Data:         map[string]interface{}{"valid": true, "source": "verified"},
-				CheckedAt:    time.Now(),
-			}, nil
+		prov2.lookupFn = func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+			return s.evidenceWithData("citizen-2", 0.95, map[string]any{"valid": true, "source": "verified"}), nil
 		}
 
 		prov3 := newStubProvider("citizen-3", providers.ProviderTypeCitizen)
-		prov3.lookupFn = func(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
-			return &providers.Evidence{
-				ProviderID:   "citizen-3",
-				ProviderType: providers.ProviderTypeCitizen,
-				Confidence:   0.8,
-				Data:         map[string]interface{}{"valid": true, "source": "bank"},
-				CheckedAt:    time.Now(),
-			}, nil
+		prov3.lookupFn = func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+			return s.evidenceWithData("citizen-3", 0.8, map[string]any{"valid": true, "source": "bank"}), nil
 		}
 
-		registry := providers.NewProviderRegistry()
-		_ = registry.Register(prov1)
-		_ = registry.Register(prov2)
-		_ = registry.Register(prov3)
-
-		orch := New(OrchestratorConfig{
-			Registry:        registry,
+		orch := s.newOrchestrator([]*stubProvider{prov1, prov2, prov3}, OrchestratorConfig{
 			DefaultStrategy: StrategyVoting,
 			DefaultTimeout:  5 * time.Second,
 		})
 
-		ctx := context.Background()
-		result, err := orch.Lookup(ctx, LookupRequest{
-			Types:    []providers.ProviderType{providers.ProviderTypeCitizen},
-			Strategy: StrategyVoting,
-			Filters:  map[string]string{"national_id": "ABC123"},
-		})
+		result, err := orch.Lookup(context.Background(), s.citizenRequestWithStrategy(StrategyVoting))
 
 		s.Require().NoError(err)
 		s.Len(result.Evidence, 1, "voting should select one result per type")
@@ -560,116 +423,59 @@ func (s *OrchestratorSuite) TestVotingStrategy() {
 }
 
 func (s *OrchestratorSuite) TestFallbackStrategy() {
-	s.Run("uses fallback when primary fails", func() {
-		primaryCalled := atomic.Bool{}
-		secondaryCalled := atomic.Bool{}
+	tests := []struct {
+		name                string
+		primarySucceeds     bool
+		wantSecondaryCalled bool
+		wantProviderID      string
+	}{
+		{"uses fallback when primary fails", false, true, "citizen-secondary"},
+		{"does not call fallback when primary succeeds", true, false, "citizen-primary"},
+	}
 
-		primaryProv := newStubProvider("citizen-primary", providers.ProviderTypeCitizen)
-		primaryProv.lookupFn = func(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
-			primaryCalled.Store(true)
-			return nil, providers.NewProviderError(
-				providers.ErrorProviderOutage,
-				"citizen-primary",
-				"service unavailable",
-				nil,
-			)
-		}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			primaryCalled := atomic.Bool{}
+			secondaryCalled := atomic.Bool{}
 
-		secondaryProv := newStubProvider("citizen-secondary", providers.ProviderTypeCitizen)
-		secondaryProv.lookupFn = func(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
-			secondaryCalled.Store(true)
-			return &providers.Evidence{
-				ProviderID:   "citizen-secondary",
-				ProviderType: providers.ProviderTypeCitizen,
-				Confidence:   0.9,
-				Data:         map[string]interface{}{"valid": true},
-				CheckedAt:    time.Now(),
-			}, nil
-		}
+			primaryProv := newStubProvider("citizen-primary", providers.ProviderTypeCitizen)
+			if tc.primarySucceeds {
+				primaryProv.lookupFn = func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+					primaryCalled.Store(true)
+					return s.evidence("citizen-primary", 1.0), nil
+				}
+			} else {
+				primaryProv.lookupFn = func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+					primaryCalled.Store(true)
+					return nil, providerError(providers.ErrorProviderOutage, "citizen-primary")
+				}
+			}
 
-		registry := providers.NewProviderRegistry()
-		_ = registry.Register(primaryProv)
-		_ = registry.Register(secondaryProv)
+			secondaryProv := newStubProvider("citizen-secondary", providers.ProviderTypeCitizen)
+			secondaryProv.lookupFn = func(_ context.Context, _ map[string]string) (*providers.Evidence, error) {
+				secondaryCalled.Store(true)
+				return s.evidence("citizen-secondary", 0.9), nil
+			}
 
-		orch := New(OrchestratorConfig{
-			Registry:        registry,
-			DefaultStrategy: StrategyFallback,
-			DefaultTimeout:  5 * time.Second,
-			Chains: map[providers.ProviderType]ProviderChain{
-				providers.ProviderTypeCitizen: {
-					Primary:   "citizen-primary",
-					Secondary: []string{"citizen-secondary"},
+			orch := s.newOrchestrator([]*stubProvider{primaryProv, secondaryProv}, OrchestratorConfig{
+				DefaultStrategy: StrategyFallback,
+				DefaultTimeout:  5 * time.Second,
+				Chains: map[providers.ProviderType]ProviderChain{
+					providers.ProviderTypeCitizen: {
+						Primary:   "citizen-primary",
+						Secondary: []string{"citizen-secondary"},
+					},
 				},
-			},
-			Backoff: BackoffConfig{
-				MaxRetries: 0, // No retries to speed up test
-			},
+				Backoff: BackoffConfig{MaxRetries: 0},
+			})
+
+			result, err := orch.Lookup(context.Background(), s.citizenRequest())
+
+			s.Require().NoError(err)
+			s.True(primaryCalled.Load(), "primary should always be called first")
+			s.Equal(tc.wantSecondaryCalled, secondaryCalled.Load())
+			s.Len(result.Evidence, 1)
+			s.Equal(tc.wantProviderID, result.Evidence[0].ProviderID)
 		})
-
-		ctx := context.Background()
-		result, err := orch.Lookup(ctx, LookupRequest{
-			Types:   []providers.ProviderType{providers.ProviderTypeCitizen},
-			Filters: map[string]string{"national_id": "ABC123"},
-		})
-
-		s.Require().NoError(err)
-		s.True(primaryCalled.Load(), "primary should be called first")
-		s.True(secondaryCalled.Load(), "secondary should be called after primary fails")
-		s.Len(result.Evidence, 1)
-		s.Equal("citizen-secondary", result.Evidence[0].ProviderID)
-	})
-
-	s.Run("does not call fallback when primary succeeds", func() {
-		secondaryCalled := atomic.Bool{}
-
-		primaryProv := newStubProvider("citizen-primary", providers.ProviderTypeCitizen)
-		primaryProv.lookupFn = func(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
-			return &providers.Evidence{
-				ProviderID:   "citizen-primary",
-				ProviderType: providers.ProviderTypeCitizen,
-				Confidence:   1.0,
-				Data:         map[string]interface{}{"valid": true},
-				CheckedAt:    time.Now(),
-			}, nil
-		}
-
-		secondaryProv := newStubProvider("citizen-secondary", providers.ProviderTypeCitizen)
-		secondaryProv.lookupFn = func(ctx context.Context, filters map[string]string) (*providers.Evidence, error) {
-			secondaryCalled.Store(true)
-			return &providers.Evidence{
-				ProviderID:   "citizen-secondary",
-				ProviderType: providers.ProviderTypeCitizen,
-				Confidence:   0.9,
-				Data:         map[string]interface{}{"valid": true},
-				CheckedAt:    time.Now(),
-			}, nil
-		}
-
-		registry := providers.NewProviderRegistry()
-		_ = registry.Register(primaryProv)
-		_ = registry.Register(secondaryProv)
-
-		orch := New(OrchestratorConfig{
-			Registry:        registry,
-			DefaultStrategy: StrategyFallback,
-			DefaultTimeout:  5 * time.Second,
-			Chains: map[providers.ProviderType]ProviderChain{
-				providers.ProviderTypeCitizen: {
-					Primary:   "citizen-primary",
-					Secondary: []string{"citizen-secondary"},
-				},
-			},
-		})
-
-		ctx := context.Background()
-		result, err := orch.Lookup(ctx, LookupRequest{
-			Types:   []providers.ProviderType{providers.ProviderTypeCitizen},
-			Filters: map[string]string{"national_id": "ABC123"},
-		})
-
-		s.Require().NoError(err)
-		s.False(secondaryCalled.Load(), "secondary should not be called when primary succeeds")
-		s.Len(result.Evidence, 1)
-		s.Equal("citizen-primary", result.Evidence[0].ProviderID)
-	})
+	}
 }

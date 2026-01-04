@@ -76,13 +76,13 @@ func main() {
 
 	switch os.Args[1] {
 	case "access":
-		accessCmd.Parse(os.Args[2:])
+		_ = accessCmd.Parse(os.Args[2:]) //nolint:errcheck // CLI exits on parse error
 		generateAccessToken(*accessUserID, *accessSessionID, *accessClientID, *accessTenantID, *accessScopes, *accessTTL, *accessDemo, *accessJSON)
 	case "id":
-		idCmd.Parse(os.Args[2:])
+		_ = idCmd.Parse(os.Args[2:]) //nolint:errcheck // CLI exits on parse error
 		generateIDToken(*idUserID, *idSessionID, *idClientID, *idTenantID, *idTTL, *idDemo, *idJSON)
 	case "admin":
-		adminCmd.Parse(os.Args[2:])
+		_ = adminCmd.Parse(os.Args[2:]) //nolint:errcheck // CLI exits on parse error
 		showAdminToken(*adminJSON)
 	case "help", "-h", "--help":
 		printUsage()

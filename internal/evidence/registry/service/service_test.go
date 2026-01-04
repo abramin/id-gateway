@@ -134,7 +134,7 @@ func citizenEvidence(r *models.CitizenRecord) *providers.Evidence {
 		ProviderID:   "test-citizen",
 		ProviderType: providers.ProviderTypeCitizen,
 		Confidence:   1.0,
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"national_id":   r.NationalID,
 			"full_name":     r.FullName,
 			"date_of_birth": r.DateOfBirth,
@@ -150,7 +150,7 @@ func sanctionsEvidence(r *models.SanctionsRecord) *providers.Evidence {
 		ProviderID:   "test-sanctions",
 		ProviderType: providers.ProviderTypeSanctions,
 		Confidence:   1.0,
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"national_id": r.NationalID,
 			"listed":      r.Listed,
 			"source":      r.Source,
@@ -871,10 +871,10 @@ func (s *ServiceSuite) TestSanctionsAuditFailClosed() {
 }
 
 // auditError implements error for testing
-type auditError struct {
+type auditError struct { //nolint:unused // test scaffolding for future use
 	message string
 }
 
-func (e *auditError) Error() string {
+func (e *auditError) Error() string { //nolint:unused // test scaffolding for future use
 	return e.message
 }

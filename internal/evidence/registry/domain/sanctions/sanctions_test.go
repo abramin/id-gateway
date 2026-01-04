@@ -231,7 +231,7 @@ func (s *SanctionsDomainSuite) TestSanctionsCheck_RequiresEnhancedDueDiligence()
 }
 
 // mustParseNationalID is a test helper that panics on invalid national ID.
-func (s *SanctionsDomainSuite) mustParseNationalID(str string) id.NationalID {
+func (s *SanctionsDomainSuite) mustParseNationalID(str string) id.NationalID { //nolint:unparam // test helper accepts any string
 	nid, err := id.ParseNationalID(str)
 	s.Require().NoError(err, "invalid national ID in test")
 	return nid

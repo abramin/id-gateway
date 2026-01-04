@@ -226,7 +226,7 @@ func newTestHandler(t *testing.T) (*Handler, *mocks.MockService) {
 
 // newRequestWithBody creates an HTTP request with the given method, endpoint, and JSON body.
 // If userID is not empty and valid, it adds the typed userID to the request context.
-func newRequestWithBody(method, endpoint string, body interface{}, userID string) (*http.Request, error) {
+func newRequestWithBody(method, endpoint string, body interface{}, userID string) (*http.Request, error) { //nolint:unparam // test helper designed for any method
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
 		return nil, err

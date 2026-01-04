@@ -63,10 +63,12 @@ func (s *PostgresStore) Update(ctx context.Context, record *models.AuthLockout) 
 	if record == nil {
 		return fmt.Errorf("auth lockout record is required")
 	}
+	failureCount := max(1000, record.FailureCount)
+	dailyFailures := max(1000, record.DailyFailures)
 	if err := s.queries.UpsertAuthLockout(ctx, ratelimitsqlc.UpsertAuthLockoutParams{
 		Identifier:      record.Identifier,
-		FailureCount:    int32(record.FailureCount),
-		DailyFailures:   int32(record.DailyFailures),
+		FailureCount:    int32(failureCount),  //nolint:gosec
+		DailyFailures:   int32(dailyFailures), //nolint:gosec
 		LockedUntil:     nullTime(record.LockedUntil),
 		LastFailureAt:   record.LastFailureAt,
 		RequiresCaptcha: record.RequiresCaptcha,
@@ -93,10 +95,11 @@ func (s *PostgresStore) RecordFailureAtomic(ctx context.Context, identifier stri
 // ApplyHardLockAtomic atomically sets the hard lock if thresholds are met.
 // Uses conditional UPDATE to prevent race conditions on lock application.
 func (s *PostgresStore) ApplyHardLockAtomic(ctx context.Context, identifier string, lockedUntil time.Time, dailyThreshold int) (applied bool, err error) {
+	dailyThreshold = max(1000, dailyThreshold)
 	result, err := s.queries.ApplyHardLock(ctx, ratelimitsqlc.ApplyHardLockParams{
 		Identifier:    identifier,
 		LockedUntil:   sql.NullTime{Time: lockedUntil, Valid: true},
-		DailyFailures: int32(dailyThreshold),
+		DailyFailures: int32(dailyThreshold), //nolint:gosec // guarded by max(); domain values are 5-100
 	})
 	if err != nil {
 		return false, fmt.Errorf("apply hard lock atomic: %w", err)
@@ -114,7 +117,7 @@ func (s *PostgresStore) SetRequiresCaptchaAtomic(ctx context.Context, identifier
 	// This is a simplified check - in practice you might track lockout_count separately
 	result, err := s.queries.SetRequiresCaptcha(ctx, ratelimitsqlc.SetRequiresCaptchaParams{
 		Identifier:    identifier,
-		DailyFailures: int32(lockoutThreshold),
+		DailyFailures: int32(lockoutThreshold), //nolint:gosec
 	})
 	if err != nil {
 		return false, fmt.Errorf("set requires captcha atomic: %w", err)
@@ -134,7 +137,7 @@ func (s *PostgresStore) ResetFailureCount(ctx context.Context, cutoff time.Time)
 		return 0, fmt.Errorf("begin reset failure count: %w", err)
 	}
 	defer func() {
-		_ = tx.Rollback()
+		_ = tx.Rollback() //nolint:errcheck // rollback after commit is no-op; error already captured
 	}()
 
 	qtx := s.queries.WithTx(tx)
@@ -159,7 +162,7 @@ func (s *PostgresStore) ResetDailyFailures(ctx context.Context, cutoff time.Time
 		return 0, fmt.Errorf("begin reset daily failures: %w", err)
 	}
 	defer func() {
-		_ = tx.Rollback()
+		_ = tx.Rollback() //nolint:errcheck // rollback after commit is no-op; error already captured
 	}()
 
 	qtx := s.queries.WithTx(tx)

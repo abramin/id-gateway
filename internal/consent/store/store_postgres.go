@@ -131,7 +131,7 @@ func (s *PostgresStore) Execute(ctx context.Context, scope models.ConsentScope, 
 		return nil, fmt.Errorf("begin consent execute tx: %w", err)
 	}
 	defer func() {
-		_ = tx.Rollback()
+		_ = tx.Rollback() //nolint:errcheck // rollback after commit is no-op; error already captured
 	}()
 
 	record, err := s.executeWithTx(ctx, tx, scope, validate, mutate)

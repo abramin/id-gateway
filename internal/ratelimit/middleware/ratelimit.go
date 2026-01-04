@@ -298,7 +298,7 @@ func extractClientID(r *http.Request) (string, error) {
 	// Use PostFormValue to get ONLY form body values, not query params
 	if err := r.ParseForm(); err != nil {
 		// If form parsing fails, fall back to query-only
-		return queryClientID, nil
+		return queryClientID, nil //nolint:nilerr // form parse failure doesn't affect query-only fallback
 	}
 
 	formClientID := r.PostFormValue("client_id")
@@ -415,15 +415,6 @@ func (m *ClientMiddleware) RateLimitClient() func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
-}
-
-func writeFailClosedError(w http.ResponseWriter) {
-	w.Header().Set("Retry-After", "30")
-	httputil.WriteJSON(w, http.StatusServiceUnavailable, &models.ServiceOverloadedResponse{
-		Error:      "rate_limit_unavailable",
-		Message:    "Rate limiting service is temporarily unavailable. Please try again later.",
-		RetryAfter: 30,
-	})
 }
 
 // withCircuitBreaker wraps a rate limit check with circuit breaker logic.

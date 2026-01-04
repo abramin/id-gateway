@@ -17,7 +17,7 @@ func WriteJSON(w http.ResponseWriter, status int, response any) {
 	w.WriteHeader(status)
 	// Errors after WriteHeader cannot change the status code, so we ignore encoding errors.
 	// The response body may be incomplete, but headers are already sent.
-	_ = json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response) //nolint:errcheck // headers already sent
 }
 
 // WriteError centralizes domain error translation to HTTP responses.

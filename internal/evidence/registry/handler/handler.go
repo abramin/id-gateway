@@ -230,7 +230,7 @@ func (h *Handler) emitAudit(ctx context.Context, event audit.OpsEvent) {
 	if h.opsTracker == nil {
 		return
 	}
-	h.opsTracker.Track(ctx, event)
+	h.opsTracker.Track(event)
 	// Emit span event for audit trail correlation
 	h.emitAuditSpanEvent(ctx, event.Action)
 }

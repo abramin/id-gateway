@@ -65,7 +65,7 @@ func (id CredentialID) String() string {
 }
 
 // Claims represents a set of verifiable credential claims.
-type Claims map[string]interface{}
+type Claims map[string]any
 
 // IssueRequest captures the data required to issue a credential.
 type IssueRequest struct {

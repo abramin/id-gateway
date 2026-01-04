@@ -69,7 +69,7 @@ func (l *Logger) emitToAudit(ctx context.Context, event, requestID string, attri
 	email := attrs.ExtractString(attributes, "email")
 
 	// Best-effort user ID parsing - ignore parse errors for audit
-	userID, _ := id.ParseUserID(userIDStr)
+	userID, _ := id.ParseUserID(userIDStr) //nolint:errcheck // best-effort extraction for audit
 
 	err := l.emitter.Emit(ctx, Event{
 		UserID:    userID,

@@ -91,7 +91,7 @@ func (s *Service) Authorize(ctx context.Context, req *models.AuthorizationReques
 		Tenant:            tnt,
 	}
 
-	if err := validateRequestedScopes(params.Scopes, client.AllowedScopes); err != nil {
+	if err = validateRequestedScopes(params.Scopes, client.AllowedScopes); err != nil {
 		return nil, err
 	}
 
@@ -160,7 +160,7 @@ func (s *Service) authorizeInTx(ctx context.Context, params authorizeParams) (*a
 			ApproximateLocation: "",
 		})
 
-		if err := stores.Sessions.Create(ctx, session); err != nil {
+		if err = stores.Sessions.Create(ctx, session); err != nil {
 			return dErrors.Wrap(err, dErrors.CodeInternal, "failed to save session")
 		}
 		result.Session = session

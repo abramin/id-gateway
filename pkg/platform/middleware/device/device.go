@@ -8,12 +8,12 @@ import (
 
 // DeviceConfig holds configuration for the Device middleware.
 type DeviceConfig struct {
-	// CookieName is the name of the device ID cookie (e.g., "__Secure-Device-ID").
-	CookieName string
-
 	// FingerprintFn computes a device fingerprint from the User-Agent string.
 	// This is typically device.Service.ComputeFingerprint.
 	FingerprintFn func(userAgent string) string
+
+	// CookieName is the name of the device ID cookie (e.g., "__Secure-Device-ID").
+	CookieName string
 }
 
 // Device extracts device ID from cookie and pre-computes device fingerprint.

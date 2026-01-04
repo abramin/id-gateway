@@ -85,7 +85,7 @@ func (s *PostgresStore) FindOrCreateByTenantAndEmail(ctx context.Context, tenant
 		return nil, fmt.Errorf("begin user upsert tx: %w", err)
 	}
 	defer func() {
-		_ = tx.Rollback()
+		_ = tx.Rollback() //nolint:errcheck // rollback after commit is no-op; error already captured
 	}()
 
 	qtx := s.queries.WithTx(tx)

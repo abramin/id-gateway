@@ -123,7 +123,7 @@ func (s *PostgresStore) RevokeSessionIfActive(ctx context.Context, sessionID id.
 		return fmt.Errorf("begin revoke session tx: %w", err)
 	}
 	defer func() {
-		_ = tx.Rollback()
+		_ = tx.Rollback() //nolint:errcheck // rollback after commit is no-op; error already captured
 	}()
 
 	qtx := s.queries.WithTx(tx)
@@ -190,7 +190,7 @@ func (s *PostgresStore) Execute(ctx context.Context, sessionID id.SessionID, val
 		return nil, fmt.Errorf("begin session execute tx: %w", err)
 	}
 	defer func() {
-		_ = tx.Rollback()
+		_ = tx.Rollback() //nolint:errcheck // rollback after commit is no-op; error already captured
 	}()
 
 	qtx := s.queries.WithTx(tx)

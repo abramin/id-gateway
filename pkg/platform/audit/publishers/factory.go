@@ -100,10 +100,10 @@ func (s *System) Close() error {
 
 	// Others are no-ops
 	if s.Compliance != nil {
-		_ = s.Compliance.Close()
+		_ = s.Compliance.Close() //nolint:errcheck // best-effort cleanup
 	}
 	if s.Ops != nil {
-		_ = s.Ops.Close()
+		_ = s.Ops.Close() //nolint:errcheck // best-effort cleanup
 	}
 
 	return nil

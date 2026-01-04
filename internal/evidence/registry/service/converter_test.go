@@ -36,7 +36,7 @@ func (s *ConverterSuite) TestEvidenceToSanctionsCheck() {
 			ProviderID:   "citizen-provider",
 			ProviderType: providers.ProviderTypeCitizen,
 			Confidence:   1.0,
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"national_id": "123456789012",
 				"valid":       true,
 			},
@@ -54,7 +54,7 @@ func (s *ConverterSuite) TestEvidenceToSanctionsCheck() {
 			ProviderID:   "sanctions-provider",
 			ProviderType: providers.ProviderTypeSanctions,
 			Confidence:   1.0,
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"national_id": "123456789012",
 				"listed":      false,
 				"source":      "OFAC-SDN",
@@ -75,7 +75,7 @@ func (s *ConverterSuite) TestEvidenceToSanctionsCheck() {
 			ProviderID:   "sanctions-provider",
 			ProviderType: providers.ProviderTypeSanctions,
 			Confidence:   1.0,
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"national_id": "123456789012",
 				"listed":      true,
 				"source":      "OFAC-SDN",
@@ -121,7 +121,7 @@ func (s *ConverterSuite) TestEvidenceToSanctionsCheck_InvalidNationalID() {
 			ProviderID:   "sanctions-provider",
 			ProviderType: providers.ProviderTypeSanctions,
 			Confidence:   1.0,
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"national_id": nil,
 				"listed":      false,
 				"source":      "OFAC-SDN",
@@ -138,7 +138,7 @@ func (s *ConverterSuite) TestEvidenceToSanctionsCheck_InvalidNationalID() {
 			ProviderID:   "sanctions-provider",
 			ProviderType: providers.ProviderTypeSanctions,
 			Confidence:   1.0,
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"national_id": 123456789012,
 				"listed":      false,
 				"source":      "OFAC-SDN",
@@ -158,7 +158,7 @@ func (s *ConverterSuite) TestEvidenceToSanctionsCheck_InvalidConfidence() {
 			ProviderID:   "sanctions-provider",
 			ProviderType: providers.ProviderTypeSanctions,
 			Confidence:   -0.5,
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"national_id": "123456789012",
 				"listed":      false,
 				"source":      "OFAC-SDN",
@@ -175,7 +175,7 @@ func (s *ConverterSuite) TestEvidenceToSanctionsCheck_InvalidConfidence() {
 			ProviderID:   "sanctions-provider",
 			ProviderType: providers.ProviderTypeSanctions,
 			Confidence:   1.5,
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"national_id": "123456789012",
 				"listed":      false,
 				"source":      "OFAC-SDN",
@@ -195,7 +195,7 @@ func (s *ConverterSuite) TestEvidenceToSanctionsCheck_MissingFields() {
 			ProviderID:   "sanctions-provider",
 			ProviderType: providers.ProviderTypeSanctions,
 			Confidence:   1.0,
-			Data:         map[string]interface{}{},
+			Data:         map[string]any{},
 			CheckedAt:    time.Now(),
 		}
 		_, err := EvidenceToSanctionsCheck(evidence)
@@ -264,7 +264,7 @@ func (s *ConverterSuite) TestEvidenceToSanctionsRecord() {
 			ProviderID:   "citizen-provider",
 			ProviderType: providers.ProviderTypeCitizen,
 			Confidence:   1.0,
-			Data:         map[string]interface{}{},
+			Data:         map[string]any{},
 			CheckedAt:    time.Now(),
 		}
 		record, err := EvidenceToSanctionsRecord(citizenEvidence)
@@ -278,7 +278,7 @@ func (s *ConverterSuite) TestEvidenceToSanctionsRecord() {
 			ProviderID:   "sanctions-provider",
 			ProviderType: providers.ProviderTypeSanctions,
 			Confidence:   1.0,
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"national_id": "123456789012",
 				"listed":      true,
 				"source":      "EU-SANCTIONS",
@@ -312,7 +312,7 @@ func (s *ConverterSuite) TestEvidenceToCitizenVerification() {
 			ProviderID:   "sanctions-provider",
 			ProviderType: providers.ProviderTypeSanctions,
 			Confidence:   1.0,
-			Data:         map[string]interface{}{},
+			Data:         map[string]any{},
 			CheckedAt:    time.Now(),
 		}
 
@@ -327,7 +327,7 @@ func (s *ConverterSuite) TestEvidenceToCitizenVerification() {
 			ProviderID:   "citizen-provider",
 			ProviderType: providers.ProviderTypeCitizen,
 			Confidence:   1.0,
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"national_id":   "123456789012",
 				"full_name":     "John Doe",
 				"date_of_birth": "1990-01-01",
@@ -352,7 +352,7 @@ func (s *ConverterSuite) TestEvidenceToCitizenVerification() {
 			ProviderID:   "citizen-provider",
 			ProviderType: providers.ProviderTypeCitizen,
 			Confidence:   1.0,
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"national_id": "short",
 				"valid":       true,
 			},
@@ -369,7 +369,7 @@ func (s *ConverterSuite) TestEvidenceToCitizenVerification() {
 			ProviderID:   "citizen-provider",
 			ProviderType: providers.ProviderTypeCitizen,
 			Confidence:   2.0, // Invalid: > 1.0
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"national_id": "123456789012",
 				"valid":       true,
 			},
@@ -399,7 +399,7 @@ func (s *ConverterSuite) TestEvidenceToCitizenRecord() {
 			ProviderID:   "citizen-provider",
 			ProviderType: providers.ProviderTypeCitizen,
 			Confidence:   1.0,
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"national_id":   "123456789012",
 				"full_name":     "Jane Doe",
 				"date_of_birth": "1985-05-15",
@@ -430,7 +430,7 @@ func (s *ConverterSuite) sanctionsEvidence(nationalID string, listed bool, sourc
 		ProviderID:   "sanctions-provider",
 		ProviderType: providers.ProviderTypeSanctions,
 		Confidence:   1.0,
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"national_id": nationalID,
 			"listed":      listed,
 			"source":      source,

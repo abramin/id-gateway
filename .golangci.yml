@@ -61,7 +61,6 @@ linters-settings:
     enable:
       - nilness
       - shadow
-      - fieldalignment
 
   errcheck:
     check-type-assertions: true

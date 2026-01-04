@@ -44,7 +44,7 @@ func (t *tenantPostgresTx) RunInTx(ctx context.Context, fn func(ctx context.Cont
 		return err
 	}
 	defer func() {
-		_ = tx.Rollback()
+		_ = tx.Rollback() //nolint:errcheck // rollback after commit is no-op; error already captured
 	}()
 
 	txCtx := txcontext.WithTx(ctx, tx)

@@ -56,7 +56,7 @@ func (m *mockHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (m *mockHandler) reset() {
+func (m *mockHandler) reset() { //nolint:unused // test scaffolding for future use
 	m.called = false
 	m.context = nil
 }
