@@ -209,7 +209,6 @@ type AuthLockout struct {
 }
 
 // BackoffPolicy is a value object that encapsulates progressive backoff calculation.
-// This is pure domain logic - it receives all inputs and returns computed results.
 type BackoffPolicy struct {
 	Base           time.Duration // Base delay (e.g., 250ms)
 	Cap            time.Duration // Maximum delay cap (e.g., 1s)

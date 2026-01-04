@@ -32,7 +32,6 @@ func (s *InMemoryAuthLockoutStore) Get(_ context.Context, identifier string) (*m
 }
 
 // GetOrCreate retrieves an existing lockout record or creates a new one with zero counts.
-// This is pure I/O—the service owns counter increments via domain methods.
 func (s *InMemoryAuthLockoutStore) GetOrCreate(_ context.Context, identifier string, now time.Time) (*models.AuthLockout, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

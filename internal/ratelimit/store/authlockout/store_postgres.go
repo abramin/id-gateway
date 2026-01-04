@@ -40,7 +40,6 @@ func (s *PostgresStore) Get(ctx context.Context, identifier string) (*models.Aut
 }
 
 // GetOrCreate retrieves an existing lockout record or creates a new one with zero counts.
-// This is pure I/O—the service owns counter increments via domain methods.
 func (s *PostgresStore) GetOrCreate(ctx context.Context, identifier string, now time.Time) (*models.AuthLockout, error) {
 	record, err := s.queries.GetOrCreateAuthLockout(ctx, ratelimitsqlc.GetOrCreateAuthLockoutParams{
 		Identifier:    identifier,

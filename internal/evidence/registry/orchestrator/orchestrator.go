@@ -151,6 +151,7 @@ func New(cfg OrchestratorConfig) *Orchestrator {
 }
 
 // LookupRequest describes what evidence to gather
+// and how to perform the lookup.
 type LookupRequest struct {
 	Types    []providers.ProviderType // What types of evidence to gather
 	Filters  map[string]string        // Input filters (national_id, etc.)

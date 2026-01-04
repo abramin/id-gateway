@@ -118,8 +118,6 @@ type GrantEvaluation struct {
 //   - If active and within idempotencyWindow: no change (idempotent)
 //   - If recently revoked (within cooldown): returns error
 //   - Otherwise: returns renewed record with Changed=true
-//
-// This is pure domain logic with no side effects.
 func (c Record) EvaluateGrant(now time.Time, idempotencyWindow, reGrantCooldown, ttl time.Duration) (GrantEvaluation, error) {
 	eval := GrantEvaluation{WasActive: c.IsActive(now)}
 
