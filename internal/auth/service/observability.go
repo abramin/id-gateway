@@ -141,3 +141,51 @@ func (s *Service) observeTokenRefreshDuration(durationMs float64) {
 		s.metrics.ObserveTokenRefreshDuration(durationMs)
 	}
 }
+
+// PRD-020 FR-0: SLI metrics with tenant/client labels
+
+// observeAuthorizeDurationByTenant records authorization duration with tenant/client labels
+func (s *Service) observeAuthorizeDurationByTenant(tenantID, clientID string, durationMs float64) {
+	if s.metrics != nil {
+		s.metrics.ObserveAuthorizeDurationByTenant(tenantID, clientID, durationMs)
+	}
+}
+
+// observeTokenExchangeDurationByTenant records token exchange duration with tenant/client labels
+func (s *Service) observeTokenExchangeDurationByTenant(tenantID, clientID string, durationMs float64) {
+	if s.metrics != nil {
+		s.metrics.ObserveTokenExchangeDurationByTenant(tenantID, clientID, durationMs)
+	}
+}
+
+// observeTokenRefreshDurationByTenant records token refresh duration with tenant/client labels
+func (s *Service) observeTokenRefreshDurationByTenant(tenantID, clientID string, durationMs float64) {
+	if s.metrics != nil {
+		s.metrics.ObserveTokenRefreshDurationByTenant(tenantID, clientID, durationMs)
+	}
+}
+
+// incrementAuthErrorsByEndpoint records auth errors by endpoint with tenant/client labels
+func (s *Service) incrementAuthErrorsByEndpoint(endpoint, tenantID, clientID string) {
+	if s.metrics != nil {
+		s.metrics.IncrementAuthErrorsByEndpoint(endpoint, tenantID, clientID)
+	}
+}
+
+// PRD-020 FR-0: TRL health metrics
+
+// incrementTRLWriteFailures records a token revocation list write failure
+func (s *Service) incrementTRLWriteFailures() {
+	if s.metrics != nil {
+		s.metrics.IncrementTRLWriteFailures()
+	}
+}
+
+// PRD-020 FR-0: Abuse signal metrics
+
+// incrementRefreshTokenReuseDetections records a refresh token reuse (replay) detection
+func (s *Service) incrementRefreshTokenReuseDetections() {
+	if s.metrics != nil {
+		s.metrics.IncrementRefreshTokenReuseDetections()
+	}
+}

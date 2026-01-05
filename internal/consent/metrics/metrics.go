@@ -17,6 +17,9 @@ type Metrics struct {
 	// Performance metrics
 	StoreOperationLatency *prometheus.HistogramVec
 	RecordsPerUser        prometheus.Histogram
+
+	// PRD-020 FR-0: Consent enforcement metrics with failure reason
+	ConsentCheckFailedByReason *prometheus.CounterVec
 }
 
 // New registers and returns consent metrics collectors.
@@ -59,6 +62,12 @@ func New() *Metrics {
 			Help:    "Distribution of consent record counts per user",
 			Buckets: []float64{1, 5, 10, 25, 50, 100, 250, 500, 1000},
 		}),
+
+		// PRD-020 FR-0: Consent enforcement metrics with failure reason
+		ConsentCheckFailedByReason: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "credo_consent_checks_failed_by_reason_total",
+			Help: "Total number of consent checks that failed, labeled by purpose and reason",
+		}, []string{"purpose", "reason"}),
 	}
 }
 
@@ -128,4 +137,13 @@ func (m *Metrics) ObserveRecordsPerUser(count float64) {
 		return
 	}
 	m.RecordsPerUser.Observe(count)
+}
+
+// IncrementConsentCheckFailedByReason records consent check failure with reason.
+// Reason values: "missing", "revoked", "expired"
+func (m *Metrics) IncrementConsentCheckFailedByReason(purpose, reason string) {
+	if m == nil {
+		return
+	}
+	m.ConsentCheckFailedByReason.WithLabelValues(purpose, reason).Inc()
 }

@@ -157,6 +157,8 @@ func (s *Service) revokeSessionInternal(ctx context.Context, session *models.Ses
 	if jtiToRevoke != "" {
 		if err := s.trl.RevokeToken(ctx, jtiToRevoke, s.TokenTTL); err != nil {
 			s.logger.Error("failed to add token to revocation list", "error", err, "jti", jtiToRevoke, "reason", reason)
+			// PRD-020: Track TRL write failures
+			s.incrementTRLWriteFailures()
 			if s.TRLFailureMode == TRLFailureModeFail {
 				return revokeSessionOutcomeRevoked, fmt.Errorf("failed to add token to revocation list: %w", err)
 			}

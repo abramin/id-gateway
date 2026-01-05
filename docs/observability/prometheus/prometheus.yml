@@ -2,6 +2,10 @@ global:
   scrape_interval: 10s
   evaluation_interval: 10s
 
+# PRD-020: Alert rules for operational readiness
+rule_files:
+  - "alerts.yml"
+
 scrape_configs:
   - job_name: "credo"
     metrics_path: /metrics

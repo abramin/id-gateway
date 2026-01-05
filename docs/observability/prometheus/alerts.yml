@@ -1,0 +1,199 @@
+# PRD-020 FR-0: Prometheus Alert Rules for Credo
+# These alerts implement the required alerting baseline for operational readiness.
+
+groups:
+  # Auth SLI alerts - Track latency and error rates by tenant/client
+  - name: credo-auth-sli
+    rules:
+      - alert: AuthLatencyP95High
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(credo_authorize_duration_by_tenant_ms_bucket[5m])) by (le, tenant_id, client_id)
+          ) > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Auth authorize p95 latency > 500ms"
+          description: "Authorization latency p95 exceeds 500ms for tenant {{ $labels.tenant_id }}, client {{ $labels.client_id }}"
+
+      - alert: TokenExchangeLatencyP95High
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(credo_token_exchange_duration_by_tenant_ms_bucket[5m])) by (le, tenant_id, client_id)
+          ) > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Token exchange p95 latency > 500ms"
+          description: "Token exchange latency p95 exceeds 500ms for tenant {{ $labels.tenant_id }}, client {{ $labels.client_id }}"
+
+      - alert: TokenRefreshLatencyP95High
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(credo_token_refresh_duration_by_tenant_ms_bucket[5m])) by (le, tenant_id, client_id)
+          ) > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Token refresh p95 latency > 500ms"
+          description: "Token refresh latency p95 exceeds 500ms for tenant {{ $labels.tenant_id }}, client {{ $labels.client_id }}"
+
+      - alert: AuthErrorRateHigh
+        expr: |
+          (
+            sum(rate(credo_auth_errors_by_endpoint_total[5m])) by (endpoint, tenant_id, client_id)
+            / on(tenant_id, client_id) group_left
+            sum(rate(credo_token_requests_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Auth error rate > 5%"
+          description: "Auth error rate exceeds 5% for endpoint {{ $labels.endpoint }}, tenant {{ $labels.tenant_id }}"
+
+  # Revocation health alerts - Track TRL failures and lag
+  - name: credo-revocation-health
+    rules:
+      - alert: TRLWriteFailures
+        expr: rate(credo_trl_write_failures_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Token revocation list write failures detected"
+          description: "TRL write failures are occurring, which may allow revoked tokens to remain valid"
+
+      - alert: RevocationLagHigh
+        expr: credo_revocation_lag_seconds > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Revocation processing lag exceeds 30 seconds"
+          description: "The revocation processing lag is {{ $value }}s, exceeding the 30s threshold"
+
+  # Audit durability alerts - Track queue depth and failures
+  - name: credo-audit-durability
+    rules:
+      - alert: AuditQueueDepthHigh
+        expr: credo_outbox_pending_total > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Audit outbox queue depth exceeds 1000 events"
+          description: "The audit outbox has {{ $value }} pending events, indicating potential backpressure"
+
+      - alert: AuditQueueDepthCritical
+        expr: credo_outbox_pending_total > 10000
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Audit outbox queue depth exceeds 10000 events"
+          description: "The audit outbox has {{ $value }} pending events, requiring immediate investigation"
+
+      - alert: AuditPersistFailures
+        expr: rate(credo_audit_compliance_persist_failures_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Audit event persistence failures detected"
+          description: "Compliance audit events are failing to persist, risking data loss"
+
+      - alert: AuditEventDrops
+        expr: rate(credo_outbox_dropped_events_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Audit events are being dropped"
+          description: "Audit events are being dropped, indicating buffer overflow or system failure"
+
+      - alert: AuditPublishFailures
+        expr: rate(credo_outbox_publish_failures_total[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Audit outbox publish failures elevated"
+          description: "Outbox publish failures are occurring at {{ $value }}/s"
+
+  # Abuse signal alerts - Track replay attacks and lockouts
+  - name: credo-abuse-signals
+    rules:
+      - alert: RefreshTokenReuseSpike
+        expr: rate(credo_refresh_token_reuse_detections_total[5m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate of refresh token reuse detections"
+          description: "Refresh token reuse rate is {{ $value }}/s, indicating potential token theft or replay attack"
+
+      - alert: RefreshTokenReuseCritical
+        expr: rate(credo_refresh_token_reuse_detections_total[5m]) > 20
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical rate of refresh token reuse detections"
+          description: "Refresh token reuse rate is {{ $value }}/s, indicating active attack"
+
+      - alert: AuthLockoutSurge
+        expr: rate(credo_ratelimit_auth_lockouts_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate of auth lockouts detected"
+          description: "Auth lockout rate is {{ $value }}/s, indicating brute force attempts or user issues"
+
+      - alert: RateLimitBlocksSurge
+        expr: rate(credo_ratelimit_blocks_total[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate of rate limit blocks"
+          description: "Rate limit blocks are occurring at {{ $value }}/s"
+
+  # Consent enforcement alerts - Track gating failures
+  - name: credo-consent-enforcement
+    rules:
+      - alert: ConsentGatingFailuresHigh
+        expr: |
+          (
+            sum(rate(credo_consent_checks_failed_by_reason_total[5m])) by (purpose, reason)
+            / on(purpose) group_left
+            (sum(rate(credo_consent_checks_passed_total[5m])) by (purpose) + 0.001)
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Consent gating failure rate > 10%"
+          description: "Consent check failure rate for purpose {{ $labels.purpose }} (reason: {{ $labels.reason }}) exceeds 10%"
+
+      - alert: ConsentMissingSpike
+        expr: rate(credo_consent_checks_failed_by_reason_total{reason="missing"}[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate of missing consent failures"
+          description: "Missing consent failures occurring at {{ $value }}/s for purpose {{ $labels.purpose }}"
+
+      - alert: PIIMinimizationViolation
+        expr: credo_pii_minimization_violations_total > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PII minimization violation detected in regulated mode"
+          description: "A PII minimization violation was detected in regulated mode - immediate investigation required"

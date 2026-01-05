@@ -15,8 +15,13 @@ import (
 // consumes the code to prevent reuse, and issues new tokens.
 func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {
 	start := time.Now()
+	var tenantID, clientID string // for PRD-020 tenant-labeled metrics
 	defer func() {
-		s.observeTokenExchangeDuration(float64(time.Since(start).Milliseconds()))
+		durationMs := float64(time.Since(start).Milliseconds())
+		s.observeTokenExchangeDuration(durationMs)
+		if tenantID != "" && clientID != "" {
+			s.observeTokenExchangeDurationByTenant(tenantID, clientID, durationMs)
+		}
 	}()
 
 	now := requestcontext.Now(ctx)
@@ -38,6 +43,9 @@ func (s *Service) exchangeAuthorizationCode(ctx context.Context, req *models.Tok
 	if err != nil {
 		return nil, err
 	}
+	// PRD-020: Capture tenant/client for labeled metrics (used in defer)
+	tenantID = tc.Tenant.ID.String()
+	clientID = tc.Client.ID.String()
 
 	txErr := s.tx.RunInTx(ctx, func(stores txAuthStores) error {
 		var err error

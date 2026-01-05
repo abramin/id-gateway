@@ -20,6 +20,9 @@ type Metrics struct {
 	// Worker health metrics
 	PollDuration   prometheus.Histogram
 	WorkerRestarts prometheus.Counter
+
+	// PRD-020 FR-0: Audit durability metrics
+	DroppedEventsTotal prometheus.Counter
 }
 
 // New creates a new Metrics instance with all outbox metrics registered.
@@ -59,6 +62,12 @@ func New() *Metrics {
 		WorkerRestarts: promauto.NewCounter(prometheus.CounterOpts{
 			Name: "credo_outbox_worker_restarts_total",
 			Help: "Total number of outbox worker restarts due to errors",
+		}),
+
+		// PRD-020 FR-0: Audit durability metrics
+		DroppedEventsTotal: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "credo_outbox_dropped_events_total",
+			Help: "Total number of audit events dropped due to buffer overflow or other failures",
 		}),
 	}
 }
@@ -101,4 +110,9 @@ func (m *Metrics) ObservePollDuration(durationSeconds float64) {
 // IncWorkerRestarts increments the worker restart counter.
 func (m *Metrics) IncWorkerRestarts() {
 	m.WorkerRestarts.Inc()
+}
+
+// IncDroppedEvents increments the dropped events counter.
+func (m *Metrics) IncDroppedEvents() {
+	m.DroppedEventsTotal.Inc()
 }

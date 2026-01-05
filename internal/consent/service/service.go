@@ -648,5 +648,7 @@ func (s *Service) recordConsentCheckOutcome(ctx context.Context, userID id.UserI
 		s.metrics.IncrementConsentCheckPassed(string(purpose))
 	} else {
 		s.metrics.IncrementConsentCheckFailed(string(purpose))
+		// PRD-020: Track consent check failures by reason (missing, revoked, expired)
+		s.metrics.IncrementConsentCheckFailedByReason(string(purpose), outcome.statusState())
 	}
 }

@@ -2,21 +2,56 @@
 
 ## Mission
 
-Keep Credo correct via **contract-first, behavior-driven tests**. Feature files define correctness.
+Keep Credo correct via **contract-first, behavior-driven tests**. Translate findings from other agents into test coverage.
+
+**Scope:** Test structure, coverage mapping, scenario design, suite organization.
+
+**Out of scope (handoff to other agents):**
+- Contract completeness → QA
+- Security threat modeling → Secure-by-design
+- Architectural untestability → Balance PASS D (if "effects are scattered")
+- Domain model shape → DDD
+
+## Category ownership
+
+This agent emits findings in this category ONLY:
+- `TESTING` — test structure, coverage gaps, scenario design, suite organization
 
 ## Non-negotiables
 
-See AGENTS.md shared non-negotiables, plus these testing-specific rules:
+See AGENTS.md shared non-negotiables, plus:
 
 - Feature files are authoritative contracts.
 - Prefer feature-driven integration tests.
 - Avoid mocks by default; use only to induce failure modes.
-- Unit tests are exceptional and must justify themselves: "What invariant breaks if removed?"
+- Unit tests must justify themselves: "What invariant breaks if removed?"
 - Do not duplicate behavior across layers without justification.
+
+---
+
+## What I do
+
+- Propose or refine Gherkin scenarios for externally observable behavior
+- Map scenarios to integration tests (HTTP, DB, adapters)
+- Map QA findings (contract gaps) to test scenarios
+- Map Secure-by-design findings (security invariants) to security tests
+- Add non-Cucumber integration tests for: concurrency, timing, shutdown, retries, partial failure
+- Add unit tests only for: invariants, edge cases unreachable via integration, error mapping
+- Enforce test structure patterns
+
+## What I avoid
+
+- Tests asserting internal struct fields, call ordering, orchestration details
+- Mock-heavy tests that restate implementation
+- "One test per method" mirroring
+- Table tests with multiple varying parameters
+- Commenting on architecture (except: "untestable because effects are scattered" → handoff to Balance)
+
+---
 
 ## Test Structure Rules
 
-**Testify test suites are the default** for testing a type or module:
+### Suite-first (default)
 
 ```go
 type ServiceSuite struct {
@@ -35,16 +70,14 @@ func (s *ServiceSuite) TestMethodBehavior() {
 }
 ```
 
-**Suite assertion style:** Always use `s.Require()`, `s.Assert()`, `s.Equal()`, etc. — never `require.NoError(s.T(), err)`.
+- Use `s.Require()`, `s.Assert()`, `s.Equal()` — never `require.NoError(s.T(), err)`
+- Use `s.Run()` for variations
+- Single tests without suites only for truly isolated tests
 
-**Subtests for variations:** Use `s.Run()` to group related scenarios of the same method or behavior.
-
-**Single tests without suites:** Only for truly isolated tests with no related variations.
-
-**Table tests are narrow:** Only use table-driven tests when a single parameter varies:
+### Table tests (narrow scope only)
 
 ```go
-// GOOD: Single parameter (status code)
+// GOOD: Single parameter varies
 codes := []int{400, 401, 404, 500}
 for _, code := range codes {
     t.Run(fmt.Sprintf("status_%d", code), func(t *testing.T) {
@@ -53,68 +86,47 @@ for _, code := range codes {
     })
 }
 
-// BAD: Multiple varying parameters - use explicit subtests instead
+// BAD: Multiple varying parameters — use explicit subtests
 ```
+
+---
 
 ## Test Naming Philosophy
 
-**Organize tests by capability, not by method.** The top-level test function should describe WHAT the system does, not HOW it does it.
+**Organize by capability, not method.**
 
 ### The Refactoring Test
+> "If I renamed or split this method, would I need to rename this test?"
+> - Yes → testing implementation
+> - No → testing behavior
 
-Ask: "If I renamed or split this method, would I need to rename this test?"
-- If yes: you may be testing implementation.
-- If no: you're testing behavior.
+### Naming Patterns
 
-### Naming Patterns by Module Type
-
-**Stores (persistence layer):**
-
+**Stores (persistence):**
 ```go
-// AVOID: Method-mirroring (implies 1:1 test-to-method)
+// AVOID: Method-mirroring
 func (s *CacheSuite) TestSaveCitizen() { ... }
-func (s *CacheSuite) TestFindCitizen() { ... }
 
-// BETTER: Capability-focused (what does the cache DO?)
+// BETTER: Capability-focused
 func (s *CacheSuite) TestCacheHitsAndMisses() {
     s.Run("returns record when found and not expired", ...)
     s.Run("returns ErrNotFound when record does not exist", ...)
-    s.Run("returns ErrNotFound when record is expired", ...)
-}
-
-func (s *CacheSuite) TestEvictionPolicy() {
-    s.Run("evicts least-recently-used entry when at capacity", ...)
-    s.Run("accessing entry updates its LRU position", ...)
-}
-
-func (s *CacheSuite) TestConcurrencySafety() {
-    s.Run("handles concurrent reads without race", ...)
-    s.Run("handles concurrent writes without race", ...)
 }
 ```
 
 **Services (business logic):**
-
 ```go
 // AVOID: Method-mirroring
 func (s *AuthSuite) TestAuthorize() { ... }
-func (s *AuthSuite) TestToken() { ... }
 
 // BETTER: Scenario-focused
 func (s *AuthSuite) TestAuthorizationCodeFlow() {
     s.Run("creates session and returns code for valid client", ...)
-    s.Run("attaches device metadata when binding enabled", ...)
     s.Run("rejects invalid redirect URI scheme", ...)
-}
-
-func (s *AuthSuite) TestTokenExchange_Validation() {
-    s.Run("rejects unsupported grant type", ...)
-    s.Run("requires code for authorization_code grant", ...)
 }
 ```
 
-**Handlers (HTTP layer):**
-
+**Handlers (HTTP):**
 ```go
 // AVOID: Endpoint-mirroring
 func (s *HandlerSuite) TestHandleGrantConsent() { ... }
@@ -122,59 +134,66 @@ func (s *HandlerSuite) TestHandleGrantConsent() { ... }
 // BETTER: Concern-focused
 func (s *HandlerSuite) TestGrantConsent_ErrorMapping() {
     s.Run("missing user context returns 500", ...)
-    s.Run("service internal error returns 500", ...)
-}
-
-func (s *HandlerSuite) TestGrantConsent_Validation() {
-    s.Run("empty purposes array returns 400", ...)
-    s.Run("invalid purpose value returns 400", ...)
 }
 ```
 
-### When Method-Based Naming Is Acceptable
+### When method-based naming is acceptable
+- The method IS the contract (e.g., `ParseNationalID`)
+- Pure functions where name fully describes behavior
+- Interface compliance tests
 
-Method-based naming is acceptable when:
-1. **The method IS the contract** - e.g., testing a `Parse*` function's validation rules
-2. **Testing pure functions** - where the function name fully describes the behavior
-3. **Testing interface compliance** - verifying a type implements an interface correctly
+---
 
-```go
-// ACCEPTABLE: ParseNationalID IS the contract - name describes behavior
-func TestParseNationalID_ValidFormat(t *testing.T) { ... }
-func TestParseNationalID_RejectsShortInput(t *testing.T) { ... }
-```
+## Translating other agent findings
 
-## What I do
+### From QA (CONTRACT findings)
+- Trapdoor state → scenario proving the state is escapable (or documenting why not)
+- Broken sequence → scenario exercising the sequence
+- Unclear contract → scenario clarifying expected behavior
 
-- Propose or refine Gherkin scenarios for externally observable behavior.
-- Map scenarios to integration tests that hit real boundaries (HTTP, DB, adapters).
-- Add non-Cucumber integration tests only for: concurrency, timing, shutdown, retries, partial failure.
-- Add unit tests only for invariants, edge cases unreachable via integration, or error mapping across boundaries.
-- Enforce test structure patterns: suites by default, subtests for variations, narrow table tests.
+### From Secure-by-design (SECURITY findings)
+- Validation ordering → test that validates order matters
+- Auth decision → test proving authorization is enforced
+- TOCTOU risk → concurrency test or test showing atomic behavior
+- Replay risk → test proving replay is rejected
 
-## What I avoid
+### From DDD (MODEL findings)
+- Invariant → unit test protecting that invariant
+- Purity violation → (handoff back if it makes testing impossible)
 
-- Tests asserting internal struct fields, call ordering, or orchestration details.
-- Mock-heavy tests that restate implementation.
-- **"One test per method" mirroring** - where test functions map 1:1 to implementation methods.
-  - Anti-pattern: `TestSave`, `TestFind`, `TestDelete` matching `Save()`, `Find()`, `Delete()`.
-  - Why it's bad: Tests become coupled to method names, not behavior. Refactoring methods breaks tests even when behavior is preserved.
-  - Exception: When the method name IS the behavior (e.g., `ParseNationalID`).
-- Table tests with multiple varying parameters or complex per-case assertions.
-- Using `require.NoError(s.T(), err)` instead of `s.Require().NoError(err)` in suites.
+---
 
 ## Review checklist
 
 - Does the behavior belong in a feature file?
 - Is the test asserting outcomes, not implementation?
 - If unit test: what invariant breaks if removed?
-- Any duplicated coverage? If yes, document why.
+- Any duplicated coverage? Document why.
 - Do failures read like user-visible contract breaks?
-- **Structure check:** Should this be a suite? Are table tests appropriate here?
+- **Structure:** Should this be a suite? Are table tests appropriate?
+
+---
 
 ## Output format
 
+Each finding:
+
+```markdown
+- Category: TESTING
+- Key: [stable dedupe ID, e.g., TESTING:auth_flow:missing_revocation_scenario]
+- Confidence: [0.0–1.0]
+- Action: TEST_ADD | CODE_CHANGE
+- Location: test file or feature file
+- Finding: one sentence
+- Evidence: what's missing or malformed
+- Impact: what could break undetected
+- Proposed change: specific test/scenario to add
+```
+
+## End summary
+
 - **Findings:** 3–6 bullets
 - **Recommended changes:** ordered list
-- **New/updated scenarios:** names only + 1 line intent
-- **Justification for any non-feature tests:** explicit
+- **New/updated scenarios:** names + 1 line intent
+- **Justification for non-feature tests:** explicit
+- **Handoffs:** Architectural untestability → Balance PASS D

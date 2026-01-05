@@ -21,6 +21,9 @@ type Metrics struct {
 
 	// Cache invalidation metrics
 	CacheInvalidationsTotal prometheus.Counter // Total cache clear operations
+
+	// PRD-020 FR-0: PII minimization violations in regulated mode
+	PIIMinimizationViolations prometheus.Counter
 }
 
 // New creates a new Metrics instance with all metrics registered.
@@ -55,6 +58,12 @@ func New() *Metrics {
 		CacheInvalidationsTotal: promauto.NewCounter(prometheus.CounterOpts{
 			Name: "credo_registry_cache_invalidations_total",
 			Help: "Total number of cache clear (invalidation) operations",
+		}),
+
+		// PRD-020 FR-0: PII minimization violations in regulated mode
+		PIIMinimizationViolations: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "credo_pii_minimization_violations_total",
+			Help: "Total number of PII minimization violations detected in regulated mode",
 		}),
 	}
 }
@@ -93,4 +102,9 @@ func CacheHitRate(hits, misses float64) float64 {
 		return 0
 	}
 	return hits / total
+}
+
+// IncrementPIIMinimizationViolations records a PII minimization violation.
+func (m *Metrics) IncrementPIIMinimizationViolations() {
+	m.PIIMinimizationViolations.Inc()
 }

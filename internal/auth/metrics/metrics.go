@@ -17,6 +17,19 @@ type Metrics struct {
 	AuthorizeDurationMs     prometheus.Histogram
 	TokenExchangeDurationMs prometheus.Histogram
 	TokenRefreshDurationMs  prometheus.Histogram
+
+	// PRD-020 FR-0: SLI metrics with tenant/client labels
+	AuthorizeDurationByTenant     *prometheus.HistogramVec
+	TokenExchangeDurationByTenant *prometheus.HistogramVec
+	TokenRefreshDurationByTenant  *prometheus.HistogramVec
+	AuthErrorsByEndpoint          *prometheus.CounterVec
+
+	// PRD-020 FR-0: TRL health metrics
+	TRLWriteFailures     prometheus.Counter
+	RevocationLagSeconds prometheus.Gauge
+
+	// PRD-020 FR-0: Abuse signal metrics
+	RefreshTokenReuseDetections prometheus.Counter
 }
 
 // New registers and returns auth metrics collectors.
@@ -67,6 +80,43 @@ func New() *Metrics {
 			Help:    "Duration of token refresh operations in milliseconds",
 			Buckets: []float64{5, 10, 25, 50, 100, 250, 500, 1000},
 		}),
+
+		// PRD-020 FR-0: SLI metrics with tenant/client labels
+		AuthorizeDurationByTenant: promauto.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "credo_authorize_duration_by_tenant_ms",
+			Help:    "Duration of authorization requests in milliseconds, by tenant and client",
+			Buckets: []float64{5, 10, 25, 50, 100, 250, 500, 1000},
+		}, []string{"tenant_id", "client_id"}),
+		TokenExchangeDurationByTenant: promauto.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "credo_token_exchange_duration_by_tenant_ms",
+			Help:    "Duration of authorization code exchange in milliseconds, by tenant and client",
+			Buckets: []float64{5, 10, 25, 50, 100, 250, 500, 1000},
+		}, []string{"tenant_id", "client_id"}),
+		TokenRefreshDurationByTenant: promauto.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "credo_token_refresh_duration_by_tenant_ms",
+			Help:    "Duration of token refresh operations in milliseconds, by tenant and client",
+			Buckets: []float64{5, 10, 25, 50, 100, 250, 500, 1000},
+		}, []string{"tenant_id", "client_id"}),
+		AuthErrorsByEndpoint: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "credo_auth_errors_by_endpoint_total",
+			Help: "Total number of auth errors by endpoint, tenant, and client",
+		}, []string{"endpoint", "tenant_id", "client_id"}),
+
+		// PRD-020 FR-0: TRL health metrics
+		TRLWriteFailures: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "credo_trl_write_failures_total",
+			Help: "Total number of token revocation list write failures",
+		}),
+		RevocationLagSeconds: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "credo_revocation_lag_seconds",
+			Help: "Age in seconds of the oldest unprocessed revocation",
+		}),
+
+		// PRD-020 FR-0: Abuse signal metrics
+		RefreshTokenReuseDetections: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "credo_refresh_token_reuse_detections_total",
+			Help: "Total number of refresh token reuse (replay) detections",
+		}),
 	}
 }
 
@@ -109,4 +159,38 @@ func (m *Metrics) ObserveTokenExchangeDuration(durationMs float64) {
 
 func (m *Metrics) ObserveTokenRefreshDuration(durationMs float64) {
 	m.TokenRefreshDurationMs.Observe(durationMs)
+}
+
+// PRD-020 FR-0: SLI metrics with tenant/client labels
+
+func (m *Metrics) ObserveAuthorizeDurationByTenant(tenantID, clientID string, durationMs float64) {
+	m.AuthorizeDurationByTenant.WithLabelValues(tenantID, clientID).Observe(durationMs)
+}
+
+func (m *Metrics) ObserveTokenExchangeDurationByTenant(tenantID, clientID string, durationMs float64) {
+	m.TokenExchangeDurationByTenant.WithLabelValues(tenantID, clientID).Observe(durationMs)
+}
+
+func (m *Metrics) ObserveTokenRefreshDurationByTenant(tenantID, clientID string, durationMs float64) {
+	m.TokenRefreshDurationByTenant.WithLabelValues(tenantID, clientID).Observe(durationMs)
+}
+
+func (m *Metrics) IncrementAuthErrorsByEndpoint(endpoint, tenantID, clientID string) {
+	m.AuthErrorsByEndpoint.WithLabelValues(endpoint, tenantID, clientID).Inc()
+}
+
+// PRD-020 FR-0: TRL health metrics
+
+func (m *Metrics) IncrementTRLWriteFailures() {
+	m.TRLWriteFailures.Inc()
+}
+
+func (m *Metrics) SetRevocationLag(seconds float64) {
+	m.RevocationLagSeconds.Set(seconds)
+}
+
+// PRD-020 FR-0: Abuse signal metrics
+
+func (m *Metrics) IncrementRefreshTokenReuseDetections() {
+	m.RefreshTokenReuseDetections.Inc()
 }

@@ -12,8 +12,13 @@ import (
 
 func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.TokenRequest) (*models.TokenResult, error) {
 	start := time.Now()
+	var tenantID, clientID string // for PRD-020 tenant-labeled metrics
 	defer func() {
-		s.observeTokenRefreshDuration(float64(time.Since(start).Milliseconds()))
+		durationMs := float64(time.Since(start).Milliseconds())
+		s.observeTokenRefreshDuration(durationMs)
+		if tenantID != "" && clientID != "" {
+			s.observeTokenRefreshDurationByTenant(tenantID, clientID, durationMs)
+		}
 	}()
 
 	now := requestcontext.Now(ctx)
@@ -39,6 +44,9 @@ func (s *Service) refreshWithRefreshToken(ctx context.Context, req *models.Token
 	if err != nil {
 		return nil, err
 	}
+	// PRD-020: Capture tenant/client for labeled metrics (used in defer)
+	tenantID = tc.Tenant.ID.String()
+	clientID = tc.Client.ID.String()
 
 	txErr := s.tx.RunInTx(ctx, func(stores txAuthStores) error {
 		// Step 1: Consume refresh token with replay protection
@@ -107,6 +115,8 @@ func (s *Service) consumeRefreshTokenWithReplayProtection(
 			if revokeErr := revokeSessionOnReplay(ctx, stores, err, refreshRecord.SessionID, now); revokeErr != nil {
 				return nil, revokeErr
 			}
+			// PRD-020: Track refresh token reuse (replay) detection
+			s.incrementRefreshTokenReuseDetections()
 		}
 		return nil, fmt.Errorf("consume refresh token: %w", err)
 	}
