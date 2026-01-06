@@ -249,7 +249,6 @@ help:
 	@echo "  docker-clean   Stop and remove compose services, images, and volumes"
 	@echo "  docker-reset   Alias for docker-clean"
 	@echo "  clean          Remove build artifacts"
-	@echo "  docker-clean   Stop containers and remove images/volumes for this app"
 	@echo ""
 	@echo "Database migrations:"
 	@echo "  migrate-install   Install golang-migrate CLI"

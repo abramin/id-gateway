@@ -61,6 +61,56 @@ Auth and token flows are functionally complete (PRD-001/016) but lack performanc
 - Replace linear JTI lookups with a prefix/radix tree or equivalent O(log n) index.
 - Validate performance under refresh storms with replay detection metrics.
 
+### FR-7: Distributed Client Resolution Cache (Redis)
+
+**Problem:** Current `ResilientClientResolver` uses in-memory cache (`sync.RWMutex` map) per process. In multi-instance deployments, each pod maintains separate cache state, causing:
+- Cache miss storms during pod scaling/restarts
+- Inconsistent cache hit rates across instances
+- 2 extra DB queries per request on cache miss (client + tenant lookup)
+
+**Solution:**
+- Add Redis-backed distributed cache for `ResolveClient()` results.
+- Key pattern: `client:{oauth_client_id}` with JSON payload `{client: {...}, tenant: {...}}`.
+- TTL: 5 minutes (matching current in-memory cache).
+- Fallback: On Redis failure, degrade to in-memory cache (existing behavior).
+
+**Invalidation:**
+- Explicit delete on client deactivation/update via tenant admin API.
+- TTL-based expiry as secondary safeguard.
+- On client secret rotation, cache entry is invalidated.
+
+**Files to modify:**
+- Create: `internal/auth/adapters/client_cache_redis.go`
+- Modify: `internal/auth/adapters/resilient_client_resolver.go` (accept Redis cache option)
+- Modify: `cmd/server/main.go` (wire Redis client to resolver)
+- Modify: `internal/tenant/service/client_service.go` (invalidate cache on mutations)
+
+**Expected Impact:** Eliminate 2 DB queries per token operation when cache hit (~20ms p99 reduction).
+
+### FR-8: User Lookup Cache (Redis)
+
+**Problem:** `users.FindByID()` is called on every token exchange and refresh flow. User records rarely change, but this lookup adds ~5-10ms per request.
+
+**Solution:**
+- Add Redis read-through cache for user lookups by ID.
+- Key pattern: `user:{user_id}` with JSON payload (excluding sensitive fields like password hash).
+- TTL: 60 seconds (short to ensure timely status propagation).
+- Decorator pattern: `CachedUserStore` wraps `UserStore` interface.
+
+**Invalidation:**
+- Explicit delete on user deactivation/deletion.
+- TTL-based expiry ensures eventual consistency.
+- On user status change, cache entry is invalidated.
+
+**Files to modify:**
+- Create: `internal/auth/store/user/store_cached.go`
+- Modify: `cmd/server/main.go` (wrap user store with cache decorator)
+- Modify: `internal/admin/service/user_service.go` (invalidate cache on mutations)
+
+**Expected Impact:** Eliminate 1 DB query per token operation when cache hit (~10ms p99 reduction).
+
+**Security Consideration:** Cache stores non-sensitive user metadata only. Password hashes and MFA secrets are never cached.
+
 ---
 
 ## 3. Technical Requirements
@@ -316,6 +366,10 @@ EXPLAIN (ANALYZE, BUFFERS) SELECT user_id, expires_at FROM sessions_bench WHERE 
 - [ ] Background sweeper runs on interval, stops cleanly on shutdown, and removes expired sessions/tokens.
 - [ ] No business logic in handlers; services own caching/orchestration; internal errors not leaked to clients.
 - [ ] Metrics/traces include cache hit/miss, pool wait time, sweeper runtime.
+- [ ] FR-7: Redis client cache shows >90% hit rate in multi-instance deployment; graceful fallback on Redis failure.
+- [ ] FR-7: Client deactivation invalidates cache within 1 second (explicit delete) or 5 minutes (TTL).
+- [ ] FR-8: Redis user cache reduces `users.FindByID()` DB calls by >80% on token endpoints.
+- [ ] FR-8: User deactivation/deletion invalidates cache immediately (explicit delete).
 
 ---
 
@@ -331,5 +385,6 @@ EXPLAIN (ANALYZE, BUFFERS) SELECT user_id, expires_at FROM sessions_bench WHERE 
 
 | Version | Date       | Author      | Changes                                                                                       |
 | ------- | ---------- | ----------- | --------------------------------------------------------------------------------------------- |
+| 1.2     | 2026-01-05 | Engineering | Added FR-7 (Redis client cache) and FR-8 (Redis user cache) from hot path analysis           |
 | 1.1     | 2025-12-21 | Engineering | Added TR-6: SQL Indexing for Performance (function-based, covering indexes, index combination) |
 | 1.0     | 2025-12-16 | Engineering | Initial draft for perf pass on auth/token plane                                               |

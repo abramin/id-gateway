@@ -121,7 +121,7 @@
     },
     {
       "type": "row",
-      "title": "PRD-020: Auth SLIs",
+      "title": "Auth SLIs",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -353,7 +353,7 @@
     },
     {
       "type": "row",
-      "title": "PRD-020: Audit Durability & Consent",
+      "title": "Audit Durability & Consent",
       "gridPos": {
         "h": 1,
         "w": 24,
