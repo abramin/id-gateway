@@ -303,3 +303,94 @@ func Test_PerTenantIssuerInToken(t *testing.T) {
 		assert.Equal(t, expectedIssuer, claims.Issuer)
 	})
 }
+
+// Unit tests for AccessTokenClaims.APIVersion() extraction.
+// Justification: Parse function with multiple audience formats and backward compatibility.
+
+func Test_AccessTokenClaims_APIVersion(t *testing.T) {
+	t.Run("extracts version from versioned audience", func(t *testing.T) {
+		claims := &AccessTokenClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Audience: []string{"credo-client", "credo-client:v1"},
+			},
+		}
+		assert.Equal(t, id.APIVersionV1, claims.APIVersion())
+	})
+
+	t.Run("extracts version when versioned audience is first", func(t *testing.T) {
+		claims := &AccessTokenClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Audience: []string{"credo-client:v1", "credo-client"},
+			},
+		}
+		assert.Equal(t, id.APIVersionV1, claims.APIVersion())
+	})
+
+	t.Run("defaults to v1 for legacy token without version", func(t *testing.T) {
+		claims := &AccessTokenClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Audience: []string{"credo-client"},
+			},
+		}
+		assert.Equal(t, id.APIVersionV1, claims.APIVersion())
+	})
+
+	t.Run("defaults to v1 for empty audience", func(t *testing.T) {
+		claims := &AccessTokenClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Audience: []string{},
+			},
+		}
+		assert.Equal(t, id.APIVersionV1, claims.APIVersion())
+	})
+
+	t.Run("ignores malformed version suffix", func(t *testing.T) {
+		claims := &AccessTokenClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Audience: []string{"credo-client:invalid"},
+			},
+		}
+		// Falls back to v1 when no valid version found
+		assert.Equal(t, id.APIVersionV1, claims.APIVersion())
+	})
+
+	t.Run("ignores colon at end of audience", func(t *testing.T) {
+		claims := &AccessTokenClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Audience: []string{"credo-client:"},
+			},
+		}
+		assert.Equal(t, id.APIVersionV1, claims.APIVersion())
+	})
+}
+
+func Test_GenerateAccessToken_IncludesVersionedAudience(t *testing.T) {
+	ctx := context.Background()
+	service := NewJWTService("key", "https://auth.example.com", "credo-client", time.Hour)
+
+	token, err := service.GenerateAccessToken(ctx, userID, sessionID, clientID, tenantID, []string{"openid"}, id.APIVersionV1)
+	require.NoError(t, err)
+
+	claims, err := service.ValidateToken(token)
+	require.NoError(t, err)
+
+	// Should have both base audience and versioned audience
+	assert.Contains(t, claims.Audience, "credo-client")
+	assert.Contains(t, claims.Audience, "credo-client:v1")
+	assert.Equal(t, id.APIVersionV1, claims.APIVersion())
+}
+
+func Test_GenerateIDToken_IncludesVersionedAudience(t *testing.T) {
+	ctx := context.Background()
+	service := NewJWTService("key", "https://auth.example.com", "credo-client", time.Hour)
+
+	token, err := service.GenerateIDToken(ctx, userID, sessionID, clientID, tenantID, id.APIVersionV1)
+	require.NoError(t, err)
+
+	claims, err := service.ValidateIDToken(token)
+	require.NoError(t, err)
+
+	// Should have both base audience and versioned audience
+	assert.Contains(t, claims.Audience, "credo-client")
+	assert.Contains(t, claims.Audience, "credo-client:v1")
+}
