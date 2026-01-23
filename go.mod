@@ -16,7 +16,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/redis v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/redpanda v0.40.0
 	github.com/twmb/franz-go v1.20.6
-	github.com/twmb/franz-go/pkg/kadm v1.17.1
+	github.com/twmb/franz-go/pkg/kadm v1.17.2
 	go.opentelemetry.io/otel v1.39.0
 	go.uber.org/mock v0.6.0
 	golang.org/x/sync v0.19.0
